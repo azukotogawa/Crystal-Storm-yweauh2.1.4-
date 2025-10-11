@@ -25,7 +25,7 @@ class Game:
         self.setup()
 
     def setup(self):
-        map = load_pygame(join('data', 'maps', 'world.tmx'))
+        map = load_pygame(join('../', 'data', 'maps', 'world.tmx'))
         #for x,y, image in map.get_layer_by_name('Ground').tiles():
         #    Sprite((x * TILE_SIZE,y * TILE_SIZE), image, self.all_sprites)
 

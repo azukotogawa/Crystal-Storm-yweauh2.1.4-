@@ -1,3 +1,5 @@
+from string import whitespace
+
 from settings import *
 
 class AllSprites(pygame.sprite.Group):

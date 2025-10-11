@@ -28,6 +28,16 @@ class WorldDrawer:
             self.wait_key()
 
 
+    def wait_key(self):
+        while True:
+            event = pygame.event.wait()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
+                    pygame.quit()
+                    quit()
+                break
+
+
     def draw_tiles(self, terrain_type_map):
         for y, row in enumerate(terrain_type_map):
             for x, value in enumerate(row):
