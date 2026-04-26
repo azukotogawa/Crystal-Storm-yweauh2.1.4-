@@ -1,0 +1,12 @@
+config1.py
+groups.py
+player.py
+settings.py
+setup.py
+sprites.py
+world.py
+world_drawer.py
+main.egg-info/PKG-INFO
+main.egg-info/SOURCES.txt
+main.egg-info/dependency_links.txt
+main.egg-info/top_level.txt
