@@ -91,10 +91,18 @@ class InfiniteNoiseWorld:
         h_norm = (h_val + 1.0) / 2.0
         p_norm = (p_val + 1.0) / 2.0
 
-        h_level = bisect.bisect_left(self.height_cumul, h_norm)
-        p_level = bisect.bisect_left(self.precip_cumul, p_norm)
+        h_level = bisect.bisect_left(self.height_cumul, h_norm) - 1
+        p_level = bisect.bisect_left(self.precip_cumul, p_norm) - 1
         h_level = max(0, min(39, h_level))
         p_level = max(0, min(39, p_level))
+
+        # Return clean base tile ID (0-39)
+        if h_level >= 20:  # High / Mountain region
+            return HIGH_MAP[min(h_level - 20, len(HIGH_MAP)-1)], "High", (h_level, p_level)
+        elif p_level >= 20:  # Lake / Water region
+            return LAKE_MAP[min(p_level - 20, len(LAKE_MAP)-1)], "Lake", (h_level, p_level)
+        else:  # Dry / Grass / Forest region
+            return DRY_MAP[min(h_level, len(DRY_MAP)-1)], "Dry", (h_level, p_level)
 
         # === YOUR LOGIC: USE h_level AND p_level ===
         '''if h_level > 28 and p_level < 10:
@@ -119,12 +127,7 @@ class InfiniteNoiseWorld:
                 return TROPICAL_MAP[int(variation*len(TROPICAL_MAP))], "Tropical", (h_level, p_level)
         if p_level < 5 and h_level > 20:
                 return ARCTIC_MAP[int(variation*len(ARCTIC_MAP))], "Arctic", (h_level, p_level)'''
-        if h_level >= 20:
-            return HIGH_MAP[h_level - 20], "High", (h_level, p_level)
-        if p_level >= 20:
-            return LAKE_MAP[p_level - 20], "Lake", (h_level, p_level)
-        else:
-            return DRY_MAP[h_level], "Dry", (h_level, p_level)
+
 
     def get_variation(self, wx, wy):
         """3rd noise: 0.0 → 1.0 for variation"""

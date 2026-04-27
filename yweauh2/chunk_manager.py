@@ -36,20 +36,34 @@ class Chunk:
                 self.tile_ids[ly][lx] = biome_result[0]  # first element = tile id
 
     def render_surface(self, drawer):
-        """Render the chunk surface using drawer's tile images"""
         if self.surface is not None:
             return self.surface
 
-        surf = pygame.Surface((CHUNK_SIZE * TILESIZE, CHUNK_SIZE * TILESIZE))
+        # Large surface for isometric + height
+        surf = pygame.Surface((CHUNK_SIZE * TILESIZE * 2 + 200,
+                               CHUNK_SIZE * TILESIZE * 2 + 500), pygame.SRCALPHA)
+
         for y in range(CHUNK_SIZE):
             for x in range(CHUNK_SIZE):
-                tid = self.tile_ids[y][x]
-                img = drawer.get_tile(tid)  # ← correct: drawer provides the tile
-                surf.blit(img, (x * TILESIZE, y * TILESIZE))
+                base_tid = self.tile_ids[y][x]
+                wx = self.cx * CHUNK_SIZE + x + 0.5
+                wy = self.cy * CHUNK_SIZE + y + 0.5
+
+                height = self.world.get_height(wx, wy)
+                img = drawer.get_tile(base_tid, 0)
+
+                # === CLASSIC ISOMETRIC ===
+                iso_x = (x - y) * (TILESIZE // 2)
+                iso_y = (x + y) * (TILESIZE // 4) + int(height * 48)  # strong height
+
+                # Center the chunk in the surface
+                draw_x = iso_x + CHUNK_SIZE * TILESIZE
+                draw_y = iso_y
+
+                surf.blit(img, (draw_x, draw_y))
 
         self.surface = surf
         return surf
-
 
 class ChunkManager:
     def __init__(self, world, drawer=None):
@@ -137,9 +151,9 @@ class ChunkManager:
 
                 chunk = self._load_or_generate(cx, cy)
                 if chunk:
-                    # Only submit render if executor is still active
-                    if chunk.surface is None and not getattr(self, '_shutdown', False):
-                        self.executor.submit(self._render_in_background, chunk)
+                    # Render surface using the correct method name
+                    if chunk.surface is None and self.drawer:
+                        chunk.surface = chunk.render_surface(self.drawer)
 
                     with self.chunks_lock:
                         self.chunks[key] = chunk
@@ -148,7 +162,7 @@ class ChunkManager:
                 self.load_queue.task_done()
 
             except Exception as e:
-                print(f"[Worker ERROR] Processing chunk ({cx}, {cy}): {e}")
+                print(f"[Worker ERROR] chunk ({cx},{cy}): {e}")
                 self.queued.discard(key)
                 self.load_queue.task_done()
 
@@ -172,9 +186,9 @@ class ChunkManager:
         print("[ChunkManager] Shutdown complete")
 
     def _render_in_background(self, chunk):
-        """Background render — surface is safe to create here, blit later on main"""
-        if chunk.surface is None and self.drawer:
-            chunk.render_surface(self.drawer)
+        if chunk.surface is None:
+            chunk.surface = chunk.render_surface(self.drawer)
+        return chunk
 
     def _load_or_generate(self, cx, cy):
         path = get_chunk_path(cx, cy, self.world.seed)
@@ -218,7 +232,7 @@ class ChunkManager:
         pcx = player_tile_x // CHUNK_SIZE
         pcy = player_tile_y // CHUNK_SIZE
 
-        # Update velocity
+        # Velocity
         if hasattr(self, 'last_player_pos') and self.last_player_pos is not None:
             dx = target_pos[0] - self.last_player_pos[0]
             dy = target_pos[1] - self.last_player_pos[1]
@@ -228,14 +242,13 @@ class ChunkManager:
 
         self.last_player_pos = target_pos
 
-        # === AGGRESSIVE PRE-LOAD ===
-        # Load a large buffer around the player so new chunks appear BEFORE you reach them
-        for dx in range(-3, 4):  # 7×7 instead of 9×9 or 11×11
-            for dy in range(-3, 4):
+        # Pre-load buffer
+        for dx in range(-5, 6):
+            for dy in range(-5, 6):
                 self.request_chunk(pcx + dx, pcy + dy)
 
-        # === UNLOAD DISTANT CHUNKS ===
-        unload_radius = 12  # keep more chunks in memory
+        # Unload more aggressively when far
+        unload_radius = 10
         to_remove = []
         with self.chunks_lock:
             for (cx, cy) in list(self.chunks.keys()):
@@ -245,68 +258,47 @@ class ChunkManager:
         for key in to_remove:
             del self.chunks[key]
 
-        # Debug print every second
-        if hasattr(self, 'frame_count') and self.frame_count % 60 == 0:
-            print(f"[CHUNKS] Loaded: {len(self.chunks)} | Queued: {len(self.queued)} | Player chunk: ({pcx}, {pcy})")
-
     def reset(self):
-        """Fully reset the chunk manager for a new seed"""
-        print("[ChunkManager] Resetting for new seed...")
-
+        """Fully reset for new seed"""
+        print("[ChunkManager] Full reset for new seed")
         with self.chunks_lock:
             self.chunks.clear()
-
         self.queued.clear()
-
-        # Re-create the queue
-        self.load_queue = Queue()
-
-        # Optional: clear any cached surfaces or minimap cache
-        # MINIMAP_CACHE.clear() if you have it
+        self.load_queue = Queue()  # new queue
 
     def draw(self, camera_pos, drawer):
-        """
-        Draw visible chunks using the provided WorldDrawer.
-        Blits directly to drawer.display_surface.
-        """
-        if drawer is None or drawer.display_surface is None:
-            print("[Draw warning] No valid display surface")
+        if drawer is None:
             return
 
-        target_surface = drawer.display_surface
+        target_surface = pygame.display.get_surface()
+        if target_surface is None:
+            return
 
         left = camera_pos[0] - WINDOW_WIDTH // 2
         top = camera_pos[1] - WINDOW_HEIGHT // 2
 
-        start_cx = int(left // (CHUNK_SIZE * TILESIZE)) - 1
-        start_cy = int(top // (CHUNK_SIZE * TILESIZE)) - 1
-        end_cx = start_cx + (WINDOW_WIDTH // (CHUNK_SIZE * TILESIZE)) + 3
-        end_cy = start_cy + (WINDOW_HEIGHT // (CHUNK_SIZE * TILESIZE)) + 3
-
-        # One-time placeholder (create once outside loop)
-        placeholder = pygame.Surface((CHUNK_SIZE * TILESIZE, CHUNK_SIZE * TILESIZE))
-        placeholder.fill((20, 40, 100))  # unloaded / ocean-ish
-
-        # Counter for debug (optional)
-        drawn_count = 0
-        missing_count = 0
+        start_cx = int(left // (CHUNK_SIZE * TILESIZE)) - 4
+        start_cy = int(top // (CHUNK_SIZE * TILESIZE)) - 4
+        end_cx = start_cx + (WINDOW_WIDTH // (CHUNK_SIZE * TILESIZE)) + 9
+        end_cy = start_cy + (WINDOW_HEIGHT // (CHUNK_SIZE * TILESIZE)) + 9
 
         for cy in range(start_cy, end_cy + 1):
             for cx in range(start_cx, end_cx + 1):
                 key = (cx, cy)
                 chunk = self.chunks.get(key)
 
-                sx = cx * CHUNK_SIZE * TILESIZE - int(left)
-                sy = cy * CHUNK_SIZE * TILESIZE - int(top)
-
                 if chunk:
                     if chunk.surface is None:
-                        chunk.render_surface(drawer)  # lazy render
+                        chunk.surface = chunk.render_surface(drawer)
+
+                    # Isometric chunk positioning
+                    chunk_offset_x = (cx - cy) * (CHUNK_SIZE * TILESIZE // 2)
+                    chunk_offset_y = (cx + cy) * (CHUNK_SIZE * TILESIZE // 4)
+
+                    sx = chunk_offset_x - int(left) + CHUNK_SIZE * TILESIZE
+                    sy = chunk_offset_y - int(top) - 180
+
                     target_surface.blit(chunk.surface, (sx, sy))
-                    drawn_count += 1
-                else:
-                    target_surface.blit(placeholder, (sx, sy))
-                    missing_count += 1
 
     def get_current_chunk(self, tx, ty):
         return int(tx) // CHUNK_SIZE, int(ty) // CHUNK_SIZE

@@ -1,0 +1,66 @@
+            if SHOW_CHUNK_DEBUG:
+                # ---- One font for everything (32 pt) ----
+                debug_font = pygame.font.Font(None, 32)
+                small_font = pygame.font.Font(None, 28)
+
+                # ---- Static background for the left panel ----
+                panel_bg = pygame.Surface((380, 320))
+                panel_bg.fill((0, 0, 0))
+                panel_bg.set_alpha(140)
+
+                # ---- Gather data once ----
+                cx, cy = self.chunk_manager.get_current_chunk(player_tile_x, player_tile_y)
+                loaded, expected = self.chunk_manager.get_stats()
+                qsize = self.chunk_manager.load_queue.qsize()
+                queued = len(self.chunk_manager.queued)
+                vx, vy = self.chunk_manager.player_velocity
+                speed = (vx ** 2 + vy ** 2) ** 0.5
+
+                tile_id = self.chunk_manager.get_tile_at(player_tile_x, player_tile_y)
+                terrain_name = BIOME_NAMES.get(tile_id, f"ID {tile_id}") if tile_id is not None else "???"
+
+                # ---- Render all lines (only the dynamic parts change) ----
+                lines = [
+                    f"Chunk: ({cx}, {cy})",
+                    f"Seed: {world_seed}",
+                    f"Loaded: {loaded} / {expected}",
+                    f"Pos: {pos[0]:.0f}, {pos[1]:.0f}",
+                    f"FPS: {int(self.clock.get_fps())}",
+                    f"Tile: ({player_tile_x}, {player_tile_y})",
+                    f"Terrain: {terrain_name}",
+                    f"Vel: {vx:.0f},{vy:.0f} px/s  ({speed:.0f})",
+                    f"Blend: {settings.blend_width}px {settings.blend_strength:.1f}",
+                    f"Radius: {self.chunk_manager.UNLOAD_DIST} > Max {(2 * self.chunk_manager.UNLOAD_DIST + 1) ** 2}",
+                    f"Chunks: {len(self.chunk_manager.chunks)}",
+                    f"Q:{qsize} Wait:{queued}",
+                ]
+
+                # ---- Blit the panel and all lines ----
+                self.display_surface.blit(panel_bg, (10, 10))
+                for i, txt in enumerate(lines):
+                    surf = small_font.render(txt, True, (255, 255, 255))
+                    self.display_surface.blit(surf, (20, 15 + i * 26))
+
+                # F1 = toggle blend
+                keys = pygame.key.get_pressed()
+                if keys[pygame.K_F1]:
+                    settings.blend_strength = 0.0 if settings.blend_strength > 0 else 0.7
+
+                # F3 = mini-map
+                if keys[pygame.K_F3]:
+                    self.show_mini_map = not getattr(self, "show_mini_map", False)
+
+                if getattr(self, "show_mini_map", False):
+                    MAP_SIZE = 150
+                    map_surf = pygame.Surface((MAP_SIZE, MAP_SIZE))
+                    map_surf.fill((30, 30, 30))
+                    scale = MAP_SIZE / (5 * CHUNK_SIZE * TILESIZE)
+                    px = py = MAP_SIZE // 2
+                    pygame.draw.circle(map_surf, (0, 255, 0), (px, py), 5)
+                    for (ccx, ccy) in self.chunk_manager.chunks.keys():
+                        mx = px + (ccx - cx) * CHUNK_SIZE * TILESIZE * scale
+                        my = py + (ccy - cy) * CHUNK_SIZE * TILESIZE * scale
+                        if 0 <= mx < MAP_SIZE and 0 <= my < MAP_SIZE:
+                            pygame.draw.rect(map_surf, (100, 150, 255), (mx - 4, my - 4, 8, 8))
+                    pygame.draw.rect(map_surf, (255, 255, 255), (0, 0, MAP_SIZE, MAP_SIZE), 2)
+                    self.display_surface.blit(map_surf, (WINDOW_WIDTH - MAP_SIZE - 20, 20))
