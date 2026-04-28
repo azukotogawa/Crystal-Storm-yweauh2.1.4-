@@ -92,6 +92,7 @@ def load_player(player, seed):
 class Game:
     def __init__(self):
         pygame.init()
+        pygame.event.set_blocked([pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP])
         self.display_surface = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT), HW_FLAGS)
         pygame.display.set_caption('yweauh2.1.5')
         self.clock = pygame.time.Clock()
@@ -116,11 +117,6 @@ class Game:
         self.all_sprites.add(self.player)
 
         load_player(self.player, self.world_seed)
-
-        # Initial chunks
-        for dx in range(-3, 4):
-            for dy in range(-3, 4):
-                self.chunk_manager.request_chunk(dx, dy)
 
         # UI & State
         self.font = pygame.font.Font(None, 48)
@@ -227,26 +223,83 @@ class Game:
 
             self.chunk_manager.update(player_tile_x, player_tile_y, player_center, dt)
 
-            # Draw
+            # === NEW SINGLE-SURFACE DRAWING SYSTEM (No black bars) ===
             self.display_surface.fill('black')
 
-            self.chunk_manager.draw(player_center, self.world_drawer)
+            # Visible area with padding for height variation
+            render_width = WINDOW_WIDTH + 400
+            render_height = WINDOW_HEIGHT + 1000
+            visible_surf = pygame.Surface((render_width, render_height), pygame.SRCALPHA)
 
-            # Player and UI on top
+            left = player_center[0] - WINDOW_WIDTH // 2 - 200
+            top = player_center[1] - WINDOW_HEIGHT // 2 - 500
+
+            start_cx = int(left // (CHUNK_SIZE * TILESIZE)) - 1
+            start_cy = int(top // (CHUNK_SIZE * TILESIZE)) - 2
+            end_cx = start_cx + (WINDOW_WIDTH // (CHUNK_SIZE * TILESIZE)) + 4
+            end_cy = start_cy + (WINDOW_HEIGHT // (CHUNK_SIZE * TILESIZE)) + 8
+
+            for cy in range(start_cy, end_cy + 1):
+                for cx in range(start_cx, end_cx + 1):
+                    key = (cx, cy)
+                    chunk = self.chunk_manager.chunks.get(key)
+                    if not chunk:
+                        continue
+
+                    for ly in range(CHUNK_SIZE):
+                        for lx in range(CHUNK_SIZE):
+                            base_tid = chunk.tile_ids[ly][lx]
+                            wx = cx * CHUNK_SIZE + lx + 0.5
+                            wy = cy * CHUNK_SIZE + ly + 0.5
+
+                            raw_h = self.world.get_height(wx, wy)
+                            stepped = round(raw_h * 9) / 9.0
+                            variation = raw_h * 0.7
+                            final_h = stepped + variation
+
+                            variant = int(((raw_h + 1.0) / 2.0) * 3.999)
+                            img = self.world_drawer.get_tile(base_tid, variant)
+
+                            screen_x = (cx * CHUNK_SIZE + lx) * TILESIZE - int(left)
+                            screen_y = (cy * CHUNK_SIZE + ly) * TILESIZE - int(top) + int(final_h * 55)
+
+                            visible_surf.blit(img, (screen_x, screen_y))
+
+                            # Shadow on real drops
+                            if ly + 1 < CHUNK_SIZE:
+                                s_h = self.world.get_height(
+                                    cx * CHUNK_SIZE + lx + 0.5,
+                                    cy * CHUNK_SIZE + (ly + 1) + 0.5
+                                )
+                                if s_h < raw_h - 0.25:
+                                    depth = int((raw_h - s_h) * 55) + 40
+                                    shadow = pygame.Surface((TILESIZE, depth), pygame.SRCALPHA)
+                                    shadow.fill((8, 15, 25, 210))
+                                    visible_surf.blit(shadow, (screen_x, screen_y + TILESIZE))
+
+            # Blit to screen
+            self.display_surface.blit(visible_surf, (-200, -400))  # match padding
+
+            # === PLAYER (using same height logic) ===
+            raw_h = self.world.get_height(player_tile_x, player_tile_y)
+            stepped_h = round(raw_h * 9) / 9.0
+            variation = raw_h * 0.7
+            final_h = stepped_h + variation
+            visual_offset = int(final_h * 55)
+
+            player_visual_y = self.player.rect.centery + visual_offset - 40
+            original_y = self.player.rect.centery
+            self.player.rect.centery = player_visual_y
             self.all_sprites.draw(player_center)
+            self.player.rect.centery = original_y
 
             # Debug Panel
             if SHOW_CHUNK_DEBUG:
-                panel_bg = pygame.Surface((200, 360), pygame.SRCALPHA)
+                panel_bg = pygame.Surface((200, 420), pygame.SRCALPHA)
                 panel_bg.fill((0, 0, 0, 140))
                 self.display_surface.blit(panel_bg, (10, 10))
 
-                cx, cy = self.chunk_manager.get_current_chunk(player_tile_x, player_tile_y)
-                loaded, expected, queued, qsize = self.chunk_manager.get_stats()
-                vx, vy = self.player_velocity
-                speed = (vx ** 2 + vy ** 2) ** 0.5
-
-                h_val = self.world.get_height(player_tile_x, player_tile_y)
+                h_val = self.world.get_height(player_tile_x, player_tile_x)
                 p_val = self.world.get_precip(player_tile_x, player_tile_y)
 
                 h_norm = (h_val + 1.0) / 2.0
@@ -257,8 +310,22 @@ class Game:
                 h_level = max(0, min(39, h_level))
                 p_level = max(0, min(39, p_level))
 
+                raw_h = self.world.get_height(player_tile_x, player_tile_y)
+                stepped_h = round(raw_h * 9) / 9.0
+                variation = raw_h * 0.7
+                final_h = stepped_h + variation
+                visual_offset = int(final_h * 55)
+                visual_tile_y = player_tile_y + (visual_offset // TILESIZE)
+
+                biome_info = self.world.get_biome(player_tile_x, player_tile_y)
                 tile_id = self.chunk_manager.get_tile_at(player_tile_x, player_tile_y)
                 terrain_name = BIOME_NAMES.get(tile_id, f"ID {tile_id}") if tile_id is not None else "???"
+
+                # terrain debug calcs
+                cx, cy = self.chunk_manager.get_current_chunk(player_tile_x, visual_tile_y)
+                loaded, expected, queued, qsize = self.chunk_manager.get_stats()
+                vx, vy = self.player_velocity
+                speed = (vx ** 2 + vy ** 2) ** 0.5
 
                 lines = [
                     f"Chunk: ({cx}, {cy})",
@@ -266,14 +333,19 @@ class Game:
                     f"Loaded: {loaded} / {expected}",
                     f"Pos: {player_center[0]:.0f}, {player_center[1]:.0f}",
                     f"FPS: {int(self.clock.get_fps())}",
-                    f"Tile: ({player_tile_x}, {player_tile_y})",
+                    f"Tile: ({player_tile_x}, {visual_tile_y})",
                     f"Terrain: {terrain_name}",
-                    f"Biome: {self.world.get_biome(player_tile_x, player_tile_y)[1]}",
+                    f"Biome: {biome_info[1]}",
                     f"h,p: {h_level}, {p_level}",
                     f"Vel: {vx:.0f},{vy:.0f} ({speed:.0f})",
                     f"Chunks: {len(self.chunk_manager.chunks)}",
                     f"Blend: {settings.blend_width}px {settings.blend_strength:.1f}",
                     f"Q:{qsize} Wait:{queued}",
+                    # === PLAYER HEIGHT DEBUG ===
+                    f"Stepped: {stepped_h:.3f}",
+                    f"Final Height: {final_h:.3f}",
+                    f"Visual Offset: {visual_offset}",
+
                 ]
 
                 for i, txt in enumerate(lines):

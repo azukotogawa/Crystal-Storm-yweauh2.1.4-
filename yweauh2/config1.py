@@ -40,11 +40,11 @@ def resource_path(relative_path):
     except Exception: base_path = os.path.abspath("")
     return os.path.join(base_path, relative_path)
 
-TILESHEET_PATH = resource_path("files/voxelsnew.png")
+TILESHEET_PATH = resource_path("files/voxelsnew1.png")
 
 # === WINDOW & SETTINGS ===
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+WINDOW_WIDTH = 960
+WINDOW_HEIGHT = 540
 TILESIZE = 64
 CHUNK_SIZE = 32
 CHUNK_PRELOAD_DIST = 1
@@ -73,7 +73,7 @@ ALL_FACTORS = [FACTOR_HEIGHT, FACTOR_PRECIP, FACTOR_TEMP, FACTOR_HUMIDITY,
                FACTOR_EROSION, FACTOR_TECTONIC, FACTOR_WIND, FACTOR_MAGIC]
 
 # === BIOME IDs (0–53) ===
-LAKE3, LAKE2, LAKE, BEACH, BEACH2, BEACH3, \
+LAKE, LAKE2, LAKE3, BEACH, BEACH2, BEACH3, \
 GRASS, GRASS2, GRASS3, GRASS4, GRASS5, DESERT, DESERT2, DESERT3, \
 TUNDRA, TUNDRA2, TUNDRA3, RIVER, BASIN, BASIN2, BASIN3, VALLEY3, VALLEY2, VALLEY, \
 FOREST, FOREST2, FOREST3, FOREST4, MOUNTAIN, MOUNTAIN2, MOUNTAIN3, MOUNTAIN4, \
@@ -98,7 +98,7 @@ BIOME_WEIGHTS_PRECIP = [
 ]
 
 # === BIOME MAPS (40 tiles) ===
-LAKE_MAP = [LAKE3] + [LAKE2]*2 + [LAKE]*2 + [BEACH]*2 + [BEACH2]*2 + [BEACH3] + \
+LAKE_MAP = [LAKE] + [LAKE2]*2 + [LAKE3]*2 + [BEACH]*2 + [BEACH2]*2 + [BEACH3] + \
            [GRASS]*2 + [GRASS2]*2 + [RIVER] * 2 + [GRASS3]*2 + [GRASS4] + [GRASS5]
 
 DRY_MAP = [BASIN3] + [BASIN2]*2 + [BASIN]*2 + [VALLEY]*2 + [VALLEY2]*2 + [VALLEY3] + \
@@ -131,9 +131,9 @@ ARCTIC_MAP = [SNOW3]*12 + [TUNDRA3]*8
 
 ALL_TERRAIN_TILES = [
     # 0-2: Lakes
-    [(128, 0), (128, 64), (128, 128), (128, 192)],
-    [(64, 0),  (64, 64),  (64, 128),  (64, 192)],
     [(0, 0),   (0, 64),   (0, 128),   (0, 192)],
+    [(64, 0),  (64, 64),  (64, 128),  (64, 192)],
+    [(128, 0), (128, 64), (128, 128), (128, 192)],
 
     # 6-8: Beaches
     [(192, 0),   (192, 64),   (92, 128),   (192, 192)],
@@ -193,7 +193,7 @@ ALL_TERRAIN_TILES = [
 
 # === BIOME NAMES (for debug) ===
 BIOME_NAMES = {
-    LAKE3: "Deep Ocean", LAKE2: "Ocean", LAKE: "Shallow Sea",
+    LAKE: "Deep Ocean", LAKE2: "Ocean", LAKE3: "Shallow Sea",
     BEACH: "Beach", BEACH2: "Sandy Beach", BEACH3: "Coral Reef",
     GRASS: "Grass", GRASS2: "Meadow", GRASS3: "Plains", GRASS4: "Steppe", GRASS5: "Savanna",
     DESERT: "Desert", DESERT2: "Dunes", DESERT3: "Badlands",

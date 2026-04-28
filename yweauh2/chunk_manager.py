@@ -24,8 +24,10 @@ class Chunk:
         self.world = world
         self.terrain_tiles = terrain_tiles
         self.tile_ids = [[0] * CHUNK_SIZE for _ in range(CHUNK_SIZE)]
-        self.surface = None           # lazy
-        self._cached_surface = None   # optional internal cache
+        self.surface = None
+
+        # === VISUAL HEIGHT CONTROL ===
+        self.visual_height_scale = 90  # ← Change this number to tune drama (45 = subtle, 90 = very tall)
 
         # Generate tile IDs
         for ly in range(CHUNK_SIZE):
@@ -33,37 +35,15 @@ class Chunk:
                 wx = cx * CHUNK_SIZE + lx + 0.5
                 wy = cy * CHUNK_SIZE + ly + 0.5
                 biome_result = world.get_biome(wx, wy)
-                self.tile_ids[ly][lx] = biome_result[0]  # first element = tile id
+                self.tile_ids[ly][lx] = biome_result[0]
+
+        self._cached_surface = None   # optional internal cache
 
     def render_surface(self, drawer):
-        if self.surface is not None:
-            return self.surface
-
-        # Large surface for isometric + height
-        surf = pygame.Surface((CHUNK_SIZE * TILESIZE * 2 + 200,
-                               CHUNK_SIZE * TILESIZE * 2 + 500), pygame.SRCALPHA)
-
-        for y in range(CHUNK_SIZE):
-            for x in range(CHUNK_SIZE):
-                base_tid = self.tile_ids[y][x]
-                wx = self.cx * CHUNK_SIZE + x + 0.5
-                wy = self.cy * CHUNK_SIZE + y + 0.5
-
-                height = self.world.get_height(wx, wy)
-                img = drawer.get_tile(base_tid, 0)
-
-                # === CLASSIC ISOMETRIC ===
-                iso_x = (x - y) * (TILESIZE // 2)
-                iso_y = (x + y) * (TILESIZE // 4) + int(height * 48)  # strong height
-
-                # Center the chunk in the surface
-                draw_x = iso_x + CHUNK_SIZE * TILESIZE
-                draw_y = iso_y
-
-                surf.blit(img, (draw_x, draw_y))
-
-        self.surface = surf
-        return surf
+        """Legacy method - kept for compatibility but no longer used"""
+        if self.surface is None:
+            self.surface = pygame.Surface((CHUNK_SIZE * TILESIZE, CHUNK_SIZE * TILESIZE), pygame.SRCALPHA)
+        return self.surface
 
 class ChunkManager:
     def __init__(self, world, drawer=None):
@@ -125,11 +105,9 @@ class ChunkManager:
         if key in self.chunks or key in self.queued:
             return
 
-        # Stronger throttle
-        if len(self.queued) > 40:  # ← lowered from 80 or higher
+        if len(self.queued) > 6:  # very low queue limit
             return
 
-        print(f"[REQUEST] chunk {cx},{cy}")
         self.queued.add(key)
         self.load_queue.put(key)
 
@@ -232,7 +210,7 @@ class ChunkManager:
         pcx = player_tile_x // CHUNK_SIZE
         pcy = player_tile_y // CHUNK_SIZE
 
-        # Velocity
+        # Velocity tracking
         if hasattr(self, 'last_player_pos') and self.last_player_pos is not None:
             dx = target_pos[0] - self.last_player_pos[0]
             dy = target_pos[1] - self.last_player_pos[1]
@@ -242,21 +220,39 @@ class ChunkManager:
 
         self.last_player_pos = target_pos
 
-        # Pre-load buffer
-        for dx in range(-5, 6):
-            for dy in range(-5, 6):
-                self.request_chunk(pcx + dx, pcy + dy)
+        # === EXTREMELY CONSERVATIVE LOADING ===
+        load_radius = 2  # only load a small area around player
+        loaded_this_frame = 0
 
-        # Unload more aggressively when far
-        unload_radius = 10
+        for dx in range(-load_radius, load_radius + 1):
+            for dy in range(-load_radius, load_radius + 1):
+                cx = pcx + dx
+                cy = pcy + dy
+                key = (cx, cy)
+
+                if key not in self.chunks and key not in self.queued:
+                    self.request_chunk(cx, cy)
+                    loaded_this_frame += 1
+                    if loaded_this_frame >= 3:  # max 3 new chunks per frame
+                        break
+            if loaded_this_frame >= 3:
+                break
+
+        # === VERY AGGRESSIVE UNLOAD ===
+        unload_radius = 5  # unload anything outside this small radius
         to_remove = []
         with self.chunks_lock:
-            for (cx, cy) in list(self.chunks.keys()):
-                if max(abs(cx - pcx), abs(cy - pcy)) > unload_radius:
-                    to_remove.append((cx, cy))
+            for key in list(self.chunks.keys()):
+                cx, cy = key
+                dist = max(abs(cx - pcx), abs(cy - pcy))
+                if dist > unload_radius:
+                    to_remove.append(key)
 
         for key in to_remove:
-            del self.chunks[key]
+            if key in self.chunks:
+                chunk = self.chunks.pop(key)
+                if chunk.surface is not None:
+                    chunk.surface = None
 
     def reset(self):
         """Fully reset for new seed"""
@@ -266,39 +262,37 @@ class ChunkManager:
         self.queued.clear()
         self.load_queue = Queue()  # new queue
 
+    def __del__(self):
+        if hasattr(self, 'surface') and self.surface is not None:
+            self.surface = None
+
     def draw(self, camera_pos, drawer):
         if drawer is None:
             return
 
         target_surface = pygame.display.get_surface()
-        if target_surface is None:
-            return
-
         left = camera_pos[0] - WINDOW_WIDTH // 2
         top = camera_pos[1] - WINDOW_HEIGHT // 2
 
-        start_cx = int(left // (CHUNK_SIZE * TILESIZE)) - 4
-        start_cy = int(top // (CHUNK_SIZE * TILESIZE)) - 4
-        end_cx = start_cx + (WINDOW_WIDTH // (CHUNK_SIZE * TILESIZE)) + 9
-        end_cy = start_cy + (WINDOW_HEIGHT // (CHUNK_SIZE * TILESIZE)) + 9
+        start_cx = int(left // (CHUNK_SIZE * TILESIZE)) - 1
+        start_cy = int(top // (CHUNK_SIZE * TILESIZE)) - 2
+        end_cx = start_cx + (WINDOW_WIDTH // (CHUNK_SIZE * TILESIZE)) + 3
+        end_cy = start_cy + (WINDOW_HEIGHT // (CHUNK_SIZE * TILESIZE)) + 5
 
         for cy in range(start_cy, end_cy + 1):
             for cx in range(start_cx, end_cx + 1):
                 key = (cx, cy)
                 chunk = self.chunks.get(key)
+                if not chunk:
+                    continue
 
-                if chunk:
-                    if chunk.surface is None:
-                        chunk.surface = chunk.render_surface(drawer)
+                if chunk.surface is None:
+                    chunk.surface = chunk.render_surface(drawer)
 
-                    # Isometric chunk positioning
-                    chunk_offset_x = (cx - cy) * (CHUNK_SIZE * TILESIZE // 2)
-                    chunk_offset_y = (cx + cy) * (CHUNK_SIZE * TILESIZE // 4)
+                sx = cx * CHUNK_SIZE * TILESIZE - int(left)
+                sy = cy * CHUNK_SIZE * TILESIZE - int(top) - 620  # bigger padding
 
-                    sx = chunk_offset_x - int(left) + CHUNK_SIZE * TILESIZE
-                    sy = chunk_offset_y - int(top) - 180
-
-                    target_surface.blit(chunk.surface, (sx, sy))
+                target_surface.blit(chunk.surface, (sx, sy))
 
     def get_current_chunk(self, tx, ty):
         return int(tx) // CHUNK_SIZE, int(ty) // CHUNK_SIZE
@@ -340,5 +334,4 @@ class ChunkManager:
             del self.chunks[key]
 
     # Compatibility aliases (add this at the very end of the ChunkManager class)
-    request_chunks_around = request_chunk   # old name now calls the new method
     get_tile_at = get_tile_id               # keep old name working if used elsewhere
