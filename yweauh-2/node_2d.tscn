@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://dtbttgageagds"]
+
+[ext_resource type="Shader" uid="uid://cceslwsyhcxqy" path="res://new_shader.gdshader" id="1_wtcfe"]
+[ext_resource type="Texture2D" uid="uid://cdrbg6mcc34ay" path="res://assets/player/player.png" id="2_0e48y"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_0e48y"]
+shader = ExtResource("1_wtcfe")
+
+[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_epypp"]
+texture = ExtResource("2_0e48y")
+0:0/0 = 0
+1:0/0 = 0
+0:1/0 = 0
+1:1/0 = 0
+
+[sub_resource type="TileSet" id="TileSet_0hol4"]
+sources/0 = SubResource("TileSetAtlasSource_epypp")
+
+[node name="Node2D" type="Node2D" unique_id=396219401]
+
+[node name="TileMapLayer" type="TileMapLayer" parent="." unique_id=1051598996]
+material = SubResource("ShaderMaterial_0e48y")
+tile_set = SubResource("TileSet_0hol4")
