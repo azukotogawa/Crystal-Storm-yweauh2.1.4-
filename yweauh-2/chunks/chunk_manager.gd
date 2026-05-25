@@ -6,7 +6,6 @@ const CHUNK_SIZE_y = 16
 
 @export var world: InfiniteNoiseWorld     
 @export var tile_set: TileSet
-@export var MAX_CHUNK_RADIUS: int = 15  
 
 var chunks: Dictionary = {}
 var camera: Camera2D
@@ -26,10 +25,6 @@ func update(grid_tile_pos: Vector2):
 	for dy in range(-5, 6):
 		for dx in range(-5, 6):
 			var target_key = Vector2i(player_chunk_x + dx, player_chunk_y + dy)
-			
-			# Bounding wall guard rule
-			if abs(target_key.x) > MAX_CHUNK_RADIUS or abs(target_key.y) > MAX_CHUNK_RADIUS:
-				continue
 			
 			if not chunks.has(target_key) and not loading_queue.has(target_key):
 				loading_queue.append(target_key)
@@ -51,8 +46,6 @@ func update(grid_tile_pos: Vector2):
 			_unload_chunk(key.x, key.y)
 
 func _load_chunk(cx: int, cy: int):
-	if abs(cx) > MAX_CHUNK_RADIUS or abs(cy) > MAX_CHUNK_RADIUS:
-		return
 		
 	var key = Vector2i(cx, cy)
 	if chunks.has(key):
@@ -64,15 +57,11 @@ func _load_chunk(cx: int, cy: int):
 	chunk.generate(tile_set) 
 	
 	# Project this chunk origin using the exact same isometric metrics as main.gd
-	var chunk_start_tile_x = cx * CHUNK_SIZE_x
-	var chunk_start_tile_y = cy * CHUNK_SIZE_y
-	
-	var screen_x = (chunk_start_tile_x - chunk_start_tile_y) * 32.0
-	var screen_y = (chunk_start_tile_x + chunk_start_tile_y) * 16.0
-	chunk.position = Vector2(screen_x, screen_y) 
+	var chunk_start_grid = Vector2i(cx * CHUNK_SIZE_x, cy * CHUNK_SIZE_y)
+	chunk.position = IsoMath.grid_to_screen(chunk_start_grid)
 		
 	var container = get_node_or_null("/root/Main/WorldContainer") 
-	if container: 
+	if container:
 		container.add_child(chunk) 
 	else: 
 		add_child(chunk) 

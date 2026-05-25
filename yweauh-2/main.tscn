@@ -42,11 +42,6 @@ script = ExtResource("4_272bh")
 material = SubResource("ShaderMaterial_4c57u")
 texture = ExtResource("6_7mycd")
 
-[node name="WorldTileMap" type="TileMapLayer" parent="Player/Sprite2D" unique_id=1681521339]
-y_sort_enabled = true
-texture_filter = 1
-tile_set = ExtResource("3_7mycd")
-
 [node name="Camera2D" type="Camera2D" parent="." unique_id=1914780156]
 position = Vector2(0, 5555)
 ignore_rotation = false

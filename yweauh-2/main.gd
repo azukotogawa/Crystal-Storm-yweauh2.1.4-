@@ -7,21 +7,21 @@ var world: InfiniteNoiseWorld
 @onready var player = $Player
 @onready var camera = $Camera2D
 
-# SOURCE OF TRUTH: Flat, un-elevated world tile coordinates.
 var raw_world_tile_pos: Vector2 = Vector2.ZERO
-var view_angle: int = 0 # Tracks 0 through 7 (8 total perspective angles)
+var view_angle: int = 0 
 
 @export var movement_speed: float = 24.0 
-@export var auto_jump_enabled: bool = true
+@export var auto_jump_enabled: bool = false
 
-# Dynamic Kinematics Configuration - Amplified for high-impact physics
-@export var base_gravity: float = 1400.0       # Much heavier upward resistance
-@export var fall_gravity: float = 3600.0       # Heavy downward snap for fast falling
-@export var jump_force: float = -380.0        # Punchy, distinct upward explosion
+@export var base_gravity: float = 1400.0       
+@export var fall_gravity: float = 2400.0       
+@export var jump_force: float = -380.0        
 @export var jump_cut_velocity: float = -100.0  
-@export var terminal_velocity: float = 800.0
+@export var terminal_velocity: float = 800.0   
 
 var current_ground_h: float = 0.0
+var sprite_scale_modifier: Vector2 = Vector2.ONE
+var current_skew: float = 0.0
 
 func _ready():
 	world = InfiniteNoiseWorld.new(current_seed)
@@ -39,7 +39,7 @@ func _ready():
 	
 	var p_grid_x = int(floor(raw_world_tile_pos.x))
 	var p_grid_y = int(floor(raw_world_tile_pos.y))
-	current_ground_h = world.get_biome(p_grid_x + 0.5, p_grid_y + 0.5).get("render_height", 0)
+	current_ground_h = world.get_biome(p_grid_x, p_grid_y).get("render_height", 0)
 	
 	_update_player_screen_position()
 
@@ -48,11 +48,9 @@ func _unhandled_input(event):
 		if event.keycode == KEY_SPACE and event.pressed:
 			if player and not player.is_jumping:
 				_trigger_manual_jump()
-				
 		if event.keycode == KEY_SPACE and not event.pressed:
 			if player and player.is_jumping and player.z_velocity < jump_cut_velocity:
 				player.z_velocity = jump_cut_velocity
-
 		if event.pressed:
 			if event.keycode == KEY_E:
 				view_angle = (view_angle + 1) % 8
@@ -68,27 +66,35 @@ func _unhandled_input(event):
 func _refresh_world():
 	if camera:
 		camera.rotation = view_angle * -(PI / 4.0)
-	
 	chunk_manager.current_angle_index = view_angle
-	
-	# Clear out old visual chunk pipelines and wipe the async queues
 	chunk_manager.loading_queue.clear()
-	
 	var active_chunks = []
 	if "chunks" in chunk_manager:
 		active_chunks = chunk_manager.chunks.values()
 	else:
 		active_chunks = chunk_manager.get_children()
-
 	for chunk in active_chunks:
 		if is_instance_valid(chunk) and chunk.has_method("change_view_angle"):
 			chunk.change_view_angle(view_angle, 6)
-			
 	_update_player_screen_position()
 
+func _trigger_manual_jump():
+	if player.is_jumping: return
+	player.is_jumping = true
+	player.z_velocity = jump_force
+	player.z_height -= 5.0
+	
+	sprite_scale_modifier = Vector2(0.6, 1.55)
+	current_skew = 0.2
+	
 func _process(delta):
 	_handle_player_movement(delta)
 	_update_jump_and_fall_physics(delta)
+	
+	# Animation recovery
+	sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
+	current_skew = move_toward(current_skew, 0.0, 10.0 * delta)
+	
 	_update_player_screen_position()
 
 func _handle_player_movement(delta: float):
@@ -99,186 +105,170 @@ func _handle_player_movement(delta: float):
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN): input_dir.y += 1
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT): input_dir.x -= 1
 	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT): input_dir.x += 1
-		
-	if input_dir != Vector2.ZERO:
-		input_dir = input_dir.normalized()
-		
-		var camera_rotation = view_angle * -(PI / 4.0)
-		var rotated_input = input_dir.rotated(camera_rotation)
-		
-		var isometric_movement = Vector2(
-			(rotated_input.x / 32.0) + (rotated_input.y / 16.0),
-			(-rotated_input.x / 32.0) + (rotated_input.y / 16.0)
-		).normalized()
-		
-		var target_tile_pos = raw_world_tile_pos + isometric_movement * movement_speed * delta
-		
-		if _can_move_to(target_tile_pos):
-			raw_world_tile_pos = target_tile_pos
-			
-			var p_grid_x = int(floor(raw_world_tile_pos.x))
-			var p_grid_y = int(floor(raw_world_tile_pos.y))
-			var target_h = world.get_biome(p_grid_x + 0.5, p_grid_y + 0.5).get("render_height", 0)
-			
-			if target_h < current_ground_h:
-				# FORCE EVERY STEP DOWN TO FREEFALL:
-				# Leave current_ground_h anchored high so physics handles the downward drop.
-				if not player.is_jumping:
-					player.is_jumping = true
-					player.z_velocity = 120.0 # Clear over the ledge forcefully
-			else:
-				# Only step up or walk flat if we aren't in the middle of a fall arc
-				if not player.is_jumping:
-					current_ground_h = target_h
-
-func _can_move_to(target_pos: Vector2) -> bool:
-	# 1. Map target tile pos directly to target chunk index structures using flat tile scales
-	if chunk_manager:
-		# Access your constant tile boundaries directly from your current manager definition
-		var c_size_x = chunk_manager.CHUNK_SIZE_x
-		var c_size_y = chunk_manager.CHUNK_SIZE_y
-		
-		var target_cx = int(floor(target_pos.x / c_size_x))
-		var target_cy = int(floor(target_pos.y / c_size_y))
-		
-		# FIX: Use 'in' operator to check if property exists on the ChunkManager instance
-		if "MAX_CHUNK_RADIUS" in chunk_manager:
-			if abs(target_cx) > chunk_manager.MAX_CHUNK_RADIUS or abs(target_cy) > chunk_manager.MAX_CHUNK_RADIUS:
-				return false
-		elif abs(target_cx) > 15 or abs(target_cy) > 15: # Fallback boundary guard limit
-			return false
-			
-	# 2. Terrain height differential parsing (Stays unchanged) [cite: 8]
-	var check_current_h = world.get_biome(int(floor(raw_world_tile_pos.x)) + 0.5, int(floor(raw_world_tile_pos.y)) + 0.5).get("render_height", 0)
-	var target_h = world.get_biome(int(floor(target_pos.x)) + 0.5, int(floor(target_pos.y)) + 0.5).get("render_height", 0)
 	
-	var height_difference = target_h - check_current_h
-	if height_difference <= 0: return true
-		
-	if height_difference <= 1:
-		if auto_jump_enabled: return true
-		else:
-			var visual_step_height_px = height_difference * 8.0
-			return player.is_jumping and ((-player.z_height) > visual_step_height_px)
-			
-	return false
+	if input_dir == Vector2.ZERO: return
+	
+	var cam_rot = view_angle * -(PI / 4.0)
+	var isometric_movement = IsoMath.screen_to_grid(
+		input_dir.normalized().rotated(cam_rot)
+	).normalized()
+	
+	raw_world_tile_pos += isometric_movement * movement_speed * delta
 
-func _trigger_manual_jump():
-	player.is_jumping = true
-	var current_tile_h = world.get_biome(int(floor(raw_world_tile_pos.x)) + 0.5, int(floor(raw_world_tile_pos.y)) + 0.5).get("render_height", 0)
-	player.z_height = (current_tile_h - current_ground_h) * -8.0
-	player.z_velocity = jump_force
+func _can_move_to(_target_pos: Vector2) -> bool:
+	return true 
 
 func _update_jump_and_fall_physics(delta: float):
-	var current_tile_h = world.get_biome(int(floor(raw_world_tile_pos.x)) + 0.5, int(floor(raw_world_tile_pos.y)) + 0.5).get("render_height", 0)
-	var target_z_px = (current_tile_h - current_ground_h) * -8.0
+	# === SAME METHOD AS DEBUG PANEL ===
+	var screen_pos = IsoMath.grid_to_screen(raw_world_tile_pos)
+	var sample_grid = IsoMath.screen_to_grid(screen_pos) + Vector2(0.5, 0.5)
 	
-	if player.is_jumping:
-		var active_gravity = base_gravity
-		if player.z_velocity > 0.0:
-			active_gravity = fall_gravity
+	var biome = world.get_biome(sample_grid.x, sample_grid.y)
+	
+	var current_tile_h = biome.get("h_level", 0)          # Use for logic
+	var visual_h = biome.get("render_height", current_tile_h)
+	
+	var target_z_px = (visual_h - current_ground_h) * -8.0
+	var height_diff = current_tile_h - current_ground_h
+	
+	if not player.is_jumping:
+		if abs(height_diff) > 0.25:
+			player.is_jumping = true
+			player.z_velocity = 0.0
 			
-		player.z_velocity = min(player.z_velocity + active_gravity * delta, terminal_velocity)
+			if height_diff > 0:  # CLIMB
+				player.z_velocity = -100.0
+				sprite_scale_modifier = Vector2(0.65, 1.52)
+				current_skew = 0.22
+			else:  # FALL
+				player.z_velocity = 50.0
+				sprite_scale_modifier = Vector2(1.42, 0.65)
+				current_skew = -0.12
+	
+	# Physics
+	if player.is_jumping:
+		player.z_velocity += base_gravity * delta
 		player.z_height += player.z_velocity * delta
 		
-		# LANDING CONDITIONAL check:
-		# Only land when moving downwards and intersecting or passing beneath the local ground line
-		if player.z_velocity >= 0.0 and player.z_height >= target_z_px:
+		if player.z_velocity >= 0 and player.z_height >= target_z_px - 8:
 			player.z_height = target_z_px
 			player.is_jumping = false
 			player.z_velocity = 0.0
 			current_ground_h = current_tile_h
+			
+			sprite_scale_modifier = Vector2(1.55, 0.52)  # Landing
 	else:
-		# If walking normally, keep height pinned perfectly to the ground profile
-		player.z_height = target_z_px
-		current_ground_h = current_tile_h
+		player.z_height = lerp(player.z_height, target_z_px, 16.0 * delta)
 
 func _update_player_screen_position():
-	if not player or not world: return
-	
-	# 1. Project directly into standard unrotated isometric coordinates
-	var screen_x = (raw_world_tile_pos.x - raw_world_tile_pos.y) * 32.0
-	var screen_y = (raw_world_tile_pos.x + raw_world_tile_pos.y) * 16.0
-	
+	# 1. Get raw screen positio
 	var p_grid_x = int(floor(raw_world_tile_pos.x))
 	var p_grid_y = int(floor(raw_world_tile_pos.y))
+	var screen_pos = IsoMath.grid_to_screen(raw_world_tile_pos)
 	
-	var current_biome = world.get_biome(raw_world_tile_pos.x + 0.5, raw_world_tile_pos.y + 0.5)
-	current_ground_h = current_biome.get("render_height", 0)
-	var height_displacement_y = current_ground_h * -8.0
+	# 2. Get the height at the exact position
+	var visual_ground_h = world.get_biome(raw_world_tile_pos.x, raw_world_tile_pos.y).get("render_height", 0)
 	
-	# 2. View Occlusion Scanning Vectors
+	# 3. Apply the height to the Y-axis
+	# Isometric Y = (x + y) * 16.0. 
+	# A height of 1 unit should move the sprite up by 16 pixels (or your scale).
+	var height_offset = visual_ground_h * -16.0 
+	
+	# 4. Final render position
+	# 3. Calculate final displacement
+	var height_displacement_y = visual_ground_h * -8.0
+	var cam_rotation = view_angle * -(PI / 4.0)
+	var gravity_visual_offset = Vector2(0, player.z_height).rotated(cam_rotation)
+	
+	var player_sprite = player if not player.has_node("Sprite2D") else player.get_node("Sprite2D")
+	if player_sprite:
+		player_sprite.rotation = -cam_rotation
+		# APPLY ANIMATION HERE
+		player_sprite.scale = sprite_scale_modifier
+		player_sprite.skew = current_skew
+	
+	# 4. Final Position
+	var player_final_pos = screen_pos + Vector2(0, visual_ground_h * -8.0) + Vector2(0, player.z_height).rotated(cam_rotation)
+	
 	var front_offsets: Array[Vector2i] = []
 	match view_angle:
-		0: front_offsets = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]
-		1: front_offsets = [Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0)]
-		2: front_offsets = [Vector2i(-1, 0), Vector2i(-1, -1), Vector2i(0, -1)]
-		3: front_offsets = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0)]
-		4: front_offsets = [Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1)]
-		5: front_offsets = [Vector2i(0, -1), Vector2i(1, -1), Vector2i(1, 0)]
-		6: front_offsets = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]
-		7: front_offsets = [Vector2i(0, 1), Vector2i(-1, 1), Vector2i(-1, 0)]
+		0: front_offsets = [Vector2i(0, 1), Vector2i(1, 0)] # Matches drawing offsets
+		1: front_offsets = [Vector2i(1, 1), Vector2i(1, -1)]
+		2: front_offsets = [Vector2i(0, -1), Vector2i(1, 0)]
+		3: front_offsets = [Vector2i(-1, -1), Vector2i(1, -1)]
+		4: front_offsets = [Vector2i(0, -1), Vector2i(-1, 0)]
+		5: front_offsets = [Vector2i(-1, -1), Vector2i(-1, 1)]
+		6: front_offsets = [Vector2i(-1, 0), Vector2i(0, 1)]
+		7: front_offsets = [Vector2i(-1, 1), Vector2i(1, 1)]
 
 	var is_occluded: bool = false
 	var highest_block_screen_y: float = -999999.0
-	
-	var player_base_pos = Vector2(screen_x, screen_y + height_displacement_y)
-	
-	# Rotate the visual gravity tracking offset to align with camera rotation
-	var cam_rotation = view_angle * (PI / 4.0)
-	var gravity_visual_offset = Vector2(0, player.z_height).rotated(cam_rotation)
-	
-	var player_final_pos = player_base_pos + gravity_visual_offset
 
-	# Scan for blocking foreground walls
 	for offset in front_offsets:
 		var check_wx = p_grid_x + offset.x
 		var check_wy = p_grid_y + offset.y
-		var front_biome = world.get_biome(check_wx + 0.5, check_wy + 0.5)
+		var front_biome = world.get_biome(check_wx, check_wy)
 		var front_h = front_biome.get("render_height", 0)
-		
-		if front_h > current_ground_h:
-			var front_screen_x = (check_wx - check_wy) * 32.0
-			var front_screen_y = (check_wx + check_wy) * 16.0
-			var front_peak_y = front_screen_y + (front_h * -8.0)
+		# Inside the occlusion loop
+		if front_h > visual_ground_h:
+			var wall_screen_pos = IsoMath.grid_to_screen(Vector2(check_wx, check_wy))
+			# We want the screen Y where the wall's "front face" begins
+			var wall_peak_y = wall_screen_pos.y + (front_h * -8.0)
 			
-			is_occluded = true
-			if front_peak_y > highest_block_screen_y:
-				highest_block_screen_y = front_peak_y
+			# IMPORTANT: We need the global screen position, not just relative.
+			# Ensure the camera's offset is factored in if necessary.
+			var global_wall_peak_y = wall_peak_y - camera.offset.y 
+			
+			if player_final_pos.y < global_wall_peak_y:
+				is_occluded = true
+				if global_wall_peak_y > highest_block_screen_y:
+					highest_block_screen_y = global_wall_peak_y
 					
-	# 4. Handle Player Sprite Node Counter-Rotation & Shader Calculations
-	var player_sprite = player if not player.has_node("Sprite2D") else player.get_node("Sprite2D")
 	if player_sprite:
-		# Counter-rotate the sprite so it stays perfectly vertical on your monitor screen
 		player_sprite.rotation = -cam_rotation
+		player_sprite.scale = sprite_scale_modifier
+		player_sprite.skew = current_skew
 		
 		if player_sprite.material is ShaderMaterial:
-			player_sprite.material.set_shader_parameter("is_clipped", is_occluded)
-			
-			if is_occluded and player_sprite.texture:
-				var tex_height = player_sprite.texture.get_height()
-				
-				# Find how far down from the top of the sprite the clipping plane sits along global screen-space Y
-				var local_clip_y = highest_block_screen_y - (player_final_pos.y - (tex_height / 2.0))
-				
-				# Pass absolute screen pixels down to match the SCREEN_UV shader framework
-				var screen_pixel_cutoff = (player_sprite.global_position.y - (tex_height / 2.0)) + local_clip_y
-				player_sprite.material.set_shader_parameter("clip_threshold_y", screen_pixel_cutoff)
+			# 1. Calculate which chunk coordinates the player is in
+			var chunk_x = int(floor(raw_world_tile_pos.x / 16.0))
+			var chunk_y = int(floor(raw_world_tile_pos.y / 16.0))
 
-	# 5. Position and Sorting Updates
+			var chunk_key = Vector2i(chunk_x, chunk_y)
+			if chunk_manager.chunks.has(chunk_key):
+				var active_chunk = chunk_manager.chunks[chunk_key]
+					
+			# 3. Now you can safely access the wall_layer of that specific chunk
+				var map_coords = active_chunk.wall_layer.local_to_map(player.global_position)
+				
+			# Only apply occlusion/clipping if the wall layer actually has a tile here!
+				if active_chunk.wall_layer.get_cell_source_id(map_coords) != -1:
+					player_sprite.material.set_shader_parameter("is_clipped", true)
+				else:
+					player_sprite.material.set_shader_parameter("is_clipped", false)
+			
+			if is_occluded:
+				# Flip the comparison because Y-down in Godot screen space
+				# The threshold is the Y position of the wall peak in screen space
+				player_sprite.material.set_shader_parameter("clip_threshold_y", highest_block_screen_y)
+				player_sprite.material.set_shader_parameter("is_clipped", true)
+			else:
+				player_sprite.material.set_shader_parameter("is_clipped", false)
+
 	player.position = player_final_pos
-	player.z_index = int(screen_y) + (int(current_ground_h) * 8) + 4
-	
 	if player.has_node("ShadowSprite"):
 		player.get_node("ShadowSprite").position = -gravity_visual_offset
 		player.get_node("ShadowSprite").rotation = -cam_rotation
-	
+		var progress = clamp(1.0 - (abs(player.z_height) / 200.0), 0.2, 1.0)
+		player.get_node("ShadowSprite").scale = Vector2(progress, progress)
 	if camera:
+		player.position = player_final_pos
 		camera.position = player.position
-		
-	chunk_manager.update(raw_world_tile_pos)
-	
-# --- SAVE, LOAD & SEED CONFIGURATION ---
+		chunk_manager.update(raw_world_tile_pos)
+
+func get_tile_center(pos: Vector2) -> Vector2i:
+	return Vector2i(floor(pos.x + 0.5), floor(pos.y + 0.5))
+
 func _input(event):
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: camera.zoom *= 1.1
