@@ -31,7 +31,7 @@ func _ready():
 	camera.position = Vector2(0, 0)
 	camera.zoom = Vector2(current_zoom, current_zoom)
 	
-	await get_tree().process_framea
+	await get_tree().process_frame
 	update_viewport_tiles()
 
 func _process(_delta):

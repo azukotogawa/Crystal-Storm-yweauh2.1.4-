@@ -15,9 +15,19 @@ func _process(_delta):
 	var py = 0
 	var cx = 0
 	var cy = 0
-	var player_pos = Vector2.ZERO
+	var map_pos = []
+	var btype = "??"
 	
-	var main = get_tree().get_root().get_node_or_null("Main")
+	if not label: return
+
+	var main = get_tree().root.get_node_or_null("Main")
+	if not main: return
+
+	# Get Player Position first
+	var player = main.get_node_or_null("Player")
+	if not player: return
+	var player_pos = player.position
+
 	if main:
 		seed_val = str(main.get("current_seed") if main.get("current_seed") != null else "???")
 		
@@ -29,24 +39,43 @@ func _process(_delta):
 		
 		if raw_tile_pos != null and world_node != null:
 	# Convert player screen position to grid coordinates
-			var grid_pos = IsoMath.screen_to_grid(player_pos)
-			px = int(floor(grid_pos.x))
-			py = int(floor(grid_pos.y))
-			
-			cx = int(floor(px / 16.0))
-			cy = int(floor(py / 16.0))
-			var biome = world_node.get_biome(grid_pos.x, grid_pos.y)
+			var cm = main.get_node_or_null("ChunkManager")
+			var active_layer = null
+
+			# We iterate through the chunks dictionary in the ChunkManager 
+			if cm and cm.chunks.size() > 0:
+				for key in cm.chunks:
+					var chunk = cm.chunks[key]
+					# Check if this chunk's wall_layer is valid 
+					if is_instance_valid(chunk.wall_layer):
+						# Convert world position to local space of the chunk [cite: 15]
+						var local_pos = chunk.wall_layer.to_local(player_pos)
+						map_pos = chunk.wall_layer.local_to_map(local_pos)
+						
+						# If the map_pos is inside the 0-15 grid of this chunk, we found it!
+						if map_pos.x >= 0 and map_pos.x < 16 and map_pos.y >= 0 and map_pos.y < 16:
+							active_layer = chunk.wall_layer
+							# Set the grid coordinates
+							px = int(floor(chunk.cx * 16 + map_pos.x))
+							py = int(floor(chunk.cy * 16 + map_pos.y))
+							cx = chunk.cx
+							cy = chunk.cy
+							break
+							
+			var data_grid_pos = IsoMath.screen_to_grid(player_pos)
+			var biome = world_node.get_biome(data_grid_pos.x, data_grid_pos.y)
 			
 			if biome:
-				h_level = str(biome.get("render_height", biome.get("h_level", "??")))
+				h_level = str(biome.get("h_level", "??"))
 				p_level = str(biome.get("p_level", "??"))
 				tile_name = str(biome.get("name", "??"))
+				btype = str(biome.get("type"))
 		
 		var cm = main.get_node_or_null("ChunkManager")
 		if cm and cm.get("chunks") != null:
 			chunks = cm.chunks.size()
 			
-	label.text = "Seed: %s\nPos: %.0f, %.0f\nTile: %s\nh_level: %s | p_level: %s\nFPS: %d\nChunks: %d\nPlayer Tile: %d, %d\nChunk: %d, %d" % [
+	label.text = "Seed: %s\nPos: %.0f, %.0f\nTile: %s\nh_level: %s | p_level: %s\nFPS: %d\nChunks: %d\nPlayer Tile: %d, %d\nChunk: %d, %d\nBiome: %s" % [
 		seed_val,
 		player_pos.x, player_pos.y,
 		tile_name,
@@ -55,5 +84,6 @@ func _process(_delta):
 		Engine.get_frames_per_second(),
 		chunks,
 		px, py,
-		cx, cy
+		cx, cy,
+		btype
 	]
