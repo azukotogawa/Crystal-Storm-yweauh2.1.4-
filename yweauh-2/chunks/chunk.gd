@@ -68,7 +68,7 @@ var tile_registry = {
 	"salt flat": {"top": Vector2i(1, 13), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)},
 	"basin": {"top": Vector2i(1, 14), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)},
 	
-	"river": {"top": Vector2i(1, 15), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 18), "back_right": Vector2i(4, 18), "front_left": Vector2i(5, 18)}
+	"river": {"top": Vector2i(1, 15), "back_left": Vector2i(2, 18), "front_right": Vector2i(3, 18), "back_right": Vector2i(4, 18), "front_left": Vector2i(5, 18)}
 }
 
 func _init(p_cx: int, p_cy: int, p_world: InfiniteNoiseWorld):
