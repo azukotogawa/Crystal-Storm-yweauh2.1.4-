@@ -18,6 +18,7 @@ shader_parameter/is_clipped = false
 shader_parameter/clip_threshold_y = 0.0
 
 [node name="Main" type="Node2D" unique_id=1583137948]
+y_sort_enabled = true
 script = ExtResource("1_lquwl")
 
 [node name="World" type="Node" parent="." unique_id=466978666]
@@ -30,9 +31,23 @@ tile_set = SubResource("Resource_5vw27")
 
 [node name="WorldContainer" type="Node2D" parent="." unique_id=1103701426]
 
-[node name="WorldTileMap" type="TileMapLayer" parent="WorldContainer" unique_id=611988666]
-y_sort_enabled = true
+[node name="WallLayer" type="TileMapLayer" parent="WorldContainer" unique_id=1393597649]
 tile_set = ExtResource("3_7mycd")
+
+[node name="SubViewport" type="SubViewport" parent="WorldContainer" unique_id=527678346]
+transparent_bg = true
+canvas_item_default_texture_filter = 0
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
+
+[node name="MainLayer" type="TileMapLayer" parent="WorldContainer/SubViewport" unique_id=611988666]
+tile_set = ExtResource("3_7mycd")
+
+[node name="ColorRect" type="ColorRect" parent="WorldContainer/SubViewport/MainLayer" unique_id=899138820]
+custom_minimum_size = Vector2(1152, 648)
+offset_right = 40.0
+offset_bottom = 40.0
+color = Color(0.5639018, 1.0829419e-06, 5.2943824e-07, 1)
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=1407757501]
 z_index = 10

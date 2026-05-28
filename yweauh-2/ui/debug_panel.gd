@@ -17,6 +17,7 @@ func _process(_delta):
 	var cy = 0
 	var map_pos = []
 	var btype = "??"
+	var logical_pos = Vector3.ZERO # New variable for the debug UI
 	
 	if not label: return
 
@@ -63,7 +64,10 @@ func _process(_delta):
 							break
 							
 			var data_grid_pos = IsoMath.screen_to_grid(player_pos)
-			var biome = world_node.get_biome(data_grid_pos.x, data_grid_pos.y)
+			# Apply the + 0.5 offset to match the Chunk's sampling logic
+			var sample_grid = Vector2(floor(data_grid_pos.x) + 0.5, floor(data_grid_pos.y) + 0.5)
+			var biome = world_node.get_biome(sample_grid.x, sample_grid.y)
+
 			
 			if biome:
 				h_level = str(biome.get("h_level", "??"))
@@ -75,7 +79,10 @@ func _process(_delta):
 		if cm and cm.get("chunks") != null:
 			chunks = cm.chunks.size()
 			
-	label.text = "Seed: %s\nPos: %.0f, %.0f\nTile: %s\nh_level: %s | p_level: %s\nFPS: %d\nChunks: %d\nPlayer Tile: %d, %d\nChunk: %d, %d\nBiome: %s" % [
+		var current_grid_pos = Vector2i(px, py)
+		logical_pos = CoordMapper.get_logical_coord(current_grid_pos, world_node, cm)
+			
+	label.text = "Seed: %s\nPos: %.0f, %.0f\nTile: %s\nh_level: %s | p_level: %s\nFPS: %d\nChunks: %d\nPlayer Tile: %d, %d\nChunk: %d, %d\nBiome: %s\nLogical Coord: %s" % [
 		seed_val,
 		player_pos.x, player_pos.y,
 		tile_name,
@@ -85,5 +92,6 @@ func _process(_delta):
 		chunks,
 		px, py,
 		cx, cy,
-		btype
+		btype,
+		str(logical_pos)
 	]
