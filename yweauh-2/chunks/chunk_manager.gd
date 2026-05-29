@@ -53,6 +53,7 @@ func _load_chunk(cx: int, cy: int):
 		
 	# Instantiates the chunk using true unrotated data coordinates
 	var chunk = Chunk.new(cx, cy, world) 
+	chunk.mask_viewport = get_node("/root/Main/WorldContainer/SubViewport")
 	chunk.current_angle_index = current_angle_index 
 	chunk.generate(tile_set) 
 	
@@ -96,6 +97,29 @@ func get_cached_biome_data(wx: int, wy: int) -> Dictionary:
 	if biome_data_cache.has(cache_key):
 		return biome_data_cache[cache_key]
 		
-	var fresh_data = world.get_biome(wx, wy)
+	var fresh_data = world.get_biome(wx+.5, wy+.5)
 	biome_data_cache[cache_key] = fresh_data
 	return fresh_data
+	
+func get_drift_at(grid_pos: Vector2i) -> Vector2i:
+	var cx = int(floor(grid_pos.x / 16.0))
+	var cy = int(floor(grid_pos.y / 16.0))
+	var chunk_key = Vector2i(cx, cy)
+
+	if chunks.has(chunk_key):
+		var chunk = chunks[chunk_key]
+		var local_pos = Vector2i(grid_pos.x % 16, grid_pos.y % 16)
+		return chunk.drift_map.get(local_pos, Vector2i.ZERO)
+	return Vector2i.ZERO
+
+func get_chunk_at(grid_pos: Vector2i) -> Chunk:
+	# 1. Calculate chunk coordinates based on your 16x16 size
+	var cx = int(floor(grid_pos.x / 16.0))
+	var cy = int(floor(grid_pos.y / 16.0))
+	var chunk_key = Vector2i(cx, cy)
+
+	# 2. Return the chunk if it exists in your dictionary
+	if chunks.has(chunk_key):
+		return chunks[chunk_key]
+
+	return null

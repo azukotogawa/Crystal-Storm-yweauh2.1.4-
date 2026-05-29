@@ -10,7 +10,7 @@ var world: InfiniteNoiseWorld
 var raw_world_tile_pos: Vector2 = Vector2.ZERO
 var view_angle: int = 0 
 
-@export var movement_speed: float = 24.0 
+@export var movement_speed: float = 12.0 
 @export var auto_jump_enabled: bool = false
 
 @export var base_gravity: float = 1400.0       
@@ -22,11 +22,12 @@ var view_angle: int = 0
 var current_ground_h: float = 0.0
 var sprite_scale_modifier: Vector2 = Vector2.ONE
 var current_skew: float = 0.0
+var current_tile_h: float = 0.0 # Add this line
 
 func _ready():
 	world = InfiniteNoiseWorld.new(current_seed)
 	chunk_manager.world = world
-	chunk_manager.tile_set = $WorldContainer/WorldTileMap.tile_set
+	chunk_manager.tile_set = $WorldContainer/SubViewport/MainLayer.tile_set
 	chunk_manager.camera = camera 
 	
 	if FileAccess.file_exists("user://save.json"):
@@ -41,6 +42,17 @@ func _ready():
 	current_ground_h = world.get_biome(initial_sample.x, initial_sample.y).get("render_height", 0)
 	
 	_update_player_screen_position()
+	
+	# Sync the viewport size to the screen size
+	$WorldContainer/SubViewport.size = get_viewport().size
+	
+	# Connect to the window resize signal to keep them synced
+	get_viewport().size_changed.connect(_on_window_size_changed)
+	print("SubViewport size: ", $WorldContainer/SubViewport.size)
+	print("SubViewport children: ", $WorldContainer/SubViewport.get_child_count())
+	
+func _on_window_size_changed():
+	$WorldContainer/SubViewport.size = get_viewport().size
 
 func _unhandled_input(event):
 	if event is InputEventKey:
@@ -95,6 +107,22 @@ func _process(delta):
 	current_skew = move_toward(current_skew, 0.0, 10.0 * delta)
 	
 	_update_player_screen_position()
+	
+	var mask_texture = $WorldContainer/SubViewport.get_texture()
+	for chunk in chunk_manager.chunks.values():
+		if chunk.wall_layer.material is ShaderMaterial:
+			chunk.wall_layer.material.set_shader_parameter("ground_mask", mask_texture)
+	
+		# Force mask refresh
+	var sub = $WorldContainer/SubViewport
+	if sub:
+		var tex = sub.get_texture()
+		for key in chunk_manager.chunks:
+			var chunk = chunk_manager.chunks[key]
+			if chunk.wall_layer and chunk.wall_layer.material is ShaderMaterial:
+				chunk.wall_layer.material.set_shader_parameter("ground_mask", tex)
+				
+				
 
 func _handle_player_movement(delta: float):
 	if not player or not world: return
@@ -113,9 +141,41 @@ func _handle_player_movement(delta: float):
 	).normalized()
 	
 	raw_world_tile_pos += isometric_movement * movement_speed * delta
+	
+	# CALCULATE TARGET POSITION
+	var target_pos = raw_world_tile_pos + (isometric_movement * movement_speed * delta)
+	
+	if _can_move_to(target_pos):
+		raw_world_tile_pos = target_pos
+	else:
+	# Optional: Slide along the wall by checking X and Y axes separately
+		var move_x = Vector2(isometric_movement.x * movement_speed * delta, 0)
+		if _can_move_to(raw_world_tile_pos + move_x):
+			raw_world_tile_pos.x += move_x.x
 
-func _can_move_to(_target_pos: Vector2) -> bool:
-	return true 
+		var move_y = Vector2(0, isometric_movement.y * movement_speed * delta)
+		if _can_move_to(raw_world_tile_pos + move_y):
+			raw_world_tile_pos.y += move_y.y
+
+# Inside main.gd
+
+func _can_move_to(target_pos: Vector2) -> bool:
+	# 1. Get current tile height
+	var screen_pos = IsoMath.grid_to_screen(raw_world_tile_pos)
+	var biome_pos = IsoMath.screen_to_grid(screen_pos) + Vector2(0.5, 0.5)
+	var current_h = world.get_biome(biome_pos.x, biome_pos.y).get("render_height", 0)
+	
+	# 2. Get target tile height
+	var target_grid_pos = IsoMath.grid_to_screen(target_pos)
+	var target_biome_pos = IsoMath.screen_to_grid(target_grid_pos) + Vector2(0.5, 0.5)
+	var target_h = world.get_biome(target_biome_pos.x, target_biome_pos.y).get("render_height", 0)
+	
+	# 3. Collision Rule: If target is higher, it's a wall.
+	# We use a threshold of 0 to block movement into higher ground (cliffs).
+	if target_h > current_h:
+		return false # Blocked by wall
+		
+	return true
 
 func _update_jump_and_fall_physics(delta: float):
 	# Use visual position for accurate tile detection
@@ -123,7 +183,7 @@ func _update_jump_and_fall_physics(delta: float):
 	var sample_grid = IsoMath.screen_to_grid(player_screen_pos) + Vector2(0.5, 0.5)
 	
 	var biome = world.get_biome(sample_grid.x, sample_grid.y)
-	var current_tile_h = biome.get("render_height", 0)
+	current_tile_h = biome.get("render_height", 0)
 	
 	var target_z_px = (current_tile_h - current_ground_h) * -8.0
 	var height_diff = current_tile_h - current_ground_h
@@ -161,12 +221,8 @@ func _update_jump_and_fall_physics(delta: float):
 		player.z_height = lerp(player.z_height, target_z_px, 18.0 * delta)
 
 func _update_player_screen_position():
-	var p_grid_x = int(floor(raw_world_tile_pos.x))
-	var p_grid_y = int(floor(raw_world_tile_pos.y))
 	var screen_pos = IsoMath.grid_to_screen(raw_world_tile_pos)
-	
-	# Use consistent sampling for visual height
-	var biome_pos = IsoMath.screen_to_grid(player.position) + Vector2(0.5, 0.5)
+	var biome_pos = IsoMath.screen_to_grid(screen_pos) + Vector2(0.5, 0.5)
 	var visual_ground_h = world.get_biome(biome_pos.x, biome_pos.y).get("render_height", 0)
 	
 	var cam_rotation = view_angle * -(PI / 4.0)
@@ -178,79 +234,63 @@ func _update_player_screen_position():
 		player_sprite.scale = sprite_scale_modifier
 		player_sprite.skew = current_skew
 
-		# === ENSURE SHADER EXISTS ===
-		if not player_sprite.material or not (player_sprite.material is ShaderMaterial):
-			var shader_mat = ShaderMaterial.new()
-			shader_mat.shader = load("res://shaders/player_clip.gdshader")  # Make sure path is correct
-			player_sprite.material = shader_mat
-			print("ShaderMaterial created in code")
-	
-	# Final visual position
 	var player_final_pos = screen_pos + Vector2(0, visual_ground_h * -8.0) + gravity_visual_offset
-	
-	var front_offsets: Array[Vector2i] = []
-	match view_angle:
-		0: front_offsets = [Vector2i(0, 1), Vector2i(1, 0)]
-		1: front_offsets = [Vector2i(1, 1), Vector2i(1, -1)]
-		2: front_offsets = [Vector2i(0, -1), Vector2i(1, 0)]
-		3: front_offsets = [Vector2i(-1, -1), Vector2i(1, -1)]
-		4: front_offsets = [Vector2i(0, -1), Vector2i(-1, 0)]
-		5: front_offsets = [Vector2i(-1, -1), Vector2i(-1, 1)]
-		6: front_offsets = [Vector2i(-1, 0), Vector2i(0, 1)]
-		7: front_offsets = [Vector2i(-1, 1), Vector2i(1, 1)]
-	
+
+		# === SIMPLE & RELIABLE OCCLUSION ===
 	var is_occluded: bool = false
 	var highest_block_screen_y: float = -999999.0
 
+	var front_offsets = get_offsets_for_view_angle(view_angle)
+
 	for offset in front_offsets:
-		var player_screen_pos = player.position
-		var sample_grid = IsoMath.screen_to_grid(player_screen_pos) + Vector2(0.5, 0.5)
+		var check_wx = raw_world_tile_pos.x + offset.x + 0.5
+		var check_wy = raw_world_tile_pos.y + offset.y + 0.5
 		
-		var check_wx = sample_grid.x + offset.x
-		var check_wy = sample_grid.y + offset.y
 		var front_biome = world.get_biome(check_wx, check_wy)
 		var front_h = front_biome.get("render_height", 0)
 		
 		if front_h > visual_ground_h:
-			var wall_screen_pos = IsoMath.grid_to_screen(Vector2(check_wx, check_wy))
+			var wall_screen_pos = IsoMath.grid_to_screen(Vector2(check_wx - 0.5, check_wy - 0.5))
 			var wall_peak_y = wall_screen_pos.y + (front_h * -8.0)
 			
-			# Player is behind this wall
 			if player_final_pos.y < wall_peak_y:
 				is_occluded = true
 				if wall_peak_y > highest_block_screen_y:
 					highest_block_screen_y = wall_peak_y
 
-	# === APPLY CLIPPING TO SPRITE ===
+	# Apply to player
 	if player_sprite and player_sprite.material is ShaderMaterial:
 		var mat = player_sprite.material as ShaderMaterial
 		mat.set_shader_parameter("is_clipped", is_occluded)
 		if is_occluded:
 			mat.set_shader_parameter("clip_threshold_y", highest_block_screen_y)
-		else:
-			mat.set_shader_parameter("is_clipped", false)
 
-	# Position player and shadow
 	player.position = player_final_pos
 	
-	# === SHADOW HANDLING ===
+	# Shadow
 	if player.has_node("ShadowSprite"):
 		var shadow = player.get_node("ShadowSprite")
 		shadow.position = -gravity_visual_offset
 		shadow.rotation = -cam_rotation
-		
-		# Shadow gets smaller and more transparent when player is higher
-		var height_factor = clamp(1.0 - (abs(player.z_height) / 180.0), 0.25, 1.0)
-		shadow.scale = Vector2(height_factor, height_factor * 0.85)  # slightly oval
-		
-		# Optional: make shadow fade when high up
-		if shadow is Sprite2D and shadow.modulate:
-			shadow.modulate.a = height_factor * 0.9
-	
+		var progress = clamp(1.0 - (abs(player.z_height) / 200.0), 0.2, 1.0)
+		shadow.scale = Vector2(progress, progress)
+
 	if camera:
 		camera.position = player_final_pos
 	
 	chunk_manager.update(raw_world_tile_pos)
+
+func get_offsets_for_view_angle(angle: int) -> Array[Vector2i]:
+	match angle:
+		0: return [Vector2i(0, 1), Vector2i(1, 0)]
+		1: return [Vector2i(1, 1), Vector2i(1, -1)]
+		2: return [Vector2i(0, -1), Vector2i(1, 0)]
+		3: return [Vector2i(-1, -1), Vector2i(1, -1)]
+		4: return [Vector2i(0, -1), Vector2i(-1, 0)]
+		5: return [Vector2i(-1, -1), Vector2i(-1, 1)]
+		6: return [Vector2i(-1, 0), Vector2i(0, 1)]
+		7: return [Vector2i(-1, 1), Vector2i(1, 1)]
+	return []
 
 func get_tile_center(pos: Vector2) -> Vector2i:
 	return Vector2i(floor(pos.x + 0.5), floor(pos.y + 0.5))

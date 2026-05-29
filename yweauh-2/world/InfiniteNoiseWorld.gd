@@ -105,6 +105,9 @@ var precip_noise: FastNoiseLite
 var height_cumul: Array
 var precip_cumul: Array
 
+var last_h: int
+var last_p: int
+
 func _init(p_seed: int = 12349):
 	world_seed = p_seed
 	generate_random_weights()
@@ -166,26 +169,45 @@ func get_biome(wx: float, wy: float) -> Dictionary:
 	var tile_name: String
 	var biome_type: String
 	var render_height: int
+	var height: int
 	
 	# ZONE 1: Mountains & High Elevations (Height 20-39)
 	if h_level >= 20:
 		tile_name = HIGH_MAP[h_level - 20]
 		biome_type = "High"
 		render_height = h_level
+		height = h_level
+		last_h = h_level
+		last_p = p_level
 		
 	# ZONE 2: Low-lying Oceans/Plains (Height 0-19) 
 	# Split horizontally by precipitation
 	else:
 		if p_level >= 20:
-			# Use h_level inside your sub-logic if you want height to matter here!
-			tile_name = LAKE_MAP[p_level - 20] 
+			# 1. Determine the "Base" height we are entering from.
+			# Ideally, this comes from a neighbor lookup or a global variable
+			# representing the last known terrain height before entering the lake.
+
+			# 2. Treat (p_level - 20) as the "depth" from the entry point.
+			# This makes the lake level relative to the land it's touching.
+			var depth = p_level - 20
+
+			# 3. Final height calculation:
+			# If entry is 19 and depth is 0, height is 19.
+			# If entry is 19 and depth is 1, height is 18.
+			height = depth - (last_p-20) + last_h
+			render_height = depth
+
+			tile_name = LAKE_MAP[depth] 
 			biome_type = "Lake"
-			render_height = p_level
 		else:
 			# Normal land
 			tile_name = DRY_MAP[h_level]
 			biome_type = "Dry"
 			render_height = h_level
+			height = h_level
+			last_h = h_level
+			last_p = p_level
 	
 	return {
 		"name": tile_name,
@@ -193,7 +215,8 @@ func get_biome(wx: float, wy: float) -> Dictionary:
 		"h_level": h_level,
 		"p_level": p_level,
 		"render_height": render_height,   # This is what chunk uses for walls
-		"is_lake": biome_type == "Lake"
+		"is_lake": biome_type == "Lake",
+		"height": height
 	}
 func bisect_left(arr: Array, x) -> int:
 	var lo: int = 0
