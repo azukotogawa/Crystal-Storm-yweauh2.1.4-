@@ -10,7 +10,7 @@ var world: InfiniteNoiseWorld
 var raw_world_tile_pos: Vector2 = Vector2.ZERO
 var view_angle: int = 0 
 
-@export var movement_speed: float = 12.0 
+@export var movement_speed: float = 4.0 
 @export var auto_jump_enabled: bool = false
 
 @export var base_gravity: float = 1400.0       
@@ -318,7 +318,7 @@ func load_game():
 	if FileAccess.file_exists("user://save.json"):
 		var file = FileAccess.open("user://save.json", FileAccess.READ)
 		var data = JSON.parse_string(file.get_as_text())
-		if data:
+		if data: 
 			current_seed = data.get("seed", 12349)
 			world = InfiniteNoiseWorld.new(current_seed)
 			chunk_manager.world = world

@@ -26,18 +26,22 @@ var tile_registry = {
 	"deep_ocean": {"top": Vector2i(0, 0), "back_left": Vector2i(0, 0), "front_right": Vector2i(0, 0), "back_right": Vector2i(0, 0), "front_left": Vector2i(0, 0)},
 	"ocean": {"top": Vector2i(0, 0), "back_left": Vector2i(0, 0), "front_right": Vector2i(0, 0), "back_right": Vector2i(0, 0), "front_left": Vector2i(0, 0)},
 	"shallow sea": {"top": Vector2i(0, 0), "back_left": Vector2i(0, 0), "front_right": Vector2i(0, 0), "back_right": Vector2i(0, 0), "front_left": Vector2i(0, 0)},
-	"beach": {"top": Vector2i(0, 1), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
-	"sandy beach": {"top": Vector2i(0, 2), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
-	"coral reef": {"top": Vector2i(0, 3), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
-	"grass": {"top": Vector2i(0, 4), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
-	"meadow": {"top": Vector2i(0, 5), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
-	"plains": {"top": Vector2i(0, 6), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
-	"steppe": {"top": Vector2i(0, 7), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
-	"savanna": {"top": Vector2i(0, 8), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
-	"forest": {"top": Vector2i(0, 9), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
-	"dense forest": {"top": Vector2i(0, 10), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
-	"pine forest": {"top": Vector2i(0, 11), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
-	"jungle": {"top": Vector2i(0, 12), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
+	
+	"beach": {"top": Vector2i(0, 1), "back_left": Vector2i(2, 0), "front_right": Vector2i(3, 0), "back_right": Vector2i(4, 0), "front_left": Vector2i(5, 0)},
+	"sandy beach": {"top": Vector2i(0, 2), "back_left": Vector2i(2, 0), "front_right": Vector2i(3, 0), "back_right": Vector2i(4, 0), "front_left": Vector2i(5, 0)},
+	"coral reef": {"top": Vector2i(0, 3), "back_left": Vector2i(2, 0), "front_right": Vector2i(3, 0), "back_right": Vector2i(4, 0), "front_left": Vector2i(5, 0)},
+	
+	"grass": {"top": Vector2i(0, 4), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
+	"meadow": {"top": Vector2i(0, 5), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
+	"plains": {"top": Vector2i(0, 6), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
+	"steppe": {"top": Vector2i(0, 7), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
+	"savanna": {"top": Vector2i(0, 8), "back_left": Vector2i(2, 2), "front_right": Vector2i(3, 2), "back_right": Vector2i(4, 2), "front_left": Vector2i(5, 2)},
+	
+	"forest": {"top": Vector2i(0, 9), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
+	"dense forest": {"top": Vector2i(0, 10), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
+	"pine forest": {"top": Vector2i(0, 11), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
+	"jungle": {"top": Vector2i(0, 12), "back_left": Vector2i(2, 4), "front_right": Vector2i(3, 4), "back_right": Vector2i(4, 4), "front_left": Vector2i(5, 4)},
+	
 	"mountain": {"top": Vector2i(0, 13), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
 	"ridge": {"top": Vector2i(0, 14), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
 	"peak": {"top": Vector2i(0, 15), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
@@ -45,22 +49,28 @@ var tile_registry = {
 	"precipice": {"top": Vector2i(0, 17), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
 	"zenith": {"top": Vector2i(0, 18), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
 	"plateau": {"top": Vector2i(0, 19), "back_left": Vector2i(2, 6), "front_right": Vector2i(3, 6), "back_right": Vector2i(4, 6), "front_left": Vector2i(5, 6)},
+	
 	"snow": {"top": Vector2i(1, 0), "back_left": Vector2i(2, 8), "front_right": Vector2i(3, 8), "back_right": Vector2i(4, 8), "front_left": Vector2i(5, 8)},
 	"ice field": {"top": Vector2i(1, 1), "back_left": Vector2i(2, 8), "front_right": Vector2i(3, 8), "back_right": Vector2i(4, 8), "front_left": Vector2i(5, 8)},
 	"glacier": {"top": Vector2i(1, 2), "back_left": Vector2i(2, 8), "front_right": Vector2i(3, 8), "back_right": Vector2i(4, 8), "front_left": Vector2i(5, 8)},
-	"ravine": {"top": Vector2i(1, 3), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"canyon": {"top": Vector2i(1, 4), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"valley": {"top": Vector2i(1, 5), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"desert": {"top": Vector2i(1, 6), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
-	"dunes": {"top": Vector2i(1, 7), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
-	"badlands": {"top": Vector2i(1, 8), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
-	"tundra": {"top": Vector2i(1, 9), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
-	"frozen plains": {"top": Vector2i(1, 10), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
-	"permafrost": {"top": Vector2i(1, 11), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
-	"dry lake": {"top": Vector2i(1, 12), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"salt flat": {"top": Vector2i(1, 13), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"basin": {"top": Vector2i(1, 14), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
-	"river": {"top": Vector2i(1, 15), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)}
+	
+	"ravine": {"top": Vector2i(1, 3), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
+	"canyon": {"top": Vector2i(1, 4), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
+	"valley": {"top": Vector2i(1, 5), "back_left": Vector2i(2, 10), "front_right": Vector2i(3, 10), "back_right": Vector2i(4, 10), "front_left": Vector2i(5, 10)},
+	
+	"desert": {"top": Vector2i(1, 6), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
+	"dunes": {"top": Vector2i(1, 7), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
+	"badlands": {"top": Vector2i(1, 8), "back_left": Vector2i(2, 12), "front_right": Vector2i(3, 12), "back_right": Vector2i(4, 12), "front_left": Vector2i(5, 12)},
+	
+	"tundra": {"top": Vector2i(1, 9), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
+	"frozen plains": {"top": Vector2i(1, 10), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
+	"permafrost": {"top": Vector2i(1, 11), "back_left": Vector2i(2, 14), "front_right": Vector2i(3, 14), "back_right": Vector2i(4, 14), "front_left": Vector2i(5, 14)},
+	
+	"dry lake": {"top": Vector2i(1, 12), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)},
+	"salt flat": {"top": Vector2i(1, 13), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)},
+	"basin": {"top": Vector2i(1, 14), "back_left": Vector2i(2, 16), "front_right": Vector2i(3, 16), "back_right": Vector2i(4, 16), "front_left": Vector2i(5, 16)},
+	
+	"river": {"top": Vector2i(1, 15), "back_left": Vector2i(2, 18), "front_right": Vector2i(3, 18), "back_right": Vector2i(4, 18), "front_left": Vector2i(5, 18)}
 }
 
 func _init(p_cx: int, p_cy: int, p_world: InfiniteNoiseWorld):
