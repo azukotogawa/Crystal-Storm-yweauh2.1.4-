@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://bgvthacq4lffq"]
+
+[ext_resource type="Script" uid="uid://cwmhh7jh6kfp4" path="res://main.gd" id="1_ed7l5"]
+[ext_resource type="Script" uid="uid://bysd6dgbhih1f" path="res://world/InfiniteNoiseWorld.gd" id="2_fvibo"]
+[ext_resource type="Script" uid="uid://cwpyn44l0tdvg" path="res://chunks/voxel_world2.gd" id="3_yponv"]
+[ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_xjp84"]
+[ext_resource type="Shader" uid="uid://dmj05udg5poej" path="res://shaders/player_clip.gdshader" id="5_dd07u"]
+[ext_resource type="Texture2D" uid="uid://cdrbg6mcc34ay" path="res://assets/player/player.png" id="6_bebe8"]
+[ext_resource type="Script" uid="uid://dadn2djbvlj72" path="res://player/camera.gd" id="7_02bg2"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_d2ngm"]
+shader = ExtResource("5_dd07u")
+shader_parameter/height_multiplier = 16.0
+
+[node name="Game" type="Node2D" unique_id=1875058023]
+script = ExtResource("1_ed7l5")
+
+[node name="World" type="Node2D" parent="." unique_id=1819115419]
+script = ExtResource("2_fvibo")
+
+[node name="VoxelWorld" type="Node2D" parent="." unique_id=1000307654]
+y_sort_enabled = true
+script = ExtResource("3_yponv")
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=1751952608]
+z_index = 10
+y_sort_enabled = true
+script = ExtResource("4_xjp84")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1910244156]
+material = SubResource("ShaderMaterial_d2ngm")
+texture = ExtResource("6_bebe8")
+
+[node name="Camera2D" type="Camera2D" parent="Player" unique_id=1102874637]
+ignore_rotation = false
+script = ExtResource("7_02bg2")

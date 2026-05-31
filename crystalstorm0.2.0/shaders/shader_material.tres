@@ -1,0 +1,7 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://v0nsoi6xfoxu"]
+
+[ext_resource type="Shader" uid="uid://bd2x3dq7aqxnx" path="res://shaders/2_5d_terrain.gdshader" id="1_0434p"]
+
+[resource]
+shader = ExtResource("1_0434p")
+shader_parameter/atlas_size = Vector2(38, 4)

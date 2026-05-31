@@ -1,0 +1,13 @@
+[gd_scene format=3 uid="uid://bfy3c7t54au61"]
+
+[ext_resource type="Script" uid="uid://b0mtgsmxp8xu4" path="res://chunks/chunk_view.gd" id="1_01iku"]
+[ext_resource type="Material" uid="uid://cvy87r6f20pqx" path="res://shaders/multimeshinstance2d_shader.tres" id="2_unaa7"]
+[ext_resource type="Texture2D" uid="uid://wqoprusyr4bf" path="res://assets/tiles/WholeCubes.png" id="3_hq0pm"]
+
+[node name="ChunkView" type="Node2D" unique_id=474276223]
+y_sort_enabled = true
+script = ExtResource("1_01iku")
+
+[node name="Renderer" type="MultiMeshInstance2D" parent="." unique_id=719933602]
+material = ExtResource("2_unaa7")
+texture = ExtResource("3_hq0pm")

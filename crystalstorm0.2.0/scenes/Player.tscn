@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://dj6fkrsss4601"]
+
+[ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="1_qu4a1"]
+[ext_resource type="PackedScene" uid="uid://ceyhynpvrjdx4" path="res://scenes/Chunk.tscn" id="2_70d11"]
+[ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="3_cw2d6"]
+[ext_resource type="Shader" uid="uid://dmj05udg5poej" path="res://shaders/player_clip.gdshader" id="4_khinc"]
+[ext_resource type="Texture2D" uid="uid://cdrbg6mcc34ay" path="res://assets/player/player.png" id="5_bruh7"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_6eyey"]
+shader = ExtResource("4_khinc")
+shader_parameter/height_multiplier = 16.0
+
+[node name="Main" type="Node2D" unique_id=1854679226]
+
+[node name="VoxelWorld" type="Node2D" parent="." unique_id=1386034898]
+script = ExtResource("1_qu4a1")
+chunk_scene = ExtResource("2_70d11")
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=774097283]
+z_index = 10
+y_sort_enabled = true
+script = ExtResource("3_cw2d6")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1597209703]
+material = SubResource("ShaderMaterial_6eyey")
+texture = ExtResource("5_bruh7")
+
+[node name="Camera2D" type="Camera2D" parent="Player" unique_id=1359103387]
+ignore_rotation = false
