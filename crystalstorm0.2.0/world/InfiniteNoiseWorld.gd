@@ -49,11 +49,11 @@ const BIOME_WEIGHTS_HEIGHT: Array = [
 	300, 250, 200, 180, 160, 140, 120, 100, 90, 90,   # 0–9  (deep basins)
 	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,   # 10–19 (plains)
 	80,  90, 100, 120, 140, 160, 180, 90, 90, 90,   # 20–29 (mountains)
-	100, 100, 10, 100, 150, 160, 170, 200, 250, 300 
+	100, 100, 100, 100, 150, 160, 170, 200, 250, 300 
 ]
 
 const BIOME_WEIGHTS_PRECIP: Array = [
-	100, 100, 100, 100,100, 150, 100, 100, 100, 100, 
+	110, 110, 110, 100,100, 150, 100, 100, 100, 100, 
 	80,  90, 100, 120, 140, 160, 180, 90, 90, 90,  
 	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,   # 10–19 (plains)
 	90, 90, 100, 120,120, 140,160,180, 600, 700
@@ -190,7 +190,7 @@ func get_biome(wx: float, wy: float) -> Dictionary:
 			# 3. Final height calculation:
 			# If entry is 19 and depth is 0, height is 19.
 			# If entry is 19 and depth is 1, height is 18.
-			render_height = depth
+			render_height = h_level
 
 			tile_name = LAKE_MAP[depth] 
 			biome_type = "Lake"
@@ -210,6 +210,7 @@ func get_biome(wx: float, wy: float) -> Dictionary:
 		"is_lake": biome_type == "Lake",
 		"height": height
 	}
+	
 func bisect_left(arr: Array, x) -> int:
 	var lo: int = 0
 	var hi: int = arr.size()

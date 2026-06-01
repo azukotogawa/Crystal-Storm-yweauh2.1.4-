@@ -127,7 +127,7 @@ func _on_chunk_ready(data):
 
 	pending.erase(data.position)
 
-	var view: ChunkView = chunk_scene.instantiate()
+	var view: ChunkView = preload("res://scenes/ChunkView.tscn").instantiate()
 	add_child(view)
 
 	view.setup(data, texture)
@@ -174,4 +174,4 @@ func rebuild_chunks():
 			coord.y
 		)
 
-		chunk.emit_quads()
+		chunk._build_and_emit()

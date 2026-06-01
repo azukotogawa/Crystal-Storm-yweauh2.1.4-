@@ -5,7 +5,7 @@ extends Camera2D
 var zoom_level := 1.0
 const ZOOM_STEP := 0.1
 const MIN_ZOOM := 0.25
-const MAX_ZOOM := 64.0
+const MAX_ZOOM := 256.0
 
 func _ready():
 	target = get_tree().get_first_node_in_group("player")

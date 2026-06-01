@@ -51,16 +51,26 @@ func _build_and_emit():
 	build_height_map()
 	build_top_surface()
 
+	quads.sort_custom(func(a, b):
+		return a["sort_key"] < b["sort_key"]
+	)
+
 	emit_quads()
 	
 var height_map := []
+var top_type_map := []
 
 func build_height_map():
 	height_map.clear()
+	top_type_map.clear()
+
 	height_map.resize(ChunkData.SIZE)
+	top_type_map.resize(ChunkData.SIZE)
 
 	for x in range(ChunkData.SIZE):
 		height_map[x] = []
+		top_type_map[x] = []
+
 		for y in range(ChunkData.SIZE):
 
 			var h := -1
@@ -71,6 +81,13 @@ func build_height_map():
 					break
 
 			height_map[x].append(h)
+
+			if h == -1:
+				top_type_map[x].append(VoxelTypes.AIR)
+			else:
+				top_type_map[x].append(
+					chunk_data.get_voxel(x, y, h)
+				)
 
 func emit_quads():
 	if renderer == null or not is_instance_valid(renderer):
@@ -91,12 +108,18 @@ func emit_quads():
 	for i in range(quads.size()):
 		var q = quads[i]
 
-		var wx = q.x + chunk_data.position.x * ChunkData.SIZE
-		var wy = q.y + chunk_data.position.y * ChunkData.SIZE
+		var center_x = q.x + (q.w - 1) * 0.5
+		var center_y = q.y + (q.h - 1) * 0.5
 
-		var pos = IsoMath.voxel_to_screen(wx, wy, q.z)
+		var chunk_offset_x = chunk_data.position.x * ChunkData.SIZE
+		var chunk_offset_y = chunk_data.position.y * ChunkData.SIZE
+		var pos = IsoMath.voxel_to_screen(
+			center_x + chunk_offset_x,
+			center_y + chunk_offset_y,
+			q.z
+		)
 
-		var t := Transform2D.IDENTITY
+		var t = Transform2D.IDENTITY
 		t.origin = pos
 
 		mm.set_instance_transform_2d(i, t)
@@ -110,8 +133,8 @@ func emit_quads():
 			Color(
 				coord.x / 255.0,
 				coord.y / 255.0,
-				0.0,
-				1.0
+				min(q.w / 255.0, 1.0),
+				min(q.h / 255.0, 1.0)
 			)
 		)
 
@@ -134,6 +157,7 @@ func build_top_surface():
 			var h = height_map[x][y]
 			if h == -1:
 				continue
+			var voxel_type = top_type_map[x][y]
 
 			# ---- EXPAND X ----
 			var w = 1
@@ -141,6 +165,8 @@ func build_top_surface():
 				if used[x + w][y]:
 					break
 				if height_map[x + w][y] != h:
+					break
+				if top_type_map[x + w][y] != voxel_type:
 					break
 				w += 1
 
@@ -153,7 +179,12 @@ func build_top_surface():
 					if used[x + i][y + d]:
 						done = true
 						break
+
 					if height_map[x + i][y + d] != h:
+						done = true
+						break
+
+					if top_type_map[x + i][y + d] != voxel_type:
 						done = true
 						break
 				if not done:
@@ -175,6 +206,17 @@ func build_top_surface():
 					)
 
 func emit_surface_quad(x:int, y:int, w:int, d:int, h:int):
+	var chunk_offset_x = chunk_data.position.x * ChunkData.SIZE
+	var chunk_offset_y = chunk_data.position.y * ChunkData.SIZE
+
+	var screen_pos = IsoMath.voxel_to_screen(
+		x + chunk_offset_x,
+		y + chunk_offset_y,
+		h
+	)
+
+	var depth_y = screen_pos.y + h * IsoMath.VOXEL_HEIGHT
+	
 	var voxel_type = chunk_data.get_voxel(x, y, h)
 
 	quads.append({
@@ -183,7 +225,8 @@ func emit_surface_quad(x:int, y:int, w:int, d:int, h:int):
 		"w": w,
 		"h": d,
 		"z": h,
-		"type": voxel_type
+		"type": voxel_type,
+		"sort_key": depth_y
 	})
 			
 func get_atlas_coord(voxel_type: int) -> Vector2i:

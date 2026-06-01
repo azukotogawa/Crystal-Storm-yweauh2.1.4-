@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cqxwkf0e0120w"]
 
-[ext_resource type="Script" uid="uid://vkhrkiws116j" path="res://world_viewer.gd" id="1_xeu26"]
+[ext_resource type="Script" uid="uid://vkhrkiws116j" path="res://world/world_viewer.gd" id="1_xeu26"]
 [ext_resource type="TileSet" uid="uid://dr60bgphlifw" path="res://assets/tiles/new_tile_set.tres" id="2_mjmpj"]
 
 [node name="WorldViewer" type="Node2D" unique_id=1686537410]
