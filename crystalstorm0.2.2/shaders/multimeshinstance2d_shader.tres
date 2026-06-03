@@ -1,0 +1,7 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://cvy87r6f20pqx"]
+
+[ext_resource type="Shader" uid="uid://ie6iduinn5gh" path="res://shaders/multimeshinstance2d_shader.gdshader" id="1_uiqpg"]
+
+[resource]
+shader = ExtResource("1_uiqpg")
+shader_parameter/atlas_grid = Vector2(7, 10)
