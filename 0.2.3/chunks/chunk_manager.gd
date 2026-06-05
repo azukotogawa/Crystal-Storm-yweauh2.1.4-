@@ -1,0 +1,310 @@
+class_name ChunkManager
+extends Node3D
+
+@export var chunk_scene: PackedScene
+@export var texture: Texture2D
+
+const RENDER_DISTANCE := 4
+
+var chunks: Dictionary[Vector2i, ChunkView] = {}
+var job_queue := []
+var mutex := Mutex.new()
+var semaphore := Semaphore.new() # NEW: Keeps the thread asleep when idle
+var thread := Thread.new()
+var exit_thread := false        # NEW: Allows clean shutdowns
+var pending := {}
+
+var player: Node3D
+var world: InfiniteNoiseWorld
+
+const CHUNK_VIEW_SCENE = preload("res://scenes/ChunkView.tscn")
+
+const FACE_TOP := 0
+const FACE_SIDE := 1
+
+func _ready():
+	add_to_group("chunk_manager")
+	exit_thread = false
+	thread.start(_worker)
+	
+	player = get_node_or_null("../../Player")
+	if player == null:
+		player = get_node_or_null("../Player")
+	
+	if world == null:
+		world = get_node_or_null("../../World") as InfiniteNoiseWorld
+
+# CRITICAL: Ensures the thread shuts down cleanly when leaving the game
+func _exit_tree():
+	mutex.lock()
+	exit_thread = true
+	mutex.unlock()
+	semaphore.post() # Wake up thread so it reads the exit flag
+	thread.wait_to_finish()
+
+func request_chunk(coord):
+	if chunks.has(coord) or pending.has(coord):
+		return
+
+	pending[coord] = true
+
+	mutex.lock()
+	job_queue.append(coord)
+	mutex.unlock()
+	semaphore.post() # NEW: Signals the thread that work is available Immediately
+
+func _worker():
+	while not exit_thread:
+		# Wait passively here until semaphore.post() is called. 
+		# Uses ZERO CPU while waiting, completely eliminating micro-stutters.
+		semaphore.wait() 
+
+		mutex.lock()
+		if exit_thread:
+			mutex.unlock()
+			break
+		
+		var coord = job_queue.pop_front()
+		mutex.unlock()
+
+		# 1. Create LOCAL data
+		var data := ChunkData.new(coord)
+		_generate_chunk(data)
+		
+		# 2. Generate mesh locally (no class-level variables)
+		var local_quads = _build_mesh_in_thread(data)
+		
+		# 3. Send LOCAL data to main thread
+		call_deferred("_on_chunk_ready", data, local_quads)
+
+func _build_mesh_in_thread(data: ChunkData) -> Array:
+	var out := []
+
+	for z in range(ChunkData.HEIGHT):
+
+		var mask = build_top_mask(data, z)
+
+		greedy_top_faces(
+			mask,
+			z,
+			out
+		)
+
+	return out
+	
+func build_top_mask(data: ChunkData, z: int) -> Array:
+	var mask := []
+
+	mask.resize(ChunkData.SIZE)
+
+	for x in range(ChunkData.SIZE):
+		mask[x] = []
+		mask[x].resize(ChunkData.SIZE)
+
+		for y in range(ChunkData.SIZE):
+
+			var voxel = data.get_voxel(x, y, z)
+
+			if voxel == VoxelTypes.AIR:
+				mask[x][y] = 0
+				continue
+
+			if data.get_voxel(x, y, z + 1) != VoxelTypes.AIR:
+				mask[x][y] = 0
+				continue
+
+			mask[x][y] = voxel
+
+	return mask
+	
+func greedy_top_faces(
+	mask:Array,
+	z:int,
+	out:Array
+):
+	var used := []
+
+	used.resize(ChunkData.SIZE)
+
+	for x in range(ChunkData.SIZE):
+		used[x] = []
+		used[x].resize(ChunkData.SIZE)
+
+	for x in range(ChunkData.SIZE):
+		for y in range(ChunkData.SIZE):
+
+			if used[x][y]:
+				continue
+
+			var voxel_type = mask[x][y]
+
+			if voxel_type == 0:
+				continue
+
+			var w := 1
+
+			while x + w < ChunkData.SIZE:
+				if used[x+w][y]:
+					break
+				if mask[x+w][y] != voxel_type:
+					break
+				w += 1
+
+			var h := 1
+			var stop := false
+
+			while y + h < ChunkData.SIZE and !stop:
+
+				for i in range(w):
+					if used[x+i][y+h]:
+						stop = true
+						break
+
+					if mask[x+i][y+h] != voxel_type:
+						stop = true
+						break
+
+				if !stop:
+					h += 1
+
+			for dx in range(w):
+				for dy in range(h):
+					used[x+dx][y+dy] = true
+
+			out.append({
+				"x": x,
+				"y": y,
+				"z": z,
+				"w": w,
+				"h": h,
+				"type": voxel_type,
+				"face": FACE_TOP
+			})
+
+func _process(_delta):
+	if player == null or world == null:
+		return
+		
+	var cx = floori(player.voxel_position.x / float(ChunkData.SIZE))
+	var cy = floori(player.voxel_position.y / float(ChunkData.SIZE))
+
+	update_stream(cx, cy)
+
+	
+func update_stream(cx:int, cy:int):
+
+	var needed := {}
+
+	# build desired set
+	for y in range(cy - RENDER_DISTANCE, cy + RENDER_DISTANCE + 1):
+		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 2):
+			var key = Vector2i(x, y)
+			needed[key] = true
+
+			if not chunks.has(key):
+				request_chunk(key)
+
+	# unload old chunks
+	for key in chunks.keys():
+		if not needed.has(key):
+			chunks[key].queue_free()
+			chunks.erase(key)
+		
+func _generate_chunk(data: ChunkData):
+	for x in range(ChunkData.SIZE):
+		for y in range(ChunkData.SIZE):
+			for z in range(ChunkData.HEIGHT):
+
+				var wx = x + data.position.x * ChunkData.SIZE
+				var wy = y + data.position.y * ChunkData.SIZE
+
+				var biome = world.get_biome(wx, wy)
+
+				var h = biome["h_level"]
+
+				var voxel_id = VoxelTypes.biome_to_voxel_id.get(
+					biome["name"],
+					VoxelTypes.AIR
+				)
+
+				if z <= h:
+					data.set_voxel(x, y, z, voxel_id)
+				else:
+					data.set_voxel(x, y, z, VoxelTypes.AIR)
+					
+				
+func _on_chunk_ready(data: ChunkData, mesh_data: Array):
+	pending.erase(data.position)
+
+	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate() 
+	add_child(view)
+
+	view.setup(data, mesh_data)
+
+
+	chunks[data.position] = view
+
+func rebuild_chunks():
+	for coord: Vector2i in chunks.keys():
+		var chunk := chunks[coord]
+		
+		# Keep chunks at 0 depth, just update their active graphics
+		chunk.emit_quads()
+
+
+	
+func get_or_create(coord: Vector2i) -> ChunkData:
+	if chunks.has(coord):
+		return chunks[coord].chunk_data
+
+	var data := ChunkData.new(coord)
+	_generate_chunk(data)
+	return data
+
+func get_voxel_safe(wx:int, wy:int, wz:int) -> int:
+	if wz < 0 or wz >= ChunkData.HEIGHT:
+		return VoxelTypes.AIR
+
+	# ONLY fallback to world (NO chunk lookup in thread)
+	return get_global_voxel(wx, wy, wz)
+	
+func is_any_face_visible(wx:int, wy:int, wz:int) -> bool:
+	var air := VoxelTypes.AIR
+
+	return (
+		get_global_voxel(wx+1, wy, wz) == air or
+		get_global_voxel(wx-1, wy, wz) == air or
+		get_global_voxel(wx, wy+1, wz) == air or
+		get_global_voxel(wx, wy-1, wz) == air or
+		get_global_voxel(wx, wy, wz+1) == air
+	)
+
+
+func get_global_voxel(wx: int, wy: int, wz: int) -> int:
+	if wz < 0 or wz >= ChunkData.HEIGHT:
+		return VoxelTypes.AIR
+		
+	# Calculate which chunk coordinates this world position lands on
+	var chunk_x = floori(wx / float(ChunkData.SIZE))
+	var chunk_y = floori(wy / float(ChunkData.SIZE))
+	var chunk_coord = Vector2i(chunk_x, chunk_y)
+	
+	# Extract the local index inside that specific chunk
+	var local_x = posmod(wx, ChunkData.SIZE)
+	var local_y = posmod(wy, ChunkData.SIZE)
+	
+	# Read the chunk safely if it exists, otherwise fall back to world generation rule
+	mutex.lock()
+	var chunk_exists = chunks.has(chunk_coord)
+	var chunk_node = chunks.get(chunk_coord)
+	mutex.unlock()
+	
+	if chunk_exists and is_instance_valid(chunk_node) and chunk_node.chunk_data:
+		return chunk_node.chunk_data.get_voxel(local_x, local_y, wz)
+		
+	# If the chunk isn't loaded yet, check if the height matches the world noise
+	var biome = world.get_biome(wx, wy)
+	if wz < biome["render_height"]:
+		return VoxelTypes.biome_to_voxel_id.get(biome["name"], VoxelTypes.AIR)
+		
+	return VoxelTypes.AIR
