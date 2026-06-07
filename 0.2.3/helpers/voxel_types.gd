@@ -43,8 +43,8 @@ const RIVER := 37
 
 const biome_to_voxel_id = {
 	"deep ocean": VoxelTypes.OCEAN,
-	"ocean": VoxelTypes.OCEAN,
-	"shallow sea": VoxelTypes.OCEAN,
+	"ocean": VoxelTypes.OCEAN2,
+	"shallow sea": VoxelTypes.OCEAN3,
 
 	"beach": VoxelTypes.BEACH,
 	"sandy beach": VoxelTypes.BEACH2,

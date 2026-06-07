@@ -147,71 +147,63 @@ func _setup_noise():
 
 # Drop the multi-variable math additions completely. 
 # This runs nearly 8 times faster!
-func get_height(wx: float, wy: float) -> float:
-	return clamp(height_noise.get_noise_2d(wx, wy) * 1.35, -1.0, 1.0)
+func get_height(wx: float, wy: float, wz: float) -> float:
+	return clamp(height_noise.get_noise_3d(wx, wy, wz) * 1.35, -1.0, 1.0)
 
-func get_precip(wx: float, wy: float) -> float:
-	return clamp(precip_noise.get_noise_2d(wx, wy) * 1.35, -1.0, 1.0)
+func get_precip(wx: float, wy: float, wz: float) -> float:
+	return clamp(precip_noise.get_noise_3d(wx, wy, wz) * 1.35, -1.0, 1.0)
 
-func get_biome(wx: float, wy: float) -> Dictionary:
-	var h = get_height(wx, wy)
-	var p = get_precip(wx, wy)
+func get_biome(wx: float, wy: float, wz: float) -> Dictionary:
+	# 1. Sample your raw 3D noises
+	var h = get_height(wx, wy * 2.5, wz)
+	var p = get_precip(wx, wy * 2.5, wz)
 
 	var h_norm = (h + 1.0) / 2.0
 	var p_norm = (p + 1.0) / 2.0
 
+	# Calculate a smooth linear vertical falloff gradient
+	# Height limits must match ChunkData.HEIGHT (e.g., 50)
+	var max_world_height: float = 256.0 
+	var calculated_ground = h_norm * max_world_height
+	
+	# Strict threshold evaluation: solid if underneath surface level, air if above
+	if wy > calculated_ground:
+		return {
+			"is_air": true,
+			"name": "air",
+			"type": "None"
+		}
+
 	var h_level = bisect_left(height_cumul, h_norm) - 1
 	var p_level = bisect_left(precip_cumul, p_norm) - 1
 	
-	h_level = max(0, min(39, h_level))
-	p_level = max(0, min(39, p_level))
+	h_level = clamp(h_level, 0, 39)
+	p_level = clamp(p_level, 0, 39)
 	
 	var tile_name: String
 	var biome_type: String
-	var render_height: int
-	var height: int
 	
 	# ZONE 1: Mountains & High Elevations (Height 20-39)
 	if h_level >= 20:
 		tile_name = HIGH_MAP[h_level - 20]
 		biome_type = "High"
-		render_height = h_level
-		height = h_level
 		
-	# ZONE 2: Low-lying Oceans/Plains (Height 0-19) 
-	# Split horizontally by precipitation
+	# ZONE 2: Low-lying Oceans/Plains/Lakes (Height 0-19)
 	else:
 		if p_level >= 20:
-			# 1. Determine the "Base" height we are entering from.
-			# Ideally, this comes from a neighbor lookup or a global variable
-			# representing the last known terrain height before entering the lake.
-
-			# 2. Treat (p_level - 20) as the "depth" from the entry point.
-			# This makes the lake level relative to the land it's touching.
 			var depth = p_level - 20
-
-			# 3. Final height calculation:
-			# If entry is 19 and depth is 0, height is 19.
-			# If entry is 19 and depth is 1, height is 18.
-			render_height = h_level
-
 			tile_name = LAKE_MAP[depth] 
 			biome_type = "Lake"
 		else:
-			# Normal land
 			tile_name = DRY_MAP[h_level]
 			biome_type = "Dry"
-			render_height = h_level
-			height = h_level
 	
 	return {
+		"is_air": false,
 		"name": tile_name,
 		"type": biome_type,
 		"h_level": h_level,
-		"p_level": p_level,
-		"render_height": render_height,   # This is what chunk uses for walls
-		"is_lake": biome_type == "Lake",
-		"height": height
+		"p_level": p_level
 	}
 	
 func bisect_left(arr: Array, x) -> int:

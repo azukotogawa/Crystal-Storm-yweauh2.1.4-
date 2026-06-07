@@ -9,9 +9,9 @@ const RENDER_DISTANCE := 4
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var job_queue := []
 var mutex := Mutex.new()
-var semaphore := Semaphore.new() # NEW: Keeps the thread asleep when idle
+var semaphore := Semaphore.new() 
 var thread := Thread.new()
-var exit_thread := false        # NEW: Allows clean shutdowns
+var exit_thread := false        
 var pending := {}
 
 var player: Node3D
@@ -27,22 +27,28 @@ func _ready():
 	exit_thread = false
 	thread.start(_worker)
 	
-	player = get_node_or_null("../../Player")
-	if player == null:
-		player = get_node_or_null("../Player")
+	player = get_tree().get_first_node_in_group("player")
+	world = get_tree().get_first_node_in_group("world")
 	
-	if world == null:
-		world = get_node_or_null("../../World") as InfiniteNoiseWorld
+	call_deferred("_setup_dependencies")                                        
+																				
+func _setup_dependencies():                                                     
+	player = get_tree().get_first_node_in_group("player")                       
+	world = get_tree().get_first_node_in_group("world")                         
+																				
+	if player == null:                                                          
+		print("WARNING: Player node (group 'player') not found!")               
+	if world == null:                                                           
+		print("WARNING: World node (group 'world') not found!")   
 
-# CRITICAL: Ensures the thread shuts down cleanly when leaving the game
 func _exit_tree():
 	mutex.lock()
 	exit_thread = true
 	mutex.unlock()
-	semaphore.post() # Wake up thread so it reads the exit flag
+	semaphore.post() 
 	thread.wait_to_finish()
 
-func request_chunk(coord):
+func request_chunk(coord: Vector2i):
 	if chunks.has(coord) or pending.has(coord):
 		return
 
@@ -51,79 +57,116 @@ func request_chunk(coord):
 	mutex.lock()
 	job_queue.append(coord)
 	mutex.unlock()
-	semaphore.post() # NEW: Signals the thread that work is available Immediately
+	semaphore.post() 
 
-func _worker():
-	while not exit_thread:
-		# Wait passively here until semaphore.post() is called. 
-		# Uses ZERO CPU while waiting, completely eliminating micro-stutters.
-		semaphore.wait() 
-
-		mutex.lock()
-		if exit_thread:
-			mutex.unlock()
-			break
+func _worker():                                                                 
+	print("Chunk generation thread started successfully.")                      
+	while not exit_thread:                                                      
+		semaphore.wait() # Blocks until semaphore.post() is called              
 		
-		var coord = job_queue.pop_front()
-		mutex.unlock()
+		mutex.lock()                                                            
+		if exit_thread:                                                         
+			mutex.unlock()                                                      
+			break                                                               
 
-		# 1. Create LOCAL data
-		var data := ChunkData.new(coord)
+		if job_queue.is_empty():                                                
+			mutex.unlock()                                                      
+			continue             
+														   
+		var coord = job_queue[0]
+		job_queue.pop_front()                                                             
+		mutex.unlock()                                                          
+
+		var data := ChunkData.new(coord)                                        
 		_generate_chunk(data)
 		
-		# 2. Generate mesh locally (no class-level variables)
-		var local_quads = _build_mesh_in_thread(data)
+		var packed_mesh_arrays = _build_mesh_in_thread(data)                    
+
+		# Hand off data to the main loop safely                                 
+		call_deferred("_on_chunk_ready", data, packed_mesh_arrays)                                                                            
+
+func _build_mesh_in_thread(data: ChunkData) -> Dictionary:
+	var out_quads := []
+
+	for y in range(ChunkData.HEIGHT):
+		var mask = build_top_mask(data, y)
+		greedy_top_faces(mask, y, out_quads)
+
+	var count = out_quads.size()
+	var transforms: Array[Transform3D] = []
+	var custom_colors := PackedColorArray()
+	
+	transforms.resize(count)
+	custom_colors.resize(count)
+
+	var chunk_offset_x = float(data.position.x * ChunkData.SIZE)
+	var chunk_offset_z = float(data.position.y * ChunkData.SIZE)
+
+	for i in range(count):
+		var q = out_quads[i]
+
+		var world_x = float(q.x) + chunk_offset_x
+		var world_y = float(q.y) 
+		var world_z = float(q.z) + chunk_offset_z
+
+		var t := Transform3D.IDENTITY
+		t.basis = t.basis.scaled(Vector3(float(q.w), 1.0, float(q.h)))
+		t.origin = Vector3(
+			world_x + float(q.w) * 0.5,
+			world_y + 0.5, 
+			world_z + float(q.h) * 0.5
+		)
+		transforms[i] = t
+
+		# Localized safe fallback checking to avoid Dictionary lookup thread deadlocks
+		var atlas = Vector2i(6, 0)
+		if VoxelTypes.ATLAS_COORDS.has(q.type):
+			atlas = VoxelTypes.ATLAS_COORDS[q.type]
 		
-		# 3. Send LOCAL data to main thread
-		call_deferred("_on_chunk_ready", data, local_quads)
+		# STABLE ARRAYS WAY: Map attributes cleanly to floating points
+		# Red = Column, Green = Row
+		# Blue = Encodes FACE type in whole number, encodes QUAD HEIGHT in decimals!
+		# Alpha = Encodes QUAD WIDTH directly
+		var encoded_face_and_height = float(FACE_TOP) + (float(q.h) / 100.0)
 
-func _build_mesh_in_thread(data: ChunkData) -> Array:
-	var out := []
-
-	for z in range(ChunkData.HEIGHT):
-
-		var mask = build_top_mask(data, z)
-
-		greedy_top_faces(
-			mask,
-			z,
-			out
+		custom_colors[i] = Color(
+			float(atlas.x) / 255.0,
+			float(atlas.y) / 255.0,
+			encoded_face_and_height,
+			float(q.w)
 		)
 
-	return out
+	return {
+		"transforms": transforms,
+		"custom_colors": custom_colors,
+		"count": count
+	}
 	
-func build_top_mask(data: ChunkData, z: int) -> Array:
+func build_top_mask(data: ChunkData, y: int) -> Array:
 	var mask := []
-
 	mask.resize(ChunkData.SIZE)
 
 	for x in range(ChunkData.SIZE):
 		mask[x] = []
 		mask[x].resize(ChunkData.SIZE)
 
-		for y in range(ChunkData.SIZE):
-
+		for z in range(ChunkData.SIZE):
 			var voxel = data.get_voxel(x, y, z)
 
 			if voxel == VoxelTypes.AIR:
-				mask[x][y] = 0
+				mask[x][z] = 0
 				continue
 
-			if data.get_voxel(x, y, z + 1) != VoxelTypes.AIR:
-				mask[x][y] = 0
+			if y + 1 < ChunkData.HEIGHT and data.get_voxel(x, y + 1, z) != VoxelTypes.AIR:
+				mask[x][z] = 0
 				continue
 
-			mask[x][y] = voxel
+			mask[x][z] = voxel
 
 	return mask
 	
-func greedy_top_faces(
-	mask:Array,
-	z:int,
-	out:Array
-):
+func greedy_top_faces(mask: Array, y: int, out: Array):
 	var used := []
-
 	used.resize(ChunkData.SIZE)
 
 	for x in range(ChunkData.SIZE):
@@ -131,52 +174,47 @@ func greedy_top_faces(
 		used[x].resize(ChunkData.SIZE)
 
 	for x in range(ChunkData.SIZE):
-		for y in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
 
-			if used[x][y]:
+			if used[x][z]:
 				continue
 
-			var voxel_type = mask[x][y]
+			var voxel_type = mask[x][z]
 
 			if voxel_type == 0:
 				continue
 
 			var w := 1
-
 			while x + w < ChunkData.SIZE:
-				if used[x+w][y]:
+				if used[x+w][z]:
 					break
-				if mask[x+w][y] != voxel_type:
+				if mask[x+w][z] != voxel_type:
 					break
 				w += 1
 
 			var h := 1
 			var stop := false
-
-			while y + h < ChunkData.SIZE and !stop:
-
+			while z + h < ChunkData.SIZE and !stop:
 				for i in range(w):
-					if used[x+i][y+h]:
+					if used[x+i][z+h]:
 						stop = true
 						break
-
-					if mask[x+i][y+h] != voxel_type:
+					if mask[x+i][z+h] != voxel_type:
 						stop = true
 						break
-
 				if !stop:
 					h += 1
 
 			for dx in range(w):
-				for dy in range(h):
-					used[x+dx][y+dy] = true
+				for dz in range(h):
+					used[x+dx][z+dz] = true
 
 			out.append({
 				"x": x,
-				"y": y,
-				"z": z,
-				"w": w,
-				"h": h,
+				"y": y, 
+				"z": z, 
+				"w": w, 
+				"h": h, 
 				"type": voxel_type,
 				"face": FACE_TOP
 			})
@@ -186,25 +224,21 @@ func _process(_delta):
 		return
 		
 	var cx = floori(player.voxel_position.x / float(ChunkData.SIZE))
-	var cy = floori(player.voxel_position.y / float(ChunkData.SIZE))
+	var cz = floori(player.voxel_position.z / float(ChunkData.SIZE))
 
-	update_stream(cx, cy)
-
+	update_stream(cx, cz)
 	
-func update_stream(cx:int, cy:int):
-
+func update_stream(cx: int, cz: int):
 	var needed := {}
 
-	# build desired set
-	for y in range(cy - RENDER_DISTANCE, cy + RENDER_DISTANCE + 1):
-		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 2):
-			var key = Vector2i(x, y)
+	for z in range(cz - RENDER_DISTANCE, cz + RENDER_DISTANCE + 1):
+		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 1):
+			var key = Vector2i(x, z)
 			needed[key] = true
 
 			if not chunks.has(key):
 				request_chunk(key)
 
-	# unload old chunks
 	for key in chunks.keys():
 		if not needed.has(key):
 			chunks[key].queue_free()
@@ -212,99 +246,40 @@ func update_stream(cx:int, cy:int):
 		
 func _generate_chunk(data: ChunkData):
 	for x in range(ChunkData.SIZE):
-		for y in range(ChunkData.SIZE):
-			for z in range(ChunkData.HEIGHT):
+		for z in range(ChunkData.SIZE):
+			for y in range(ChunkData.HEIGHT):
 
-				var wx = x + data.position.x * ChunkData.SIZE
-				var wy = y + data.position.y * ChunkData.SIZE
+				var wx = float(x + data.position.x * ChunkData.SIZE)
+				var wz = float(z + data.position.y * ChunkData.SIZE) 
+				var wy = float(y)
 
-				var biome = world.get_biome(wx, wy)
-
-				var h = biome["h_level"]
-
-				var voxel_id = VoxelTypes.biome_to_voxel_id.get(
-					biome["name"],
-					VoxelTypes.AIR
-				)
-
-				if z <= h:
+				var voxel_data = world.get_biome(wx, wy, wz)
+				
+				if voxel_data.has("is_air") and not voxel_data["is_air"]:
+					var voxel_id = VoxelTypes.biome_to_voxel_id.get(
+						voxel_data["name"],
+						VoxelTypes.AIR
+					)
 					data.set_voxel(x, y, z, voxel_id)
 				else:
 					data.set_voxel(x, y, z, VoxelTypes.AIR)
 					
-				
-func _on_chunk_ready(data: ChunkData, mesh_data: Array):
-	pending.erase(data.position)
-
-	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate() 
-	add_child(view)
-
-	view.setup(data, mesh_data)
-
-
-	chunks[data.position] = view
+func _on_chunk_ready(data: ChunkData, packed_mesh_arrays: Dictionary):
+	if pending.has(data.position):                                              
+			pending.erase(data.position)                                                             
+	if chunks.has(data.position):                                                                                     
+		return                                                                                              
+	if not packed_mesh_arrays.has("count") or packed_mesh_arrays.count == 0:    
+		print("DEBUG: No mesh data generated for chunk at position ", data.position, ", skipping ChunkView creation.")                                
+		return                                                                  
+	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()                        
+	if view:                                                                    
+		view.setup(data, packed_mesh_arrays) # Setup before adding to tree      
+		add_child(view)                                                         
+		chunks[data.position] = view                                                                                                       
+	else:                                                                       
+		print("ERROR: Failed to instantiate ChunkView for position: ", data.position)                                                                                              
 
 func rebuild_chunks():
 	for coord: Vector2i in chunks.keys():
-		var chunk := chunks[coord]
-		
-		# Keep chunks at 0 depth, just update their active graphics
-		chunk.emit_quads()
-
-
-	
-func get_or_create(coord: Vector2i) -> ChunkData:
-	if chunks.has(coord):
-		return chunks[coord].chunk_data
-
-	var data := ChunkData.new(coord)
-	_generate_chunk(data)
-	return data
-
-func get_voxel_safe(wx:int, wy:int, wz:int) -> int:
-	if wz < 0 or wz >= ChunkData.HEIGHT:
-		return VoxelTypes.AIR
-
-	# ONLY fallback to world (NO chunk lookup in thread)
-	return get_global_voxel(wx, wy, wz)
-	
-func is_any_face_visible(wx:int, wy:int, wz:int) -> bool:
-	var air := VoxelTypes.AIR
-
-	return (
-		get_global_voxel(wx+1, wy, wz) == air or
-		get_global_voxel(wx-1, wy, wz) == air or
-		get_global_voxel(wx, wy+1, wz) == air or
-		get_global_voxel(wx, wy-1, wz) == air or
-		get_global_voxel(wx, wy, wz+1) == air
-	)
-
-
-func get_global_voxel(wx: int, wy: int, wz: int) -> int:
-	if wz < 0 or wz >= ChunkData.HEIGHT:
-		return VoxelTypes.AIR
-		
-	# Calculate which chunk coordinates this world position lands on
-	var chunk_x = floori(wx / float(ChunkData.SIZE))
-	var chunk_y = floori(wy / float(ChunkData.SIZE))
-	var chunk_coord = Vector2i(chunk_x, chunk_y)
-	
-	# Extract the local index inside that specific chunk
-	var local_x = posmod(wx, ChunkData.SIZE)
-	var local_y = posmod(wy, ChunkData.SIZE)
-	
-	# Read the chunk safely if it exists, otherwise fall back to world generation rule
-	mutex.lock()
-	var chunk_exists = chunks.has(chunk_coord)
-	var chunk_node = chunks.get(chunk_coord)
-	mutex.unlock()
-	
-	if chunk_exists and is_instance_valid(chunk_node) and chunk_node.chunk_data:
-		return chunk_node.chunk_data.get_voxel(local_x, local_y, wz)
-		
-	# If the chunk isn't loaded yet, check if the height matches the world noise
-	var biome = world.get_biome(wx, wy)
-	if wz < biome["render_height"]:
-		return VoxelTypes.biome_to_voxel_id.get(biome["name"], VoxelTypes.AIR)
-		
-	return VoxelTypes.AIR
+		chunks[coord].emit_quads()

@@ -1,3 +1,4 @@
+# Inside ChunkView.gd
 extends Node3D
 class_name ChunkView
 
@@ -5,17 +6,16 @@ class_name ChunkView
 @onready var layer_container: Node3D = $LayerContainer
 
 var chunk_data: ChunkData
-var quads := []
-
-const SIZE := ChunkData.SIZE
-const HEIGHT := ChunkData.HEIGHT
+var packed_data: Dictionary
 
 # ─────────────────────────────────────────────
 # PUBLIC ENTRY
 # ─────────────────────────────────────────────
-func setup(data: ChunkData, mesh_data: Array):
+func setup(data: ChunkData, mesh_data: Dictionary):
+	layer_container = $LayerContainer if $LayerContainer else get_node_or_null("LayerContainer")
+	
 	chunk_data = data
-	quads = mesh_data
+	packed_data = mesh_data
 	emit_quads()
 
 # ─────────────────────────────────────────────
@@ -25,22 +25,22 @@ func emit_quads():
 	for child in layer_container.get_children():
 		child.queue_free()
 
-	if quads.is_empty():
+	# If the background thread found zero visible solid quads, skip rendering
+	if packed_data.get("count", 0) == 0:
 		return
-
-	var chunk_offset_x = chunk_data.position.x * ChunkData.SIZE
-	var chunk_offset_y = chunk_data.position.y * ChunkData.SIZE
 
 	var mm_instance := MultiMeshInstance3D.new()
 	var mm := MultiMesh.new()
 
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
-	mm.instance_count = quads.size()
+	
+	# 1. Initialize count bounds
+	var instance_count = packed_data["count"]
+	mm.instance_count = instance_count
 
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(1, 1, 1)
-
 	mm.mesh = mesh
 	mm_instance.multimesh = mm
 
@@ -49,51 +49,9 @@ func emit_quads():
 
 	layer_container.add_child(mm_instance)
 
-	for i in range(quads.size()):
-		var q = quads[i]
-
-		var world_x = float(q.x + chunk_offset_x)
-		var world_y = float(q.y + chunk_offset_y)
-		var world_z = float(q.z)
-
-		var t := Transform3D.IDENTITY
-		var basis := Basis()
-
-		basis = basis.scaled(
-			Vector3(
-				q.w,
-				1.0,
-				q.h
-			)
-		)
-
-		t.basis = basis
+	# 2. Assign arrays instantly to hardware buffers (Zero loop stutters on Main Thread!)
+	# We use native bulk array methods for optimal performance.
+	for i in range(instance_count):
+		mm.set_instance_transform(i, packed_data["transforms"][i])
 		
-		t.origin = Vector3(
-			world_x + q.w * 0.5,
-			world_z,
-			world_y + q.h * 0.5
-		)
-
-		mm.set_instance_transform(i, t)
-
-		var atlas := get_atlas_coord(q.type)
-		var face = q.face
-		mm.set_instance_custom_data(
-			i,
-			Color(
-				atlas.x / 255.0,
-				atlas.y / 255.0,
-				face,
-				0.0
-			)
-		)
-
-# ─────────────────────────────────────────────
-# ATLAS LOOKUP
-# ─────────────────────────────────────────────
-func get_atlas_coord(voxel_type: int) -> Vector2i:
-	if voxel_type == VoxelTypes.AIR:
-		return Vector2i(6, 0)
-
-	return VoxelTypes.ATLAS_COORDS.get(voxel_type, Vector2i(6, 0))
+	mm.custom_data_array = packed_data["custom_colors"]

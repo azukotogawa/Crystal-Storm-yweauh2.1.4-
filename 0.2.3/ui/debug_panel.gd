@@ -16,9 +16,12 @@ func _process(_delta):
 	var cam_rot = 0
 	
 	var main = get_tree().root.get_node_or_null("Game")
-	var player = main.get_node_or_null("Player") if main else null
-	var world = main.get_node_or_null("World") as InfiniteNoiseWorld if main else null
-	var camera = main.get_node_or_null("Player/Camera3D") if main else null
+	var player = main.get_node_or_null("Player") if main else \
+		get_tree().get_first_node_in_group("player")
+	var world = main.get_node_or_null("World") as InfiniteNoiseWorld if main else \
+		get_tree().get_first_node_in_group("world")
+	var camera = main.get_node_or_null("Player/Camera3D") if main else \
+		get_tree().get_first_node_in_group("camera")
 	
 	# Chunk count
 	var voxel_world = main.get_node_or_null("VoxelWorld") if main else null
@@ -38,11 +41,10 @@ func _process(_delta):
 		)
 	
 	if world and player_voxel:
-		var biome = world.get_biome(player_voxel.x, player_voxel.y)
+		var biome = world.get_biome(player_voxel.x, player_voxel.y-1.0, player_voxel.z)
 		if biome:
 			tile_name = biome.get("name", "Unknown")
 			biome_name = biome.get("type", "???")
-			h = str(biome.get("render_height", "??"))
 	
 	if camera:
 		cam_rot = camera.orbit_rotation
@@ -53,7 +55,6 @@ Chunk: %d, %d
 Chunks Loaded: %d
 Tile: %s
 Biome: %s
-Height: %s
 Cam Rot: %d
 FPS: %d""" % [
 		seed_val,
@@ -62,7 +63,6 @@ FPS: %d""" % [
 		chunks_count,
 		tile_name,
 		biome_name,
-		h,
 		cam_rot,
 		Engine.get_frames_per_second()
 	]

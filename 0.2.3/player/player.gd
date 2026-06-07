@@ -7,13 +7,17 @@ var player_material: StandardMaterial3D
 
 @export var move_speed := 16.0
 
-var voxel_position := Vector3(0, 0, 0)
+# Aligned System: X/Z = Flat Floor Plane, Y = Vertical Elevation
+var voxel_position := Vector3(0.0, 0.0, 0.0)
 var vertical_velocity: float = 0.0
 
 const GRAVITY := 200.0
 const JUMP_FORCE := 70.0
 const MAX_STEP_UP_WALK := 0
-const MAX_STEP_UP_JUMP := 3
+const MAX_STEP_UP_JUMP := 55
+
+const PLAYER_HEIGHT := 0.8
+const PLAYER_RADIUS := 0.4
 
 var sprite_scale_modifier := Vector2.ONE
 var current_skew := 0.0
@@ -32,18 +36,15 @@ func _ready():
 	add_to_group("player")
 
 	world = get_tree().get_first_node_in_group("world")
-	camera = get_tree().get_first_node_in_group("camera")  # or find by path if needed
+	camera = get_tree().get_first_node_in_group("camera")
 	
 	if world == null:
 		push_error("Player: World not found!")
 		return
 
-	var ground := get_ground_height(0, 0)
-	voxel_position = Vector3(0, 0, ground)
-
-	# Box mesh for 3D voxel player
+	# Set box mesh dimensions matching player radius and height
 	var box := BoxMesh.new()
-	box.size = Vector3(0.5,0.5,0.5)
+	box.size = Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
 	player_mesh.mesh = box
 
 	player_material = StandardMaterial3D.new()
@@ -55,8 +56,15 @@ func _ready():
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 	
 	player_mesh.material_override = player_material
-	player_mesh.position.y = 1.0
+	player_mesh.position.y = PLAYER_HEIGHT / 2.0 # Anchor sprite pivot at feet
 
+	# Teleport player to safe spawning height (Y=45) over grid coordinate (0,0)
+	voxel_position = Vector3(0.5, 257.0, 0.5) 
+	while is_colliding_at(voxel_position) and voxel_position.y > 0:
+		voxel_position.y -= 1.0
+	
+	# Place feet on top of the uppermost surface block found
+	voxel_position.y += 1.0
 	update_visual_position()
 
 func _process(delta):
@@ -64,7 +72,7 @@ func _process(delta):
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
-	# Input
+	# Input handling
 	var input_dir := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"): input_dir.x += 1
 	if Input.is_action_pressed("ui_left"): input_dir.x -= 1
@@ -72,7 +80,6 @@ func _process(delta):
 	if Input.is_action_pressed("ui_up"): input_dir.y -= 1
 	input_dir = input_dir.normalized()
 	
-# Lock direction to camera rotation when movement starts
 	if input_dir != Vector2.ZERO:
 		if not is_input_locked:
 			locked_rotation = camera.orbit_rotation if camera else 0
@@ -80,23 +87,20 @@ func _process(delta):
 	else:
 		is_input_locked = false
 
-	# === MOVEMENT ===
+	# === HORIZONTAL MOVEMENT ===
 	if input_dir != Vector2.ZERO:
 		var move_vec = rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta = move_vec * move_speed * delta
 
-		var new_x = voxel_position.x + move_delta.x
-		var new_y = voxel_position.y + move_delta.y
-
-		if can_move_to(new_x, voxel_position.y):
-			voxel_position.x = new_x
-		if can_move_to(voxel_position.x, new_y):
-			voxel_position.y = new_y
-
-		if current_state != State.JUMPING and current_state != State.FALLING:
-			var target_h = get_ground_height(roundi(voxel_position.x), roundi(voxel_position.y))
-			if float(target_h) > voxel_position.z:
-				voxel_position.z = float(target_h)
+		# Move and check along horizontal X axis
+		var target_pos_x = voxel_position + Vector3(move_delta.x, 0, 0)
+		if not is_colliding_at(target_pos_x):
+			voxel_position.x = target_pos_x.x
+			
+		# Move and check along horizontal Z axis using move_delta.y
+		var target_pos_z = voxel_position + Vector3(0, 0, move_delta.y)
+		if not is_colliding_at(target_pos_z):
+			voxel_position.z = target_pos_z.z
 
 		if current_state == State.IDLE:
 			change_state(State.RUNNING)
@@ -104,21 +108,28 @@ func _process(delta):
 		if current_state == State.RUNNING:
 			change_state(State.IDLE)
 
-	# Ground check + state machine
-	var current_ground = get_ground_height(roundi(voxel_position.x), roundi(voxel_position.y))
-
+	# === VERTICAL PHSTICS STATE MACHINE ===
 	match current_state:
 		State.JUMPING:
 			vertical_velocity -= GRAVITY * delta
-			voxel_position.z += vertical_velocity * delta
+			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
+			
+			# Ceiling collision check
+			if vertical_velocity > 0 and is_colliding_at(next_pos):
+				vertical_velocity = 0
+				current_state = State.FALLING
+			else:
+				voxel_position.y = next_pos.y
+				
 			if vertical_velocity < 0:
 				current_state = State.FALLING
 
 		State.FALLING:
 			vertical_velocity -= GRAVITY * delta
-			voxel_position.z += vertical_velocity * delta
-			if is_grounded():
-				voxel_position.z = float(current_ground)
+			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
+			
+			if is_colliding_at(next_pos):
+				voxel_position.y = ceil(next_pos.y) # Clean floor alignment snap
 				vertical_velocity = 0
 				sprite_scale_modifier = Vector2(1.6, 0.5)
 				current_skew = -0.1
@@ -126,13 +137,18 @@ func _process(delta):
 				if landing_timer > 0.2:
 					landing_timer = 0.0
 					change_state(State.IDLE)
+			else:
+				voxel_position.y = next_pos.y
 
 		State.IDLE, State.RUNNING:
 			if Input.is_action_just_pressed("jump"):
 				change_state(State.JUMPING)
-			elif voxel_position.z > float(current_ground) + 0.6:
-				change_state(State.FALLING)
-				vertical_velocity = 0.0 
+			else:
+				# Air check below player feet
+				var test_ground_pos = voxel_position + Vector3(0, -0.1, 0)
+				if not is_colliding_at(test_ground_pos):
+					change_state(State.FALLING)
+					vertical_velocity = 0.0 
 
 	update_visual_position()
 
@@ -141,46 +157,40 @@ func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
 	var rad = deg_to_rad(angle)
 	var ca = cos(rad)
 	var sa = sin(rad)
-	
-	# Rotate the input vector
 	return Vector2(
 		input.x * ca + input.y * sa,
 		input.y * ca - input.x * sa
 	)
-
-# ... (rest of the file - can_move_to, update_visual_position, etc. stay the same)
-func can_move_to(new_x: float, new_y: float) -> bool:
-	var tx = roundi(new_x)
-	var ty = roundi(new_y)
-	var cx = roundi(voxel_position.x)
-	var cy = roundi(voxel_position.y)
-	
-	if tx == cx and ty == cy:
-		return true
-		
-	var current_h = get_ground_height(cx, cy)
-	var target_h = get_ground_height(tx, ty)
-	var max_step = MAX_STEP_UP_WALK if current_state == State.IDLE or current_state == State.RUNNING else MAX_STEP_UP_JUMP
-
-	return target_h <= current_h + max_step
 	
 func update_visual_position():
+	# Maps data coordinates consistently onto Godot Global Space components
 	global_position = Vector3(
-		voxel_position.x + 1.0,
-		voxel_position.z,
-		voxel_position.y + 1.0
+		voxel_position.x,
+		voxel_position.y,
+		voxel_position.z
 	)
 
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
-	player_mesh.rotation.z = current_skew
+	player_mesh.rotation.y = current_skew # Apply lean along vertical rotation axis
 
-func get_ground_height(x: int, y: int) -> int:
-	if world == null: return 0
-	return world.get_biome(x, y)["render_height"]
-
-func is_grounded() -> bool:
-	var ground := get_ground_height(roundi(voxel_position.x), roundi(voxel_position.y))
-	return voxel_position.z <= float(ground) + 0.1 and vertical_velocity <= 0
+func is_colliding_at(pos: Vector3) -> bool:
+	if world == null: 
+		return false
+	
+	var min_x = floori(pos.x - PLAYER_RADIUS)
+	var max_x = floori(pos.x + PLAYER_RADIUS)
+	var min_y = floori(pos.y)
+	var max_y = floori(pos.y + PLAYER_HEIGHT)
+	var min_z = floori(pos.z - PLAYER_RADIUS)
+	var max_z = floori(pos.z + PLAYER_RADIUS)
+	
+	for x in range(min_x, max_x + 1):
+		for y in range(min_y, max_y + 1):
+			for z in range(min_z, max_z + 1):
+				var voxel = world.get_biome(float(x), float(y), float(z))
+				if voxel.has("is_air") and not voxel["is_air"]:
+					return true 
+	return false
 
 func change_state(new_state):
 	if new_state == State.IDLE and current_state != State.FALLING:
