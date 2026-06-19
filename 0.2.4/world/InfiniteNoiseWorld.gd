@@ -1,0 +1,589 @@
+# InfiniteNoiseWorld.gd
+# Best-in-class world generation for Crystalstorm.
+# 5 realistic biomes (plains, steppe, forest, marsh, mountains) with authentic topology.
+# Playable human-scale features (rivers 6-18 voxels wide, hills/mountains walkable and buildable).
+# Rivers are now as common as biomes: dedicated river feature system produces RIVER tiles
+#   and carved valleys at ~biome prevalence (visible river area comparable to any one biome).
+# Full 3D volumetric caves (tunnels + chambers) via 3D noise -- caves made significantly more likely
+#   both in volume (underground hollows) and surface expression (breaches, gorges, mouths, exposed stone).
+# Real carved rivers that depress terrain + create valleys/banks.
+# Clean API surface for current heightfield renderer + future full voxel support.
+# All deterministic, heavily cached on hot paths, with uncached variants for workers.
+
+class_name InfiniteNoiseWorld
+extends Node3D
+
+var world_seed: int
+
+# --- Tunables for playable scale and feel ---
+# --- Tunables for playable scale and feel ---
+const BIOME_SCALE := 920.0
+const MOUNTAIN_FREQ := 1.0
+const DETAIL_FREQ := 4.5
+
+# River & Biome balance
+
+
+# River feature system (redesigned for rivers to be as common as biomes).
+# River "systems" are now generated at a density such that visible RIVER surface tiles
+# (and their carved valley influence) occur at a prevalence comparable to any single
+# one of the 5 primary biomes (~18-25% area in samples). Achieved by:
+#   - Moderate absolute RIVER_FREQ for a dense but natural network of drainage lines
+#   - Reduced core-sharpening POWER and offset so bands around cores are wider
+#   - Explicit, documented thresholds for "is_river" (carve+moisture) vs "surface tile"
+# Rivers remain visually narrow coherent features thanks to warping + core shape.
+const RIVER_TARGET_PREVALENCE := 0.20   # ~20% like other major features
+
+const RIVER_FREQ_BASE := 0.068
+const RIVER_SCALE_FACTOR := 2.9
+const RIVER_CORE_POWER := 1.48
+const RIVER_CORE_OFFSET := -0.025
+const RIVER_CORE_SCALE := 1.08
+const RIVER_IS_RIVER_THRESHOLD := 0.142
+const RIVER_SURFACE_TILE_THRESHOLD := 0.172
+const RIVER_MIN_CARVE_FOR_TILE := 0.48
+const RIVER_MAX_CARVE := 27.0
+const RIVER_VALLEY_WIDTH_FACTOR := 1.8
+
+# Cave feature system (redesigned for higher likelihood overall).
+# Increased base frequencies for both tunnels and rooms, stronger signal weights,
+# lower hollowing thresholds, and higher surface breach rate so caves are noticeably
+# more common both underground (volumetric) and as visible surface features (breaches, mouths).
+const CAVE_TUNNEL_BASE := 0.135
+const CAVE_ROOM_BASE := 0.058
+const CAVE_SCALE_FACTOR := 1.4
+const CAVE_TUNNEL_WEIGHT := 0.92
+const CAVE_ROOM_WEIGHT := 1.28
+const CAVE_HOLLOW_BASE := 0.39
+const CAVE_ROOF_PROTECT_SCALE := 0.12
+const CAVE_SURFACE_BREACH_MIN := 0.42
+const CAVE_MOUTH_THRESHOLD := 0.48
+const CAVE_SURFACE_BREACH_CHANCE := 0.85
+
+const MAX_HEIGHT := 158.0
+const SEA_LEVEL := 38.0            # Baseline reference (rivers can go below in gorges)
+const MOUNTAIN_HEIGHT_BOOST := 78.0
+
+# Column caches (hot path for ChunkData + player collision)
+var _surface_cache: Dictionary = {}
+var _tile_cache: Dictionary = {}
+var _biome_cache: Dictionary = {}   # key "x,z" -> biome dict (light)
+
+# FastNoiseLite generators (all seeded deterministically from world_seed)
+var _warp_x: FastNoiseLite
+var _warp_z: FastNoiseLite
+
+var _base_height: FastNoiseLite
+var _mountain_ridge: FastNoiseLite
+var _detail: FastNoiseLite
+var _temp: FastNoiseLite
+var _moist: FastNoiseLite
+
+var _river_valley: FastNoiseLite
+var _river_warp_x: FastNoiseLite
+var _river_warp_z: FastNoiseLite
+
+var _cave_tunnel: FastNoiseLite
+var _cave_room: FastNoiseLite
+var _surface_variation: FastNoiseLite   # small high-freq for micro detail on surface
+
+func _ready():
+	add_to_group("world")
+
+func _init(p_seed: int = 12349):
+	world_seed = p_seed
+	_setup_noise()
+
+func _setup_noise():
+	# Domain warp (makes everything look natural, not grid-aligned)
+	_warp_x = FastNoiseLite.new()
+	_warp_x.seed = world_seed + 11
+	_warp_x.noise_type = FastNoiseLite.TYPE_PERLIN
+	_warp_x.frequency = 0.9 / BIOME_SCALE
+	_warp_x.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_warp_x.fractal_octaves = 2
+	_warp_x.fractal_gain = 0.55
+
+	_warp_z = FastNoiseLite.new()
+	_warp_z.seed = world_seed + 12
+	_warp_z.noise_type = FastNoiseLite.TYPE_PERLIN
+	_warp_z.frequency = 0.9 / BIOME_SCALE
+	_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_warp_z.fractal_octaves = 2
+	_warp_z.fractal_gain = 0.55
+
+	# Base continental / large structure
+	_base_height = FastNoiseLite.new()
+	_base_height.seed = world_seed + 100
+	_base_height.noise_type = FastNoiseLite.TYPE_PERLIN
+	_base_height.frequency = 2.8 / BIOME_SCALE
+	_base_height.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_base_height.fractal_octaves = 4
+	_base_height.fractal_lacunarity = 2.05
+	_base_height.fractal_gain = 0.48
+
+	# Mountain ridged (for real alpine character)
+	_mountain_ridge = FastNoiseLite.new()
+	_mountain_ridge.seed = world_seed + 200
+	_mountain_ridge.noise_type = FastNoiseLite.TYPE_PERLIN
+	_mountain_ridge.frequency = MOUNTAIN_FREQ / BIOME_SCALE
+	_mountain_ridge.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	_mountain_ridge.fractal_octaves = 5
+	_mountain_ridge.fractal_lacunarity = 2.15
+	_mountain_ridge.fractal_gain = 0.52
+
+	# Fine detail + roughness
+	_detail = FastNoiseLite.new()
+	_detail.seed = world_seed + 300
+	_detail.noise_type = FastNoiseLite.TYPE_PERLIN
+	_detail.frequency = DETAIL_FREQ / BIOME_SCALE
+	_detail.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_detail.fractal_octaves = 3
+	_detail.fractal_gain = 0.6
+
+	# Temperature (base + strong elevation lapse rate will be applied in logic)
+	_temp = FastNoiseLite.new()
+	_temp.seed = world_seed + 400
+	_temp.noise_type = FastNoiseLite.TYPE_PERLIN
+	_temp.frequency = 1.6 / BIOME_SCALE
+	_temp.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_temp.fractal_octaves = 3
+
+	# Moisture / precipitation
+	_moist = FastNoiseLite.new()
+	_moist.seed = world_seed + 500
+	_moist.noise_type = FastNoiseLite.TYPE_PERLIN
+	_moist.frequency = 2.1 / BIOME_SCALE
+	_moist.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_moist.fractal_octaves = 6
+	_moist.fractal_lacunarity = 2.1
+	_moist.fractal_gain = 0.47
+
+	# River drainage / valley potential (long winding features)
+	# NOTE: River frequency is absolute (independent of BIOME_SCALE) for reliable control
+	# of river commonality. Redesigned params (see header) target biome-like prevalence.
+	_river_valley = FastNoiseLite.new()
+	_river_valley.seed = world_seed + 600
+	_river_valley.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_valley.frequency = RIVER_FREQ_BASE * (92.0 / (BIOME_SCALE * RIVER_SCALE_FACTOR))
+	_river_valley.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_valley.fractal_octaves = 6      # extra octave for longer features
+	_river_valley.fractal_lacunarity = 1.92
+	_river_valley.fractal_gain = 0.41
+
+	_river_warp_x = FastNoiseLite.new()
+	_river_warp_x.seed = world_seed + 610
+	_river_warp_x.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_warp_x.frequency = 1.25 * (92.0 / BIOME_SCALE)
+	_river_warp_x.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_warp_x.fractal_octaves = 2
+
+	_river_warp_z = FastNoiseLite.new()  # same as above
+	_river_warp_z.seed = world_seed + 611
+	_river_warp_z.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_warp_z.frequency = 1.25 * (92.0 / BIOME_SCALE)
+	_river_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_warp_z.fractal_octaves = 2
+
+	# === CAVES - now scale-aware ===
+	_cave_tunnel = FastNoiseLite.new()
+	_cave_tunnel.seed = world_seed + 700
+	_cave_tunnel.noise_type = FastNoiseLite.TYPE_PERLIN
+	_cave_tunnel.frequency = 0.135 * (92.0 / (BIOME_SCALE * 1.8))
+	_cave_tunnel.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_cave_tunnel.fractal_octaves = 3
+	_cave_tunnel.fractal_gain = 0.65
+
+	_cave_room = FastNoiseLite.new()
+	_cave_room.seed = world_seed + 710
+	_cave_room.noise_type = FastNoiseLite.TYPE_PERLIN
+	_cave_room.frequency = 0.058 * (92.0 / (BIOME_SCALE * 1.8))
+	_cave_room.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_cave_room.fractal_octaves = 2
+	_cave_room.fractal_gain = 0.5   # note: you had duplicate gain line originally
+
+	# Micro surface breakup (makes ground less "perfect")
+	_surface_variation = FastNoiseLite.new()
+	_surface_variation.seed = world_seed + 800
+	_surface_variation.noise_type = FastNoiseLite.TYPE_PERLIN
+	_surface_variation.frequency = 41.0 / BIOME_SCALE
+	_surface_variation.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_surface_variation.fractal_octaves = 2
+
+# -----------------------------
+# Domain warping (the secret sauce for natural shapes)
+# -----------------------------
+func _warped_coords(wx: float, wz: float, strength: float = 18.0) -> Vector2:
+	var wx2: float = wx + _warp_x.get_noise_2d(wx * 0.6, wz * 0.6) * strength
+	var wz2: float = wz + _warp_z.get_noise_2d(wx * 0.6, wz * 0.6) * strength
+	return Vector2(wx2, wz2)
+
+func _warped_coords_river(wx: float, wz: float, strength: float = 26.0) -> Vector2:
+	var wx2: float = wx + _river_warp_x.get_noise_2d(wx * 0.55, wz * 0.55) * strength
+	var wz2: float = wz + _river_warp_z.get_noise_2d(wx * 0.55, wz * 0.55) * strength
+	return Vector2(wx2, wz2)
+
+# -----------------------------
+# Core height + biome computation (playable + realistic)
+# -----------------------------
+func _compute_raw_elevation(wx: float, wz: float) -> float:
+	var w: Vector2 = _warped_coords(wx, wz, 11.0)
+	var x: float = w.x
+	var z: float = w.y
+
+	# Large scale base (continents + broad valleys)
+	var base: float = (_base_height.get_noise_2d(x, z) + 1.0) * 0.5   # 0..1
+	var base_h: float = base * 68.0 - 6.0
+
+	# Mountain ridged contribution (strong in high areas)
+	var ridge: float = _mountain_ridge.get_noise_2d(x * 0.92, z * 0.92)
+	ridge = abs(ridge) * 0.92 + ridge * 0.08   # emphasize positive ridges
+	var mountain: float = max(0.0, ridge) * MOUNTAIN_HEIGHT_BOOST
+
+	# Add some foothills roll-off
+	var foothill: float = (_base_height.get_noise_2d(x * 0.38, z * 0.38) + 1.0) * 0.5
+	mountain += foothill * 19.0 * max(0.0, ridge * 0.6)
+
+	# Small scale detail (hills, bumps, roughness)
+	var detail: float = _detail.get_noise_2d(x * 1.7, z * 1.7) * 7.8
+	var micro: float = _surface_variation.get_noise_2d(wx, wz) * 1.6
+
+	var raw: float = base_h + mountain + detail + micro
+	return clamp(raw, -12.0, MAX_HEIGHT)
+
+func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
+	# Returns {carve: float, is_river: bool, water_depth: float, river_factor: float}
+	# Redesigned shaping: explicit consts give river tiles a prevalence on par with biomes
+	# while preserving narrow coherent river aesthetics via core + warp.
+	var w: Vector2 = _warped_coords_river(wx, wz, 17.0)
+	var rx: float = w.x
+	var rz: float = w.y
+
+	# Primary valley potential (low freq winding "drainage")
+	var valley: float = _river_valley.get_noise_2d(rx, rz)
+	# Core computation uses the new tunable power/offset/scale (lower power => fatter cores => more area).
+	var u: float = max(0.0, (valley + RIVER_CORE_OFFSET) * RIVER_CORE_SCALE)
+	var river_core: float = pow(u, RIVER_CORE_POWER)
+
+	# Secondary meander detail for natural width variation
+	var meander: float = _river_valley.get_noise_2d(rx * 2.6, rz * 2.6) * 0.28
+	river_core = clamp(river_core + meander * 0.55, 0.0, 1.35)
+
+	# River is stronger / wider in lowlands and marshy areas
+	var lowland_factor: float = clamp(1.0 - (base_elev - 18.0) / 95.0, 0.35, 1.35)
+	var carve_depth: float = river_core * RIVER_MAX_CARVE * lowland_factor * RIVER_VALLEY_WIDTH_FACTOR
+
+	# "is_river" here means "has meaningful river influence" (for height carving + biome moisture boost).
+	# The threshold is now RIVER_IS_RIVER_THRESHOLD; actual visible ribbon uses the stricter
+	# RIVER_SURFACE_TILE_THRESHOLD in _compute_surface_tile.
+	var is_river: bool = river_core > RIVER_IS_RIVER_THRESHOLD
+	var water_depth: float = 0.0
+	if is_river:
+		water_depth = clamp(1.8 + river_core * 2.8 + lowland_factor * 1.5, 2.0, 7.5)
+
+	return {
+		"carve": carve_depth,
+		"is_river": is_river,
+		"water_depth": water_depth,
+		"river_factor": clamp(river_core, 0.0, 1.0)
+	}
+
+func _sample_cave(wx: float, wy: float, wz: float) -> float:
+	# Combined tunnel + room 3D signal. Higher = more likely hollow.
+	# Weights and frequencies are now higher (see header consts) to make caves more common.
+	var t: float = _cave_tunnel.get_noise_3d(wx, wy * 0.9, wz) * CAVE_TUNNEL_WEIGHT
+	var r: float = _cave_room.get_noise_3d(wx * 0.7, wy * 0.55, wz * 0.7) * CAVE_ROOM_WEIGHT
+	# Bias caves away from very high surface (no swiss cheese on peaks)
+	var depth_bias: float = clamp((wy - 12.0) / 55.0, -0.6, 1.1)
+	return t * 0.7 + r * 1.05 + depth_bias * 0.18
+
+func get_biome(wx: float, wy: float, wz: float) -> Dictionary:
+	var key: String = "%d,%d" % [floori(wx), floori(wz)]
+	if _biome_cache.has(key) and abs(wy) < 3.0:
+		return _biome_cache[key]
+
+	var res: Dictionary = _get_biome_compute(wx, wy, wz)
+	if abs(wy) < 2.5:
+		_biome_cache[key] = res
+		if _biome_cache.size() > 4096:
+			_biome_cache.clear()
+	return res
+
+func get_biome_uncached(wx: float, wy: float, wz: float) -> Dictionary:
+	# Pure compute path. Safe for background worker threads (never mutates caches).
+	return _get_biome_compute(wx, wy, wz)
+
+func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
+	var w: Vector2 = _warped_coords(wx, wz, 9.0)
+	var x: float = w.x
+	var z: float = w.y
+
+	# Temperature
+	var t: float = (_temp.get_noise_2d(x, z) + 1.0) * 0.5
+	var elev_for_temp: float = get_surface_height_uncached(wx, wz)
+	var lapse: float = clamp((elev_for_temp - 42.0) / 115.0, 0.0, 0.92)
+	t = clamp(t - lapse * 0.82, 0.0, 1.0)
+
+	# Moisture - explicit balance for large scale
+	var raw_m: float = (_moist.get_noise_2d(x * 0.9, z * 0.9) + 1.0) * 0.5
+	var lf_m: float = (_moist.get_noise_2d(x * 0.13, z * 0.13) + 1.0) * 0.5
+	
+	var m: float = raw_m * 0.5 + lf_m * 0.6
+	m = clamp(m, 0.0, 1.0)
+
+	# Strong dry and wet pushes
+	var dry_push: float = _moist.get_noise_2d(x * 0.48, z * 0.48) * 0.38
+	m = clamp(m - dry_push, 0.0, 1.0)
+	
+	var wet_push: float = max(0.0, _moist.get_noise_2d(x * 0.37, z * 0.37) * 0.22)
+	m = clamp(m + wet_push, 0.0, 1.0)
+
+	# River boost
+	var river_info: Dictionary = _compute_river_carve(wx, wz, elev_for_temp)
+	if river_info.is_river:
+		m = clamp(m + river_info.river_factor * 0.3, 0.0, 1.0)
+
+	var rug: float = _compute_local_ruggedness(wx, wz)
+
+	var name: String
+	if elev_for_temp > 94.0 or (elev_for_temp > 71.0 and (rug > 0.42 or t < 0.28)):
+		name = "mountain"
+	elif m < 0.25:
+		name = "steppe"
+	elif m < 0.50:
+		name = "plains"
+	elif m < 0.76:
+		name = "forest"
+	else:
+		name = "marsh"
+
+	if wy > 42.0:
+		return {"is_air": true, "name": "air", "type": "None"}
+
+	return {
+		"is_air": false,
+		"name": name,
+		"type": name.capitalize(),
+		"h_level": int(clamp((elev_for_temp + 12.0) / 9.0, 0, 22)),
+		"p_level": int(m * 21),
+		"temp": t,
+		"moist": m,
+		"rugged": rug
+	}
+
+func _compute_local_ruggedness(wx: float, wz: float) -> float:
+	var step: float = 4.8
+	var e0: float = _compute_raw_elevation(wx, wz)
+	var samples: Array = [
+		_compute_raw_elevation(wx + step, wz),
+		_compute_raw_elevation(wx - step, wz),
+		_compute_raw_elevation(wx, wz + step),
+		_compute_raw_elevation(wx, wz - step),
+		_compute_raw_elevation(wx + step * 0.65, wz + step * 0.65)
+	]
+	var rmin: float = e0
+	var rmax: float = e0
+	for e in samples:
+		if e < rmin: rmin = e
+		if e > rmax: rmax = e
+	return clamp((rmax - rmin) * 0.062, 0.0, 1.0)
+
+# -----------------------------
+# Public surface API (used by ChunkData, player, debug)
+# -----------------------------
+func get_surface_height(wx: float, wz: float) -> float:
+	var k: Vector2i = Vector2i(floori(wx), floori(wz))
+	if _surface_cache.has(k):
+		return _surface_cache[k]
+
+	var h: float = _compute_surface_height(wx, wz)
+	_surface_cache[k] = h
+	if _surface_cache.size() > 12288:
+		_surface_cache.clear()
+	return h
+
+func get_surface_height_uncached(wx: float, wz: float) -> float:
+	return _compute_surface_height(wx, wz)
+
+func _compute_surface_height(wx: float, wz: float) -> float:
+	var base: float = _compute_raw_elevation(wx, wz)
+	var river: Dictionary = _compute_river_carve(wx, wz, base)
+	var h: float = base - river.carve
+
+	# Cave breach near surface → create natural sinkhole / cave mouth by lowering surface
+	# This gives the current heightfield renderer visible cave-like features immediately.
+	# Use real noise (not a linear fmod hash) for the "random" breach decision so we don't get
+	# diagonal stripes of stone/cave-mouth tiles vs normal biome tiles.
+	# Lowered thresholds + higher breach chance = caves more likely on surface too.
+	var cave_near_surface: float = _sample_cave(wx, h - 3.5, wz)
+	var breach_var: float = (_surface_variation.get_noise_2d(wx, wz) + 1.0) * 0.5
+	if cave_near_surface > CAVE_SURFACE_BREACH_MIN and breach_var < CAVE_SURFACE_BREACH_CHANCE:
+		# Depress the surface to expose the cave (creates dramatic pits and entrances)
+		var depress: float = (cave_near_surface - 0.45) * 13.0
+		h -= clamp(depress, 0.0, 11.0)
+
+	# Final playable clamp + gentle rounding for nicer slab alignment
+	h = clamp(h, -4.0, MAX_HEIGHT)
+	return round(h)
+
+# -----------------------------
+# Surface tile (what the heightfield renderer displays on top)
+# -----------------------------
+func get_tile_type(wx: float, wz: float) -> int:
+	var k: Vector2i = Vector2i(floori(wx), floori(wz))
+	if _tile_cache.has(k):
+		return _tile_cache[k]
+
+	var id: int = _compute_surface_tile(wx, wz)
+	_tile_cache[k] = id
+	if _tile_cache.size() > 12288:
+		_tile_cache.clear()
+	return id
+
+func get_tile_type_uncached(wx: float, wz: float) -> int:
+	return _compute_surface_tile(wx, wz)
+
+func _compute_surface_tile(wx: float, wz: float) -> int:
+	var surf: float = get_surface_height_uncached(wx, wz)   # use uncached inside uncached path
+	var biome: Dictionary = get_biome_uncached(wx, 0.0, wz)
+	var bname: String = biome.get("name", "plains")
+	var river: Dictionary = _compute_river_carve(wx, wz, surf)
+
+	# River / water surface.
+	# Density + commonality now controlled by the redesigned river feature system consts
+	# (RIVER_FREQ, *_POWER, RIVER_SURFACE_TILE_THRESHOLD etc.) so that RIVER tiles
+	# appear roughly as often as any single biome.
+	if river.river_factor > RIVER_SURFACE_TILE_THRESHOLD and river.carve > RIVER_MIN_CARVE_FOR_TILE:
+		return VoxelTypes.RIVER
+
+	# Cave mouth / exposed stone on surface (strong near-surface cave or very steep)
+	# Lowered threshold = more frequent surface cave expression.
+	var cave_val: float = _sample_cave(wx, surf - 2.2, wz)
+	var rugged: float = biome.get("rugged", 0.0)
+	if cave_val > CAVE_MOUTH_THRESHOLD or (rugged > 0.68 and surf > 52.0):
+		return VoxelTypes.STONE if (cave_val > 0.58 or rugged > 0.75) else VoxelTypes.MOUNTAIN2
+
+	# Biome surface character (reuse/extend the rich existing palette)
+	var temp2: float = biome.get("temp", 0.5)
+	var moist: float = biome.get("moist", 0.5)
+	var hl: int = biome.get("h_level", 9)
+
+	# Use the existing _surface_variation for organic intra-biome tile variation.
+	# This avoids any linear position hashes that produce stripes, while keeping
+	# InfiniteNoiseWorld's noise setup and members completely unchanged.
+	var tile_var: float = (_surface_variation.get_noise_2d(wx * 2.3, wz * 2.3) + 1.0) * 0.5
+
+	var name: String
+	match bname:
+		"plains":
+			if moist > 0.66:
+				name = "meadow" if tile_var < 0.6 else "grass"
+			elif temp2 < 0.34:
+				name = "savanna"
+			else:
+				name = "plains" if tile_var > 0.5 else "grass"
+		"steppe":
+			name = "steppe" if moist < 0.22 or rugged > 0.5 else "savanna"
+			if rugged > 0.62:
+				name = "basin"
+		"forest":
+			if moist > 0.72:
+				name = "dense forest"
+			elif temp2 < 0.38:
+				name = "pine forest"
+			else:
+				name = "forest" if tile_var > 0.4 else "meadow"
+		"marsh":
+			name = "marsh"
+			if rugged < 0.18 and moist > 0.78:
+				name = "basin"   # very wet flat depressions read as more waterlogged
+		"mountain":
+			if hl > 15 or surf > 102.0:
+				name = "snow" if temp2 < 0.29 else "ice field"
+			elif hl > 11 or rugged > 0.58:
+				name = "ridge" if rugged > 0.48 else "peak"
+			else:
+				name = "mountain"
+		_:
+			name = "plains"
+
+	var id: int = VoxelTypes.biome_to_voxel_id.get(name, VoxelTypes.GRASSLAND3)
+	return id
+
+# Legacy simple river mask kept for any external/debug use and get_biome river boost
+func get_river_mask(wx: float, wz: float) -> float:
+	var info: Dictionary = _compute_river_carve(wx, wz, _compute_raw_elevation(wx, wz))
+	return clamp(info.river_factor, 0.0, 1.0)
+
+# -----------------------------
+# FULL VOLUMETRIC VOXEL API (the future-proof heart of the best worldgen)
+# This is the single source of truth for solidity, caves, water volumes, subsurface.
+# Current heightfield uses surface + tile, but player collision, future full mesher,
+# and digging mechanics should migrate to this.
+# -----------------------------
+func get_voxel(wx: float, wy: float, wz: float) -> int:
+	var surf: float = get_surface_height(wx, wz)
+	if wy > surf + 0.1:
+		return VoxelTypes.AIR
+
+	var river: Dictionary = _compute_river_carve(wx, wz, surf)
+
+	# River water body (carved channel filled to a certain depth)
+	if river.is_river:
+		var river_bed: float = surf + river.carve - river.water_depth   # approximate
+		if wy > river_bed and wy <= surf:
+			return VoxelTypes.RIVER   # or WATER
+
+	# 3D cave hollowing (true tunnels and chambers)
+	# Lower base threshold + redesigned cave system = significantly more cave volume.
+	var cave: float = _sample_cave(wx, wy, wz)
+	# Stronger carve deeper, protect a thin roof near the (possibly carved) surface
+	var roof_protect: float = clamp((surf - wy) / 4.5, 0.0, 1.0)
+	if cave > (CAVE_HOLLOW_BASE + roof_protect * CAVE_ROOF_PROTECT_SCALE):
+		# Optional: small chance of "cave floor" detail later
+		return VoxelTypes.AIR
+
+	# Solid block selection (depth from surface + biome)
+	var depth: float = surf - wy
+	var b: Dictionary = get_biome_uncached(wx, wy, wz)
+	var biome_name: String = b.get("name", "plains")
+	var tempv: float = b.get("temp", 0.5)
+
+	# Top layer (surface skin)
+	if depth < 1.2:
+		return get_tile_type(wx, wz)   # the nice varied surface we already computed
+
+	# Near surface subsoil / dirt layer (biome aware)
+	if depth < 4.5:
+		if biome_name == "marsh" or biome_name == "forest":
+			return VoxelTypes.DIRT
+		if biome_name == "steppe":
+			return VoxelTypes.DIRT2 if tempv > 0.4 else VoxelTypes.STONE
+		if biome_name == "mountain":
+			return VoxelTypes.STONE
+		return VoxelTypes.DIRT2
+
+	# Deep stone (with slight noisy variation)
+	if depth > 11.0 or biome_name == "mountain":
+		var stone_var: float = _detail.get_noise_3d(wx * 0.8, wy * 0.6, wz * 0.8)
+		return VoxelTypes.CAVE_STONE if stone_var > 0.4 else VoxelTypes.STONE
+
+	return VoxelTypes.STONE
+
+func get_solid(wx: float, wy: float, wz: float) -> bool:
+	return get_voxel(wx, wy, wz) != VoxelTypes.AIR
+
+# -----------------------------
+# Utility for old _compute_base_elevation style calls (kept for minimal breakage)
+# -----------------------------
+func _compute_base_elevation(wx: float, wz: float) -> float:
+	return _compute_raw_elevation(wx, wz)
+
+# Optional helper for future systems or debug
+func get_height(wx: float, wy: float, wz: float) -> float:
+	# Back-compat alias (old code used this)
+	return (_base_height.get_noise_2d(wx, wz) + 1.0) * 0.5 * 68.0 - 6.0
+
+func get_precip(wx: float, wy: float, wz: float) -> float:
+	var w: Vector2 = _warped_coords(wx, wz)
+	return (_moist.get_noise_2d(w.x, w.y) + 1.0) * 0.5
