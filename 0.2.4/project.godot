@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Crystalstorm"
-run/main_scene="uid://crbdnu5x7g1fp"
+run/main_scene="uid://6ven06d5s8l"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="uid://tamt6vl1r5pg"
 

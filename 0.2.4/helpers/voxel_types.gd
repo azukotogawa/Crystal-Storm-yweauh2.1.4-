@@ -46,6 +46,7 @@ const STONE2 := 40
 const DIRT := 41
 const DIRT2 := 42
 const CAVE_STONE := 43
+const CRYSTAL := 44
 
 const biome_to_voxel_id = {
 	"deep ocean": VoxelTypes.OCEAN,
@@ -162,5 +163,7 @@ const ATLAS_COORDS = {
 	VoxelTypes.STONE2: Vector2i(2,4),
 	VoxelTypes.DIRT: Vector2i(3,2),      # grassland-ish / earth tone
 	VoxelTypes.DIRT2: Vector2i(0,6),     # valley row
-	VoxelTypes.CAVE_STONE: Vector2i(4,4)
-} 
+	VoxelTypes.CAVE_STONE: Vector2i(4,4),
+
+	VoxelTypes.CRYSTAL: Vector2i(6,2)
+}

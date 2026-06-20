@@ -21,6 +21,11 @@ func _process(_delta: float) -> void:
 	var tile_name := "Unknown"
 	var h := "???"
 	var cam_rot := 0
+	var crystal_tiles := 0
+	var crystal_power := 0.0
+	var crystal_tier := 0
+	var crystal_frontier := 0
+	var crystal_dist := "???"
 
 	# Find main nodes safely
 	var main = get_tree().root.get_node_or_null("Game")
@@ -28,6 +33,7 @@ func _process(_delta: float) -> void:
 	var world = get_tree().get_first_node_in_group("world")
 	var camera = get_tree().get_first_node_in_group("camera")
 	var chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
+	var crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 
 	# Seed
 	if world and "world_seed" in world:
@@ -69,7 +75,7 @@ func _process(_delta: float) -> void:
 
 	# Biome & Tile
 	if world and player_voxel != Vector3.ZERO:
-		var biome = world.get_biome(player_voxel.x, player_voxel.y - 1.0, player_voxel.z)
+		var biome = world._get_biome_compute(player_voxel.x, 0.0, player_voxel.z)
 		if biome is Dictionary:
 			if "type" in biome and biome.type != null:
 				biome_name = str(biome.type)
@@ -94,6 +100,20 @@ func _process(_delta: float) -> void:
 	if camera and "rotation_degrees" in camera:
 		cam_rot = int(camera.rotation_degrees.y)
 
+	# Crystal
+	if crystal_manager and crystal_manager.has_method("get_debug_stats"):
+		var stats: Dictionary = crystal_manager.get_debug_stats()
+		crystal_tiles = int(stats.get("tiles", 0))
+		crystal_power = float(stats.get("power", 0.0))
+		crystal_tier = int(stats.get("tier", 0))
+		crystal_frontier = int(stats.get("frontier", 0))
+	if crystal_manager and player_voxel != Vector3.ZERO and crystal_manager.has_method("get_nearest_crystal_distance"):
+		var dist: float = crystal_manager.get_nearest_crystal_distance(player_voxel)
+		if dist == INF:
+			crystal_dist = "none"
+		else:
+			crystal_dist = "%.1f" % dist
+
 	label.text = """Seed: %s
 Voxel Pos: %.1f, %.1f, %.1f
 Chunk: %d, %d
@@ -102,6 +122,10 @@ Tile: %s
 Biome: %s
 Height: %s
 Cam Rot: %d
+Crystal Tiles: %d
+Crystal Power: %.1f (T%d)
+Crystal Frontier: %d
+Nearest Crystal: %s
 FPS: %d""" % [
 		seed_val,
 		player_voxel.x, player_voxel.y, player_voxel.z,
@@ -111,5 +135,9 @@ FPS: %d""" % [
 		biome_name,
 		h,
 		cam_rot,
+		crystal_tiles,
+		crystal_power, crystal_tier,
+		crystal_frontier,
+		crystal_dist,
 		Engine.get_frames_per_second()
 	]

@@ -412,9 +412,11 @@ func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
 	else:
 		name = "marsh"
 
-	if wy > 42.0:
+	# High altitude air override — use surface height, not passed wy
+	var surface_h: float = get_surface_height_uncached(wx, wz)
+	if surface_h > 42.0 and wy > surface_h + 8.0:   # only true air above surface
 		return {"is_air": true, "name": "air", "type": "None"}
-
+	
 	return {
 		"is_air": false,
 		"name": name,

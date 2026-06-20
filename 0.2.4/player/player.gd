@@ -3,6 +3,7 @@ extends Node3D
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
+var crystal_manager: CrystalManager
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 var player_material: StandardMaterial3D
 
@@ -45,6 +46,7 @@ func _ready():
 	while chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 		await get_tree().process_frame
+	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 
 
 	# Wait until spawn area exists
@@ -152,9 +154,7 @@ func _process(delta):
 				# get_surface_height already returns the correct playable top (after natural rivers, carving, cave breaches).
 				# This keeps behavior consistent with meshing, step-up, and the original heightfield model.
 				if chunk_manager != null and chunk_manager.world != null:
-					var w = chunk_manager.world
-					var s := int(w.get_surface_height(voxel_position.x, voxel_position.z))
-					voxel_position.y = float(s) + 1.0
+					voxel_position.y = _walkable_height_at(voxel_position.x, voxel_position.z)
 				else:
 					voxel_position.y = ceil(next_pos.y)
 				vertical_velocity = 0
@@ -217,11 +217,7 @@ func is_colliding_at(pos: Vector3) -> bool:
 			# Primary ground collision: use the authoritative surface height (already incorporates
 			# natural rivers, cave breaches, carving, etc.). This keeps movement consistent with the
 			# heightfield meshing and prevents the "always colliding on the ground slab" problem.
-			var surface_y = int(world.get_surface_height(float(x_world), float(z_world)))
-			if surface_y < 0: surface_y = 0
-			if surface_y >= ChunkData.HEIGHT: surface_y = ChunkData.HEIGHT - 1
-
-			var slab_top := float(surface_y) + 1.0
+			var slab_top := _walkable_height_at(float(x_world), float(z_world))
 			if pos.y < slab_top:
 				return true
 
@@ -241,8 +237,7 @@ func _try_step_up():
 	# Allows walking gentle slopes even with MAX_STEP_UP_WALK=0.
 	if chunk_manager == null or chunk_manager.world == null:
 		return
-	var s := int(chunk_manager.world.get_surface_height(voxel_position.x, voxel_position.z))
-	var target_feet := float(s) + 1.0
+	var target_feet := _walkable_height_at(voxel_position.x, voxel_position.z)
 	var diff := target_feet - voxel_position.y
 	if diff > 0.01 and diff <= 2.0:  # allow 1-2 voxel steps for natural terrain
 		voxel_position.y = target_feet
@@ -255,6 +250,14 @@ func _is_small_step_up(proposed: Vector3) -> bool:
 	var new_s := int(w.get_surface_height(proposed.x, proposed.z))
 	var rise := new_s - cur_s
 	return rise > 0 and rise <= 2
+
+func _walkable_height_at(wx: float, wz: float) -> float:
+	if crystal_manager and crystal_manager.has_method("get_walkable_height"):
+		return crystal_manager.get_walkable_height(wx, wz)
+	if chunk_manager and chunk_manager.world:
+		return chunk_manager.world.get_surface_height(wx, wz) + 1.0
+	return 1.0
+
 
 func change_state(new_state):
 	if new_state == State.IDLE and current_state != State.FALLING:
