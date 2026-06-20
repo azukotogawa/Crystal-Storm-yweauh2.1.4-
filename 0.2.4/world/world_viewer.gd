@@ -20,47 +20,41 @@
 extends Node2D
 
 @export var seed_value: int = 12349
-@export var internal_res: int = 112   # Fast interactive resolution. 96-128 feels snappy. Use Q for a nice still at quality_res.
-@export var quality_res: int = 320    # Press Q for a one-shot high quality render (drops back to fast res for next interaction)
+@export var internal_res: int = 112
+@export var quality_res: int = 320
 
 var world: InfiniteNoiseWorld
 
-# --- View state (world space) ---
 var view_center := Vector2(0, 0)
-var units_per_pixel := 4.0          # World units represented by one texture pixel. Smaller = zoomed in.
+var units_per_pixel := 4.0
 
-# Texture rendering (the fast path)
 var map_view: TextureRect
 var map_image: Image
 var map_texture: ImageTexture
 
 enum ViewMode {
-	COMPOSITE,   # Best "overall design" view: biome colors + river channels popping + valley shading
-	BIOME,       # Pure biome coloring
-	HEIGHT,      # Height + fake slope shading (good for seeing carving quality)
-	RIVERS       # Emphasizes the thin channels + surrounding valleys (perfect for river validation)
+	COMPOSITE,
+	BIOME,
+	HEIGHT,
+	RIVERS
 }
 var current_mode: ViewMode = ViewMode.COMPOSITE
-var mode_names := ["COMPOSITE (design)", "BIOME", "HEIGHT + SLOPE", "RIVERS + VALLEYS (best river view)"]
+var mode_names := ["COMPOSITE (design)", "BIOME", "HEIGHT + SLOPE", "RIVERS (thin mask)"]
 
-# Panning / input state
 var is_panning := false
 var last_mouse_pos := Vector2.ZERO
 var needs_regen := true
 
 var last_regen_time_ms := 0
-const REGEN_THROTTLE_MS := 45          # Cap interactive updates ~22 fps while dragging/panning hard
+const REGEN_THROTTLE_MS := 45
 
-# For incremental panning optimization (huge speedup)
 var prev_view_center := Vector2.ZERO
 var prev_units_per_pixel := 4.0
 
-# Threaded full-regen support (the map stays responsive while heavy sampling happens in background)
 var _regen_thread: Thread = null
 var _pending_image: Image = null
 var _regen_mutex := Mutex.new()
 
-# On-screen debug UI (screen-space via CanvasLayer)
 var hud_label: Label
 var inspector_label: Label
 var mode_label: Label
@@ -71,37 +65,18 @@ const MAX_UNITS_PER_PIXEL := 28.0
 
 func _ready():
 	world = InfiniteNoiseWorld.new(seed_value)
-	view_center = Vector2(0, 0)
-	units_per_pixel = BASE_UNITS_PER_PIXEL
-	
 	_create_map_view()
 	_setup_debug_ui()
 	
-	# Hide the old TileMapLayer if present (we use the fast texture path now)
 	if has_node("TileMapLayer"):
 		$TileMapLayer.visible = false
 	
 	await get_tree().process_frame
-	_regenerate(true)   # force the very first view
+	_regenerate(true)
 	_update_hud()
 	_print_world_stats()
-	
-	print("=== Fast World Design Viewer (texture-based, high perf) ===")
-	print("Controls:")
-	print("  Drag (LMB/MMB) or WASD/Arrows (+Shift) : pan view")
-	print("  Mouse wheel : zoom (smaller units/pixel = more detail)")
-	print("  R / + / - : inc/dec seed    |   Space : random seed")
-	print("  1-4 or M / Tab : cycle view modes (COMPOSITE is recommended for design checks)")
-	print("  Q : one high-quality render at %d (then drops back to fast %d)" % [quality_res, internal_res])
-	print("  S : print rich design snapshot (biomes, rivers, carving quality)")
-	print("  Mouse : live inspector with exact values + river channel info")
-	print("Interactive res: %d (very fast panning via strip scrolling + throttle)." % internal_res)
-	print("Tip: Drag feels smooth now. Zoom out for macro view. Q when you want to scrutinize a still frame.")
-	print("FINAL BEST RIVERS: Use BIOME + COMPOSITE for the full corridor (linear biome features + valleys). RIVERS mode for the clean thin contained water ribbons. Rivers are now as majestic, seamless, and geography-integrated as the system allows.")
 
 func _create_map_view():
-	# Primary fast visual: a TextureRect driven by a generated ImageTexture.
-	# This replaces the old slow TileMap cell-by-cell approach.
 	if has_node("MapView"):
 		map_view = $MapView
 	else:
@@ -111,12 +86,9 @@ func _create_map_view():
 		map_view.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		add_child(map_view)
 	
-	# Make the map take most of the screen. HUD labels live in a CanvasLayer on top.
 	map_view.size = get_viewport_rect().size * 0.96
 	map_view.position = Vector2(10, 10)
 	map_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	
-	# Optional: connect to resize for niceness
 	get_viewport().size_changed.connect(_on_viewport_resized)
 
 func _on_viewport_resized():
@@ -125,7 +97,6 @@ func _on_viewport_resized():
 	needs_regen = true
 
 func _setup_debug_ui():
-	# Screen-space UI that never moves with the world view.
 	var canvas = CanvasLayer.new()
 	canvas.name = "DebugCanvas"
 	canvas.layer = 10
@@ -133,48 +104,35 @@ func _setup_debug_ui():
 	
 	hud_label = Label.new()
 	hud_label.position = Vector2(12, 8)
-	hud_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0))
+	hud_label.add_theme_color_override("font_color", Color(1,1,1))
 	hud_label.add_theme_font_size_override("font_size", 13)
-	hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas.add_child(hud_label)
 	
 	inspector_label = Label.new()
 	inspector_label.position = Vector2(12, 92)
-	inspector_label.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
-	inspector_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0))
+	inspector_label.add_theme_color_override("font_color", Color(1,0.95,0.7))
 	inspector_label.add_theme_font_size_override("font_size", 12)
-	inspector_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas.add_child(inspector_label)
 	
 	mode_label = Label.new()
 	mode_label.position = Vector2(12, 58)
-	mode_label.add_theme_color_override("font_color", Color(0.6, 1, 0.9))
-	mode_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0))
+	mode_label.add_theme_color_override("font_color", Color(0.6,1,0.9))
 	mode_label.add_theme_font_size_override("font_size", 12)
-	mode_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	canvas.add_child(mode_label)
 
 func _process(_delta):
-	# Keyboard pan (screen-space world units)
 	var move_dir := Vector2.ZERO
-	if Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D):
-		move_dir.x += 1
-	if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A):
-		move_dir.x -= 1
-	if Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S):
-		move_dir.y += 1
-	if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W):
-		move_dir.y -= 1
+	if Input.is_action_pressed("ui_right") or Input.is_key_pressed(KEY_D): move_dir.x += 1
+	if Input.is_action_pressed("ui_left") or Input.is_key_pressed(KEY_A): move_dir.x -= 1
+	if Input.is_action_pressed("ui_down") or Input.is_key_pressed(KEY_S): move_dir.y += 1
+	if Input.is_action_pressed("ui_up") or Input.is_key_pressed(KEY_W): move_dir.y -= 1
 
 	if move_dir.length() > 0:
 		var speed := 420.0 * units_per_pixel
-		if Input.is_key_pressed(KEY_SHIFT):
-			speed *= 3.2
+		if Input.is_key_pressed(KEY_SHIFT): speed *= 3.2
 		view_center += move_dir.normalized() * speed * _delta
 		needs_regen = true
-		is_panning = true
-	
+
 	if needs_regen:
 		_regenerate()
 		needs_regen = false
@@ -184,37 +142,29 @@ func _process(_delta):
 
 func _input(event):
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_MIDDLE or event.button_index == MOUSE_BUTTON_LEFT:
+		if event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_MIDDLE]:
 			is_panning = event.pressed
 			last_mouse_pos = event.position
 			if not is_panning:
-				# Finished a drag — allow one final high-quality-ish update soon
 				needs_regen = true
 
-		# Zoom (wheel). We work in world units per texture pixel — very intuitive for design viewing.
-		if event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			units_per_pixel = max(MIN_UNITS_PER_PIXEL, units_per_pixel * 0.82)
 			needs_regen = true
-		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			units_per_pixel = min(MAX_UNITS_PER_PIXEL, units_per_pixel * 1.22)
 			needs_regen = true
-	
+
 	if event is InputEventMouseMotion and is_panning:
-		var delta = event.position - last_mouse_pos
-		# Dragging moves the world under the cursor (standard map pan feel)
-		view_center -= delta * units_per_pixel
+		view_center -= (event.position - last_mouse_pos) * units_per_pixel
 		last_mouse_pos = event.position
 		needs_regen = true
-		is_panning = true
-	
+
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_R:
+		if event.keycode == KEY_R or event.keycode in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
 			seed_value += 1
 			_change_seed()
-		elif event.keycode == KEY_EQUAL or event.keycode == KEY_PLUS or event.keycode == KEY_KP_ADD:
-			seed_value += 1
-			_change_seed()
-		elif event.keycode == KEY_MINUS or event.keycode == KEY_KP_SUBTRACT:
+		elif event.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
 			seed_value -= 1
 			_change_seed()
 		elif event.keycode == KEY_SPACE:
@@ -229,8 +179,16 @@ func _input(event):
 
 func _change_seed():
 	world = InfiniteNoiseWorld.new(seed_value)
-	_regenerate(true)   # force immediate full (even if throttled)
-	print("Regenerated world with seed:", seed_value)
+	_clear_caches()
+	_regenerate(true)
+	print("Regenerated with seed:", seed_value)
+
+func _clear_caches():
+	if world:
+		world._surface_cache.clear()
+		world._tile_cache.clear()
+		world._biome_cache.clear()
+		print("All caches cleared for fresh height/river computation")
 
 func _cycle_view_mode():
 	current_mode = (current_mode + 1) % ViewMode.size() as ViewMode
@@ -238,92 +196,79 @@ func _cycle_view_mode():
 	_update_hud()
 
 func _force_quality_render():
-	# One-off expensive high-res render for when you want to scrutinize details
 	var old_res = internal_res
 	internal_res = quality_res
+	
+	# Force full recreation of image + texture
+	map_image = null
+	map_texture = null
+	
 	_regenerate(true)
 	internal_res = old_res
-	print("High-quality render done at %d px (next interaction will drop back to fast res %d)" % [quality_res, internal_res])
+	print("Quality render (", quality_res, " res)")
 
-func _regenerate(force_full: bool = false):
+func _regenerate(force_full := false):
+	if force_full:
+		_clear_caches()  # force fresh heights + rivers
 	if not map_view:
 		return
+		# Safety: ensure image matches current resolution
+	var res = clamp(internal_res, 96, 512)
+	if map_image == null or map_image.get_width() != res or map_image.get_height() != res:
+		map_image = Image.create(res, res, false, Image.FORMAT_RGBA8)
+		map_texture = null  # force new texture
 
-	# Throttle during heavy interaction (panning/keyboard) unless forced (seed change, quality, mode)
-	var now: int = Time.get_ticks_msec()
+	var now = Time.get_ticks_msec()
 	if not force_full and is_panning and (now - last_regen_time_ms) < REGEN_THROTTLE_MS:
 		return
 
-	var res: int = clamp(internal_res, 96, 512)
-	var img_w: int = res
-	var img_h: int = res
+	var img_w = res
+	var img_h = res
 
-	var need_new_image: bool = (map_image == null or map_image.get_width() != img_w or map_image.get_height() != img_h)
+	var need_new_image = (map_image == null or map_image.get_width() != img_w or map_image.get_height() != img_h)
 	if need_new_image:
 		map_image = Image.create(img_w, img_h, false, Image.FORMAT_RGBA8)
 
-	var half_extent_x: float = (img_w * units_per_pixel) * 0.5
-	var half_extent_y: float = (img_h * units_per_pixel) * 0.5
-	var left: float = view_center.x - half_extent_x
-	var top: float  = view_center.y - half_extent_y
+	var half_x = (img_w * units_per_pixel) * 0.5
+	var half_y = (img_h * units_per_pixel) * 0.5
+	var left = view_center.x - half_x
+	var top = view_center.y - half_y
 
-	var did_scroll_update: bool = false
-
-	# === Major speedup #1: scroll the old image + only sample the new strips ===
-	# Only possible if same zoom level and we have a previous image of the right size.
-	if not need_new_image and not force_full and abs(units_per_pixel - prev_units_per_pixel) < 0.0001 and map_image:
-		var dx: float = (prev_view_center.x - view_center.x) / units_per_pixel   # positive = view moved left → image content shifts right
-		var dy: float = (prev_view_center.y - view_center.y) / units_per_pixel
-		var sx: int = roundi(dx)
-		var sy: int = roundi(dy)
-
+	if not need_new_image and not force_full and abs(units_per_pixel - prev_units_per_pixel) < 0.0001:
+		var dx = (prev_view_center.x - view_center.x) / units_per_pixel
+		var dy = (prev_view_center.y - view_center.y) / units_per_pixel
+		var sx = roundi(dx)
+		var sy = roundi(dy)
 		if abs(sx) < img_w * 0.92 and abs(sy) < img_h * 0.92:
-			# We can reuse most pixels — huge win while dragging
 			_scroll_and_fill_strips(map_image, sx, sy, left, top, units_per_pixel, img_w, img_h)
-			did_scroll_update = true
+			# continue with texture update below
 
-	# === Major speedup #2: adaptive coarse stepping when zoomed out (or always for fast res) ===
-	var sample_step: int = 1
-	if not did_scroll_update:
-		if internal_res <= 128:
-			sample_step = 2   # 4x fewer expensive world samples — biggest free win for interactive speed
-		if units_per_pixel > 8.0:
-			sample_step = max(sample_step, 2)
-		if units_per_pixel > 14.0:
-			sample_step = max(sample_step, 3)
+	var sample_step = 1
+	if internal_res <= 128 or units_per_pixel > 8.0:
+		sample_step = 2
 
-	if not did_scroll_update:
-		if force_full:
-			# Forced (seed, mode, Q) — do it now at current (low) res so user sees result right away
-			var t0: int = Time.get_ticks_usec()
-			for y in range(0, img_h, sample_step):
-				for x in range(0, img_w, sample_step):
-					var wx: float = left + (x + 0.5) * units_per_pixel
-					var wz: float = top  + (y + 0.5) * units_per_pixel
-					var col: Color = _sample_design_color(wx, wz)
-
-					var x_end: int = min(img_w, x + sample_step)
-					var y_end: int = min(img_h, y + sample_step)
-					for yy in range(y, y_end):
-						for xx in range(x, x_end):
+	if force_full:
+		for y in range(0, img_h, sample_step):
+			for x in range(0, img_w, sample_step):
+				var wx = left + (x + 0.5) * units_per_pixel
+				var wz = top + (y + 0.5) * units_per_pixel
+				var col = _sample_design_color(wx, wz)
+				for yy in range(y, y + sample_step):
+					for xx in range(x, x + sample_step):
+						if xx < img_w and yy < img_h:
 							map_image.set_pixel(xx, yy, col)
-			var dt: float = (Time.get_ticks_usec() - t0) / 1000.0
-			if dt > 12.0:
-				print("Full regen: %.1f ms  (step=%d  res=%d)" % [dt, sample_step, res])
-		else:
-			# Normal interactive full regen → background thread so dragging never stutters
-			_start_threaded_regen(res, left, top, units_per_pixel, current_mode)
-			last_regen_time_ms = now
-			prev_view_center = view_center
-			prev_units_per_pixel = units_per_pixel
-			return   # old image + strip updates keep the view alive; thread will swap when ready
+	else:
+		_start_threaded_regen(res, left, top, units_per_pixel, current_mode)
+		last_regen_time_ms = now
+		prev_view_center = view_center
+		prev_units_per_pixel = units_per_pixel
+		return
 
-	# Blit to texture (cheap) — only reached for sync paths
+	# Update texture
 	if map_texture == null:
 		map_texture = ImageTexture.create_from_image(map_image)
 	else:
 		map_texture.update(map_image)
-
 	map_view.texture = map_texture
 	map_view.size = get_viewport_rect().size * 0.96
 
@@ -331,44 +276,37 @@ func _regenerate(force_full: bool = false):
 	prev_view_center = view_center
 	prev_units_per_pixel = units_per_pixel
 
-# -------------------------------------------------------------------
-# Threaded full regeneration helpers (map stays interactive)
-# -------------------------------------------------------------------
-
 func _start_threaded_regen(res: int, left: float, top: float, upp: float, mode: ViewMode):
 	if _regen_thread and _regen_thread.is_alive():
 		return
-
 	_regen_mutex.lock()
 	_pending_image = null
 	_regen_mutex.unlock()
 
 	_regen_thread = Thread.new()
-	var params: Dictionary = {"seed": seed_value, "res": res, "left": left, "top": top, "upp": upp, "mode": mode}
+	var params = {"seed": seed_value, "res": res, "left": left, "top": top, "upp": upp, "mode": mode}
 	_regen_thread.start(_thread_regen_worker.bind(params))
 
 func _thread_regen_worker(params: Dictionary):
 	var sw = InfiniteNoiseWorld.new(params.seed)
-	var r: int = params.res
-	var l: float = params.left
-	var t: float = params.top
-	var u: float = params.upp
-	var m: ViewMode = params.mode
+	var r = params.res
+	var l = params.left
+	var t = params.top
+	var u = params.upp
+	var m = params.mode
 
-	var img: Image = Image.create(r, r, false, Image.FORMAT_RGBA8)
-	var sstep: int = 1
-	if r <= 128: sstep = 2
+	var img = Image.create(r, r, false, Image.FORMAT_RGBA8)
+	var sstep = 2 if r <= 128 else 1
 
 	for y in range(0, r, sstep):
 		for x in range(0, r, sstep):
-			var wx: float = l + (x + 0.5) * u
-			var wz: float = t + (y + 0.5) * u
-			var col: Color = _thread_sample_color(sw, wx, wz, m)
-			var xe = min(r, x + sstep)
-			var ye = min(r, y + sstep)
-			for yy in range(y, ye):
-				for xx in range(x, xe):
-					img.set_pixel(xx, yy, col)
+			var wx = l + (x + 0.5) * u
+			var wz = t + (y + 0.5) * u
+			var col = _thread_sample_color(sw, wx, wz, m)
+			for yy in range(y, y + sstep):
+				for xx in range(x, x + sstep):
+					if xx < r and yy < r:
+						img.set_pixel(xx, yy, col)
 
 	_regen_mutex.lock()
 	_pending_image = img
@@ -377,7 +315,7 @@ func _thread_regen_worker(params: Dictionary):
 
 func _apply_threaded_result():
 	_regen_mutex.lock()
-	var new_img: Image = _pending_image
+	var new_img = _pending_image
 	_pending_image = null
 	_regen_mutex.unlock()
 
@@ -395,31 +333,85 @@ func _apply_threaded_result():
 		_regen_thread.wait_to_finish()
 		_regen_thread = null
 
-# Minimal duplicated samplers for the worker thread (only needs a temp InfiniteNoiseWorld)
 func _thread_sample_color(sw: InfiniteNoiseWorld, wx: float, wz: float, mode: ViewMode) -> Color:
 	match mode:
 		ViewMode.BIOME:
-			var b: Dictionary = sw.get_biome_uncached(wx, 0.0, wz)
-			var nm: String = b.get("name", "plains")
-			match nm:
-				"plains": return Color(0.58, 0.78, 0.42)
-				"forest": return Color(0.18, 0.42, 0.18)
-				"steppe": return Color(0.78, 0.72, 0.38)
-				"marsh": return Color(0.28, 0.48, 0.42)
-				"mountain": return Color(0.52, 0.50, 0.48)
-				_: return Color(0.6, 0.6, 0.55)
+			var b = sw.get_biome_uncached(wx, 0.0, wz)
+			return _biome_color(b.get("name", "plains"))
 		ViewMode.HEIGHT:
-			var hh := sw.get_surface_height_uncached(wx, wz)
-			return _thread_height_color(sw, wx, wz, hh)
+			var h = sw.get_surface_height_uncached(wx, wz)
+			return _height_shaded_color(sw, wx, wz, h)
 		ViewMode.RIVERS:
-			var hh := sw.get_surface_height_uncached(wx, wz)
-			var ri: Dictionary = sw._compute_river_carve(wx, wz, sw._compute_raw_elevation(wx, wz)) if sw.has_method("_compute_river_carve") else {}
-			return _thread_rivers_color(sw, wx, wz, hh, ri)
+			var h = sw.get_surface_height_uncached(wx, wz)
+			var rmask = sw.get_river_mask(wx, wz) if sw.has_method("get_river_mask") else {"active": false, "strength": 0.0}
+			return _thread_rivers_color_new(sw, wx, wz, h, rmask)
 		_:
-			var hh := sw.get_surface_height_uncached(wx, wz)
+			var h: float = sw.get_surface_height_uncached(wx, wz)
 			var b: Dictionary = sw.get_biome_uncached(wx, 0.0, wz)
-			var ri: Dictionary = sw._compute_river_carve(wx, wz, sw._compute_raw_elevation(wx, wz)) if sw.has_method("_compute_river_carve") else {}
-			return _thread_composite_color(b.get("name", "plains"), hh, ri, sw, wx, wz)
+			
+			var river_mask_dict: Dictionary = sw.get_river_mask(wx, wz) if sw.has_method("get_river_mask") else {"active": false}
+			var river = sw._compute_river_carve(wx, wz, h) if sw.has_method("_compute_river_carve") else {"carve": 0.0}
+			
+			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(sw.RIVER_MIN_CARVE_FOR_TILE if "RIVER_MIN_CARVE_FOR_TILE" in sw else 0.48, 4.0)
+			
+			if is_river_tile:
+				return Color(0.05, 0.75, 1.0)
+			
+			return _composite_design_color(b.get("name", "plains"), h, wx, wz)
+
+func _thread_rivers_color_new(sw: InfiniteNoiseWorld, wx: float, wz: float, h: float, rmask: Dictionary) -> Color:
+	var active = rmask.get("active", false)
+	var strength = rmask.get("strength", 0.0)
+	var base = _height_shaded_color(sw, wx, wz, h)
+	if active:
+		base = base.lerp(Color(0.05, 0.92, 1.0), strength * 0.95)
+		if strength > 0.7:
+			base = base.darkened(0.2)
+	return base
+
+func _height_shaded_color(sw: InfiniteNoiseWorld, wx: float, wz: float, h: float) -> Color:
+	var du: float = 8.0
+	var hr: float = sw.get_surface_height_uncached(wx + du, wz)
+	var hd: float = sw.get_surface_height_uncached(wx, wz + du)
+	var slope: float = abs(hr - h) + abs(hd - h)
+	
+	var t: float = clamp((h + 8.0) / 130.0, 0.0, 1.0)
+	var base: Color = Color(0.15, 0.12, 0.08).lerp(Color(0.95, 0.93, 0.88), t)
+	
+	var light: float = 0.55 + 0.45 * clamp(1.0 - slope / 18.0, 0.0, 1.0)
+	base.r *= light
+	base.g *= light
+	base.b *= light
+	
+	if h < 32:
+		base = base.lerp(Color(0.2, 0.35, 0.5), clamp((32.0 - h) / 45.0, 0.0, 0.55))
+	return base
+
+func _composite_design_color(bname: String, h: float, wx: float, wz: float) -> Color:
+	var base: Color = _biome_color(bname)
+	var t: float = clamp((h + 6.0) / 125.0, 0.0, 1.0)
+	base = base.lerp(base.darkened(0.35).lightened(0.15), t * 0.65)
+	
+	# River check for Composite mode (new mask)
+	var is_river = false
+	if world.has_method("get_river_mask"):
+		var rmask = world.get_river_mask(wx, wz)
+		is_river = rmask.get("active", false)
+	
+	if is_river:
+		base = base.lerp(Color(0.08, 0.88, 0.98), 0.92)  # bright cyan river
+		base = base.darkened(0.1)
+	
+	return base
+
+func _biome_color(name: String) -> Color:
+	match name:
+		"plains": return Color(0.58, 0.78, 0.42)
+		"forest": return Color(0.18, 0.42, 0.18)
+		"steppe": return Color(0.78, 0.72, 0.38)
+		"marsh": return Color(0.28, 0.48, 0.42)
+		"mountain": return Color(0.52, 0.50, 0.48)
+		_: return Color(0.6, 0.6, 0.55)
 
 func _thread_height_color(sw: InfiniteNoiseWorld, wx: float, wz: float, h: float) -> Color:
 	var du: float = 8.0
@@ -563,7 +555,6 @@ func _update_inspector():
 		return
 	
 	var mouse_screen: Vector2 = get_viewport().get_mouse_position()
-	# Map from screen mouse to our TextureRect area (approximate full view for simplicity)
 	var vp: Vector2 = get_viewport_rect().size
 	var norm: Vector2 = Vector2(mouse_screen.x / max(vp.x, 1), mouse_screen.y / max(vp.y, 1))
 	
@@ -574,24 +565,25 @@ func _update_inspector():
 	
 	var h: float = world.get_surface_height_uncached(wx, wz)
 	var b: Dictionary = world.get_biome_uncached(wx, 0.0, wz)
-	var r: float = world.get_river_mask(wx, wz)
-	var rinfo: Dictionary = {}
-	if world.has_method("_compute_river_carve"):
-		rinfo = world._compute_river_carve(wx, wz, world._compute_raw_elevation(wx, wz))
 	
 	var bname: String = b.get("name", "???")
 	var t: int = world.get_tile_type_uncached(wx, wz)
 	
-	var extra: String = ""
-	if rinfo:
-		extra = "  carve:%.1f  rf:%.2f  is_river:%s  dist_center:%.1f  on_band:%s  corr:%.2f" % [
-			rinfo.get("carve", 0.0), rinfo.get("river_factor", 0.0), str(rinfo.get("is_river", false)),
-			rinfo.get("dist_to_center", -1.0), str(rinfo.get("on_defined_river", false)),
-			rinfo.get("corridor_factor", 0.0)
-		]
+	var river_strength: float = 0.0
+	var is_river_active: bool = false
 	
-	inspector_label.text = "Mouse: (%.0f, %.0f)   h:%.0f   tile:%d   biome:%s   river:%.2f%s" % [
-		wx, wz, h, t, bname, r, extra
+	if world.has_method("get_river_mask"):
+		var rmask: Dictionary = world.get_river_mask(wx, wz)
+		river_strength = rmask.get("strength", 0.0)
+		is_river_active = rmask.get("active", false)
+	
+	# Global tile coordinates
+	var global_tile_x: int = int(floor(wx))
+	var global_tile_z: int = int(floor(wz))
+	
+	inspector_label.text = """Mouse world: (%.0f, %.0f)   Global tile: (%d, %d)
+h:%.0f   tile:%d   biome:%s   river:%.2f (active:%s)""" % [
+		wx, wz, global_tile_x, global_tile_z, h, t, bname, river_strength, str(is_river_active)
 	]
 
 func _print_world_stats():
@@ -623,7 +615,8 @@ func _print_world_stats():
 			var t: int = world.get_tile_type_uncached(wx, wz)
 			var hh: float = world.get_surface_height_uncached(wx, wz)
 			var rinfo: Dictionary = world._compute_river_carve(wx, wz, world._compute_raw_elevation(wx, wz)) if world.has_method("_compute_river_carve") else {}
-			var is_riv: bool = rinfo.get("is_river", false)
+			var river_mask = world.get_river_mask(wx, wz) if world.has_method("get_river_mask") else {"active": false}
+			var is_riv: bool = river_mask.get("active", false)
 			var crv: float = rinfo.get("carve", 0.0)
 			
 			if is_riv:
@@ -758,97 +751,43 @@ func _sample_design_color(wx: float, wz: float) -> Color:
 			var b: Dictionary = world.get_biome_uncached(wx, 0.0, wz)
 			return _biome_color(b.get("name", "plains"))
 		ViewMode.HEIGHT:
-			var h := world.get_surface_height_uncached(wx, wz)
-			return _height_shaded_color(wx, wz, h)
+			var h: float = world.get_surface_height_uncached(wx, wz)
+			return _height_shaded_color(world, wx, wz, h)
 		ViewMode.RIVERS:
-			var h := world.get_surface_height_uncached(wx, wz)
-			var rinfo: Dictionary = world._compute_river_carve(wx, wz, world._compute_raw_elevation(wx, wz)) if world.has_method("_compute_river_carve") else {}
-			return _rivers_valleys_color(wx, wz, h, rinfo)
+			var h: float = world.get_surface_height_uncached(wx, wz)
+			var rmask: Dictionary = world.get_river_mask(wx, wz) if world.has_method("get_river_mask") else {"active": false, "strength": 0.0}
+			return _thread_rivers_color_new(world, wx, wz, h, rmask)
 		_:
-			# COMPOSITE — the primary "world design" view
-			var h := world.get_surface_height_uncached(wx, wz)
+			var h: float = world.get_surface_height_uncached(wx, wz)
 			var b: Dictionary = world.get_biome_uncached(wx, 0.0, wz)
-			var rinfo: Dictionary = world._compute_river_carve(wx, wz, world._compute_raw_elevation(wx, wz)) if world.has_method("_compute_river_carve") else {}
-			return _composite_design_color(b.get("name", "plains"), h, rinfo, wx, wz)
-
-func _biome_color(name: String) -> Color:
-	match name:
-		"plains": return Color(0.58, 0.78, 0.42)
-		"forest": return Color(0.18, 0.42, 0.18)
-		"steppe": return Color(0.78, 0.72, 0.38)
-		"marsh": return Color(0.28, 0.48, 0.42)
-		"mountain": return Color(0.52, 0.50, 0.48)
-		_: return Color(0.6, 0.6, 0.55)
-
-func _height_shaded_color(wx: float, wz: float, h: float) -> Color:
-	# Simple height + local slope shading (great for seeing how well carving creates interesting topography)
-	var du: float = units_per_pixel * 1.6
-	var h_r: float = world.get_surface_height_uncached(wx + du, wz)
-	var h_d: float = world.get_surface_height_uncached(wx, wz + du)
-	var slope: float = abs(h_r - h) + abs(h_d - h)
-	
-	var t: float = clamp((h + 8.0) / 130.0, 0.0, 1.0)
-	var base: Color = Color(0.15, 0.12, 0.08).lerp(Color(0.95, 0.93, 0.88), t)
-	
-	var light: float = 0.55 + 0.45 * clamp(1.0 - slope / 18.0, 0.0, 1.0)
-	base.r *= light
-	base.g *= light
-	base.b *= light
-	
-	# Subtle blue tint in very low areas (valleys / possible river locations)
-	if h < 32:
-		base = base.lerp(Color(0.2, 0.35, 0.5), clamp((32.0 - h) / 45.0, 0.0, 0.55))
-	return base
+			
+			# Exact match to game logic
+			var river_mask_dict: Dictionary = world.get_river_mask(wx, wz) if world.has_method("get_river_mask") else {"active": false}
+			var river = world._compute_river_carve(wx, wz, h) if world.has_method("_compute_river_carve") else {"carve": 0.0}
+			
+			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(world.RIVER_MIN_CARVE_FOR_TILE, 4.0)
+			
+			if is_river_tile:
+				return Color(0.05, 0.75, 1.0)
+			
+			return _composite_design_color(b.get("name", "plains"), h, wx, wz)
 
 func _rivers_valleys_color(wx: float, wz: float, h: float, rinfo: Dictionary) -> Color:
 	var is_riv: bool = rinfo.get("is_river", false)
 	var rfac: float = rinfo.get("river_factor", 0.0)
 	var crv: float = rinfo.get("carve", 0.0)
 	
-	# Base terrain with valley shading
-	var base: Color = _height_shaded_color(wx, wz, h)
+	var base: Color = _height_shaded_color(world, wx, wz, h)  # ← Fixed
 	
 	if is_riv:
-		# The actual thin river channel — make it pop brightly
 		var river_col: Color = Color(0.15, 0.82, 0.95)
 		var strength: float = clamp(0.6 + rfac * 0.5, 0.0, 1.0)
 		base = base.lerp(river_col, strength)
-		# Extra dark "wet" core
 		if crv > 4.0:
 			base = base.darkened(0.25)
 	elif crv > 2.5:
-		# Valley / floodplain around the channel (not water, just lowered terrain)
 		var valley_tint: Color = Color(0.25, 0.42, 0.48)
 		base = base.lerp(valley_tint, clamp((crv - 2.0) / 11.0, 0.0, 0.55))
-	
-	return base
-
-func _composite_design_color(bname: String, h: float, rinfo: Dictionary, wx: float, wz: float) -> Color:
-	var base: Color = _biome_color(bname)
-	var is_riv: bool = rinfo.get("is_river", false)
-	var rfac: float = rinfo.get("river_factor", 0.0)
-	var crv: float = rinfo.get("carve", 0.0)
-	
-	# Gentle height shading on top of biome
-	var t: float = clamp((h + 6.0) / 125.0, 0.0, 1.0)
-	base = base.lerp(base.darkened(0.35).lightened(0.15), t * 0.65)
-	
-	# Valley depression shading (helps see where the new river system is carving)
-	if crv > 1.8 and not is_riv:
-		var v: float = clamp((crv - 1.5) / 10.0, 0.0, 0.65)
-		base = base.darkened(0.15 + v * 0.35)
-		base = base.lerp(Color(0.22, 0.38, 0.42), v * 0.6)
-	
-	# The important part for the recent river work: thin bright channels
-	if is_riv:
-		var riv: Color = Color(0.12, 0.88, 0.98)
-		base = base.lerp(riv, clamp(0.55 + rfac * 0.45, 0.0, 0.95))
-		if crv > 5.0:
-			base = base.darkened(0.18)
-	
-	# Very high mountains get a little snow cap tint
-	if h > 95 and (bname == "mountain" or bname == "ridge"):
-		base = base.lerp(Color(0.92, 0.95, 0.98), clamp((h - 95) / 45.0, 0.0, 0.6))
 	
 	return base
 

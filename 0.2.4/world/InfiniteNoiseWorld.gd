@@ -83,6 +83,11 @@ var _river_valley: FastNoiseLite
 var _river_warp_x: FastNoiseLite
 var _river_warp_z: FastNoiseLite
 
+var _river_mask_noise: FastNoiseLite
+var _river_noise: FastNoiseLite
+var _river_length_noise: FastNoiseLite
+var _river_width_noise: FastNoiseLite
+
 var _cave_tunnel: FastNoiseLite
 var _cave_room: FastNoiseLite
 var _surface_variation: FastNoiseLite   # small high-freq for micro detail on surface
@@ -184,6 +189,36 @@ func _setup_noise():
 	_river_warp_z.frequency = 1.25 * (92.0 / BIOME_SCALE)
 	_river_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_warp_z.fractal_octaves = 2
+	
+	_river_mask_noise = FastNoiseLite.new()
+	_river_mask_noise.seed = world_seed + 650
+	_river_mask_noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_mask_noise.frequency = 0.042 / (BIOME_SCALE / 920.0)
+	_river_mask_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_mask_noise.fractal_octaves = 5
+	_river_mask_noise.fractal_gain = 0.45
+	
+	_river_noise = FastNoiseLite.new()
+	_river_noise.seed = world_seed + 7000
+	_river_noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_noise.frequency = 0.9 / BIOME_SCALE
+	_river_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_noise.fractal_octaves = 4
+	_river_noise.fractal_gain = 0.5
+
+	_river_length_noise = FastNoiseLite.new()
+	_river_length_noise.seed = world_seed + 7100
+	_river_length_noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_length_noise.frequency = 0.45 / BIOME_SCALE
+	_river_length_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_length_noise.fractal_octaves = 2
+
+	_river_width_noise = FastNoiseLite.new()
+	_river_width_noise.seed = world_seed + 7050
+	_river_width_noise.noise_type = FastNoiseLite.TYPE_PERLIN
+	_river_width_noise.frequency = 2.4 / BIOME_SCALE
+	_river_width_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	_river_width_noise.fractal_octaves = 2
 
 	# === CAVES - now scale-aware ===
 	_cave_tunnel = FastNoiseLite.new()
@@ -250,6 +285,26 @@ func _compute_raw_elevation(wx: float, wz: float) -> float:
 
 	var raw: float = base_h + mountain + detail + micro
 	return clamp(raw, -12.0, MAX_HEIGHT)
+
+func get_river_mask(wx: float, wz: float) -> Dictionary:
+	var r: float = _river_noise.get_noise_2d(wx, wz)
+	var len_mod: float = _river_length_noise.get_noise_2d(wx * 0.65, wz * 0.65)
+	var width_var: float = (_river_width_noise.get_noise_2d(wx * 2.1, wz * 2.1) + 1.0) * 0.5
+	
+	# Distance from zero-crossing (ridge line) for thin, natural strips
+	var dist: float = abs(r)
+	var threshold: float = 0.026   # ~5-9 tiles wide at BIOME_SCALE=920
+	
+	# Add gentle meander bias and length modulation
+	var active: bool = dist < threshold and len_mod > -0.32
+	
+	var strength: float = 0.0
+	if active:
+		strength = 1.0 - (dist / threshold) * 0.65
+		# Variable width + slight taper
+		strength = clamp(strength * (0.7 + width_var * 0.55), 0.0, 1.0)
+	
+	return {"active": active, "strength": strength, "dist": dist}
 
 func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
 	# Returns {carve: float, is_river: bool, water_depth: float, river_factor: float}
@@ -447,13 +502,17 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 	var surf: float = get_surface_height_uncached(wx, wz)   # use uncached inside uncached path
 	var biome: Dictionary = get_biome_uncached(wx, 0.0, wz)
 	var bname: String = biome.get("name", "plains")
-	var river: Dictionary = _compute_river_carve(wx, wz, surf)
 
 	# River / water surface.
 	# Density + commonality now controlled by the redesigned river feature system consts
 	# (RIVER_FREQ, *_POWER, RIVER_SURFACE_TILE_THRESHOLD etc.) so that RIVER tiles
 	# appear roughly as often as any single biome.
-	if river.river_factor > RIVER_SURFACE_TILE_THRESHOLD and river.carve > RIVER_MIN_CARVE_FOR_TILE:
+# Hybrid river: mask for clean ribbons + carve for valleys
+	var river_mask_dict: Dictionary = get_river_mask(wx, wz)
+	var river: Dictionary = _compute_river_carve(wx, wz, surf)
+
+	# More rivers visible — require mask OR strong carve
+	if river_mask_dict.get("active", false) or river.carve > 6.0:
 		return VoxelTypes.RIVER
 
 	# Cave mouth / exposed stone on surface (strong near-surface cave or very steep)
@@ -509,11 +568,6 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 
 	var id: int = VoxelTypes.biome_to_voxel_id.get(name, VoxelTypes.GRASSLAND3)
 	return id
-
-# Legacy simple river mask kept for any external/debug use and get_biome river boost
-func get_river_mask(wx: float, wz: float) -> float:
-	var info: Dictionary = _compute_river_carve(wx, wz, _compute_raw_elevation(wx, wz))
-	return clamp(info.river_factor, 0.0, 1.0)
 
 # -----------------------------
 # FULL VOLUMETRIC VOXEL API (the future-proof heart of the best worldgen)

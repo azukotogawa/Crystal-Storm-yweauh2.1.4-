@@ -302,6 +302,9 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 					run_start = -1
 
 func _generate_chunk(data: ChunkData):
+	if world:
+		world._surface_cache.clear()
+		world._tile_cache.clear()
 	# Compute the 16x16 surface + tile maps using uncached noise.
 	# This moves the (unavoidable first-time) noise work into the bg worker instead of
 	# blocking the main thread in ChunkData.new / request_chunk.

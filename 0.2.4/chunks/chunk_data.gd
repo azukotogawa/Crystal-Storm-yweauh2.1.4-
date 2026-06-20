@@ -12,7 +12,6 @@ var world: InfiniteNoiseWorld = null
 # Computed in bg worker for perf. Used everywhere for meshing, collision, etc.
 var surface_map: Array = []  # [x][z] -> int
 var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for this chunk)
-var river_ctx: RiverJobContext = null
 
 const SIZE := 16
 const HEIGHT := 160
