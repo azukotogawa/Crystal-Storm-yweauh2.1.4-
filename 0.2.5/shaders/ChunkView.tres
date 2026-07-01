@@ -1,0 +1,10 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://ci8fmo1m7l61r"]
+
+[ext_resource type="Shader" uid="uid://cf6rwmkeou4pb" path="res://shaders/ChunkView.gdshader" id="1_aoarl"]
+[ext_resource type="Texture2D" uid="uid://due21s6my7skf" path="res://assets/tiles/Cube.png" id="2_hp8tc"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_aoarl")
+shader_parameter/texture_atlas = ExtResource("2_hp8tc")
+shader_parameter/atlas_grid = Vector2(7, 10)
