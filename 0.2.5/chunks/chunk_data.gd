@@ -49,7 +49,6 @@ func _compute_column_maps(use_uncached: bool = true):
 			var wx := float(position.x * SIZE + x)
 			var wz := float(position.y * SIZE + z)
 			
-			# Force fresh computation for rivers
 			if use_uncached:
 				surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
 				tile_map[x][z] = world.get_tile_type_uncached(wx, wz)

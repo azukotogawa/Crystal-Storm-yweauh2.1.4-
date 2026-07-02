@@ -4,10 +4,14 @@ extends Node3D
 signal chunk_ready(coord: Vector2i, data: ChunkData)
 
 @export var RENDER_DISTANCE : int = 3
+@export var MESH_CAVES : bool = false
+@export var MAX_CHUNKS_PER_FRAME : int = 2
+@export var MAX_INFLIGHT_CHUNKS : int = 6
 
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var pending := {}
 var _chunk_tasks := {}  # coord -> WorkerThreadPool task id for async gen
+var _mesh_completion_queue: Array = []
 
 # Optimization: only update when player moves to new chunk
 var _last_chunk_key: Vector2i = Vector2i(-99999, -99999)
@@ -22,15 +26,15 @@ const _RAMP_DIRS := [
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 ]
 const _RAMP_STEP_MIN := 0.85
-const _RAMP_STEP_MAX := 1.2
+const _RAMP_STEP_MAX := 1.35
 const _RAMP_PLACEMENT_CHANCE := 38
-const _RAMP_VOXEL_STEPS := 8
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
 const _WB_TRANSITION := 240.0
 
 const FACE_TOP := 0
+const FACE_RAMP := 7
 const FACE_NEG_X := 3
 const FACE_POS_X := 4
 const FACE_NEG_Z := 5
@@ -85,7 +89,8 @@ func _build_mesh(data: ChunkData) -> Dictionary:
 	_greedy_mesh_plane(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads)
-	_emit_cave_faces(data, out_quads)
+	if MESH_CAVES:
+		_emit_cave_faces(data, out_quads)
 
 	return {
 		"quads": out_quads,
@@ -195,10 +200,6 @@ func _emit_ramps(data: ChunkData, out_quads: Array) -> void:
 
 			var dirs: Array = []
 			dirs.append_array(_RAMP_DIRS)
-			if _prefer_diagonal_ramp(world_x, world_z):
-				dirs.append_array([
-					Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
-				])
 			for dir in dirs:
 				var d: Vector2i = dir
 				var nh: float = _sample_height(data, x + d.x, z + d.y)
@@ -208,7 +209,20 @@ func _emit_ramps(data: ChunkData, out_quads: Array) -> void:
 				if not _should_place_ramp(world_x, world_z, d):
 					continue
 				data.set_ramp(x, z, d)
-				_emit_ramp_voxel_boxes(x, z, low_h, d, vox, out_quads)
+				out_quads.append({
+					"x": x,
+					"y": low_h,
+					"z": z,
+					"dim_x": 1.0,
+					"dim_y": 1.0,
+					"dim_z": 1.0,
+					"ramp_dir_x": d.x,
+					"ramp_dir_z": d.y,
+					"uv_w": 1.0,
+					"uv_h": 1.0,
+					"type": vox,
+					"face_code": FACE_RAMP,
+				})
 				break
 
 
@@ -233,128 +247,9 @@ func _append_voxel_face(
 	})
 
 
-func _emit_ramp_voxel_boxes(
-	x: int, z: int, low_h: float, dir: Vector2i, vox: int, out_quads: Array
-) -> void:
-	var steps := _RAMP_VOXEL_STEPS
-	var step := 1.0 / float(steps)
-	var dx := float(dir.x)
-	var dz := float(dir.y)
-	var x_axis := absf(dx) > 0.001
-	var z_axis := absf(dz) > 0.001
-
-	for i in steps:
-		var t0 := float(i) * step
-		var t1 := float(i + 1) * step
-		var ox: float
-		var oz: float
-		if x_axis:
-			ox = t0 if dx > 0.0 else 1.0 - t1
-		else:
-			ox = 0.0
-		if z_axis:
-			oz = t0 if dz > 0.0 else 1.0 - t1
-		else:
-			oz = 0.0
-
-		var by := low_h + t0
-		var sy := step
-		_append_voxel_face(
-			out_quads,
-			float(x) + ox, by, float(z) + oz,
-			step, sy, 1.0,
-			step, 1.0,
-			vox, FACE_TOP
-		)
-
-		if i < steps - 1:
-			var riser_x := float(x) + (t1 if dx >= 0.0 else t0)
-			var riser_z := float(z) + (t1 if dz >= 0.0 else t0)
-			if x_axis:
-				_append_voxel_face(
-					out_quads,
-					riser_x, by, float(z) + oz,
-					0.001, sy, 1.0,
-					1.0, sy,
-					vox, FACE_POS_X if dx > 0.0 else FACE_NEG_X
-				)
-			if z_axis:
-				_append_voxel_face(
-					out_quads,
-					float(x) + ox, by, riser_z,
-					step if x_axis else 1.0, sy, 0.001,
-					step if x_axis else 1.0, sy,
-					vox, FACE_POS_Z if dz > 0.0 else FACE_NEG_Z
-				)
-
-	if x_axis:
-		var low_face_x := float(x) + (0.0 if dx > 0.0 else 1.0)
-		var high_face_x := float(x) + (1.0 if dx > 0.0 else 0.0)
-		_append_voxel_face(
-			out_quads,
-			low_face_x, low_h, float(z),
-			0.001, 1.0, 1.0,
-			1.0, 1.0,
-			vox, FACE_NEG_X if dx > 0.0 else FACE_POS_X
-		)
-		_append_voxel_face(
-			out_quads,
-			high_face_x, low_h, float(z),
-			0.001, 1.0, 1.0,
-			1.0, 1.0,
-			vox, FACE_POS_X if dx > 0.0 else FACE_NEG_X
-		)
-	if z_axis:
-		var low_face_z := float(z) + (0.0 if dz > 0.0 else 1.0)
-		var high_face_z := float(z) + (1.0 if dz > 0.0 else 0.0)
-		_append_voxel_face(
-			out_quads,
-			float(x), low_h, low_face_z,
-			1.0, 1.0, 0.001,
-			1.0, 1.0,
-			vox, FACE_NEG_Z if dz > 0.0 else FACE_POS_Z
-		)
-		_append_voxel_face(
-			out_quads,
-			float(x), low_h, high_face_z,
-			1.0, 1.0, 0.001,
-			1.0, 1.0,
-			vox, FACE_POS_Z if dz > 0.0 else FACE_NEG_Z
-		)
-
-	if not z_axis:
-		_append_voxel_face(
-			out_quads,
-			float(x), low_h, float(z),
-			1.0, 1.0, 0.001,
-			1.0, 1.0,
-			vox, FACE_NEG_Z
-		)
-		_append_voxel_face(
-			out_quads,
-			float(x), low_h, float(z) + 1.0,
-			1.0, 1.0, 0.001,
-			1.0, 1.0,
-			vox, FACE_POS_Z
-		)
-	if not x_axis:
-		_append_voxel_face(
-			out_quads,
-			float(x), low_h, float(z),
-			0.001, 1.0, 1.0,
-			1.0, 1.0,
-			vox, FACE_NEG_X
-		)
-		_append_voxel_face(
-			out_quads,
-			float(x) + 1.0, low_h, float(z),
-			0.001, 1.0, 1.0,
-			1.0, 1.0,
-			vox, FACE_POS_X
-		)
-
-
 func _process(_delta):
+	_drain_mesh_queue()
+
 	if player == null or world == null:
 		return
 
@@ -365,6 +260,14 @@ func _process(_delta):
 	if not "_last_chunk_key" in self or _last_chunk_key != current_key:
 		_last_chunk_key = current_key
 		update_stream(cx, cz)
+
+
+func _drain_mesh_queue() -> void:
+	var budget := maxi(MAX_CHUNKS_PER_FRAME, 1)
+	while _mesh_completion_queue.size() > 0 and budget > 0:
+		var item: Dictionary = _mesh_completion_queue.pop_front()
+		_on_chunk_ready(item["data"], item["mesh"])
+		budget -= 1
 	
 func update_stream(cx: int, cz: int):
 	var needed := {}
@@ -380,12 +283,16 @@ func update_stream(cx: int, cz: int):
 				to_request.append({"key": key, "dist": dist})
 
 	to_request.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["dist"] < b["dist"])
+	var inflight := _chunk_tasks.size() + _mesh_completion_queue.size()
 	for item in to_request:
+		if inflight >= MAX_INFLIGHT_CHUNKS:
+			break
 		var item_dict: Dictionary = item
 		var dist: int = item_dict["dist"]
 		var hp: bool = dist <= (RENDER_DISTANCE + 1)
 		var req_key: Vector2i = item_dict["key"]
 		request_chunk(req_key, hp)
+		inflight += 1
 
 	for key in chunks.keys():
 		if not needed.has(key):
@@ -583,7 +490,24 @@ func _generate_chunk_task(coord: Vector2i, data: ChunkData):
 
 func _on_chunk_task_complete(coord: Vector2i, data: ChunkData, packed_quad_data: Dictionary):
 	_chunk_tasks.erase(coord)
-	_on_chunk_ready(data, packed_quad_data)
+	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": packed_quad_data})
+
+func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
+	var ix := floori(wx)
+	var iz := floori(wz)
+	var chunk_coord := Vector2i(
+		floori(float(ix) / float(ChunkData.SIZE)),
+		floori(float(iz) / float(ChunkData.SIZE))
+	)
+	if not chunks.has(chunk_coord):
+		return Vector2i.ZERO
+	var data: ChunkData = chunks[chunk_coord].chunk_data
+	var lx := ix - chunk_coord.x * ChunkData.SIZE
+	var lz := iz - chunk_coord.y * ChunkData.SIZE
+	if data.has_ramp(lx, lz):
+		return data.get_ramp_dir(lx, lz)
+	return Vector2i.ZERO
+
 
 func get_chunk_data_at_world_pos(world_pos: Vector3) -> ChunkData:
 	var chunk_x = floori(world_pos.x / float(ChunkData.SIZE))

@@ -12,6 +12,7 @@ const DIRS := [
 const _WorldBorder = preload("res://helpers/world_border.gd")
 
 static var _wedge_mesh: ArrayMesh
+const _WEDGE_MESH_VERSION := 2
 
 
 static func should_place_ramp(world_x: int, world_z: int, dir: Vector2i) -> bool:
@@ -26,55 +27,76 @@ static func is_step_height(diff: float) -> bool:
 	return diff >= STEP_MIN and diff <= STEP_MAX
 
 
-static func candidate_dirs(wx: float, wz: float) -> Array:
-	var dirs: Array = []
-	dirs.append_array(DIRS)
-	if _WorldBorder.prefer_diagonal_ramp(wx, wz):
-		dirs.append_array(_WorldBorder.DIAG_DIRS)
-	return dirs
+static func candidate_dirs(_wx: float, _wz: float) -> Array:
+	return DIRS.duplicate()
 
 
 static func get_wedge_mesh() -> ArrayMesh:
-	if _wedge_mesh != null:
+	if _wedge_mesh != null and _wedge_mesh.get_meta("version", 0) == _WEDGE_MESH_VERSION:
 		return _wedge_mesh
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	_add_quad(st,
+	# 1x1x1 right-triangle prism rising toward +X (low at x=0, high at x=1).
+	_add_quad_uv(st,
 		Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1),
-		Vector3.DOWN
+		Vector3.DOWN,
+		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
 	)
-	_add_quad(st,
+	_add_quad_uv(st,
 		Vector3(0, 0, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 0, 1),
-		Vector3(0, 0.707, 0.707).normalized()
+		Vector3(0, 0.70710678, 0.70710678),
+		Vector2(0, 0), Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)
 	)
-	_add_quad(st,
+	_add_quad_uv(st,
 		Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 1, 1),
-		Vector3(1, 1, 0).normalized()
+		Vector3(-1, 0, 0),
+		Vector2(0, 1), Vector2(1, 0), Vector2(1, 0), Vector2(0, 1)
 	)
-	_add_quad(st,
+	_add_quad_uv(st,
 		Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(1, 0, 1),
-		Vector3.RIGHT
+		Vector3.RIGHT,
+		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
 	)
-	_add_tri(st, Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3.FORWARD)
-	_add_tri(st, Vector3(0, 0, 1), Vector3(1, 1, 1), Vector3(1, 0, 1), Vector3.BACK)
+	_add_tri_uv(st,
+		Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 0),
+		Vector3.FORWARD,
+		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)
+	)
+	_add_tri_uv(st,
+		Vector3(0, 0, 1), Vector3(1, 1, 1), Vector3(1, 0, 1),
+		Vector3.BACK,
+		Vector2(0, 0), Vector2(1, 1), Vector2(1, 0)
+	)
 
 	st.generate_normals()
 	_wedge_mesh = st.commit()
+	_wedge_mesh.set_meta("version", _WEDGE_MESH_VERSION)
 	return _wedge_mesh
 
 
-static func _add_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3) -> void:
+static func _add_tri_uv(
+	st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3,
+	uv_a: Vector2, uv_b: Vector2, uv_c: Vector2
+) -> void:
 	st.set_normal(normal)
+	st.set_uv(uv_a)
 	st.add_vertex(a)
+	st.set_uv(uv_b)
 	st.add_vertex(b)
+	st.set_uv(uv_c)
 	st.add_vertex(c)
 
 
-static func _add_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, normal: Vector3) -> void:
-	_add_tri(st, a, b, c, normal)
-	_add_tri(st, a, c, d, normal)
+static func _add_quad_uv(
+	st: SurfaceTool,
+	a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+	normal: Vector3,
+	uv_a: Vector2, uv_b: Vector2, uv_c: Vector2, uv_d: Vector2
+) -> void:
+	_add_tri_uv(st, a, b, c, normal, uv_a, uv_b, uv_c)
+	_add_tri_uv(st, a, c, d, normal, uv_a, uv_c, uv_d)
 
 
 static func ramp_direction_at(world: InfiniteNoiseWorld, wx: int, wz: int) -> Vector2i:
@@ -95,25 +117,25 @@ static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vec
 	var frac_x: float = wx - floorf(wx)
 	var frac_z: float = wz - floorf(wz)
 	var t: float = 0.0
-	if dir.x != 0 and dir.y != 0:
-		var fx: float = frac_x if dir.x > 0 else (1.0 - frac_x)
-		var fz: float = frac_z if dir.y > 0 else (1.0 - frac_z)
-		t = (fx + fz) * 0.5
-	elif dir.x != 0:
+	if dir.x != 0:
 		t = frac_x if dir.x > 0 else (1.0 - frac_x)
-	else:
+	elif dir.y != 0:
 		t = frac_z if dir.y > 0 else (1.0 - frac_z)
 	t = clampf(t, 0.0, 1.0)
 	return base_h + 1.0 + t
 
 
-static func walkable_height(world: InfiniteNoiseWorld, wx: float, wz: float) -> float:
+static func walkable_height(
+	world: InfiniteNoiseWorld, wx: float, wz: float, known_dir: Vector2i = Vector2i.ZERO
+) -> float:
 	if world == null:
 		return 1.0
 	var tile_x: int = floori(wx)
 	var tile_z: int = floori(wz)
 	var base: float = world.get_surface_height(float(tile_x), float(tile_z))
-	var dir: Vector2i = ramp_direction_at(world, tile_x, tile_z)
+	var dir: Vector2i = known_dir
+	if dir == Vector2i.ZERO:
+		dir = ramp_direction_at(world, tile_x, tile_z)
 	if dir != Vector2i.ZERO:
 		return surface_height_on_ramp(wx, wz, base, dir)
 	return base + 1.0
@@ -129,14 +151,8 @@ static func wedge_transform(world_x: float, world_z: float, base_y: float, dir: 
 		yaw = -PI * 0.5
 	elif dir == Vector2i(0, -1):
 		yaw = PI * 0.5
-	elif dir == Vector2i(1, 1):
-		yaw = -PI * 0.25
-	elif dir == Vector2i(1, -1):
-		yaw = PI * 0.25
-	elif dir == Vector2i(-1, 1):
-		yaw = -PI * 0.75
-	elif dir == Vector2i(-1, -1):
-		yaw = PI * 0.75
+	else:
+		return Transform3D.IDENTITY.translated(Vector3(world_x, base_y, world_z))
 
 	var basis := Basis(Vector3.UP, yaw)
 	return Transform3D(basis, Vector3(world_x, base_y, world_z))

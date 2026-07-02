@@ -11,7 +11,7 @@ var inventory
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 var player_material: StandardMaterial3D
 
-@export var move_speed := 160.0
+@export var move_speed := 16.0
 
 # Aligned System: X/Z = Flat Floor Plane, Y = Vertical Elevation
 var voxel_position := Vector3(0.0, 0.0, 0.0)
@@ -121,17 +121,15 @@ func _process(delta):
 		var move_vec = rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta = move_vec * move_speed * delta
 
-		# Move and check along horizontal X axis (relaxed for small rises)
 		var target_pos_x = voxel_position + Vector3(move_delta.x, 0, 0)
-		if not is_colliding_at(target_pos_x) or _is_small_step_up(target_pos_x):
+		if _can_move_to(target_pos_x):
 			voxel_position.x = target_pos_x.x
-			_try_step_up()
-			
-		# Move and check along horizontal Z axis using move_delta.y
+			_snap_to_ground()
+
 		var target_pos_z = voxel_position + Vector3(0, 0, move_delta.y)
-		if not is_colliding_at(target_pos_z) or _is_small_step_up(target_pos_z):
+		if _can_move_to(target_pos_z):
 			voxel_position.z = target_pos_z.z
-			_try_step_up()
+			_snap_to_ground()
 
 		if current_state == State.IDLE:
 			change_state(State.RUNNING)
@@ -181,11 +179,11 @@ func _process(delta):
 			if Input.is_action_just_pressed("jump"):
 				change_state(State.JUMPING)
 			else:
-				# Air check below player feet
-				var test_ground_pos = voxel_position + Vector3(0, -0.1, 0)
+				_snap_to_ground()
+				var test_ground_pos = voxel_position + Vector3(0, -0.15, 0)
 				if not is_colliding_at(test_ground_pos):
 					change_state(State.FALLING)
-					vertical_velocity = 0.0 
+					vertical_velocity = 0.0
 
 	update_visual_position()
 
@@ -212,63 +210,63 @@ func update_visual_position():
 
 func is_colliding_at(pos: Vector3) -> bool:
 	if chunk_manager == null or chunk_manager.world == null:
-		return false # Cannot check collision without world
+		return false
 
 	var world = chunk_manager.world
+	var surf := world.get_surface_height(pos.x, pos.z)
+	var underground := pos.y < surf - 0.75
 
-	# Player's horiz footprint (small number of columns under the feet).
-	var player_min = pos - Vector3(PLAYER_RADIUS, 0, PLAYER_RADIUS)
-	var player_max = pos + Vector3(PLAYER_RADIUS, PLAYER_HEIGHT, PLAYER_RADIUS)
-	
-	var head_y := pos.y + PLAYER_HEIGHT
+	if underground:
+		if world.has_method("get_cave_floor_height"):
+			var floor_h := world.get_cave_floor_height(pos.x, pos.z)
+			if floor_h > 0.01 and pos.y < floor_h - 0.02:
+				return true
+	else:
+		var ground := _walkable_height_at(pos.x, pos.z)
+		if pos.y < ground - 0.02:
+			return true
 
-	for x_world in range(floori(player_min.x), floori(player_max.x) + 1):
-		for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
-			var wx := float(x_world)
-			var wz := float(z_world)
-			var surf := world.get_surface_height(wx, wz)
-			var underground := pos.y < surf - 0.75
-
-			if underground:
-				var floor_h := world.get_cave_floor_height(wx, wz) if world.has_method("get_cave_floor_height") else 0.0
-				if floor_h > 0.01 and pos.y < floor_h:
-					return true
-			else:
-				var slab_top := _walkable_height_at(wx, wz)
-				if pos.y < slab_top:
-					return true
-
-			if world.has_method("get_solid"):
+	if world.has_method("get_solid"):
+		var head_y := pos.y + PLAYER_HEIGHT
+		var player_min := pos - Vector3(PLAYER_RADIUS, 0, PLAYER_RADIUS)
+		var player_max := pos + Vector3(PLAYER_RADIUS, 0, PLAYER_RADIUS)
+		for x_world in range(floori(player_min.x), floori(player_max.x) + 1):
+			for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
+				var wx := float(x_world)
+				var wz := float(z_world)
 				var check_y := floori(head_y)
 				if world.get_solid(wx, float(check_y), wz) or \
-				   world.get_solid(wx, float(check_y + 1), wz):
+						world.get_solid(wx, float(check_y + 1), wz):
 					return true
 
 	return false
 
-func _try_step_up():
-	# After horizontal move, lift feet onto slightly higher ground if within small step tolerance.
-	# Allows walking gentle slopes even with MAX_STEP_UP_WALK=0.
+func _can_move_to(proposed: Vector3) -> bool:
+	if not is_colliding_at(proposed):
+		return true
+	var target_feet := _walkable_height_at(proposed.x, proposed.z)
+	var rise := target_feet - proposed.y
+	return rise > -0.05 and rise <= 2.5
+
+
+func _snap_to_ground() -> void:
 	if chunk_manager == null or chunk_manager.world == null:
 		return
 	var target_feet := _walkable_height_at(voxel_position.x, voxel_position.z)
 	var diff := target_feet - voxel_position.y
-	if diff > 0.01 and diff <= 2.0:  # allow 1-2 voxel steps for natural terrain
+	if absf(diff) <= 2.5:
 		voxel_position.y = target_feet
-
-func _is_small_step_up(proposed: Vector3) -> bool:
-	if chunk_manager == null or chunk_manager.world == null:
-		return false
-	var w = chunk_manager.world
-	var cur_s := _terrain_height_at(voxel_position.x, voxel_position.z)
-	var new_s := _terrain_height_at(proposed.x, proposed.z)
-	var rise := new_s - cur_s
-	return rise > 0.0 and rise <= 2.5
 
 func _terrain_height_at(wx: float, wz: float) -> float:
 	if chunk_manager and chunk_manager.world:
 		return TerrainRamps.walkable_height(chunk_manager.world, wx, wz) - 1.0
 	return 0.0
+
+
+func _ramp_dir_at(wx: float, wz: float) -> Vector2i:
+	if chunk_manager and chunk_manager.has_method("get_ramp_dir_at_world"):
+		return chunk_manager.get_ramp_dir_at_world(wx, wz)
+	return Vector2i.ZERO
 
 
 func _walkable_height_at(wx: float, wz: float) -> float:
@@ -279,6 +277,11 @@ func _walkable_height_at(wx: float, wz: float) -> float:
 			var cave_floor := world_ref.get_cave_floor_height(wx, wz)
 			if cave_floor > 0.01:
 				return cave_floor
+		var ramp_dir := _ramp_dir_at(wx, wz)
+		var base := TerrainRamps.walkable_height(world_ref, wx, wz, ramp_dir)
+		if crystal_manager and crystal_manager.has_method("get_walkable_height"):
+			return maxf(base, crystal_manager.get_walkable_height(wx, wz))
+		return base
 	if crystal_manager and crystal_manager.has_method("get_walkable_height"):
 		return crystal_manager.get_walkable_height(wx, wz)
 	if chunk_manager and chunk_manager.world:

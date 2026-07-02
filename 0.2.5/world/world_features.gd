@@ -39,5 +39,3 @@ func _bootstrap() -> void:
 	var entity_mgr = get_node_or_null("EntityManager")
 	if entity_mgr:
 		entity_mgr.seed_spawns()
-
-	chunk_manager.rebuild_chunks()

@@ -49,6 +49,8 @@ void vertex() {
         if (obj_n.z < -thresh) render_this_face = 1.0;
     } else if (f == 6) { // POS_Z
         if (obj_n.z > thresh) render_this_face = 1.0;
+    } else if (f == 7) { // RAMP wedge — render all faces (1x1 right-triangle prism)
+        render_this_face = 1.0;
     }
 }
 
@@ -85,8 +87,8 @@ void fragment() {
     ALBEDO = tex_color.rgb;
     
     // Add lighting contrast variation to distinguish flat surfaces
-    if (face_code > 0.5 && face_code != 2.0) { // Sides (not TOP=0 or BOTTOM=2)
-        ALBEDO *= 0.75; // Shaded sides look crisp and readable
+    if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) { // Sides only (not ramp=7)
+        ALBEDO *= 0.75;
     }
     
     // Darken bottom faces slightly
