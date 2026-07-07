@@ -49,8 +49,10 @@ void vertex() {
         if (obj_n.z < -thresh) render_this_face = 1.0;
     } else if (f == 6) { // POS_Z
         if (obj_n.z > thresh) render_this_face = 1.0;
-    } else if (f == 7) { // RAMP wedge — render all faces (1x1 right-triangle prism)
+    } else if (f == 7 || f == 8) { // RAMP / corner ramp — render all wedge faces
         render_this_face = 1.0;
+        // Nudge ramps slightly above coplanar terrain tops to avoid seam z-fighting.
+        VERTEX.y += 0.003;
     }
 }
 

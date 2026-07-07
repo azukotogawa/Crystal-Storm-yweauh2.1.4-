@@ -1,4 +1,0 @@
-res://main.tscn
-res://shaders/ChunkView.gdshader
-res://player/player.gd
-res://weapons/weapon_controller.gd

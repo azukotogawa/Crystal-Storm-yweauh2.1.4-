@@ -12,7 +12,9 @@ const DIRS := [
 const _WorldBorder = preload("res://helpers/world_border.gd")
 
 static var _wedge_mesh: ArrayMesh
-const _WEDGE_MESH_VERSION := 2
+static var _corner_mesh: ArrayMesh
+const _WEDGE_MESH_VERSION := 4
+const _CORNER_MESH_VERSION := 2
 
 
 static func should_place_ramp(world_x: int, world_z: int, dir: Vector2i) -> bool:
@@ -38,42 +40,57 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	# 1x1x1 right-triangle prism rising toward +X (low at x=0, high at x=1).
+	# Cell-centered footprint (±0.5), rising toward +X. Origin is placed at the
+	# column center (wx+0.5, surface_y, wz+0.5) to match greedy terrain boxes.
 	_add_quad_uv(st,
-		Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 0, 1),
-		Vector3.DOWN,
-		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
-	)
-	_add_quad_uv(st,
-		Vector3(0, 0, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(0, 0, 1),
+		Vector3(-0.5, 1, -0.5), Vector3(0.5, 2, -0.5), Vector3(0.5, 2, 0.5), Vector3(-0.5, 1, 0.5),
 		Vector3(0, 0.70710678, 0.70710678),
 		Vector2(0, 0), Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)
 	)
 	_add_quad_uv(st,
-		Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(1, 0, 1), Vector3(0, 1, 1),
-		Vector3(-1, 0, 0),
-		Vector2(0, 1), Vector2(1, 0), Vector2(1, 0), Vector2(0, 1)
-	)
-	_add_quad_uv(st,
-		Vector3(1, 0, 0), Vector3(1, 1, 0), Vector3(1, 1, 1), Vector3(1, 0, 1),
+		Vector3(0.5, 1, -0.5), Vector3(0.5, 2, -0.5), Vector3(0.5, 2, 0.5), Vector3(0.5, 1, 0.5),
 		Vector3.RIGHT,
 		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
 	)
 	_add_tri_uv(st,
-		Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(1, 1, 0),
-		Vector3.FORWARD,
+		Vector3(-0.5, 1, -0.5), Vector3(0.5, 1, -0.5), Vector3(0.5, 2, -0.5),
+		Vector3(0, 0, -1),
 		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1)
 	)
 	_add_tri_uv(st,
-		Vector3(0, 0, 1), Vector3(1, 1, 1), Vector3(1, 0, 1),
-		Vector3.BACK,
+		Vector3(-0.5, 1, 0.5), Vector3(0.5, 2, 0.5), Vector3(0.5, 1, 0.5),
+		Vector3(0, 0, 1),
 		Vector2(0, 0), Vector2(1, 1), Vector2(1, 0)
 	)
-
-	st.generate_normals()
 	_wedge_mesh = st.commit()
 	_wedge_mesh.set_meta("version", _WEDGE_MESH_VERSION)
 	return _wedge_mesh
+
+
+static func get_corner_mesh() -> ArrayMesh:
+	if _corner_mesh != null and _corner_mesh.get_meta("version", 0) == _CORNER_MESH_VERSION:
+		return _corner_mesh
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+
+	# Cell-centered outer corner rising toward +X and +Z (low at NW).
+	var p00 := Vector3(-0.5, 1, -0.5)
+	var p10 := Vector3(0.5, 2, -0.5)
+	var p01 := Vector3(-0.5, 2, 0.5)
+	var p11 := Vector3(0.5, 2, 0.5)
+
+	_add_tri_uv(st, p00, p10, p11, Vector3(0, 0.70710678, 0.70710678), Vector2(0, 0), Vector2(1, 1), Vector2(1, 1))
+	_add_tri_uv(st, p00, p11, p01, Vector3(0, 0.70710678, 0.70710678), Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
+	_add_quad_uv(st, Vector3(0.5, 1, -0.5), p10, p11, Vector3(0.5, 1, 0.5), Vector3.RIGHT,
+		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+	_add_tri_uv(st, p00, Vector3(-0.5, 1, 0.5), p01, Vector3(-1, 0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(0, 1))
+	_add_tri_uv(st, p00, Vector3(0.5, 1, -0.5), p10, Vector3(0, 0, -1), Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
+	_add_tri_uv(st, Vector3(-0.5, 1, 0.5), p11, p01, Vector3(0, 0, 1), Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
+
+	_corner_mesh = st.commit()
+	_corner_mesh.set_meta("version", _CORNER_MESH_VERSION)
+	return _corner_mesh
 
 
 static func _add_tri_uv(
@@ -113,16 +130,48 @@ static func ramp_direction_at(world: InfiniteNoiseWorld, wx: int, wz: int) -> Ve
 	return Vector2i.ZERO
 
 
-static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
+static func axis_t(wx: float, wz: float, dir: Vector2i) -> float:
 	var frac_x: float = wx - floorf(wx)
 	var frac_z: float = wz - floorf(wz)
-	var t: float = 0.0
-	if dir.x != 0:
-		t = frac_x if dir.x > 0 else (1.0 - frac_x)
-	elif dir.y != 0:
-		t = frac_z if dir.y > 0 else (1.0 - frac_z)
-	t = clampf(t, 0.0, 1.0)
-	return base_h + 1.0 + t
+	if dir.x > 0:
+		return frac_x
+	if dir.x < 0:
+		return 1.0 - frac_x
+	if dir.y > 0:
+		return frac_z
+	if dir.y < 0:
+		return 1.0 - frac_z
+	return 0.0
+
+
+static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
+	return base_h + 1.0 + clampf(axis_t(wx, wz, dir), 0.0, 1.0)
+
+
+static func surface_height_on_corner(
+	wx: float, wz: float, base_h: float, dir_a: Vector2i, dir_b: Vector2i
+) -> float:
+	var t_a: float = clampf(axis_t(wx, wz, dir_a), 0.0, 1.0)
+	var t_b: float = clampf(axis_t(wx, wz, dir_b), 0.0, 1.0)
+	return base_h + 1.0 + maxf(t_a, t_b)
+
+
+static func walkable_height_from_entry(
+	world: InfiniteNoiseWorld, wx: float, wz: float, entry: Dictionary
+) -> float:
+	if world == null:
+		return 1.0
+	var tile_x: int = floori(wx)
+	var tile_z: int = floori(wz)
+	var base: float = world.get_surface_height(float(tile_x), float(tile_z))
+	if entry.is_empty():
+		return base + 1.0
+	if entry.get("corner", false):
+		return surface_height_on_corner(wx, wz, base, entry.get("dir", Vector2i.ZERO), entry.get("dir2", Vector2i.ZERO))
+	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
+	if dir != Vector2i.ZERO:
+		return surface_height_on_ramp(wx, wz, base, dir)
+	return base + 1.0
 
 
 static func walkable_height(
@@ -130,15 +179,14 @@ static func walkable_height(
 ) -> float:
 	if world == null:
 		return 1.0
+	if known_dir != Vector2i.ZERO:
+		return walkable_height_from_entry(world, wx, wz, {"corner": false, "dir": known_dir, "dir2": Vector2i.ZERO})
 	var tile_x: int = floori(wx)
 	var tile_z: int = floori(wz)
-	var base: float = world.get_surface_height(float(tile_x), float(tile_z))
-	var dir: Vector2i = known_dir
-	if dir == Vector2i.ZERO:
-		dir = ramp_direction_at(world, tile_x, tile_z)
+	var dir: Vector2i = ramp_direction_at(world, tile_x, tile_z)
 	if dir != Vector2i.ZERO:
-		return surface_height_on_ramp(wx, wz, base, dir)
-	return base + 1.0
+		return surface_height_on_ramp(wx, wz, world.get_surface_height(float(tile_x), float(tile_z)), dir)
+	return world.get_surface_height(float(tile_x), float(tile_z)) + 1.0
 
 
 static func wedge_transform(world_x: float, world_z: float, base_y: float, dir: Vector2i) -> Transform3D:
@@ -152,7 +200,18 @@ static func wedge_transform(world_x: float, world_z: float, base_y: float, dir: 
 	elif dir == Vector2i(0, -1):
 		yaw = PI * 0.5
 	else:
-		return Transform3D.IDENTITY.translated(Vector3(world_x, base_y, world_z))
+		return Transform3D.IDENTITY.translated(Vector3(world_x + 0.5, base_y, world_z + 0.5))
 
 	var basis := Basis(Vector3.UP, yaw)
-	return Transform3D(basis, Vector3(world_x, base_y, world_z))
+	return Transform3D(basis, Vector3(world_x + 0.5, base_y, world_z + 0.5))
+
+
+static func corner_transform(
+	world_x: float, world_z: float, base_y: float, dir_a: Vector2i, dir_b: Vector2i
+) -> Transform3D:
+	var x_dir: Vector2i = dir_a if dir_a.x != 0 else dir_b
+	var z_dir: Vector2i = dir_b if dir_b.y != 0 else dir_a
+	var sx: float = -1.0 if x_dir.x < 0 else 1.0
+	var sz: float = -1.0 if z_dir.y < 0 else 1.0
+	var basis := Basis(Vector3(sx, 0.0, 0.0), Vector3.UP, Vector3(0.0, 0.0, sz))
+	return Transform3D(basis, Vector3(world_x + 0.5, base_y, world_z + 0.5))

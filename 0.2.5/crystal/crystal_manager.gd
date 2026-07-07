@@ -426,10 +426,10 @@ func get_crystal_top(wx: float, wz: float) -> float:
 
 
 func get_walkable_height(wx: float, wz: float) -> float:
-	var ramp_dir := Vector2i.ZERO
-	if chunk_manager and chunk_manager.has_method("get_ramp_dir_at_world"):
-		ramp_dir = chunk_manager.get_ramp_dir_at_world(wx, wz)
-	var base := TerrainRamps.walkable_height(world, wx, wz, ramp_dir) if world else 1.0
+	var ramp_entry: Dictionary = {}
+	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
+		ramp_entry = chunk_manager.get_ramp_entry_at_world(wx, wz)
+	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, ramp_entry) if world else 1.0
 	var depth := get_depth_at(floori(wx), floori(wz))
 	if depth >= CrystalTypes.MIN_DEPTH:
 		return maxf(base, _terrain_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)

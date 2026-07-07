@@ -35,6 +35,7 @@ const _WB_TRANSITION := 240.0
 
 const FACE_TOP := 0
 const FACE_RAMP := 7
+const FACE_RAMP_CORNER := 8
 const FACE_NEG_X := 3
 const FACE_POS_X := 4
 const FACE_NEG_Z := 5
@@ -187,43 +188,135 @@ func _prefer_diagonal_ramp(world_x: int, world_z: int) -> bool:
 	return ox > 0.001 and oz > 0.001 and sqrt(ox * ox + oz * oz) / _WB_TRANSITION < 0.85
 
 
+func _dirs_perpendicular(d1: Vector2i, d2: Vector2i) -> bool:
+	return d1.x * d2.x + d1.y * d2.y == 0
+
+
+func _perpendicular_dirs(d: Vector2i) -> Array:
+	return [Vector2i(-d.y, d.x), Vector2i(d.y, -d.x)]
+
+
+func _step_out_dirs(data: ChunkData, x: int, z: int, low_h: float, world_x: int, world_z: int) -> Array:
+	var out: Array = []
+	for d in _RAMP_DIRS:
+		var nh: float = _sample_height(data, x + d.x, z + d.y)
+		if _is_step_height(nh - low_h) and _should_place_ramp(world_x, world_z, d):
+			out.append(d)
+	return out
+
+
+func _pick_corner_dirs(data: ChunkData, x: int, z: int, planned: Dictionary) -> Array:
+	var low_h: float = data.get_surface_y(x, z)
+	var world_x: int = data.position.x * ChunkData.SIZE + x
+	var world_z: int = data.position.y * ChunkData.SIZE + z
+	var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
+
+	for i in step_outs.size():
+		for j in range(i + 1, step_outs.size()):
+			var d_a: Vector2i = step_outs[i]
+			var d_b: Vector2i = step_outs[j]
+			if _dirs_perpendicular(d_a, d_b):
+				return [d_a, d_b]
+
+	for d_out in step_outs:
+		for d_in in _perpendicular_dirs(d_out):
+			var from := Vector2i(x - d_in.x, z - d_in.y)
+			if planned.get(from, Vector2i.ZERO) == d_in:
+				return [d_out, d_in]
+			var from_h: float = _sample_height(data, from.x, from.y)
+			if _is_step_height(low_h - from_h):
+				var from_world_x: int = data.position.x * ChunkData.SIZE + from.x
+				var from_world_z: int = data.position.y * ChunkData.SIZE + from.y
+				if _should_place_ramp(from_world_x, from_world_z, d_in):
+					return [d_out, d_in]
+
+	return []
+
+
+func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int, entry: Dictionary) -> void:
+	var quad := {
+		"x": x,
+		"y": low_h,
+		"z": z,
+		"dim_x": 1.0,
+		"dim_y": 1.0,
+		"dim_z": 1.0,
+		"ramp_dir_x": entry.get("dir", Vector2i.ZERO).x,
+		"ramp_dir_z": entry.get("dir", Vector2i.ZERO).y,
+		"ramp_dir2_x": entry.get("dir2", Vector2i.ZERO).x,
+		"ramp_dir2_z": entry.get("dir2", Vector2i.ZERO).y,
+		"uv_w": 1.0,
+		"uv_h": 1.0,
+		"type": vox,
+	}
+	if entry.get("corner", false):
+		quad["face_code"] = FACE_RAMP_CORNER
+	else:
+		quad["face_code"] = FACE_RAMP
+	out_quads.append(quad)
+
+
 func _emit_ramps(data: ChunkData, out_quads: Array) -> void:
 	data.ramp_map.clear()
+	var planned: Dictionary = {}
+
+	for x in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
+			var low_h: float = data.get_surface_y(x, z)
+			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+				continue
+			var world_x: int = data.position.x * ChunkData.SIZE + x
+			var world_z: int = data.position.y * ChunkData.SIZE + z
+			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
+			if not step_outs.is_empty():
+				planned[Vector2i(x, z)] = step_outs[0]
+
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
 			var low_h: float = data.get_surface_y(x, z)
 			var vox := data.get_tile_type(x, z)
 			if vox == VoxelTypes.AIR:
 				continue
-			var world_x: int = data.position.x * ChunkData.SIZE + x
-			var world_z: int = data.position.y * ChunkData.SIZE + z
 
-			var dirs: Array = []
-			dirs.append_array(_RAMP_DIRS)
-			for dir in dirs:
-				var d: Vector2i = dir
-				var nh: float = _sample_height(data, x + d.x, z + d.y)
-				var diff: float = nh - low_h
-				if not _is_step_height(diff):
-					continue
-				if not _should_place_ramp(world_x, world_z, d):
-					continue
-				data.set_ramp(x, z, d)
-				out_quads.append({
-					"x": x,
-					"y": low_h,
-					"z": z,
-					"dim_x": 1.0,
-					"dim_y": 1.0,
-					"dim_z": 1.0,
-					"ramp_dir_x": d.x,
-					"ramp_dir_z": d.y,
-					"uv_w": 1.0,
-					"uv_h": 1.0,
-					"type": vox,
-					"face_code": FACE_RAMP,
+			var corner_dirs: Array = _pick_corner_dirs(data, x, z, planned)
+			if corner_dirs.size() == 2:
+				var d_a: Vector2i = corner_dirs[0]
+				var d_b: Vector2i = corner_dirs[1]
+				data.set_ramp_corner(x, z, d_a, d_b)
+				_append_ramp_quad(out_quads, x, z, low_h, vox, {
+					"corner": true,
+					"dir": d_a,
+					"dir2": d_b,
 				})
-				break
+				continue
+
+			if not planned.has(Vector2i(x, z)):
+				continue
+
+			var d: Vector2i = planned[Vector2i(x, z)]
+			data.set_ramp_cardinal(x, z, d)
+			_append_ramp_quad(out_quads, x, z, low_h, vox, {
+				"corner": false,
+				"dir": d,
+				"dir2": Vector2i.ZERO,
+			})
+
+
+func _is_ramp_landing(data: ChunkData, x: int, z: int) -> bool:
+	for d in _RAMP_DIRS:
+		var lx: int = x - d.x
+		var lz: int = z - d.y
+		if lx < 0 or lx >= ChunkData.SIZE or lz < 0 or lz >= ChunkData.SIZE:
+			continue
+		if not data.has_ramp(lx, lz):
+			continue
+		var entry: Dictionary = data.get_ramp_entry(lx, lz)
+		if entry.get("corner", false):
+			if entry.get("dir", Vector2i.ZERO) == d or entry.get("dir2", Vector2i.ZERO) == d:
+				return true
+		elif entry.get("dir", Vector2i.ZERO) == d:
+			return true
+	return false
 
 
 func _append_voxel_face(
@@ -313,7 +406,12 @@ func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
 func _ramp_covers_drop(data: ChunkData, low_x: int, low_z: int, toward_high: Vector2i) -> bool:
 	if low_x < 0 or low_x >= ChunkData.SIZE or low_z < 0 or low_z >= ChunkData.SIZE:
 		return false
-	return data.has_ramp(low_x, low_z) and data.get_ramp_dir(low_x, low_z) == toward_high
+	if not data.has_ramp(low_x, low_z):
+		return false
+	var entry: Dictionary = data.get_ramp_entry(low_x, low_z)
+	if entry.get("corner", false):
+		return entry.get("dir", Vector2i.ZERO) == toward_high or entry.get("dir2", Vector2i.ZERO) == toward_high
+	return entry.get("dir", Vector2i.ZERO) == toward_high
 
 
 func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: int, out_quads: Array):
@@ -331,7 +429,7 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if z < ChunkData.SIZE:
+				if z < ChunkData.SIZE and not data.has_ramp(x, z):
 					curr_h = data.get_surface_y(x, z)
 					curr_t = data.get_tile_type(x, z)
 					var nx = x + dx
@@ -372,7 +470,7 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if x < ChunkData.SIZE:
+				if x < ChunkData.SIZE and not data.has_ramp(x, z):
 					curr_h = data.get_surface_y(x, z)
 					curr_t = data.get_tile_type(x, z)
 					var nx = x
@@ -493,6 +591,11 @@ func _on_chunk_task_complete(coord: Vector2i, data: ChunkData, packed_quad_data:
 	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": packed_quad_data})
 
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
+	var entry := get_ramp_entry_at_world(wx, wz)
+	return entry.get("dir", Vector2i.ZERO)
+
+
+func get_ramp_entry_at_world(wx: float, wz: float) -> Dictionary:
 	var ix := floori(wx)
 	var iz := floori(wz)
 	var chunk_coord := Vector2i(
@@ -500,13 +603,13 @@ func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 		floori(float(iz) / float(ChunkData.SIZE))
 	)
 	if not chunks.has(chunk_coord):
-		return Vector2i.ZERO
+		return {}
 	var data: ChunkData = chunks[chunk_coord].chunk_data
 	var lx := ix - chunk_coord.x * ChunkData.SIZE
 	var lz := iz - chunk_coord.y * ChunkData.SIZE
 	if data.has_ramp(lx, lz):
-		return data.get_ramp_dir(lx, lz)
-	return Vector2i.ZERO
+		return data.get_ramp_entry(lx, lz)
+	return {}
 
 
 func get_chunk_data_at_world_pos(world_pos: Vector3) -> ChunkData:

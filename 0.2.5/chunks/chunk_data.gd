@@ -12,7 +12,8 @@ var world: InfiniteNoiseWorld = null
 # Computed in bg worker for perf. Used everywhere for meshing, collision, etc.
 var surface_map: Array = []  # [x][z] -> float
 var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for this chunk)
-var ramp_map: Dictionary = {}  # Vector2i(local x,z) -> Vector2i (direction toward higher neighbor)
+# Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
+var ramp_map: Dictionary = {}
 var river_ctx: RiverJobContext = null
 
 const SIZE := 16
@@ -86,16 +87,35 @@ func is_visible(x: int, y: int, z: int) -> bool:
 func set_visible(x: int, y: int, z: int, visible: bool):
 	set_visibility(x, y, z, visible)
 
-func set_ramp(x: int, z: int, dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = dir
+func set_ramp_cardinal(x: int, z: int, dir: Vector2i) -> void:
+	ramp_map[Vector2i(x, z)] = {"corner": false, "dir": dir, "dir2": Vector2i.ZERO}
+
+
+func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
+	ramp_map[Vector2i(x, z)] = {"corner": true, "dir": dir_a, "dir2": dir_b}
 
 
 func has_ramp(x: int, z: int) -> bool:
 	return ramp_map.has(Vector2i(x, z))
 
 
+func get_ramp_entry(x: int, z: int) -> Dictionary:
+	return ramp_map.get(Vector2i(x, z), {})
+
+
+func is_ramp_corner(x: int, z: int) -> bool:
+	var entry: Dictionary = get_ramp_entry(x, z)
+	return entry.get("corner", false)
+
+
 func get_ramp_dir(x: int, z: int) -> Vector2i:
-	return ramp_map.get(Vector2i(x, z), Vector2i.ZERO)
+	var entry: Dictionary = get_ramp_entry(x, z)
+	return entry.get("dir", Vector2i.ZERO)
+
+
+func get_ramp_dir2(x: int, z: int) -> Vector2i:
+	var entry: Dictionary = get_ramp_entry(x, z)
+	return entry.get("dir2", Vector2i.ZERO)
 
 
 func get_surface_y(x: int, z: int) -> float:

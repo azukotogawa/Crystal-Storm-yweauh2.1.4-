@@ -269,6 +269,12 @@ func _ramp_dir_at(wx: float, wz: float) -> Vector2i:
 	return Vector2i.ZERO
 
 
+func _ramp_entry_at(wx: float, wz: float) -> Dictionary:
+	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
+		return chunk_manager.get_ramp_entry_at_world(wx, wz)
+	return {}
+
+
 func _walkable_height_at(wx: float, wz: float) -> float:
 	if chunk_manager and chunk_manager.world:
 		var world_ref := chunk_manager.world
@@ -277,8 +283,8 @@ func _walkable_height_at(wx: float, wz: float) -> float:
 			var cave_floor := world_ref.get_cave_floor_height(wx, wz)
 			if cave_floor > 0.01:
 				return cave_floor
-		var ramp_dir := _ramp_dir_at(wx, wz)
-		var base := TerrainRamps.walkable_height(world_ref, wx, wz, ramp_dir)
+		var ramp_entry := _ramp_entry_at(wx, wz)
+		var base := TerrainRamps.walkable_height_from_entry(world_ref, wx, wz, ramp_entry)
 		if crystal_manager and crystal_manager.has_method("get_walkable_height"):
 			return maxf(base, crystal_manager.get_walkable_height(wx, wz))
 		return base
