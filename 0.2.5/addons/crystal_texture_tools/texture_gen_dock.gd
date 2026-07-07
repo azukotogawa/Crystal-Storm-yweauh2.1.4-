@@ -9,7 +9,7 @@ const _GeneratorScript = preload("res://systems/crystal_texture_generator.gd")
 @onready var _status: Label = %StatusLabel
 @onready var _preview: TextureRect = %PreviewRect
 
-var _generator: Node
+var _generator  # CrystalTextureGenerator autoload or script instance
 var _config: _GenConfig
 
 
@@ -26,7 +26,7 @@ func _ready() -> void:
 func _on_generate_crystal_variants_pressed() -> void:
 	_set_status("Generating crystal variants…")
 	var count := int(_variant_count.value) if _variant_count else 4
-	var textures := _generator.generate_crystal_variants(count)
+	var textures: Array = _generator.generate_crystal_variants(count)
 	if not textures.is_empty() and _preview:
 		_preview.texture = textures[0]
 	_set_status("Generated %d crystal textures." % textures.size())
@@ -34,16 +34,16 @@ func _on_generate_crystal_variants_pressed() -> void:
 
 func _on_export_sprite_sheet_pressed() -> void:
 	_set_status("Exporting sprite sheet…")
-	var path := _generator.export_sprite_sheet(&"", int(_variant_count.value))
+	var path: String = _generator.export_sprite_sheet(&"", int(_variant_count.value))
 	_set_status("Exported: %s" % path)
 	if _preview:
-		var tex := _generator.generate_texture(_GeneratorScript.Category.CRYSTAL, &"amethyst")
+		var tex: Texture2D = _generator.generate_texture(_GeneratorScript.Category.CRYSTAL, &"amethyst")
 		_preview.texture = tex
 
 
 func _on_export_palettes_json_pressed() -> void:
 	var path := "user://texture_palettes.json"
-	var err := _generator.export_all_palettes_json(path)
+	var err: Error = _generator.export_all_palettes_json(path)
 	_set_status("Palette JSON export: %s (err %d)" % [path, err])
 
 

@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Crystalstorm"
-run/main_scene="uid://6ven06d5s8l"
+run/main_scene="res://addons/crystal_texture_tools/texture_gen_dock.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="uid://tamt6vl1r5pg"
 
@@ -22,6 +22,10 @@ CrystalTextureGenerator="*res://systems/crystal_texture_generator.gd"
 [display]
 
 window/stretch/mode="viewport"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/crystal_texture_tools/plugin.cfg")
 
 [input]
 
@@ -117,7 +121,3 @@ common/physics_jitter_fix=0.0
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 2d/snap/snap_2d_transforms_to_pixel=true
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/crystal_texture_tools/plugin.cfg")
