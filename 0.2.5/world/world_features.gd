@@ -1,6 +1,7 @@
 extends Node
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _TownManager = preload("res://world/town_manager.gd")
 const _VegetationManager = preload("res://world/vegetation_manager.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")
@@ -30,6 +31,7 @@ func _bootstrap() -> void:
 		world = get_tree().get_first_node_in_group("world")
 
 	_FeatureRegistry.reset()
+	_ChannelRegistry.reset()
 
 	var town_mgr = get_node_or_null("TownManager")
 	if town_mgr and town_mgr.has_method("generate"):

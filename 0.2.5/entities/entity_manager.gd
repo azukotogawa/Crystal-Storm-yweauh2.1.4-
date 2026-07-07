@@ -3,26 +3,42 @@ extends Node
 
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
+const _WorldEntity = preload("res://entities/world_entity.gd")
 
 @export var animals_per_biome_chunk: int = 2
 @export var max_entities: int = 128
+@export var max_defenders_per_town: int = 8
 
 signal entity_spawned(entity: Node3D)
 signal entity_despawned(entity: Node3D)
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
+var crystal_manager: CrystalManager
 var _entities: Array[Node3D] = []
 var _spawned_cells: Dictionary = {}
+var _defenders_by_town: Dictionary = {}
 
 
 func _enter_tree() -> void:
 	add_to_group("entity_manager")
 
 
+func apply_performance_config(cfg) -> void:
+	if cfg == null:
+		return
+	max_entities = int(cfg.max_entities)
+	animals_per_biome_chunk = int(cfg.animals_per_biome_chunk)
+	if not bool(cfg.entity_spawning_enabled):
+		_clear_runtime_entities()
+
+
 func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
+	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
+	_EntityBrainRegistry.ensure_builtins()
 
 
 func seed_spawns() -> void:
@@ -30,12 +46,40 @@ func seed_spawns() -> void:
 		world = get_tree().get_first_node_in_group("world")
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
+	if crystal_manager == null:
+		crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 	if chunk_manager and chunk_manager.has_signal("chunk_ready"):
 		if not chunk_manager.chunk_ready.is_connected(_on_chunk_ready):
 			chunk_manager.chunk_ready.connect(_on_chunk_ready)
 	_seed_animal_spawns()
-	for coord in chunk_manager.chunks.keys():
-		_on_chunk_ready(coord, chunk_manager.chunks[coord].chunk_data)
+	if chunk_manager:
+		for coord in chunk_manager.chunks.keys():
+			_on_chunk_ready(coord, chunk_manager.chunks[coord].chunk_data)
+
+
+func spawn_town_defenders(town: Dictionary, count: int) -> void:
+	var center: Vector2i = town.get("center", Vector2i.ZERO)
+	var radius: int = int(town.get("radius", 12))
+	var current: int = int(_defenders_by_town.get(center, 0))
+	if current >= max_defenders_per_town:
+		return
+
+	var brain_cfg = _EntityBrainRegistry.get_def(&"town_militia")
+	if brain_cfg == null:
+		return
+
+	var to_spawn := mini(count, max_defenders_per_town - current)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(center) + str(Time.get_ticks_msec()))
+	for _i in to_spawn:
+		if _entities.size() >= max_entities:
+			return
+		var angle := rng.randf_range(0.0, TAU)
+		var dist := rng.randf_range(float(radius) * 0.55, float(radius) * 0.85)
+		var wx := center.x + int(round(cos(angle) * dist))
+		var wz := center.y + int(round(sin(angle) * dist))
+		_spawn_world_entity(wx, wz, brain_cfg, center, Color(0.55, 0.58, 0.72))
+		_defenders_by_town[center] = int(_defenders_by_town.get(center, 0)) + 1
 
 
 func _seed_animal_spawns() -> void:
@@ -80,7 +124,7 @@ func _is_valid_animal_cell(wx: int, wz: int) -> bool:
 
 
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
-	if _entities.size() >= max_entities:
+	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:
 		return
 	var spawns: Array = _FeatureRegistry.get_spawns_in_chunk(coord)
 	for spawn in spawns:
@@ -92,33 +136,113 @@ func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 			continue
 		if int(spawn.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
 			continue
-		_spawn_placeholder_animal(pos, int(spawn.get("animal_kind", 0)))
+		var brain_cfg = _brain_for_animal(int(spawn.get("animal_kind", 0)))
+		_spawn_world_entity(pos.x, pos.y, brain_cfg, pos, _animal_color(int(spawn.get("animal_kind", 0))))
 		_spawned_cells[key] = true
 
 
-func _spawn_placeholder_animal(world_pos: Vector2i, animal_kind: int) -> void:
-	var entity := Node3D.new()
-	entity.name = _WorldFeatureTypes.ANIMAL_DISPLAY.get(animal_kind, "Animal")
+func _brain_for_animal(animal_kind: int):
+	match animal_kind:
+		_WorldFeatureTypes.AnimalKind.DEER:
+			return _EntityBrainRegistry.get_def(&"deer")
+		_WorldFeatureTypes.AnimalKind.BOAR:
+			return _EntityBrainRegistry.get_def(&"boar")
+		_WorldFeatureTypes.AnimalKind.BIRD:
+			return _EntityBrainRegistry.get_def(&"bird")
+		_:
+			return _EntityBrainRegistry.get_def(&"rabbit")
 
-	var mesh_instance := MeshInstance3D.new()
-	var mesh := CapsuleMesh.new()
-	mesh.radius = 0.22
-	mesh.height = 0.55
-	mesh_instance.mesh = mesh
-	mesh_instance.position.y = 0.35
 
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = _animal_color(animal_kind)
-	mesh_instance.material_override = mat
-	entity.add_child(mesh_instance)
-
-	var surface := 1.0
-	if world:
-		surface = TerrainRamps.walkable_height(world, float(world_pos.x) + 0.5, float(world_pos.y) + 0.5)
-	entity.position = Vector3(float(world_pos.x) + 0.5, surface, float(world_pos.y) + 0.5)
+func _spawn_world_entity(
+	wx: int,
+	wz: int,
+	brain_cfg,
+	defend_center: Vector2i,
+	tint: Color
+) -> void:
+	if brain_cfg == null:
+		return
+	var entity: _WorldEntity = _WorldEntity.new()
+	entity.setup(brain_cfg, Vector2i(wx, wz), world, chunk_manager, crystal_manager, defend_center, tint)
+	entity.died.connect(_on_entity_died.bind(entity))
 	add_child(entity)
 	_entities.append(entity)
 	entity_spawned.emit(entity)
+
+
+func _on_entity_died(entity: Node3D) -> void:
+	_entities.erase(entity)
+	entity_despawned.emit(entity)
+
+
+func export_entities() -> Array:
+	_prune()
+	var out: Array = []
+	for entity in _entities:
+		if not is_instance_valid(entity):
+			continue
+		if not entity.has_method("export_save_state"):
+			continue
+		out.append(entity.export_save_state())
+	return out
+
+
+func import_entities(rows: Array) -> void:
+	if rows.is_empty():
+		return
+	_clear_runtime_entities()
+	for row in rows:
+		if not row is Dictionary:
+			continue
+		_spawn_from_save(row)
+
+
+func _clear_runtime_entities() -> void:
+	for entity in _entities.duplicate():
+		if is_instance_valid(entity):
+			entity.queue_free()
+	_entities.clear()
+	_spawned_cells.clear()
+	_defenders_by_town.clear()
+
+
+func _spawn_from_save(data: Dictionary) -> void:
+	var brain_id: StringName = StringName(str(data.get("brain_id", "rabbit")))
+	var brain_cfg = _EntityBrainRegistry.get_def(brain_id)
+	if brain_cfg == null:
+		return
+	var pos_arr: Array = data.get("world_pos", [0, 0])
+	var cell := Vector2i(int(pos_arr[0]), int(pos_arr[1]))
+	var defend_arr: Array = data.get("defend_center", [cell.x, cell.y])
+	var defend := Vector2i(int(defend_arr[0]), int(defend_arr[1]))
+	var tint_arr: Array = data.get("tint", [0.72, 0.72, 0.68, 1.0])
+	var tint := Color(float(tint_arr[0]), float(tint_arr[1]), float(tint_arr[2]), float(tint_arr[3]))
+	var entity: _WorldEntity = _WorldEntity.new()
+	entity.setup(brain_cfg, cell, world, chunk_manager, crystal_manager, defend, tint)
+	if data.has("health"):
+		entity.health = float(data.health)
+	entity.global_position = Vector3(
+		float(data.get("x", float(cell.x) + 0.5)),
+		float(data.get("y", 1.0)),
+		float(data.get("z", float(cell.y) + 0.5))
+	)
+	entity.died.connect(_on_entity_died.bind(entity))
+	add_child(entity)
+	_entities.append(entity)
+	_spawned_cells[cell] = true
+
+
+func get_active_entity_count() -> int:
+	_prune()
+	return _entities.size()
+
+
+func _prune() -> void:
+	var kept: Array[Node3D] = []
+	for e in _entities:
+		if is_instance_valid(e):
+			kept.append(e)
+	_entities = kept
 
 
 func _animal_color(kind: int) -> Color:

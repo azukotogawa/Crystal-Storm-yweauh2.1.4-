@@ -26,6 +26,13 @@ static func get_def(id: StringName) -> _BuildableDef:
 	return _defs.get(id)
 
 
+static func get_def_for_tile(tile_id: int) -> _BuildableDef:
+	for def in _defs.values():
+		if def.tile_id == tile_id:
+			return def
+	return null
+
+
 static func get_all() -> Array:
 	return _defs.values()
 

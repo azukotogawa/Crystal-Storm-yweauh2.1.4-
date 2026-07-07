@@ -88,9 +88,32 @@ func generate_image(
 		Category.ORE:
 			_fill_ore(image, palette, seed_val)
 		Category.PARTICLE:
-			_fill_particle(image, palette, seed_val, 0.0)
+			match variant_id:
+				&"damage_number":
+					_fill_damage_number(image, palette, seed_val)
+				&"hit_flash":
+					_fill_hit_flash(image, palette, seed_val)
+				&"shatter":
+					_fill_shatter_particle(image, palette, seed_val)
+				&"spawn_boss", &"spawn_miniboss":
+					_fill_spawn_indicator(image, palette, seed_val, variant_id == &"spawn_boss")
+				&"victory_glow":
+					_fill_victory_glow(image, palette, seed_val)
+				_:
+					_fill_particle(image, palette, seed_val, 0.0)
 
 	return image
+
+
+func generate_combat_ui_bundle() -> Dictionary:
+	return {
+		"damage_number": generate_texture(Category.PARTICLE, &"damage_number", 32),
+		"hit_flash": generate_texture(Category.PARTICLE, &"hit_flash", 16),
+		"shatter": generate_texture(Category.PARTICLE, &"shatter", 24),
+		"spawn_boss": generate_texture(Category.PARTICLE, &"spawn_boss", 48),
+		"spawn_miniboss": generate_texture(Category.PARTICLE, &"spawn_miniboss", 32),
+		"victory_glow": generate_texture(Category.PARTICLE, &"victory_glow", 64),
+	}
 
 
 func generate_crystal_variants(count: int = 4, palette_id: StringName = &"") -> Array[ImageTexture]:
@@ -339,6 +362,85 @@ func _fill_ore(image: Image, palette: _Palette, seed_val: int) -> void:
 				color = color.lerp(palette.accent, (spark - 0.62) * 2.5)
 			color = _apply_grade(color, palette)
 			image.set_pixel(x, y, color)
+
+
+func _fill_damage_number(image: Image, palette: _Palette, _seed_val: int) -> void:
+	var dim := image.get_width()
+	image.fill(Color(0, 0, 0, 0))
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			if u < 0.08 or u > 0.92 or v < 0.2 or v > 0.88:
+				continue
+			var edge := minf(minf(u, 1.0 - u), minf(v - 0.2, 0.88 - v))
+			var a := smoothstep(0.0, 0.12, edge)
+			image.set_pixel(x, y, Color(palette.glow_color.r, palette.glow_color.g, palette.glow_color.b, a * 0.55))
+
+
+func _fill_hit_flash(image: Image, palette: _Palette, _seed_val: int) -> void:
+	var dim := image.get_width()
+	var cx := float(dim) * 0.5
+	var cy := float(dim) * 0.5
+	image.fill(Color(0, 0, 0, 0))
+	for y in dim:
+		for x in dim:
+			var d := Vector2(float(x) - cx, float(y) - cy).length() / (float(dim) * 0.5)
+			if d > 1.0:
+				continue
+			var a := (1.0 - d) * 0.9
+			image.set_pixel(x, y, Color(1.0, 0.85, 0.95, a))
+
+
+func _fill_shatter_particle(image: Image, palette: _Palette, seed_val: int) -> void:
+	var dim := image.get_width()
+	var shard := _get_noise("shatter", seed_val, FastNoiseLite.TYPE_SIMPLEX, 0.25)
+	image.fill(Color(0, 0, 0, 0))
+	for y in dim:
+		for x in dim:
+			var n := shard.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
+			if n < 0.42:
+				continue
+			var c := palette.accent.lerp(palette.glow_color, n)
+			c.a = (n - 0.42) * 1.8
+			image.set_pixel(x, y, c)
+
+
+func _fill_spawn_indicator(image: Image, palette: _Palette, seed_val: int, is_boss: bool) -> void:
+	var dim := image.get_width()
+	var cx := float(dim) * 0.5
+	var cy := float(dim) * 0.5
+	var ring_r := 0.38 if is_boss else 0.32
+	image.fill(Color(0, 0, 0, 0))
+	for y in dim:
+		for x in dim:
+			var uv := Vector2(float(x) / float(dim), float(y) / float(dim))
+			var d := Vector2(uv.x - 0.5, uv.y - 0.5).length()
+			var ring := absf(d - ring_r)
+			if ring > 0.06:
+				continue
+			var pulse := 0.5 + 0.5 * sin((uv.x + uv.y + float(seed_val)) * TAU)
+			var c := palette.glow_color.lerp(palette.accent, pulse)
+			c.a = (1.0 - ring / 0.06) * (0.85 if is_boss else 0.65)
+			image.set_pixel(x, y, c)
+			if is_boss and d < 0.12:
+				image.set_pixel(x, y, Color(1.0, 0.5, 0.95, 0.9))
+
+
+func _fill_victory_glow(image: Image, palette: _Palette, seed_val: int) -> void:
+	var dim := image.get_width()
+	var rays := _get_noise("victory", seed_val, FastNoiseLite.TYPE_SIMPLEX, 0.12)
+	image.fill(Color(0, 0, 0, 0))
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			var n := rays.get_noise_2d(u * dim, v * dim) * 0.5 + 0.5
+			var horiz := smoothstep(0.35, 0.5, v) * (1.0 - smoothstep(0.55, 0.75, v))
+			var a := horiz * (0.45 + n * 0.55)
+			var c := palette.glow_color.lerp(Color(1.0, 0.92, 0.45), u)
+			c.a = a
+			image.set_pixel(x, y, c)
 
 
 func _fill_particle(image: Image, palette: _Palette, seed_val: int, phase: float) -> void:

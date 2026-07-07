@@ -15,6 +15,8 @@ const FACE_RAMP := 7
 const FACE_RAMP_CORNER := 8
 const FACE_RAMP_SIDE := 9
 
+static var _shared_box_mesh: BoxMesh
+
 
 func setup(data: ChunkData, mesh_data: Dictionary):
 	layer_container = $LayerContainer if $LayerContainer else get_node_or_null("LayerContainer")
@@ -63,8 +65,10 @@ func _emit_box_multimesh(quads: Array) -> void:
 	mm.use_custom_data = true
 	var ws = _WorldSettings.get_active()
 	var voxel_s: float = ws.voxel_scale
-	mm.mesh = BoxMesh.new()
-	mm.mesh.size = Vector3.ONE
+	if _shared_box_mesh == null:
+		_shared_box_mesh = BoxMesh.new()
+		_shared_box_mesh.size = Vector3.ONE
+	mm.mesh = _shared_box_mesh
 	mm.instance_count = quads.size()
 	mm_instance.multimesh = mm
 

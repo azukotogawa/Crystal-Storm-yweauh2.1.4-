@@ -67,6 +67,20 @@ func get_equipped_defs() -> Array:
 	return out
 
 
+func export_equipped() -> Array:
+	var out: Array = []
+	for rid in equipped:
+		out.append(str(rid))
+	return out
+
+
+func load_equipped(ids: Array) -> void:
+	for rid in equipped.duplicate():
+		unequip(rid)
+	for entry in ids:
+		equip(StringName(str(entry)))
+
+
 func get_crystal_flow_mult() -> float:
 	var mult := 1.0
 	for def in get_equipped_defs():

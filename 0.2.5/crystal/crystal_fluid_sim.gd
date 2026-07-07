@@ -11,9 +11,13 @@ signal depth_cleared(pos: Vector2i)
 
 var config: _CrystalSimConfig
 var terrain: _CrystalTerrainQuery
+var global_flow_mult: float = 1.0
 
 var depth: Dictionary = {}
 var spawn_id_by_cell: Dictionary = {}
+## 0 = unlimited. When set, only a rotating subset of cells is simulated per tick.
+var max_cells_per_tick: int = 0
+var _flow_tick_offset: int = 0
 
 
 func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void:
@@ -56,13 +60,14 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1) -> void:
 		depth_changed.emit(pos)
 
 
-func tick_emitters(spawn_points: Array, delta: float) -> void:
+func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 1.0) -> void:
+	var mult: float = maxf(emit_weaken_mult, 0.05)
 	for spawn in spawn_points:
 		if not spawn.active:
 			continue
 		var pos: Vector2i = spawn.world_pos
 		var current: float = float(depth.get(pos, 0.0))
-		var added: float = spawn.emit_rate * delta
+		var added: float = spawn.emit_rate * mult * delta
 		var room := config.max_depth - current
 		if room <= 0.0:
 			continue
@@ -74,6 +79,14 @@ func tick_flow(delta: float) -> void:
 		return
 
 	var cells: Array = depth.keys()
+	if max_cells_per_tick > 0 and cells.size() > max_cells_per_tick:
+		var start: int = _flow_tick_offset % cells.size()
+		_flow_tick_offset += max_cells_per_tick
+		var subset: Array = []
+		for i in max_cells_per_tick:
+			subset.append(cells[(start + i) % cells.size()])
+		cells = subset
+
 	var deltas: Dictionary = {}
 
 	for pos_variant in cells:
@@ -115,7 +128,6 @@ func tick_flow(delta: float) -> void:
 			deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + transfer
 			_assign_spawn_on_flow(neighbor, pos)
 
-		# Lateral spread on near-flat terrain — pools grow outward like fluid.
 		if config.lateral_spread_bias > 0.0:
 			for dir in _CrystalTypes.NEIGHBOR_DIRS:
 				var neighbor: Vector2i = pos + dir
@@ -137,17 +149,18 @@ func tick_flow(delta: float) -> void:
 		set_depth(pos, new_depth, spawn_id)
 
 
-func _flow_conductivity(from_tile: int, to_tile: int, _from: Vector2i, _to: Vector2i) -> float:
-	var out_factor: float = config.vegetation_flow_factor(from_tile)
-	var in_factor: float = config.vegetation_flow_factor(to_tile)
+func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos: Vector2i) -> float:
+	var out_factor: float = terrain.get_flow_factor_at(from_pos, from_tile)
+	var in_factor: float = terrain.get_flow_factor_at(to_pos, to_tile)
 	var combined: float = sqrt(out_factor * in_factor)
+	combined *= terrain.get_channel_flow_mult(from_pos, to_pos)
 
 	if terrain.is_water_tile(to_tile) or to_tile == _VoxelTypes.RIVER:
 		combined *= config.water_build_over_rate
 	if terrain.is_water_tile(from_tile) and terrain.is_water_tile(to_tile):
 		combined *= config.river_flow_factor
 
-	return combined
+	return combined * global_flow_mult
 
 
 func _cliff_blocked(from: Vector2i, to: Vector2i) -> bool:

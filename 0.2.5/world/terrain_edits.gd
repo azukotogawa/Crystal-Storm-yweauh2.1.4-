@@ -53,3 +53,18 @@ static func build_wall(wx: int, wz: int, tile_id: int) -> bool:
 
 static func edit_count() -> int:
 	return _height_delta.size()
+
+
+static func to_dict() -> Dictionary:
+	const _Codec = preload("res://systems/save_codec.gd")
+	return {
+		"height_delta": _Codec.encode_vec2i_dict(_height_delta),
+		"build_tile": _Codec.encode_vec2i_dict(_build_tile),
+	}
+
+
+static func load_from_dict(data: Dictionary) -> void:
+	const _Codec = preload("res://systems/save_codec.gd")
+	reset()
+	_height_delta = _Codec.decode_vec2i_dict(data.get("height_delta", {}))
+	_build_tile = _Codec.decode_vec2i_dict(data.get("build_tile", {}))

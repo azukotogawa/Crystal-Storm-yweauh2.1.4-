@@ -45,6 +45,16 @@ static func get_feature(wx: int, wz: int) -> Dictionary:
 	return _feature_cells.get(Vector2i(wx, wz), {})
 
 
+static func get_plant_positions() -> Array:
+	var out: Array = []
+	for key_variant in _feature_cells.keys():
+		var key: Vector2i = key_variant
+		var feat: Dictionary = _feature_cells[key]
+		if feat.has("plant_id"):
+			out.append(key)
+	return out
+
+
 static func register_town(center: Vector2i, radius: int, town_name: String) -> void:
 	var town := {
 		"center": center,
@@ -89,6 +99,37 @@ static func register_entity_spawn(wx: int, wz: int, kind: int, animal_kind: int 
 
 static func get_entity_spawns() -> Array[Dictionary]:
 	return _entity_spawns
+
+
+static func to_dict() -> Dictionary:
+	const _Codec = preload("res://systems/save_codec.gd")
+	var tiles := {}
+	for key_variant in _tile_overrides.keys():
+		var key: Vector2i = key_variant
+		tiles[_Codec.vec2i_key(key)] = int(_tile_overrides[key])
+	var features := {}
+	for key_variant in _feature_cells.keys():
+		var key: Vector2i = key_variant
+		features[_Codec.vec2i_key(key)] = _Codec.sanitize_feature_value(_feature_cells[key])
+	return {
+		"tile_overrides": tiles,
+		"feature_cells": features,
+	}
+
+
+static func apply_save_overlay(data: Dictionary) -> void:
+	const _Codec = preload("res://systems/save_codec.gd")
+	var tiles: Dictionary = data.get("tile_overrides", {})
+	for key in tiles.keys():
+		var cell := _Codec.vec2i_from_key(str(key))
+		set_tile_override(cell.x, cell.y, int(tiles[key]))
+	var features: Dictionary = data.get("feature_cells", {})
+	for key in features.keys():
+		var cell := _Codec.vec2i_from_key(str(key))
+		var restored: Dictionary = _Codec.restore_feature_value(features[key])
+		var kind: int = int(restored.get("kind", _WorldFeatureTypes.FeatureKind.NONE))
+		restored.erase("kind")
+		register_feature(cell.x, cell.y, kind, restored)
 
 
 static func get_spawns_in_chunk(chunk_coord: Vector2i, chunk_size: int = 16) -> Array[Dictionary]:

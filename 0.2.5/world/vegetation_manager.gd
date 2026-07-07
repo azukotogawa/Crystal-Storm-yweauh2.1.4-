@@ -69,19 +69,32 @@ func _try_place_vegetation(wx: int, wz: int) -> void:
 
 	if float(bucket) / 1000.0 < tree_density * forest_bias:
 		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.TREE_TRUNK)
-		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.TREE, {"biome": biome_name})
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.TREE, {
+			"biome": biome_name,
+			"plant_id": "tree",
+			"growth_stage": 2,
+			"growth_progress": 1.0,
+		})
 		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.TREE)
 		return
 
 	if float(bucket % 997) / 997.0 < bush_density * moist:
 		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.BUSH)
-		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.BUSH, {})
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.BUSH, {
+			"plant_id": "bush",
+			"growth_stage": 2,
+			"growth_progress": 1.0,
+		})
 		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.BUSH)
 		return
 
 	if float(bucket % 983) / 983.0 < grass_density:
 		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.GRASS_TUFT)
-		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.GRASS_PATCH, {})
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.GRASS_PATCH, {
+			"plant_id": "grass_tuft",
+			"growth_stage": 1,
+			"growth_progress": 1.0,
+		})
 		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.GRASS_PATCH)
 
 

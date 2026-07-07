@@ -93,3 +93,15 @@ func snapshot() -> Dictionary:
 	for stat_id in _StatIds.ALL:
 		out[stat_id] = get_value(stat_id)
 	return out
+
+
+func export_bases() -> Dictionary:
+	var out := {}
+	for key in _bases.keys():
+		out[str(key)] = float(_bases[key])
+	return out
+
+
+func load_bases(data: Dictionary) -> void:
+	for key in data.keys():
+		set_base(StringName(str(key)), float(data[key]))

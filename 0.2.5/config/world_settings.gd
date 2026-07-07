@@ -124,5 +124,19 @@ func max_step_up_jump() -> float:
 	return layer_height() * 5.0
 
 
+@export_group("Player Physics (CharacterBody3D)")
+@export_range(0.5, 3.0, 0.05)
+var player_gravity_scale: float = 1.0
+@export_range(0.5, 2.0, 0.05)
+var player_jump_scale: float = 1.0
+@export_range(0.05, 0.5, 0.01)
+var player_floor_probe_radius: float = 0.22
+@export_range(20.0, 60.0, 1.0)
+var player_slope_limit_degrees: float = 48.0
+@export_range(0.01, 0.2, 0.01)
+var player_safe_margin: float = 0.06
+@export var player_use_character_body: bool = true
+
+
 func chunk_height_bound() -> int:
 	return maxi(maxi(max_world_height_voxels + 8, 32), 48)

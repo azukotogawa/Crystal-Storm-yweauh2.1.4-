@@ -2,6 +2,7 @@ class_name CrystalEnemySpawner
 extends Node
 
 const _CrystalEnemy = preload("res://entities/crystal_enemy.gd")
+const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 @export var spawn_interval: float = 8.0
@@ -9,16 +10,19 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 @export var spawn_near_player_min: float = 18.0
 @export var spawn_near_player_max: float = 42.0
 @export var require_crystal_depth: float = 0.2
+@export var assault_spawn_mult: float = 1.6
 
 var _timer: float = 0.0
 var _active: Array[Node3D] = []
 var _crystal: CrystalManager
 var _player: Node3D
 var _world: InfiniteNoiseWorld
+var _game_manager: GameManager
 
 
 func _ready() -> void:
 	add_to_group("crystal_enemy_spawner")
+	_EnemySpawnRegistry.ensure_builtins()
 	call_deferred("_bind")
 
 
@@ -26,22 +30,30 @@ func _bind() -> void:
 	_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_player = get_tree().get_first_node_in_group("player")
 	_world = get_tree().get_first_node_in_group("world")
+	_game_manager = get_tree().get_first_node_in_group("game_manager")
+	if _crystal and _crystal.has_method("get_evolution"):
+		var evo = _crystal.get_evolution()
+		if evo and not evo.enemy_unlocked.is_connected(_on_enemy_unlocked):
+			evo.enemy_unlocked.connect(_on_enemy_unlocked)
 
 
 func _process(delta: float) -> void:
 	_prune_active()
 	if _crystal == null or _player == null:
 		return
-	if not _crystal.has_method("get_evolution"):
-		return
-	var evolution = _crystal.get_evolution()
+	var evolution = _crystal.get_evolution() if _crystal.has_method("get_evolution") else null
 	if evolution == null or evolution.unlocked_enemies.is_empty():
 		return
 	if _active.size() >= max_active:
 		return
 
+	var interval := spawn_interval
+	if _game_manager and _game_manager.phase == GameManager.Phase.ASSAULT:
+		interval /= assault_spawn_mult
+	interval /= _spawn_pressure_mult()
+
 	_timer += delta
-	if _timer < spawn_interval:
+	if _timer < interval:
 		return
 	_timer = 0.0
 
@@ -52,18 +64,44 @@ func _process(delta: float) -> void:
 		if near > spawn_near_player_max:
 			return
 
-	var enemy_id: StringName = evolution.unlocked_enemies[_rng_index(evolution.unlocked_enemies.size())]
+	var tier: int = _crystal.strength_tier if "strength_tier" in _crystal else 0
+	var enemy_id: StringName = _EnemySpawnRegistry.pick_weighted(evolution.unlocked_enemies, tier)
+	if enemy_id == &"":
+		enemy_id = evolution.unlocked_enemies[0]
 	_spawn_enemy(enemy_id)
+
+
+func _on_enemy_unlocked(enemy_id: StringName) -> void:
+	var def = _EnemySpawnRegistry.get_def(enemy_id)
+	var burst := 1
+	if _crystal and _crystal.has_method("get_evolution"):
+		var evo = _crystal.get_evolution()
+		for entry in evo.unlock_table:
+			if entry.enemy_id == enemy_id:
+				burst = maxi(int(entry.spawn_burst), 1)
+				break
+	for _i in burst:
+		if _active.size() >= max_active:
+			break
+		_spawn_enemy(enemy_id)
 
 
 func _spawn_enemy(enemy_id: StringName) -> void:
 	var spawn_pos := _pick_spawn_pos()
 	if spawn_pos == Vector3.ZERO:
 		return
+	var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
 	var enemy: _CrystalEnemy = _CrystalEnemy.new()
-	enemy.setup(enemy_id, _player, _tint_for(enemy_id))
-	enemy.move_speed = _speed_for(enemy_id)
-	enemy.contact_damage = _damage_for(enemy_id)
+	var patrol := Vector2i.ZERO
+	if _crystal:
+		var spawns = _crystal.get_active_spawns()
+		for s in spawns:
+			if s.is_boss:
+				patrol = s.world_pos
+				break
+		if patrol == Vector2i.ZERO and not spawns.is_empty():
+			patrol = spawns[0].world_pos
+	enemy.setup(enemy_id, _player, spawn_def, patrol)
 	enemy.global_position = spawn_pos
 	get_tree().current_scene.add_child(enemy)
 	_active.append(enemy)
@@ -87,6 +125,50 @@ func _pick_spawn_pos() -> Vector3:
 	return Vector3.ZERO
 
 
+func export_enemies() -> Array:
+	_prune_active()
+	var out: Array = []
+	for enemy in _active:
+		if not is_instance_valid(enemy):
+			continue
+		out.append({
+			"enemy_id": str(enemy.enemy_id),
+			"x": enemy.global_position.x,
+			"y": enemy.global_position.y,
+			"z": enemy.global_position.z,
+			"health": enemy.health,
+		})
+	return out
+
+
+func import_enemies(rows: Array) -> void:
+	if rows.is_empty():
+		return
+	_prune_active()
+	for enemy in _active:
+		if is_instance_valid(enemy):
+			enemy.queue_free()
+	_active.clear()
+	if _player == null:
+		_bind()
+	for row in rows:
+		if not row is Dictionary:
+			continue
+		var enemy_id: StringName = StringName(str(row.get("enemy_id", "crystal_mite")))
+		var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
+		var enemy: _CrystalEnemy = _CrystalEnemy.new()
+		enemy.setup(enemy_id, _player, spawn_def)
+		enemy.global_position = Vector3(
+			float(row.get("x", 0.0)),
+			float(row.get("y", 1.0)),
+			float(row.get("z", 0.0))
+		)
+		if row.has("health"):
+			enemy.health = float(row.health)
+		get_tree().current_scene.add_child(enemy)
+		_active.append(enemy)
+
+
 func get_active_count() -> int:
 	_prune_active()
 	return _active.size()
@@ -100,6 +182,18 @@ func _prune_active() -> void:
 	_active = kept
 
 
+func _spawn_pressure_mult() -> float:
+	if _crystal == null or not _crystal.has_method("get_spawn_progress"):
+		return 1.0
+	var prog: Dictionary = _crystal.get_spawn_progress()
+	var total: int = int(prog.get("total", 0))
+	var active: int = int(prog.get("active", 0))
+	if total <= 0:
+		return 1.0
+	var destroyed_ratio: float = float(total - active) / float(total)
+	return 1.0 + destroyed_ratio * 1.25
+
+
 func _player_column_pos() -> Vector2:
 	if _player and _player.has_method("get_voxel_position"):
 		var v: Vector3 = _player.get_voxel_position()
@@ -109,41 +203,3 @@ func _player_column_pos() -> Vector2:
 		ws.world_to_column(_player.global_position.x),
 		ws.world_to_column(_player.global_position.z)
 	)
-
-
-func _rng_index(size: int) -> int:
-	return randi() % maxi(size, 1)
-
-
-func _speed_for(id: StringName) -> float:
-	match id:
-		&"farm_bomber":
-			return 12.0
-		&"crystal_stag":
-			return 14.0
-		&"corrupted_beast":
-			return 9.0
-		_:
-			return 10.0
-
-
-func _damage_for(id: StringName) -> float:
-	match id:
-		&"farm_bomber":
-			return 32.0
-		&"shard_guard":
-			return 18.0
-		_:
-			return 22.0
-
-
-func _tint_for(id: StringName) -> Color:
-	match id:
-		&"farm_bomber":
-			return Color(0.95, 0.55, 0.2)
-		&"crystal_stag":
-			return Color(0.55, 0.25, 0.9)
-		&"thornling":
-			return Color(0.3, 0.75, 0.35)
-		_:
-			return Color(0.72, 0.2, 0.95)

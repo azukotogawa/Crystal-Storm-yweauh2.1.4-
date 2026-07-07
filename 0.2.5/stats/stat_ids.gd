@@ -14,6 +14,8 @@ const CRYSTAL_YIELD := &"crystal_yield"                # Power gain multiplier (
 
 const DIG_SPEED := &"dig_speed"                        # Multiplier: higher = faster digs
 const BUILD_COST := &"build_cost"                      # Multiplier on material cost (<1 cheaper)
+const PLANT_SPEED := &"plant_speed"                    # Multiplier: faster planting / growth assist
+const CHANNEL_SPEED := &"channel_speed"                # Multiplier: faster channel digs / edits
 
 const MELEE_DAMAGE := &"melee_damage"
 const RANGED_DAMAGE := &"ranged_damage"
@@ -24,7 +26,7 @@ const BUILD_FLOW_BLOCK := &"build_flow_block"          # How strongly walls bloc
 const ALL := [
 	MAX_HEALTH, HEALTH_REGEN, MOVE_SPEED, JUMP_FORCE,
 	CRYSTAL_RESISTANCE, CRYSTAL_DAMAGE, CRYSTAL_YIELD,
-	DIG_SPEED, BUILD_COST,
+	DIG_SPEED, BUILD_COST, PLANT_SPEED, CHANNEL_SPEED,
 	MELEE_DAMAGE, RANGED_DAMAGE, DEFENSE,
 	BUILD_FLOW_BLOCK,
 ]
@@ -39,6 +41,8 @@ const DEFAULT_BASES := {
 	CRYSTAL_YIELD: 1.0,
 	DIG_SPEED: 1.0,
 	BUILD_COST: 1.0,
+	PLANT_SPEED: 1.0,
+	CHANNEL_SPEED: 1.0,
 	MELEE_DAMAGE: 1.0,
 	RANGED_DAMAGE: 1.0,
 	DEFENSE: 0.0,

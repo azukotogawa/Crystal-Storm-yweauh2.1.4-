@@ -1,18 +1,34 @@
 extends Control
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _CombatLog = preload("res://systems/combat_log.gd")
+const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 
 @onready var label = $DebugLabel
 
 var _update_counter := 0
-const DEBUG_UPDATE_EVERY := 12
+var _debug_update_every := 12
+var _panel_enabled := true
+
+func _enter_tree() -> void:
+	add_to_group("debug_panel")
+
+
+func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
+	if cfg == null:
+		return
+	_panel_enabled = bool(cfg.debug_panel_enabled)
+	_debug_update_every = maxi(int(cfg.debug_update_every), 4)
+	visible = _panel_enabled
+	set_process(_panel_enabled)
+
 
 func _process(_delta: float) -> void:
-	if not label:
+	if not _panel_enabled or not label:
 		return
 	
 	_update_counter += 1
-	if _update_counter % DEBUG_UPDATE_EVERY != 0:
+	if _update_counter % _debug_update_every != 0:
 		return
 
 	var seed_val := "???"
@@ -35,6 +51,14 @@ func _process(_delta: float) -> void:
 	var player_health := "???"
 	var evolution_line := "none"
 	var enemies_active := 0
+	var world_entities := 0
+	var town_status := "—"
+	var save_hint := "F5 save | F9 load | U map"
+	var perf_hint := "quality=?"
+	var combat_log := "—"
+	var nearest_target := "—"
+	var spawn_progress := "—"
+	var last_spawn_kill := "—"
 
 	# Find main nodes safely
 	var main = get_tree().root.get_node_or_null("Game")
@@ -136,6 +160,20 @@ func _process(_delta: float) -> void:
 		crystal_max_depth = float(stats.get("max_depth", 0.0))
 		crystal_power = float(stats.get("power", 0.0))
 		crystal_tier = int(stats.get("tier", 0))
+		spawn_progress = "%d/%d" % [
+			int(stats.get("spawns_active", 0)),
+			int(stats.get("spawns_total", 0)),
+		]
+		var last_k := str(stats.get("last_destroyed", ""))
+		if last_k != "":
+			last_spawn_kill = last_k
+		var weaken: float = float(stats.get("emit_weaken_mult", 1.0))
+		if weaken < 0.99:
+			spawn_progress += " emit x%.2f" % weaken
+		if bool(stats.get("boss_active", false)):
+			spawn_progress += " BOSS"
+		if bool(stats.get("boss_sealed", false)):
+			spawn_progress += " SEALED"
 	if crystal_manager and player_voxel != Vector3.ZERO and crystal_manager.has_method("get_nearest_crystal_distance"):
 		var dist: float = crystal_manager.get_nearest_crystal_distance(player_voxel)
 		if dist == INF:
@@ -156,9 +194,32 @@ func _process(_delta: float) -> void:
 				", ".join(parts) if parts.size() > 0 else "—",
 				unlock_str,
 			]
+	var save_svc = get_tree().get_first_node_in_group("save_game_service")
+	if save_svc and save_svc.has_method("has_save") and save_svc.has_save():
+		save_hint = "F5 save | F9 load | U map | slot0 OK"
 	var spawner = get_tree().get_first_node_in_group("crystal_enemy_spawner")
 	if spawner and spawner.has_method("get_active_count"):
 		enemies_active = spawner.get_active_count()
+	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
+	if entity_mgr and entity_mgr.has_method("get_active_entity_count"):
+		world_entities = entity_mgr.get_active_entity_count()
+	var town_def = get_tree().get_first_node_in_group("town_defense_manager")
+	if town_def and town_def.has_method("get_status_summary"):
+		var towns: Array = town_def.get_status_summary()
+		var parts: PackedStringArray = []
+		for t in towns:
+			parts.append("%s:%s" % [str(t.get("name", "?")), _town_state_label(int(t.get("state", 0)))])
+		if parts.size() > 0:
+			town_status = ", ".join(parts)
+
+	combat_log = _CombatLog.get_recent(" | ")
+	var perf_svc = get_tree().get_first_node_in_group("performance_service")
+	if perf_svc and "quality" in perf_svc:
+		var q = perf_svc.quality
+		if q:
+			perf_hint = "LOW" if int(q.preset) == 0 else ("MED" if int(q.preset) == 1 else "HIGH")
+	if player and player.has_method("get_voxel_position"):
+		nearest_target = _nearest_combat_target_summary(player.get_voxel_position())
 
 	label.text = """Seed: %s
 Map Temp: %s
@@ -177,6 +238,14 @@ Crystal Power: %.1f (T%d)
 Nearest Crystal: %s
 Evolution: %s
 Crystal Enemies: %d
+World Entities: %d
+Spawns: %s
+Last Kill: %s
+Towns: %s
+Combat: %s
+Target: %s
+Perf: %s
+Save: %s
 FPS: %d""" % [
 		seed_val,
 		map_temp,
@@ -195,5 +264,56 @@ FPS: %d""" % [
 		crystal_dist,
 		evolution_line,
 		enemies_active,
+		world_entities,
+		spawn_progress,
+		last_spawn_kill,
+		town_status,
+		combat_log,
+		nearest_target,
+		perf_hint,
+		save_hint,
 		Engine.get_frames_per_second()
 	]
+
+
+func _nearest_combat_target_summary(player_col: Vector3) -> String:
+	var best_label := ""
+	var best_dist := INF
+	var best_hp := ""
+	for group_name in ["world_entity", "crystal_enemy"]:
+		for node in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(node):
+				continue
+			if node.has_method("is_combat_alive") and not node.is_combat_alive():
+				continue
+			var center: Vector3 = node.get_combat_center() if node.has_method("get_combat_center") else node.global_position
+			var dist := Vector2(player_col.x - center.x, player_col.z - center.z).length()
+			if dist >= best_dist:
+				continue
+			best_dist = dist
+			if "health" in node:
+				var max_hp: float = float(node.max_health) if "max_health" in node else 0.0
+				if max_hp <= 0.0 and "config" in node and node.config:
+					max_hp = float(node.config.max_health)
+				if max_hp > 0.0:
+					best_hp = "%.0f/%.0f" % [node.health, max_hp]
+				else:
+					best_hp = "%.0f" % node.health
+			if node.has_method("get_combat_center"):
+				if "entity_kind" in node:
+					best_label = str(node.entity_kind)
+				elif "enemy_id" in node:
+					best_label = str(node.enemy_id)
+				else:
+					best_label = node.name
+	if best_label == "":
+		return "—"
+	return "%s d=%.1f HP %s" % [best_label, best_dist, best_hp if best_hp != "" else "?"]
+
+
+func _town_state_label(state: int) -> String:
+	match state:
+		1: return "ALERT"
+		2: return "BESIEGED"
+		3: return "FALLEN"
+		_: return "SAFE"

@@ -8,10 +8,18 @@ const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _CrystalEvolution = preload("res://crystal/crystal_evolution.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+const _PlantableRegistry = preload("res://world/plantable_registry.gd")
+const _PlantableDef = preload("res://config/plantable_def.gd")
+const _SpawnPointRegistry = preload("res://config/spawn_point_registry.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
+const _CombatLog = preload("res://systems/combat_log.gd")
+const _SpawnPointController = preload("res://crystal/spawn_point_controller.gd")
+
 
 signal fluid_changed(world_pos: Vector2i)
 signal power_changed(power: float, tier: int)
 signal spawn_destroyed(spawn: CrystalSpawnPoint)
+signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
 signal all_spawns_destroyed
 signal crystal_touched_player
 signal absorption_completed(source_id: StringName, world_pos: Vector2i)
@@ -50,6 +58,11 @@ var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
 var _initialized: bool = false
+var _spawn_ctrl: _SpawnPointController
+var _perf_skip_counter: int = 0
+var _perf_max_rebuilds_per_frame: int = 5
+var _perf_crystal_skip_frames: int = 0
+var _cells_by_chunk: Dictionary = {}
 
 
 func _enter_tree() -> void:
@@ -72,6 +85,10 @@ func _ready() -> void:
 	add_child(_marker_root)
 
 	_setup_materials()
+	_spawn_ctrl = _SpawnPointController.new()
+	_spawn_ctrl.spawn_destroyed.connect(_on_spawn_destroyed)
+	_spawn_ctrl.spawn_damaged.connect(_on_spawn_damaged)
+	_spawn_ctrl.all_spawns_destroyed.connect(_on_all_spawns_destroyed)
 	call_deferred("_bootstrap_when_ready")
 
 
@@ -90,9 +107,21 @@ func _bootstrap_when_ready() -> void:
 		await features.ensure_ready()
 
 	evolution = _CrystalEvolution.new()
+	configure_evolution()
 	_init_sim()
 	_initialize_spawns()
+	_rebuild_cell_index()
 	_initialized = true
+
+
+func configure_evolution() -> void:
+	if evolution == null:
+		return
+	var table: Array = []
+	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	if cfg_svc and cfg_svc.game_config and cfg_svc.game_config.absorption_unlocks.size() > 0:
+		table = cfg_svc.game_config.absorption_unlocks
+	evolution.configure(table)
 
 
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:
@@ -108,6 +137,14 @@ func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 	player_defeat_min_tier = cfg.player_defeat_min_tier
 	if _sim:
 		_sim.config = cfg
+	if _terrain_query:
+		_terrain_query.apply_sim_config(cfg)
+	var terrain_editor = get_tree().get_first_node_in_group("terrain_editor")
+	if terrain_editor and terrain_editor.has_method("apply_sim_config"):
+		terrain_editor.apply_sim_config(cfg)
+	var growth_mgr = get_tree().get_first_node_in_group("vegetation_growth_manager")
+	if growth_mgr and growth_mgr.has_method("apply_sim_config"):
+		growth_mgr.apply_sim_config(cfg)
 
 
 func _init_sim() -> void:
@@ -117,11 +154,50 @@ func _init_sim() -> void:
 	_sim = _CrystalFluidSim.new(sim_config, _terrain_query)
 	if not _sim.depth_changed.is_connected(_on_sim_depth_changed):
 		_sim.depth_changed.connect(_on_sim_depth_changed)
+	if not _sim.depth_cleared.is_connected(_on_sim_depth_cleared):
+		_sim.depth_cleared.connect(_on_sim_depth_cleared)
 
 
 func _on_sim_depth_changed(pos: Vector2i) -> void:
+	_index_crystal_cell(pos)
 	_mark_chunk_dirty(pos)
 	fluid_changed.emit(pos)
+
+
+func _on_sim_depth_cleared(pos: Vector2i) -> void:
+	_unindex_crystal_cell(pos)
+	_mark_chunk_dirty(pos)
+	fluid_changed.emit(pos)
+
+
+func _index_crystal_cell(pos: Vector2i) -> void:
+	if _sim == null or not _sim.depth.has(pos):
+		_unindex_crystal_cell(pos)
+		return
+	var coord := _chunk_coord_for(pos)
+	if not _cells_by_chunk.has(coord):
+		_cells_by_chunk[coord] = []
+	var bucket: Array = _cells_by_chunk[coord]
+	if pos not in bucket:
+		bucket.append(pos)
+
+
+func _unindex_crystal_cell(pos: Vector2i) -> void:
+	var coord := _chunk_coord_for(pos)
+	if not _cells_by_chunk.has(coord):
+		return
+	var bucket: Array = _cells_by_chunk[coord]
+	bucket.erase(pos)
+	if bucket.is_empty():
+		_cells_by_chunk.erase(coord)
+
+
+func _rebuild_cell_index() -> void:
+	_cells_by_chunk.clear()
+	if _sim == null:
+		return
+	for pos_variant in _sim.depth.keys():
+		_index_crystal_cell(pos_variant)
 
 
 func get_fluid_sim() -> _CrystalFluidSim:
@@ -152,14 +228,12 @@ func _initialize_spawns() -> void:
 		_sim.clear()
 	_spawn_points.clear()
 	_next_spawn_id = 0
+	_spawn_ctrl.emit_weaken_mult = 1.0
+	_spawn_ctrl.last_destroyed_label = ""
+	_SpawnPointRegistry.ensure_builtins()
 
-	var origin := CrystalSpawnPoint.new(
-		_alloc_spawn_id(),
-		Vector2i.ZERO,
-		CrystalTypes.SpawnKind.ORIGIN,
-		500.0,
-		true
-	)
+	var origin_def := _spawn_def_for_kind(CrystalTypes.SpawnKind.ORIGIN)
+	var origin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), Vector2i.ZERO, origin_def)
 	_spawn_points.append(origin)
 	_seed_emitter(origin)
 
@@ -169,9 +243,12 @@ func _initialize_spawns() -> void:
 		var ruin_pos := _pick_ruin_spawn_position()
 		_add_ruin_spawn_at(ruin_pos)
 
+	_add_artifact_spawns()
+	_sync_spawn_controller()
 	_recalc_stats()
 	_refresh_spawn_markers()
 	_flush_dirty_chunks()
+	_log_spawn_status("initialized")
 
 
 func _alloc_spawn_id() -> int:
@@ -205,15 +282,73 @@ func _add_ruin_spawn_at(ruin_pos: Vector2i) -> void:
 	for existing in _spawn_points:
 		if existing.world_pos == ruin_pos:
 			return
-	var ruin := CrystalSpawnPoint.new(
-		_alloc_spawn_id(),
-		ruin_pos,
-		CrystalTypes.SpawnKind.RUIN,
-		120.0,
-		false
-	)
+	var ruin_def := _spawn_def_for_kind(CrystalTypes.SpawnKind.RUIN)
+	var ruin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), ruin_pos, ruin_def)
 	_spawn_points.append(ruin)
 	_seed_emitter(ruin)
+
+
+func _spawn_def_for_kind(kind: int) -> _SpawnPointDef:
+	var def := _SpawnPointRegistry.get_def_for_kind(kind)
+	if def:
+		return def
+	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	if cfg_svc and cfg_svc.game_config:
+		for entry in cfg_svc.game_config.spawn_points:
+			if entry is _SpawnPointDef and entry.spawn_kind == kind:
+				return entry
+	return _SpawnPointRegistry.get_def(&"ruin_miniboss")
+
+
+func _sync_spawn_controller() -> void:
+	_spawn_ctrl.set_spawns(_spawn_points)
+
+
+func _add_artifact_spawns() -> void:
+	var count: int = sim_config.artifact_spawn_count if "artifact_spawn_count" in sim_config else 1
+	for _i in count:
+		var pos := _pick_artifact_spawn_position()
+		_add_artifact_spawn_at(pos)
+
+
+func _add_artifact_spawn_at(pos: Vector2i) -> void:
+	for existing in _spawn_points:
+		if existing.world_pos == pos:
+			return
+	var art_def := _SpawnPointRegistry.get_def(&"artifact_node")
+	if art_def == null:
+		art_def = _spawn_def_for_kind(CrystalTypes.SpawnKind.ARTIFACT)
+	var artifact := CrystalSpawnPoint.from_def(_alloc_spawn_id(), pos, art_def)
+	_spawn_points.append(artifact)
+	_seed_emitter(artifact)
+
+
+func _pick_artifact_spawn_position() -> Vector2i:
+	var best := Vector2i(48, -48)
+	var best_score := -1.0
+	for _attempt in 32:
+		var angle := _rng.randf_range(0.0, TAU)
+		var dist := _rng.randf_range(ruin_min_distance * 0.6, ruin_max_distance * 0.85)
+		var wx := int(round(cos(angle) * dist))
+		var wz := int(round(sin(angle) * dist))
+		var pos := Vector2i(wx, wz)
+		if absf(float(pos.x)) > float(_WorldBorder.PLAYABLE_HALF_X) \
+				or absf(float(pos.y)) > float(_WorldBorder.PLAYABLE_HALF_Z):
+			continue
+		if CrystalTypes.is_water_tile(_tile_at(pos)):
+			continue
+		var occupied := false
+		for existing in _spawn_points:
+			if existing.world_pos == pos:
+				occupied = true
+				break
+		if occupied:
+			continue
+		var score := Vector2(pos).length() + _rng.randf_range(0.0, 12.0)
+		if score > best_score:
+			best_score = score
+			best = pos
+	return best
 
 
 func _pick_ruin_spawn_position() -> Vector2i:
@@ -243,12 +378,33 @@ func _pick_ruin_spawn_position() -> Vector2i:
 	return best
 
 
+func apply_performance_config(cfg) -> void:
+	if cfg == null:
+		return
+	_perf_crystal_skip_frames = int(cfg.crystal_sim_skip_frames)
+	_perf_max_rebuilds_per_frame = int(cfg.max_crystal_chunk_rebuilds_per_frame)
+	expansion_enabled = bool(cfg.crystal_sim_enabled)
+	if cfg.flow_substeps > 0:
+		flow_substeps = cfg.flow_substeps
+		if sim_config:
+			sim_config.flow_substeps = cfg.flow_substeps
+	if _sim:
+		_sim.max_cells_per_tick = int(cfg.max_crystal_flow_cells)
+
+
 func _process(delta: float) -> void:
 	if not _initialized or not expansion_enabled:
 		return
 
+	if _perf_crystal_skip_frames > 0:
+		_perf_skip_counter = (_perf_skip_counter + 1) % (_perf_crystal_skip_frames + 1)
+		if _perf_skip_counter != 0:
+			return
+		delta *= float(_perf_crystal_skip_frames + 1)
+
 	if _sim:
-		_sim.tick_emitters(_spawn_points, delta)
+		_sim.global_flow_mult = _relic_flow_mult()
+		_sim.tick_emitters(_spawn_points, delta, _spawn_ctrl.emit_weaken_mult)
 		var sub_delta := delta / float(max(sim_config.flow_substeps, 1))
 		for _i in sim_config.flow_substeps:
 			_sim.tick_flow(sub_delta)
@@ -270,6 +426,10 @@ func _tick_power(delta: float) -> void:
 	if total_volume <= 0.0:
 		return
 	_add_power(total_volume * sim_config.power_per_volume * delta)
+
+
+func grant_feed_power(amount: float) -> void:
+	_add_power(amount)
 
 
 func _add_power(amount: float) -> void:
@@ -318,9 +478,18 @@ func _mark_chunk_dirty(pos: Vector2i) -> void:
 func _flush_dirty_chunks() -> void:
 	if _dirty_chunks.is_empty():
 		return
+	var rebuilt := 0
 	for coord_variant in _dirty_chunks.keys():
 		_rebuild_chunk_layer(coord_variant)
-	_dirty_chunks.clear()
+		rebuilt += 1
+		if rebuilt >= _perf_max_rebuilds_per_frame:
+			break
+	if rebuilt >= _dirty_chunks.size():
+		_dirty_chunks.clear()
+	else:
+		var keys := _dirty_chunks.keys()
+		for i in rebuilt:
+			_dirty_chunks.erase(keys[i])
 
 
 func _rebuild_chunk_layer(coord: Vector2i) -> void:
@@ -330,11 +499,10 @@ func _rebuild_chunk_layer(coord: Vector2i) -> void:
 	var max_x := min_x + ChunkData.SIZE
 	var max_z := min_z + ChunkData.SIZE
 
-	if _sim == null:
-		return
-	for pos_variant in _sim.depth.keys():
+	var positions: Array = _cells_by_chunk.get(coord, [])
+	for pos_variant in positions:
 		var pos: Vector2i = pos_variant
-		if pos.x < min_x or pos.x >= max_x or pos.y < min_z or pos.y >= max_z:
+		if not _sim.depth.has(pos):
 			continue
 		var depth: float = float(_sim.depth[pos])
 		if depth < sim_config.min_depth:
@@ -373,7 +541,12 @@ func _refresh_spawn_markers() -> void:
 		mesh.bottom_radius = 0.7 if spawn.is_boss else 0.45
 		mesh.height = 3.5 if spawn.is_boss else 2.2
 		marker.mesh = mesh
-		marker.material_override = _marker_material
+		var mat: StandardMaterial3D = _marker_material.duplicate()
+		if spawn.is_boss:
+			var gen = get_node_or_null("/root/CrystalTextureGenerator")
+			if gen and gen.has_method("generate_texture"):
+				mat.albedo_texture = gen.generate_texture(gen.Category.PARTICLE, &"spawn_boss", 32)
+		marker.material_override = mat
 		var surface := _terrain_at(spawn.world_pos)
 		marker.position = Vector3(
 			float(spawn.world_pos.x) + 0.5,
@@ -432,38 +605,63 @@ func get_active_spawns() -> Array[CrystalSpawnPoint]:
 	return active
 
 
+func get_spawn_at_cell(wx: int, wz: int) -> CrystalSpawnPoint:
+	return _spawn_ctrl.get_spawn_at_cell(wx, wz)
+
+
+func get_spawn_progress() -> Dictionary:
+	return _spawn_ctrl.get_progress()
+
+
+## Headless test entry — wires spawns through the same controller path as runtime.
+func harness_setup_spawns(spawns: Array) -> void:
+	_spawn_points.clear()
+	for s in spawns:
+		if s is CrystalSpawnPoint:
+			_spawn_points.append(s)
+	if _spawn_ctrl == null:
+		_spawn_ctrl = _SpawnPointController.new()
+		_spawn_ctrl.spawn_destroyed.connect(_on_spawn_destroyed)
+		_spawn_ctrl.all_spawns_destroyed.connect(_on_all_spawns_destroyed)
+	_sync_spawn_controller()
+
+
+func _log_spawn_status(reason: String) -> void:
+	var prog := get_spawn_progress()
+	print("[Crystal] Spawns %s: %d/%d active (emit x%.2f)" % [
+		reason,
+		prog.active,
+		prog.total,
+		_spawn_ctrl.emit_weaken_mult,
+	])
+
+
 func damage_spawn(spawn_id: int, amount: float) -> bool:
-	for spawn in _spawn_points:
-		if spawn.id != spawn_id:
-			continue
-		if spawn.apply_damage(amount):
-			spawn_destroyed.emit(spawn)
-			_on_spawn_destroyed(spawn)
-			return true
-		return false
-	return false
+	return _spawn_ctrl.damage_spawn(spawn_id, amount)
 
 
 func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) -> bool:
-	var destroyed := false
-	for spawn in _spawn_points:
-		if not spawn.active:
-			continue
-		if Vector2(pos).distance_to(Vector2(spawn.world_pos)) <= radius:
-			if spawn.apply_damage(amount):
-				spawn_destroyed.emit(spawn)
-				_on_spawn_destroyed(spawn)
-				destroyed = true
-	return destroyed
+	return _spawn_ctrl.damage_spawn_at_world(pos, amount, radius)
+
+
+func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:
+	spawn_damaged.emit(spawn, amount)
 
 
 func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
+	spawn_destroyed.emit(spawn)
 	var marker = _spawn_markers.get(spawn.id)
 	if marker:
 		marker.queue_free()
 		_spawn_markers.erase(spawn.id)
-	if get_active_spawns().is_empty():
-		all_spawns_destroyed.emit()
+	if spawn.power_drain > 0.0:
+		power = maxf(power - spawn.power_drain, 0.0)
+		strength_tier = sim_config.tier_from_power(power)
+		power_changed.emit(power, strength_tier)
+
+
+func _on_all_spawns_destroyed() -> void:
+	all_spawns_destroyed.emit()
 
 
 func get_nearest_crystal_distance(from_pos: Vector3) -> float:
@@ -500,7 +698,7 @@ func _tick_absorption(delta: float) -> void:
 		var tile_id := _tile_at(pos)
 		if not _is_absorbable_tile(tile_id):
 			continue
-		var rate: float = _absorption_rate(tile_id)
+		var rate: float = _absorption_rate_for(pos, tile_id)
 		var progress: float = float(_absorption.get(pos, 0.0)) + delta * rate * depth
 		if progress >= 1.0:
 			completed.append(pos)
@@ -519,6 +717,16 @@ func _is_absorbable_tile(tile_id: int) -> bool:
 	]
 
 
+func _absorption_rate_for(pos: Vector2i, tile_id: int) -> float:
+	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
+	if feat.has("plant_id"):
+		var def = _PlantableRegistry.get_def(StringName(str(feat.plant_id))) as _PlantableDef
+		if def:
+			var stage: int = int(feat.get("growth_stage", def.mature_stage()))
+			return def.absorb_rate_for_stage(stage)
+	return _absorption_rate(tile_id)
+
+
 func _absorption_rate(tile_id: int) -> float:
 	match tile_id:
 		VoxelTypes.GRASS_TUFT:
@@ -531,6 +739,18 @@ func _absorption_rate(tile_id: int) -> float:
 			return sim_config.farmland_absorb_rate
 		_:
 			return 0.08
+
+
+func _relic_flow_mult() -> float:
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null:
+		return 1.0
+	var relic_mgr = player.get_node_or_null("RelicManager")
+	if relic_mgr == null:
+		relic_mgr = get_tree().get_first_node_in_group("relic_manager")
+	if relic_mgr and relic_mgr.has_method("get_crystal_flow_mult"):
+		return maxf(relic_mgr.get_crystal_flow_mult(), 0.05)
+	return 1.0
 
 
 func _absorption_power_boost(tile_id: int) -> float:
@@ -554,7 +774,9 @@ func _complete_absorption(pos: Vector2i) -> void:
 	_add_power(_absorption_power_boost(tile_id))
 	var source_id := _absorption_source_for(tile_id, feat)
 	if evolution:
-		evolution.record_absorption(source_id)
+		var unlock: Dictionary = evolution.record_absorption(source_id)
+		if unlock.has("bonus_power"):
+			_add_power(float(unlock.bonus_power))
 	absorption_completed.emit(source_id, pos)
 	if world and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(pos.x, pos.y)
@@ -609,7 +831,9 @@ func _tick_ruin_absorption(delta: float) -> void:
 			_ruin_absorption.erase(center)
 			_add_power(18.0)
 			if evolution:
-				evolution.record_absorption(&"ruin")
+				var unlock: Dictionary = evolution.record_absorption(&"ruin")
+				if unlock.has("bonus_power"):
+					_add_power(float(unlock.bonus_power))
 			absorption_completed.emit(&"ruin", center)
 			_clear_ruin_at(center)
 		else:
@@ -638,17 +862,132 @@ func get_coverage_ratio() -> float:
 	return float(covered_cells) / playable_cells
 
 
+func export_state() -> Dictionary:
+	var depth_rows: Array = []
+	if _sim:
+		for pos_variant in _sim.depth.keys():
+			var pos: Vector2i = pos_variant
+			depth_rows.append([
+				pos.x, pos.y,
+				float(_sim.depth[pos]),
+				int(_sim.spawn_id_by_cell.get(pos, -1)),
+			])
+	var spawn_rows: Array = _spawn_ctrl.export_spawn_rows()
+	var absorption_rows: Array = []
+	for pos_variant in _absorption.keys():
+		var pos: Vector2i = pos_variant
+		absorption_rows.append([pos.x, pos.y, float(_absorption[pos])])
+	var evo_data := evolution.get_summary() if evolution else {}
+	return {
+		"power": power,
+		"strength_tier": strength_tier,
+		"expansion_enabled": expansion_enabled,
+		"emit_weaken_mult": _spawn_ctrl.emit_weaken_mult,
+		"last_destroyed_label": _spawn_ctrl.last_destroyed_label,
+		"depth": depth_rows,
+		"spawns": spawn_rows,
+		"evolution": evo_data,
+		"absorption_progress": absorption_rows,
+	}
+
+
+func import_state(data: Dictionary) -> void:
+	if not _initialized or _sim == null:
+		return
+	power = float(data.get("power", power))
+	strength_tier = int(data.get("strength_tier", strength_tier))
+	expansion_enabled = bool(data.get("expansion_enabled", expansion_enabled))
+	_spawn_ctrl.import_meta({
+		"emit_weaken_mult": data.get("emit_weaken_mult", _spawn_ctrl.emit_weaken_mult),
+		"last_destroyed_label": data.get("last_destroyed_label", _spawn_ctrl.last_destroyed_label),
+	})
+
+	_sim.clear()
+	_absorption.clear()
+	for row in data.get("depth", []):
+		if row is Array and row.size() >= 3:
+			var pos := Vector2i(int(row[0]), int(row[1]))
+			var spawn_id: int = int(row[3]) if row.size() >= 4 else -1
+			_sim.set_depth(pos, float(row[2]), spawn_id)
+
+	for row in data.get("absorption_progress", []):
+		if row is Array and row.size() >= 3:
+			_absorption[Vector2i(int(row[0]), int(row[1]))] = float(row[2])
+
+	if evolution:
+		var evo: Dictionary = data.get("evolution", {})
+		evolution.absorbed_counts.clear()
+		for key in evo.get("absorbed", {}).keys():
+			evolution.absorbed_counts[StringName(str(key))] = int(evo.absorbed[key])
+		evolution.unlocked_enemies.clear()
+		for entry in evo.get("unlocked_enemies", []):
+			evolution.unlocked_enemies.append(StringName(str(entry)))
+
+	_spawn_points.clear()
+	_SpawnPointRegistry.ensure_builtins()
+	for row in data.get("spawns", []):
+		if not row is Dictionary:
+			continue
+		var def_id: StringName = StringName(str(row.get("def_id", "")))
+		var def: _SpawnPointDef = _SpawnPointRegistry.get_def(def_id) if def_id != &"" else null
+		var spawn: CrystalSpawnPoint
+		if def:
+			spawn = CrystalSpawnPoint.from_def(
+				int(row.get("id", 0)),
+				Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
+				def
+			)
+		else:
+			spawn = CrystalSpawnPoint.new(
+				int(row.get("id", 0)),
+				Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
+				int(row.get("kind", CrystalTypes.SpawnKind.RUIN)),
+				float(row.get("max_health", 100.0)),
+				bool(row.get("is_boss", false))
+			)
+			spawn.display_name = str(row.get("display_name", spawn.display_name))
+			spawn.emit_rate = float(row.get("emit_rate", spawn.emit_rate))
+			spawn.weaken_factor = float(row.get("weaken_factor", spawn.weaken_factor))
+			spawn.power_drain = float(row.get("power_drain", spawn.power_drain))
+		spawn.health = float(row.get("health", spawn.max_health))
+		spawn.active = bool(row.get("active", true))
+		spawn.max_health = float(row.get("max_health", spawn.max_health))
+		_spawn_points.append(spawn)
+		_next_spawn_id = maxi(_next_spawn_id, spawn.id + 1)
+
+	_sync_spawn_controller()
+	_recalc_stats()
+	_rebuild_cell_index()
+	_refresh_spawn_markers()
+	_flush_dirty_chunks()
+	_log_spawn_status("restored")
+
+
+func get_spawn_marker(spawn_id: int) -> MeshInstance3D:
+	return _spawn_markers.get(spawn_id) as MeshInstance3D
+
+
+func get_spawn_marker_ids() -> Array:
+	return _spawn_markers.keys()
+
+
 func get_debug_stats() -> Dictionary:
 	var max_depth := 0.0
 	if _sim:
 		for pos_variant in _sim.depth.keys():
 			max_depth = maxf(max_depth, float(_sim.depth[pos_variant]))
+	var prog := get_spawn_progress()
 	return {
 		"tiles": covered_cells,
 		"volume": total_volume,
 		"max_depth": max_depth,
 		"power": power,
 		"tier": strength_tier,
-		"spawns_active": get_active_spawns().size(),
-		"spawns_total": _spawn_points.size(),
+		"spawns_active": prog.active,
+		"spawns_total": prog.total,
+		"spawns_destroyed": prog.destroyed,
+		"last_destroyed": prog.last_destroyed,
+		"emit_weaken_mult": prog.emit_weaken_mult,
+		"boss_active": prog.boss_active,
+		"boss_sealed": prog.get("boss_sealed", false),
 	}

@@ -14,11 +14,17 @@
 [ext_resource type="Script" path="res://world/world_features.gd" id="10_features"]
 [ext_resource type="Script" path="res://world/town_manager.gd" id="11_town"]
 [ext_resource type="Script" path="res://world/vegetation_manager.gd" id="12_veg"]
+[ext_resource type="Script" path="res://world/vegetation_growth_manager.gd" id="12_growth"]
+[ext_resource type="Script" path="res://world/town_defense_manager.gd" id="12_town_def"]
+[ext_resource type="Script" path="res://systems/save_game_service.gd" id="16_save"]
+[ext_resource type="Script" path="res://ui/topographical_map.gd" id="17_map"]
 [ext_resource type="Script" path="res://entities/entity_manager.gd" id="13_entity"]
 [ext_resource type="Script" path="res://world/ruin_manager.gd" id="13_ruin"]
 [ext_resource type="Script" path="res://entities/crystal_enemy_spawner.gd" id="13_spawner"]
 [ext_resource type="Script" path="res://ui/hotbar.gd" id="14_hotbar"]
 [ext_resource type="Script" path="res://ui/inventory_panel.gd" id="15_inv"]
+[ext_resource type="Script" path="res://systems/performance_service.gd" id="18_perf"]
+[ext_resource type="Script" path="res://systems/combat_visual_feedback.gd" id="19_vfx"]
 
 [sub_resource type="Environment" id="Environment_tipki"]
 ambient_light_color = Color(1, 1, 1, 1)
@@ -44,6 +50,12 @@ script = ExtResource("11_town")
 [node name="VegetationManager" type="Node" parent="WorldFeatures"]
 script = ExtResource("12_veg")
 
+[node name="VegetationGrowthManager" type="Node" parent="WorldFeatures"]
+script = ExtResource("12_growth")
+
+[node name="TownDefenseManager" type="Node" parent="WorldFeatures"]
+script = ExtResource("12_town_def")
+
 [node name="RuinManager" type="Node" parent="WorldFeatures"]
 script = ExtResource("13_ruin")
 
@@ -62,13 +74,22 @@ script = ExtResource("8_gmgr")
 [node name="TerrainEditor" type="Node" parent="."]
 script = ExtResource("8_terrain")
 
+[node name="SaveGameService" type="Node" parent="."]
+script = ExtResource("16_save")
+
+[node name="PerformanceService" type="Node" parent="."]
+script = ExtResource("18_perf")
+
+[node name="CombatVisualFeedback" type="Node3D" parent="."]
+script = ExtResource("19_vfx")
+
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
 environment = SubResource("Environment_tipki")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1030504662]
 transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
 
-[node name="Player" type="Node3D" parent="." unique_id=1228396210]
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1228396210]
 script = ExtResource("4_272bh")
 
 [node name="Camera3D" type="Camera3D" parent="Player" unique_id=2047417874 node_paths=PackedStringArray("target")]
@@ -91,6 +112,12 @@ script = ExtResource("14_hotbar")
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("15_inv")
+
+[node name="TopographicalMap" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("17_map")
 
 [node name="DebugPanel" type="Control" parent="CanvasLayer" unique_id=2121095323]
 layout_mode = 3

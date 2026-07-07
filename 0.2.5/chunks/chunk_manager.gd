@@ -75,10 +75,13 @@ func _exit_tree():
 func request_chunk(coord: Vector2i, high_priority: bool = false):
 	if chunks.has(coord) or pending.has(coord) or _chunk_tasks.has(coord):
 		return
+	if world == null:
+		return
 
 	pending[coord] = true
 
 	var data := ChunkData.new(coord, world)
+	data.capture_worker_snapshot()
 
 	var task_id := WorkerThreadPool.add_task(Callable(self, "_generate_chunk_task").bind(coord, data), high_priority)
 	_chunk_tasks[coord] = task_id
@@ -192,6 +195,15 @@ func apply_world_gen_config(cfg) -> void:
 	ramp_max_surface_height = float(cfg.ramp_max_surface_height)
 	ramp_mountain_cutoff_height = float(cfg.mountain_ramp_cutoff_height)
 	TerrainRamps.placement_chance = ramp_placement_chance
+
+
+func apply_performance_config(cfg) -> void:
+	if cfg == null:
+		return
+	RENDER_DISTANCE = int(cfg.render_distance)
+	MAX_CHUNKS_PER_FRAME = int(cfg.max_chunks_per_frame)
+	MAX_INFLIGHT_CHUNKS = int(cfg.max_inflight_chunks)
+	MESH_CAVES = bool(cfg.mesh_caves)
 
 
 func _world_border_should_force_ramp(world_x: int, world_z: int) -> bool:
@@ -498,6 +510,10 @@ func update_stream(cx: int, cz: int):
 			chunks[key].queue_free()
 			chunks.erase(key)
 
+	for key in pending.keys():
+		if not needed.has(key):
+			pending.erase(key)
+
 
 func _player_column_pos() -> Vector2:
 	if player and player.has_method("get_voxel_position"):
@@ -681,29 +697,39 @@ func _emit_cave_faces(data: ChunkData, out_quads: Array) -> void:
 
 
 func _on_chunk_ready(data: ChunkData, packed_quad_data: Dictionary):
-	if pending.has(data.position):                                              
-		pending.erase(data.position)                                                             
-	if chunks.has(data.position):                                                                                     
-		return                                                                                              
-	if not packed_quad_data.has("count") or packed_quad_data.get("count", 0) == 0:   
-		return                                                            
+	if not is_inside_tree():
+		return
+	if not pending.has(data.position):
+		return
+	pending.erase(data.position)
+	if chunks.has(data.position):
+		return
+	if not packed_quad_data.has("count") or packed_quad_data.get("count", 0) == 0:
+		return
 	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()
-	if view:
-		view.setup(data, packed_quad_data)
-		add_child(view)
-		chunks[data.position] = view
-		chunk_ready.emit(data.position, data)
-	else:
-		print("ERROR: Failed to instantiate ChunkView for position: ", data.position)
+	if view == null:
+		push_warning("ChunkManager: failed to instantiate ChunkView for %s" % str(data.position))
+		return
+	view.setup(data, packed_quad_data)
+	add_child(view)
+	chunks[data.position] = view
+	chunk_ready.emit(data.position, data)
+
 
 func _generate_chunk_task(coord: Vector2i, data: ChunkData):
+	# Worker: noise + column maps only (no shared TerrainEdits / FeatureRegistry).
 	_generate_chunk(data)
-	var quads = _build_mesh(data)
-	call_deferred("_on_chunk_task_complete", coord, data, quads)
+	call_deferred("_on_chunk_columns_ready", coord, data)
 
-func _on_chunk_task_complete(coord: Vector2i, data: ChunkData, packed_quad_data: Dictionary):
+
+func _on_chunk_columns_ready(coord: Vector2i, data: ChunkData) -> void:
 	_chunk_tasks.erase(coord)
-	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": packed_quad_data})
+	if not is_inside_tree():
+		return
+	if not pending.has(coord):
+		return
+	var quads := _build_mesh(data)
+	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": quads})
 
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 	var entry := get_ramp_entry_at_world(wx, wz)

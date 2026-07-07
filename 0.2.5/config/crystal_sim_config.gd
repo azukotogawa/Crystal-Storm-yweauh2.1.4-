@@ -21,12 +21,27 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var river_flow_factor: float = 0.06
 @export var water_build_over_rate: float = 0.35
 
+@export_group("Player Channels")
+@export var channel_base_flow_factor: float = 0.1
+@export var channel_along_flow_mult: float = 2.4
+@export var channel_cross_flow_mult: float = 0.3
+@export var channel_water_level_flow_scale: float = 1.5
+@export var channel_equilibrate_rate: float = 0.4
+@export var channel_raise_step: float = 0.2
+@export var channel_lower_step: float = 0.2
+
+@export_group("Vegetation Growth")
+@export var growth_near_water_bonus: float = 1.35
+@export var growth_near_crystal_penalty: float = 0.35
+@export var denial_stack_diminish: float = 0.6
+
 @export_group("Emitters")
 @export var origin_emit_rate: float = 3.2
 @export var ruin_emit_rate: float = 1.1
 @export var artifact_emit_rate: float = 0.7
 @export var initial_spawn_depth: float = 2.5
 @export var ruin_spawn_count: int = 2
+@export var artifact_spawn_count: int = 1
 @export var ruin_min_distance: float = 72.0
 @export var ruin_max_distance: float = 180.0
 

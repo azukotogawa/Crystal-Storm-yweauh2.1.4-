@@ -58,5 +58,14 @@ func load_bases_from_exports(max_health: float, move_speed: float) -> void:
 	set_base(_StatIds.MOVE_SPEED, move_speed)
 
 
+func export_bases() -> Dictionary:
+	return sheet.export_bases() if sheet else {}
+
+
+func load_bases(data: Dictionary) -> void:
+	if sheet:
+		sheet.load_bases(data)
+
+
 func _on_sheet_stat_changed(stat_id: StringName, value: float) -> void:
 	stat_changed.emit(stat_id, value)

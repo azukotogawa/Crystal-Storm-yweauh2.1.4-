@@ -6,7 +6,7 @@ const _GameConfig = preload("res://config/game_config.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-enum Phase { MAZE, ASSAULT }
+enum Phase { MAZE, ASSAULT, VICTORY }
 enum RunState { PLAYING, WON, LOST }
 
 signal phase_changed(new_phase: Phase)
@@ -88,6 +88,11 @@ func _check_crystal_overrun() -> void:
 
 
 func _check_towns_lost() -> void:
+	var town_defense = get_tree().get_first_node_in_group("town_defense_manager")
+	if town_defense and town_defense.has_method("is_any_town_fallen"):
+		if town_defense.is_any_town_fallen():
+			_set_lost("A settlement fell to the crystal.")
+		return
 	if _crystal == null:
 		return
 	for town in _FeatureRegistry.get_towns():
@@ -115,6 +120,10 @@ func _apply_crystal_damage(delta: float) -> void:
 
 
 func _on_all_spawns_destroyed() -> void:
+	print("[Game] Victory — all crystal spawn points destroyed.")
+	if phase != Phase.VICTORY:
+		phase = Phase.VICTORY
+		phase_changed.emit(phase)
 	_set_won()
 
 

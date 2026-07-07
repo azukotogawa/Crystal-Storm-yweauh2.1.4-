@@ -27,6 +27,7 @@ extends Resource
 @export var river_valley_width_factor: float = 1.8
 
 @export_group("Caves")
+@export var caves_enabled: bool = true
 @export var cave_tunnel_base: float = 0.135
 @export var cave_room_base: float = 0.058
 @export var cave_scale_factor: float = 1.4

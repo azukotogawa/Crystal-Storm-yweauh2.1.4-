@@ -4,6 +4,7 @@ extends Node3D
 var chunk_coord: Vector2i = Vector2i.ZERO
 var _mm_instance: MultiMeshInstance3D
 var _material: StandardMaterial3D
+static var _shared_box_mesh: BoxMesh
 
 
 func setup(coord: Vector2i, material: StandardMaterial3D) -> void:
@@ -27,9 +28,10 @@ func rebuild(cells: Array) -> void:
 		mm = MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = false
-		var box := BoxMesh.new()
-		box.size = Vector3.ONE
-		mm.mesh = box
+		if _shared_box_mesh == null:
+			_shared_box_mesh = BoxMesh.new()
+			_shared_box_mesh.size = Vector3.ONE
+		mm.mesh = _shared_box_mesh
 		_mm_instance.multimesh = mm
 
 	if _material:

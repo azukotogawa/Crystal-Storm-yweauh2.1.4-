@@ -26,6 +26,8 @@ var world_seed: int
 var map_temperature: MapTemperature = MapTemperature.MILD
 var map_temperature_label: String = "Mild"
 var world_config: _WorldGenConfig
+## Runtime toggle — set by PerformanceService; avoids 3D cave noise cost when false.
+var caves_enabled: bool = true
 
 # --- Tunables for playable scale and feel ---
 # --- Tunables for playable scale and feel ---
@@ -125,11 +127,17 @@ func apply_world_settings(ws: _WorldSettings) -> void:
 
 func apply_world_config(cfg: _WorldGenConfig) -> void:
 	world_config = cfg
+	caves_enabled = cfg.caves_enabled if cfg else true
 	_BiomeLayout.reset()
 	_init_biome_regions()
 	if _base_height != null:
 		_setup_noise()
 	TerrainRamps.placement_chance = _wg().ramp_placement_chance
+	_invalidate_height_caches()
+
+
+func set_caves_enabled(enabled: bool) -> void:
+	caves_enabled = enabled
 	_invalidate_height_caches()
 
 
@@ -447,6 +455,8 @@ func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
 	}
 
 func _sample_cave(wx: float, wy: float, wz: float) -> float:
+	if not caves_enabled:
+		return -1.0
 	# Combined tunnel + room 3D signal. Higher = more likely hollow.
 	# Weights and frequencies are now higher (see header consts) to make caves more common.
 	var t: float = _cave_tunnel.get_noise_3d(wx, wy * 0.9, wz) * CAVE_TUNNEL_WEIGHT
@@ -584,6 +594,27 @@ func get_surface_height_uncached(wx: float, wz: float) -> float:
 	var h: float = _compute_surface_height(wx, wz)
 	h += _TerrainEdits.get_height_delta(floori(wx), floori(wz))
 	return _quantize_to_voxel_layer(h)
+
+
+## Worker-thread safe: pass terrain edits captured on the main thread (no shared dict access).
+func get_surface_height_worker(wx: float, wz: float, height_delta: float = 0.0) -> float:
+	var h: float = _compute_surface_height(wx, wz)
+	h += height_delta
+	return _quantize_to_voxel_layer(h)
+
+
+## Worker-thread safe: pass tile overrides captured on the main thread.
+func get_tile_type_worker(
+	wx: float,
+	wz: float,
+	build_tile: int = -1,
+	feature_override: int = -1
+) -> int:
+	if build_tile >= 0:
+		return build_tile
+	if feature_override >= 0:
+		return feature_override
+	return _compute_surface_tile(wx, wz)
 
 
 func invalidate_column_cache(wx: int, wz: int) -> void:

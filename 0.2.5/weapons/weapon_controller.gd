@@ -5,9 +5,13 @@ const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _GameManager = preload("res://game/game_manager.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
+const _CombatDef = preload("res://config/combat_def.gd")
+const _CombatHitResolver = preload("res://systems/combat_hit_resolver.gd")
+const _CombatLog = preload("res://systems/combat_log.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
+signal entity_hit(target: Node, damage: float, item_id: String)
 
 @export var melee_arc_degrees: float = 70.0
 
@@ -20,6 +24,7 @@ var _cooldown_timer: float = 0.0
 var _active_hotbar_index: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
+var _combat_def: _CombatDef
 
 
 func _ready() -> void:
@@ -28,7 +33,17 @@ func _ready() -> void:
 		inventory = player.inventory
 	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 	world = get_tree().get_first_node_in_group("world")
+	_combat_def = _resolve_combat_def()
 	_bind_terrain_editor()
+
+
+func _resolve_combat_def() -> _CombatDef:
+	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	if cfg_svc and "game_config" in cfg_svc and cfg_svc.game_config:
+		var combat = cfg_svc.game_config.combat
+		if combat is _CombatDef:
+			return combat
+	return _CombatDef.create_default()
 
 
 func _bind_terrain_editor() -> void:
@@ -116,34 +131,62 @@ func _attack_forward() -> Vector3:
 	return Vector3(cos(rad), 0.0, sin(rad)).normalized()
 
 
+func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
+	return player.voxel_position + Vector3(0.0, Player.get_player_height() * chest_ratio, 0.0)
+
+
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
-	var origin := player.voxel_position + Vector3(0.0, Player.get_player_height() * 0.5, 0.0)
+	var origin := _attack_origin(0.5)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 2.0))
 	var hit_pos := origin + forward * range_v
-	var damage: float = _crystal_hit_damage(def)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+
+	var targets := _CombatHitResolver.query_melee(
+		self,
+		origin,
+		forward,
+		range_v,
+		_combat_def,
+		melee_arc_degrees
+	)
+	for target in targets:
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		if dealt > 0.0:
+			entity_hit.emit(target, dealt, item_id)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
 			Vector2i(floori(hit_pos.x), floori(hit_pos.z)),
-			damage,
+			_crystal_hit_damage(def),
 			range_v
 		)
+
+	if _combat_def.log_hits_to_console and targets.is_empty():
+		_CombatLog.push("melee %s — no entity hit" % item_id)
 
 	attacked.emit(item_id, hit_pos)
 
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
-	var origin := player.voxel_position + Vector3(0.0, Player.get_player_height() * 0.6, 0.0)
+	var origin := _attack_origin(0.6)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 12.0))
 	var hit_pos := origin + forward * range_v
-	var damage: float = _crystal_hit_damage(def, _StatIds.RANGED_DAMAGE)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.RANGED_DAMAGE)
+
+	var target := _CombatHitResolver.query_ranged(self, origin, forward, range_v, _combat_def)
+	if target:
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		if dealt > 0.0:
+			entity_hit.emit(target, dealt, item_id)
+	elif _combat_def.log_hits_to_console:
+		_CombatLog.push("ranged %s — no entity hit" % item_id)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
 			Vector2i(floori(hit_pos.x), floori(hit_pos.z)),
-			damage,
+			_crystal_hit_damage(def, _StatIds.RANGED_DAMAGE),
 			2.5
 		)
 
@@ -156,6 +199,21 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	dig_attempted.emit(target)
 	if _terrain_editor and _terrain_editor.try_dig(target):
 		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
+
+	var origin := _attack_origin(0.45)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
+	var melee_targets := _CombatHitResolver.query_melee(
+		self,
+		origin,
+		forward,
+		float(def.get("range", 2.0)) * 0.9,
+		_combat_def,
+		melee_arc_degrees * 0.85
+	)
+	for enemy in melee_targets:
+		var dealt := _CombatHitResolver.apply_damage(enemy, entity_damage, StringName(item_id))
+		if dealt > 0.0:
+			entity_hit.emit(enemy, dealt, item_id)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
@@ -185,6 +243,11 @@ func _player_damage_mult(stat_id: StringName) -> float:
 	return 1.0
 
 
+func _entity_hit_damage(def: Dictionary, weapon_stat: StringName) -> float:
+	var base := float(def.get("entity_damage", def.get("damage", 5.0)))
+	return base * _player_damage_mult(weapon_stat)
+
+
 func _crystal_hit_damage(def: Dictionary, weapon_stat: StringName = _StatIds.MELEE_DAMAGE) -> float:
 	var base := float(def.get("damage", 5.0))
 	return base * _player_damage_mult(weapon_stat) * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)
@@ -202,7 +265,7 @@ func _try_plant() -> void:
 		&"bush" if inventory.count_item("wood") >= 2 else &"grass_tuft"
 	)
 	if _terrain_editor.try_plant(target, inventory, plant_id):
-		_cooldown_timer = 0.45
+		_cooldown_timer = _terrain_editor.get_plant_delay()
 
 
 func _try_channel_water() -> void:
@@ -214,5 +277,12 @@ func _try_channel_water() -> void:
 		return
 	var forward := _attack_forward()
 	var target := player.voxel_position + forward * 2.0
-	if _terrain_editor.try_channel_water(target, inventory if inventory else null):
-		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
+	var mode: int = TerrainEditor.ChannelMode.DIG
+	if Input.is_key_pressed(KEY_SHIFT):
+		mode = TerrainEditor.ChannelMode.RAISE
+	elif Input.is_key_pressed(KEY_CTRL):
+		mode = TerrainEditor.ChannelMode.REDIRECT
+	elif Input.is_key_pressed(KEY_ALT):
+		mode = TerrainEditor.ChannelMode.LOWER
+	if _terrain_editor.try_channel_water(target, inventory if inventory else null, mode, forward):
+		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_channel_delay(target))

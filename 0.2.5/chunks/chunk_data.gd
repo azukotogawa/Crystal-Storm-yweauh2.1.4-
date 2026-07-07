@@ -1,6 +1,8 @@
 class_name ChunkData
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -17,6 +19,12 @@ var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for 
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
 var river_ctx: RiverJobContext = null
+
+# Snapshotted on main thread before worker generation (avoids TerrainEdits/FeatureRegistry races).
+var _worker_height_delta: Array = []
+var _worker_build_tile: Array = []
+var _worker_feature_tile: Array = []
+var _has_worker_snapshot: bool = false
 
 const SIZE := 16
 ## Legacy bound — prefer WorldSettings.get_active().chunk_height_bound() for checks.
@@ -38,10 +46,31 @@ func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 	# They are computed in the bg worker (_generate_chunk) via _compute_column_maps(true)
 	# so that noise for new chunks doesn't block the main thread on request.
 
+## Call on main thread immediately before dispatching chunk gen to WorkerThreadPool.
+func capture_worker_snapshot() -> void:
+	_worker_height_delta.resize(SIZE)
+	_worker_build_tile.resize(SIZE)
+	_worker_feature_tile.resize(SIZE)
+	for x in SIZE:
+		_worker_height_delta[x] = []
+		_worker_build_tile[x] = []
+		_worker_feature_tile[x] = []
+		_worker_height_delta[x].resize(SIZE)
+		_worker_build_tile[x].resize(SIZE)
+		_worker_feature_tile[x].resize(SIZE)
+		for z in SIZE:
+			var wx := position.x * SIZE + x
+			var wz := position.y * SIZE + z
+			_worker_height_delta[x][z] = _TerrainEdits.get_height_delta(wx, wz)
+			_worker_build_tile[x][z] = _TerrainEdits.get_build_tile(wx, wz)
+			_worker_feature_tile[x][z] = _FeatureRegistry.get_tile_override(wx, wz)
+	_has_worker_snapshot = true
+
+
 func _compute_column_maps(use_uncached: bool = true):
 	if not world:
 		return
-	
+
 	surface_map.resize(SIZE)
 	tile_map.resize(SIZE)
 	for x in SIZE:
@@ -52,8 +81,17 @@ func _compute_column_maps(use_uncached: bool = true):
 		for z in SIZE:
 			var wx := float(position.x * SIZE + x)
 			var wz := float(position.y * SIZE + z)
-			
-			if use_uncached:
+
+			if use_uncached and _has_worker_snapshot:
+				surface_map[x][z] = world.get_surface_height_worker(
+					wx, wz, float(_worker_height_delta[x][z])
+				)
+				tile_map[x][z] = world.get_tile_type_worker(
+					wx, wz,
+					int(_worker_build_tile[x][z]),
+					int(_worker_feature_tile[x][z])
+				)
+			elif use_uncached:
 				surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
 				tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
 			else:
