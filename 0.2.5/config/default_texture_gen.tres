@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CrystalTextureGenConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/crystal_texture_gen_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+master_seed = 424242
+default_texture_size = 64
+use_mipmaps = true
+noise_frequency = 0.08
+detail_frequency = 0.35
+ridge_weight = 0.42
+cellular_weight = 0.28
+warp_strength = 0.55
+crystal_frame_count = 8
+crystal_pulse_speed = 1.0
+particle_frame_count = 6
+sheet_columns = 4
+sheet_padding = 2
+export_path = "user://generated_textures/"

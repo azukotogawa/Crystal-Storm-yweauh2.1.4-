@@ -126,6 +126,25 @@ func count_item(item_id: String) -> int:
 	return total
 
 
+func consume_item(item_id: String, count: int = 1) -> bool:
+	if count_item(item_id) < count:
+		return false
+	var remaining := count
+	for i in TOTAL_SLOTS:
+		if remaining <= 0:
+			break
+		var slot = _slots[i]
+		if slot == null or slot.id != item_id:
+			continue
+		var take := mini(remaining, int(slot.count))
+		slot.count -= take
+		remaining -= take
+		if slot.count <= 0:
+			_slots[i] = null
+	changed.emit()
+	return remaining <= 0
+
+
 func to_dict() -> Dictionary:
 	var out: Array = []
 	for slot in _slots:

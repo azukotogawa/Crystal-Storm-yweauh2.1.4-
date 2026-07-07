@@ -5,9 +5,12 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
-@export var town_count: int = 4
-@export var min_town_radius: int = 10
-@export var max_town_radius: int = 16
+@export var small_town_count: int = 2
+@export var large_port_count: int = 1
+@export var small_town_radius_min: int = 10
+@export var small_town_radius_max: int = 14
+@export var port_radius_min: int = 18
+@export var port_radius_max: int = 24
 @export var min_separation: float = 220.0
 
 signal town_registered(town: Dictionary)
@@ -26,6 +29,18 @@ func _ready() -> void:
 	_rng = RandomNumberGenerator.new()
 
 
+func apply_world_config(cfg) -> void:
+	if cfg == null:
+		return
+	small_town_count = int(cfg.small_town_count)
+	large_port_count = int(cfg.large_port_count)
+	small_town_radius_min = int(cfg.small_town_radius_min)
+	small_town_radius_max = int(cfg.small_town_radius_max)
+	port_radius_min = int(cfg.port_radius_min)
+	port_radius_max = int(cfg.port_radius_max)
+	min_separation = float(cfg.town_min_separation)
+
+
 func generate() -> void:
 	if world == null:
 		world = get_tree().get_first_node_in_group("world")
@@ -38,9 +53,32 @@ func generate() -> void:
 
 func _place_towns() -> void:
 	var placed: Array[Vector2i] = []
-	for _attempt in town_count * 40:
-		if placed.size() >= town_count:
-			break
+	var plan: Array = []
+	for _i in small_town_count:
+		plan.append({"kind": "town", "name_prefix": "Settlement"})
+	for _i in large_port_count:
+		plan.append({"kind": "port", "name_prefix": "Port"})
+
+	for entry in plan:
+		var pos := _find_town_site(placed)
+		if pos == Vector2i.ZERO:
+			continue
+		var radius: int
+		var town_name: String
+		if entry.kind == "port":
+			radius = _rng.randi_range(port_radius_min, port_radius_max)
+			town_name = "%s %s" % [entry.name_prefix, String.chr(65 + placed.size())]
+		else:
+			radius = _rng.randi_range(small_town_radius_min, small_town_radius_max)
+			town_name = "%s %d" % [entry.name_prefix, placed.size() + 1]
+		_FeatureRegistry.register_town(pos, radius, town_name)
+		_stamp_town_ground(pos.x, pos.y, radius, entry.kind == "port")
+		placed.append(pos)
+		town_registered.emit(_FeatureRegistry.get_towns().back())
+
+
+func _find_town_site(placed: Array[Vector2i]) -> Vector2i:
+	for _attempt in 120:
 		var half := float(_WorldBorder.PLAYABLE_HALF_X) * 0.72
 		var wx := int(_rng.randf_range(-half, half))
 		var wz := int(_rng.randf_range(-half, half))
@@ -55,14 +93,8 @@ func _place_towns() -> void:
 				break
 		if too_close:
 			continue
-
-		var radius := _rng.randi_range(min_town_radius, max_town_radius)
-		var town_name := "Settlement %d" % (placed.size() + 1)
-		_FeatureRegistry.register_town(Vector2i(wx, wz), radius, town_name)
-		_stamp_town_ground(wx, wz, radius)
-		placed.append(Vector2i(wx, wz))
-		var town_data: Dictionary = _FeatureRegistry.get_towns().back()
-		town_registered.emit(town_data)
+		return Vector2i(wx, wz)
+	return Vector2i.ZERO
 
 
 func _is_valid_town_site(wx: int, wz: int) -> bool:
@@ -75,7 +107,7 @@ func _is_valid_town_site(wx: int, wz: int) -> bool:
 		return false
 	var biome: Dictionary = world.get_biome(float(wx), 0.0, float(wz))
 	var name: String = biome.get("name", "")
-	if name == "marsh" or name == "ocean" or name == "border_mountain":
+	if name in ["marsh", "ocean", "border_mountain", "highland"]:
 		return false
 	var surf := world.get_surface_height(float(wx), float(wz))
 	if surf < 36.0 or surf > 95.0:
@@ -88,7 +120,7 @@ func _is_valid_town_site(wx: int, wz: int) -> bool:
 	return true
 
 
-func _stamp_town_ground(cx: int, cz: int, radius: int) -> void:
+func _stamp_town_ground(cx: int, cz: int, radius: int, is_port: bool) -> void:
 	for dx in range(-radius, radius + 1):
 		for dz in range(-radius, radius + 1):
 			var dist := Vector2(dx, dz).length()
@@ -96,7 +128,9 @@ func _stamp_town_ground(cx: int, cz: int, radius: int) -> void:
 				continue
 			var wx := cx + dx
 			var wz := cz + dz
-			if dist < float(radius) * 0.35:
+			if dist < float(radius) * (0.4 if is_port else 0.35):
 				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.TOWN_PATH)
-			elif _rng.randf() < 0.12:
+			elif is_port and dist < float(radius) * 0.7 and _rng.randf() < 0.08:
+				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.WATER)
+			elif _rng.randf() < (0.18 if is_port else 0.12):
 				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.FARMLAND)

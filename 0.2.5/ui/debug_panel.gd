@@ -1,5 +1,7 @@
 extends Control
 
+const _WorldSettings = preload("res://config/world_settings.gd")
+
 @onready var label = $DebugLabel
 
 var _update_counter := 0
@@ -28,6 +30,11 @@ func _process(_delta: float) -> void:
 	var crystal_max_depth := 0.0
 	var crystal_dist := "???"
 	var map_zone := "???"
+	var map_temp := "???"
+	var game_phase := "???"
+	var player_health := "???"
+	var evolution_line := "none"
+	var enemies_active := 0
 
 	# Find main nodes safely
 	var main = get_tree().root.get_node_or_null("Game")
@@ -62,7 +69,9 @@ func _process(_delta: float) -> void:
 	# Player position
 	if player:
 		if player.has_method("get_voxel_position"):
-			player_voxel = player.get_voxel_position()
+			var col: Vector3 = player.get_voxel_position()
+			var ws = _WorldSettings.get_active()
+			player_voxel = Vector3(ws.column_to_world(col.x), col.y, ws.column_to_world(col.z))
 		elif "voxel_position" in player:
 			player_voxel = player.voxel_position
 		elif "global_position" in player:
@@ -75,9 +84,22 @@ func _process(_delta: float) -> void:
 			floori(player_voxel.z / ChunkData.SIZE)
 		)
 
-	# Map border zone
-	if world and player_voxel != Vector3.ZERO and world.has_method("get_map_zone_label"):
-		map_zone = world.get_map_zone_label(player_voxel.x, player_voxel.z)
+	# Map border zone + temperature theme
+	if world:
+		if player_voxel != Vector3.ZERO and world.has_method("get_map_zone_label"):
+			map_zone = world.get_map_zone_label(player_voxel.x, player_voxel.z)
+		if "map_temperature_label" in world:
+			map_temp = str(world.map_temperature_label)
+
+	var game_manager = get_tree().get_first_node_in_group("game_manager")
+	if game_manager:
+		if game_manager.phase == 0:
+			game_phase = "Maze"
+		else:
+			game_phase = "Assault"
+
+	if player and "health" in player and "max_health" in player:
+		player_health = "%.0f/%.0f" % [player.health, player.max_health]
 
 	# Biome & Tile
 	if world and player_voxel != Vector3.ZERO:
@@ -120,8 +142,27 @@ func _process(_delta: float) -> void:
 			crystal_dist = "none"
 		else:
 			crystal_dist = "%.1f" % dist
+	if crystal_manager and crystal_manager.has_method("get_evolution"):
+		var evo = crystal_manager.get_evolution()
+		if evo:
+			var summary: Dictionary = evo.get_summary()
+			var unlocked: Array = summary.get("unlocked_enemies", [])
+			var absorbed: Dictionary = summary.get("absorbed", {})
+			var parts: PackedStringArray = []
+			for key in absorbed.keys():
+				parts.append("%s:%d" % [str(key), int(absorbed[key])])
+			var unlock_str := ", ".join(unlocked) if unlocked.size() > 0 else "—"
+			evolution_line = "%s | unlocks: %s" % [
+				", ".join(parts) if parts.size() > 0 else "—",
+				unlock_str,
+			]
+	var spawner = get_tree().get_first_node_in_group("crystal_enemy_spawner")
+	if spawner and spawner.has_method("get_active_count"):
+		enemies_active = spawner.get_active_count()
 
 	label.text = """Seed: %s
+Map Temp: %s
+Phase: %s | HP: %s
 Voxel Pos: %.1f, %.1f, %.1f
 Chunk: %d, %d
 Chunks Loaded: %d
@@ -134,8 +175,12 @@ Crystal Cells: %d
 Crystal Volume: %.1f (max %.1f)
 Crystal Power: %.1f (T%d)
 Nearest Crystal: %s
+Evolution: %s
+Crystal Enemies: %d
 FPS: %d""" % [
 		seed_val,
+		map_temp,
+		game_phase, player_health,
 		player_voxel.x, player_voxel.y, player_voxel.z,
 		current_chunk.x, current_chunk.y,
 		chunks_count,
@@ -148,5 +193,7 @@ FPS: %d""" % [
 		crystal_volume, crystal_max_depth,
 		crystal_power, crystal_tier,
 		crystal_dist,
+		evolution_line,
+		enemies_active,
 		Engine.get_frames_per_second()
 	]

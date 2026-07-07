@@ -27,6 +27,10 @@ static func clear_tile_override(wx: int, wz: int) -> void:
 	_tile_overrides.erase(Vector2i(wx, wz))
 
 
+static func clear_feature(wx: int, wz: int) -> void:
+	_feature_cells.erase(Vector2i(wx, wz))
+
+
 static func get_tile_override(wx: int, wz: int) -> int:
 	return int(_tile_overrides.get(Vector2i(wx, wz), -1))
 
@@ -57,6 +61,20 @@ static func register_town(center: Vector2i, radius: int, town_name: String) -> v
 
 static func get_towns() -> Array[Dictionary]:
 	return _towns
+
+
+static func get_ruin_centers() -> Array[Vector2i]:
+	var found: Dictionary = {}
+	for key in _feature_cells.keys():
+		var feat: Dictionary = _feature_cells[key]
+		if int(feat.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.RUIN:
+			continue
+		var center: Vector2i = feat.get("center", key)
+		found[center] = true
+	var out: Array[Vector2i] = []
+	for c in found.keys():
+		out.append(c)
+	return out
 
 
 static func register_entity_spawn(wx: int, wz: int, kind: int, animal_kind: int = -1) -> void:

@@ -2,12 +2,19 @@ class_name CrystalManager
 extends Node3D
 
 const _WorldBorder = preload("res://helpers/world_border.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
+const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
+const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
+const _CrystalEvolution = preload("res://crystal/crystal_evolution.gd")
+const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
 signal fluid_changed(world_pos: Vector2i)
 signal power_changed(power: float, tier: int)
 signal spawn_destroyed(spawn: CrystalSpawnPoint)
 signal all_spawns_destroyed
 signal crystal_touched_player
+signal absorption_completed(source_id: StringName, world_pos: Vector2i)
 
 @export var expansion_enabled: bool = true
 @export var flow_substeps: int = 2
@@ -18,6 +25,7 @@ signal crystal_touched_player
 @export var player_defeat_depth: float = 0.35
 @export var player_defeat_min_tier: int = 2
 
+var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var power: float = 0.0
@@ -25,8 +33,12 @@ var strength_tier: int = 0
 var total_volume: float = 0.0
 var covered_cells: int = 0
 
-var _depth: Dictionary = {}
-var _spawn_id_by_cell: Dictionary = {}
+var _sim: _CrystalFluidSim
+var _terrain_query: _CrystalTerrainQuery
+var _absorption: Dictionary = {}
+var _ruin_absorption: Dictionary = {}
+var _absorbed_ruin_centers: Dictionary = {}
+var evolution: _CrystalEvolution
 var _spawn_points: Array[CrystalSpawnPoint] = []
 var _chunk_layers: Dictionary = {}
 var _dirty_chunks: Dictionary = {}
@@ -73,8 +85,47 @@ func _bootstrap_when_ready() -> void:
 	while not chunk_manager.spawn_area_ready(0, 0):
 		await get_tree().process_frame
 
+	var features = get_tree().get_first_node_in_group("world_features")
+	if features and features.has_method("ensure_ready"):
+		await features.ensure_ready()
+
+	evolution = _CrystalEvolution.new()
+	_init_sim()
 	_initialize_spawns()
 	_initialized = true
+
+
+func apply_sim_config(cfg: _CrystalSimConfig) -> void:
+	if cfg == null:
+		return
+	sim_config = cfg
+	flow_substeps = cfg.flow_substeps
+	ruin_spawn_count = cfg.ruin_spawn_count
+	ruin_min_distance = cfg.ruin_min_distance
+	ruin_max_distance = cfg.ruin_max_distance
+	player_contact_defeat_enabled = cfg.player_contact_defeat_enabled
+	player_defeat_depth = cfg.player_defeat_depth
+	player_defeat_min_tier = cfg.player_defeat_min_tier
+	if _sim:
+		_sim.config = cfg
+
+
+func _init_sim() -> void:
+	_terrain_query = _CrystalTerrainQuery.new()
+	_terrain_query.world = world
+	_terrain_query.chunk_manager = chunk_manager
+	_sim = _CrystalFluidSim.new(sim_config, _terrain_query)
+	if not _sim.depth_changed.is_connected(_on_sim_depth_changed):
+		_sim.depth_changed.connect(_on_sim_depth_changed)
+
+
+func _on_sim_depth_changed(pos: Vector2i) -> void:
+	_mark_chunk_dirty(pos)
+	fluid_changed.emit(pos)
+
+
+func get_fluid_sim() -> _CrystalFluidSim:
+	return _sim
 
 
 func _setup_materials() -> void:
@@ -97,8 +148,8 @@ func _setup_materials() -> void:
 
 
 func _initialize_spawns() -> void:
-	_depth.clear()
-	_spawn_id_by_cell.clear()
+	if _sim:
+		_sim.clear()
 	_spawn_points.clear()
 	_next_spawn_id = 0
 
@@ -112,17 +163,11 @@ func _initialize_spawns() -> void:
 	_spawn_points.append(origin)
 	_seed_emitter(origin)
 
-	for _i in ruin_spawn_count:
+	_add_feature_ruin_spawns()
+	var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
+	for _i in procedural:
 		var ruin_pos := _pick_ruin_spawn_position()
-		var ruin := CrystalSpawnPoint.new(
-			_alloc_spawn_id(),
-			ruin_pos,
-			CrystalTypes.SpawnKind.RUIN,
-			120.0,
-			false
-		)
-		_spawn_points.append(ruin)
-		_seed_emitter(ruin)
+		_add_ruin_spawn_at(ruin_pos)
 
 	_recalc_stats()
 	_refresh_spawn_markers()
@@ -136,7 +181,39 @@ func _alloc_spawn_id() -> int:
 
 
 func _seed_emitter(spawn: CrystalSpawnPoint) -> void:
-	_set_depth(spawn.world_pos, CrystalTypes.INITIAL_SPAWN_DEPTH, spawn.id)
+	_set_depth(spawn.world_pos, sim_config.initial_spawn_depth, spawn.id)
+
+
+func get_evolution() -> _CrystalEvolution:
+	return evolution
+
+
+func _add_feature_ruin_spawns() -> void:
+	for center in _FeatureRegistry.get_ruin_centers():
+		_add_ruin_spawn_at(center)
+
+
+func _count_ruin_spawns() -> int:
+	var n := 0
+	for spawn in _spawn_points:
+		if spawn.kind == CrystalTypes.SpawnKind.RUIN:
+			n += 1
+	return n
+
+
+func _add_ruin_spawn_at(ruin_pos: Vector2i) -> void:
+	for existing in _spawn_points:
+		if existing.world_pos == ruin_pos:
+			return
+	var ruin := CrystalSpawnPoint.new(
+		_alloc_spawn_id(),
+		ruin_pos,
+		CrystalTypes.SpawnKind.RUIN,
+		120.0,
+		false
+	)
+	_spawn_points.append(ruin)
+	_seed_emitter(ruin)
 
 
 func _pick_ruin_spawn_position() -> Vector2i:
@@ -170,139 +247,47 @@ func _process(delta: float) -> void:
 	if not _initialized or not expansion_enabled:
 		return
 
-	_tick_emitters(delta)
-	var sub_delta := delta / float(max(flow_substeps, 1))
-	for _i in flow_substeps:
-		_tick_flow(sub_delta)
+	if _sim:
+		_sim.tick_emitters(_spawn_points, delta)
+		var sub_delta := delta / float(max(sim_config.flow_substeps, 1))
+		for _i in sim_config.flow_substeps:
+			_sim.tick_flow(sub_delta)
+	_tick_absorption(delta)
+	_tick_animal_absorption(delta)
+	_tick_ruin_absorption(delta)
 	_flush_dirty_chunks()
 	_tick_power(delta)
 	_check_player_contact()
 
 
-func _tick_emitters(delta: float) -> void:
-	for spawn in _spawn_points:
-		if not spawn.active:
-			continue
-		var pos := spawn.world_pos
-		var current: float = float(_depth.get(pos, 0.0))
-		var added := spawn.emit_rate * delta
-		var room := CrystalTypes.MAX_DEPTH - current
-		if room <= 0.0:
-			continue
-		_set_depth(pos, current + minf(added, room), spawn.id)
-
-
-func _tick_flow(delta: float) -> void:
-	if _depth.is_empty():
-		return
-
-	var cells: Array = _depth.keys()
-	var deltas: Dictionary = {}
-
-	for pos_variant in cells:
-		var pos: Vector2i = pos_variant
-		var amount: float = float(_depth.get(pos, 0.0))
-		if amount < CrystalTypes.MIN_DEPTH:
-			continue
-
-		var terrain: float = _terrain_at(pos)
-		var my_top: float = terrain + amount
-
-		for dir in CrystalTypes.NEIGHBOR_DIRS:
-			var neighbor: Vector2i = pos + dir
-			if _flow_blocked(pos, neighbor):
-				continue
-
-			var n_tile := _tile_at(neighbor)
-			var n_terrain: float = _terrain_at(neighbor)
-			var n_depth: float = float(_depth.get(neighbor, 0.0))
-
-			if CrystalTypes.is_water_tile(n_tile) and n_depth < CrystalTypes.MIN_DEPTH:
-				if my_top <= n_terrain + CrystalTypes.MIN_FLOW_DIFF:
-					continue
-
-			var n_top: float = n_terrain + n_depth
-			var diff: float = my_top - n_top
-			if diff <= CrystalTypes.MIN_FLOW_DIFF:
-				continue
-
-			var transfer: float = min(
-				amount * CrystalTypes.FLOW_RATE * delta * diff,
-				diff * 0.45,
-				CrystalTypes.MAX_FLOW_PER_CELL * delta,
-				amount * 0.65
-			)
-			if transfer < CrystalTypes.MIN_DEPTH * 0.25:
-				continue
-
-			deltas[pos] = float(deltas.get(pos, 0.0)) - transfer
-			deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + transfer
-			_assign_spawn_on_flow(neighbor, pos)
-
-	for pos_variant in deltas.keys():
-		var pos: Vector2i = pos_variant
-		var new_depth: float = float(_depth.get(pos, 0.0)) + float(deltas[pos])
-		var spawn_id: int = int(_spawn_id_by_cell.get(pos, -1))
-		_set_depth(pos, new_depth, spawn_id)
-
-
-func _flow_blocked(from: Vector2i, to: Vector2i) -> bool:
-	var from_terrain: float = _terrain_at(from)
-	var to_terrain: float = _terrain_at(to)
-	if to_terrain <= from_terrain + CrystalTypes.CLIFF_HEIGHT:
-		return false
-	var my_top: float = from_terrain + float(_depth.get(from, 0.0))
-	return my_top <= to_terrain + CrystalTypes.MIN_FLOW_DIFF
-
-
-func _assign_spawn_on_flow(to: Vector2i, from: Vector2i) -> void:
-	if _spawn_id_by_cell.has(to):
-		return
-	if _spawn_id_by_cell.has(from):
-		_spawn_id_by_cell[to] = _spawn_id_by_cell[from]
-
-
 func _set_depth(pos: Vector2i, depth: float, spawn_id: int = -1) -> void:
-	depth = clampf(depth, 0.0, CrystalTypes.MAX_DEPTH)
-	if depth < CrystalTypes.MIN_DEPTH:
-		if _depth.has(pos):
-			_depth.erase(pos)
-			_spawn_id_by_cell.erase(pos)
-			_mark_chunk_dirty(pos)
-			fluid_changed.emit(pos)
-		return
-
-	var changed: bool = not _depth.has(pos) or absf(float(_depth[pos]) - depth) > 0.02
-	_depth[pos] = depth
-	if spawn_id >= 0:
-		_spawn_id_by_cell[pos] = spawn_id
-	if changed:
-		_mark_chunk_dirty(pos)
-		fluid_changed.emit(pos)
+	if _sim:
+		_sim.set_depth(pos, depth, spawn_id)
 
 
 func _tick_power(delta: float) -> void:
 	_recalc_stats()
 	if total_volume <= 0.0:
 		return
-	_add_power(total_volume * 0.0025 * delta)
+	_add_power(total_volume * sim_config.power_per_volume * delta)
 
 
 func _add_power(amount: float) -> void:
 	if amount <= 0.0:
 		return
 	power += amount
-	var new_tier: int = CrystalTypes.tier_from_power(power)
+	var new_tier: int = sim_config.tier_from_power(power)
 	if new_tier != strength_tier:
 		strength_tier = new_tier
 	power_changed.emit(power, strength_tier)
 
 
 func _recalc_stats() -> void:
-	total_volume = 0.0
-	covered_cells = _depth.size()
-	for pos_variant in _depth.keys():
-		total_volume += float(_depth[pos_variant])
+	if _sim == null:
+		return
+	var stats: Dictionary = _sim.recalc_volume()
+	total_volume = float(stats.get("volume", 0.0))
+	covered_cells = int(stats.get("cells", 0))
 
 
 func _terrain_at(pos: Vector2i) -> float:
@@ -345,18 +330,20 @@ func _rebuild_chunk_layer(coord: Vector2i) -> void:
 	var max_x := min_x + ChunkData.SIZE
 	var max_z := min_z + ChunkData.SIZE
 
-	for pos_variant in _depth.keys():
+	if _sim == null:
+		return
+	for pos_variant in _sim.depth.keys():
 		var pos: Vector2i = pos_variant
 		if pos.x < min_x or pos.x >= max_x or pos.y < min_z or pos.y >= max_z:
 			continue
-		var depth: float = float(_depth[pos])
-		if depth < CrystalTypes.MIN_DEPTH:
+		var depth: float = float(_sim.depth[pos])
+		if depth < sim_config.min_depth:
 			continue
 		cells.append(CrystalCell.new(
 			pos,
 			_terrain_at(pos),
 			depth,
-			int(_spawn_id_by_cell.get(pos, -1))
+			int(_sim.spawn_id_by_cell.get(pos, -1))
 		))
 
 	var layer: CrystalChunkLayer
@@ -403,24 +390,25 @@ func _check_player_contact() -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
 		return
-	var key := Vector2i(floori(player.global_position.x), floori(player.global_position.z))
-	var depth: float = float(_depth.get(key, 0.0))
+	var col: Vector3 = player.get_voxel_position() if player.has_method("get_voxel_position") else player.global_position
+	var key := Vector2i(floori(col.x), floori(col.z))
+	var depth: float = get_depth_at(key.x, key.y)
 	if depth >= player_defeat_depth:
 		crystal_touched_player.emit()
 
 
 func get_depth_at(wx: int, wz: int) -> float:
-	return float(_depth.get(Vector2i(wx, wz), 0.0))
+	return _sim.get_depth_at(wx, wz) if _sim else 0.0
 
 
 func has_crystal_at(wx: int, wz: int) -> bool:
-	return get_depth_at(wx, wz) >= CrystalTypes.MIN_DEPTH
+	return _sim.has_crystal_at(wx, wz) if _sim else false
 
 
 func get_crystal_top(wx: float, wz: float) -> float:
 	var key := Vector2i(floori(wx), floori(wz))
-	var depth: float = float(_depth.get(key, 0.0))
-	if depth < CrystalTypes.MIN_DEPTH:
+	var depth: float = get_depth_at(key.x, key.y)
+	if depth < sim_config.min_depth:
 		return -INF
 	return _terrain_at(key) + depth
 
@@ -431,7 +419,7 @@ func get_walkable_height(wx: float, wz: float) -> float:
 		ramp_entry = chunk_manager.get_ramp_entry_at_world(wx, wz)
 	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, ramp_entry) if world else 1.0
 	var depth := get_depth_at(floori(wx), floori(wz))
-	if depth >= CrystalTypes.MIN_DEPTH:
+	if depth >= sim_config.min_depth:
 		return maxf(base, _terrain_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)
 	return base
 
@@ -479,7 +467,7 @@ func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 
 
 func get_nearest_crystal_distance(from_pos: Vector3) -> float:
-	if _depth.is_empty():
+	if _sim == null or _sim.depth.is_empty():
 		return INF
 	var best := INF
 	var px := int(floor(from_pos.x))
@@ -487,7 +475,7 @@ func get_nearest_crystal_distance(from_pos: Vector3) -> float:
 	for dx in range(-32, 33):
 		for dz in range(-32, 33):
 			var key := Vector2i(px + dx, pz + dz)
-			if float(_depth.get(key, 0.0)) < CrystalTypes.MIN_DEPTH:
+			if get_depth_at(key.x, key.y) < sim_config.min_depth:
 				continue
 			var dist := Vector2(from_pos.x, from_pos.z).distance_to(
 				Vector2(float(key.x) + 0.5, float(key.y) + 0.5)
@@ -500,10 +488,161 @@ func get_nearest_crystal_distance(from_pos: Vector3) -> float:
 	return best
 
 
+func _tick_absorption(delta: float) -> void:
+	if _sim == null or _sim.depth.is_empty():
+		return
+	var completed: Array[Vector2i] = []
+	for pos_variant in _sim.depth.keys():
+		var pos: Vector2i = pos_variant
+		var depth: float = float(_sim.depth.get(pos, 0.0))
+		if depth < sim_config.min_depth:
+			continue
+		var tile_id := _tile_at(pos)
+		if not _is_absorbable_tile(tile_id):
+			continue
+		var rate: float = _absorption_rate(tile_id)
+		var progress: float = float(_absorption.get(pos, 0.0)) + delta * rate * depth
+		if progress >= 1.0:
+			completed.append(pos)
+		else:
+			_absorption[pos] = progress
+	for pos in completed:
+		_complete_absorption(pos)
+
+
+func _is_absorbable_tile(tile_id: int) -> bool:
+	return tile_id in [
+		VoxelTypes.GRASS_TUFT,
+		VoxelTypes.BUSH,
+		VoxelTypes.TREE_TRUNK,
+		VoxelTypes.FARMLAND,
+	]
+
+
+func _absorption_rate(tile_id: int) -> float:
+	match tile_id:
+		VoxelTypes.GRASS_TUFT:
+			return sim_config.grass_absorb_rate
+		VoxelTypes.BUSH:
+			return sim_config.bush_absorb_rate
+		VoxelTypes.TREE_TRUNK:
+			return sim_config.tree_absorb_rate
+		VoxelTypes.FARMLAND:
+			return sim_config.farmland_absorb_rate
+		_:
+			return 0.08
+
+
+func _absorption_power_boost(tile_id: int) -> float:
+	match tile_id:
+		VoxelTypes.TREE_TRUNK:
+			return sim_config.tree_absorb_power
+		VoxelTypes.FARMLAND:
+			return sim_config.farmland_absorb_power
+		VoxelTypes.BUSH:
+			return sim_config.bush_absorb_power
+		_:
+			return sim_config.grass_absorb_power
+
+
+func _complete_absorption(pos: Vector2i) -> void:
+	var tile_id := _tile_at(pos)
+	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
+	_absorption.erase(pos)
+	_FeatureRegistry.clear_tile_override(pos.x, pos.y)
+	_FeatureRegistry.clear_feature(pos.x, pos.y)
+	_add_power(_absorption_power_boost(tile_id))
+	var source_id := _absorption_source_for(tile_id, feat)
+	if evolution:
+		evolution.record_absorption(source_id)
+	absorption_completed.emit(source_id, pos)
+	if world and world.has_method("invalidate_column_cache"):
+		world.invalidate_column_cache(pos.x, pos.y)
+	if chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):
+		chunk_manager.rebuild_chunk_at_world(float(pos.x), float(pos.y))
+
+
+func _absorption_source_for(tile_id: int, feat: Dictionary) -> StringName:
+	if feat.has("kind") and int(feat.kind) == _WorldFeatureTypes.FeatureKind.RUIN:
+		return &"ruin"
+	if feat.has("kind") and int(feat.kind) == _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
+		return &"animal"
+	match tile_id:
+		VoxelTypes.FARMLAND:
+			return &"farmland"
+		VoxelTypes.TREE_TRUNK:
+			return &"tree"
+		VoxelTypes.BUSH:
+			return &"bush"
+		_:
+			return &"grass"
+
+
+func _tick_animal_absorption(delta: float) -> void:
+	if _sim == null:
+		return
+	for pos_variant in _sim.depth.keys():
+		var pos: Vector2i = pos_variant
+		if float(_sim.depth.get(pos, 0.0)) < sim_config.min_depth:
+			continue
+		var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
+		if not feat.has("kind") or int(feat.kind) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
+			continue
+		var progress: float = float(_absorption.get(pos, 0.0)) + delta * 0.25
+		if progress >= 1.0:
+			_complete_absorption(pos)
+		else:
+			_absorption[pos] = progress
+
+
+func _tick_ruin_absorption(delta: float) -> void:
+	if _sim == null:
+		return
+	for center in _FeatureRegistry.get_ruin_centers():
+		if _absorbed_ruin_centers.has(center):
+			continue
+		if float(_sim.depth.get(center, 0.0)) < sim_config.min_depth:
+			continue
+		var progress: float = float(_ruin_absorption.get(center, 0.0)) + delta * 0.12
+		if progress >= 1.0:
+			_absorbed_ruin_centers[center] = true
+			_ruin_absorption.erase(center)
+			_add_power(18.0)
+			if evolution:
+				evolution.record_absorption(&"ruin")
+			absorption_completed.emit(&"ruin", center)
+			_clear_ruin_at(center)
+		else:
+			_ruin_absorption[center] = progress
+
+
+func _clear_ruin_at(center: Vector2i) -> void:
+	for dx in range(-5, 6):
+		for dz in range(-5, 6):
+			if Vector2(dx, dz).length() > 5.0:
+				continue
+			var wx := center.x + dx
+			var wz := center.y + dz
+			_FeatureRegistry.clear_tile_override(wx, wz)
+			_FeatureRegistry.clear_feature(wx, wz)
+	if world and world.has_method("invalidate_column_cache"):
+		world.invalidate_column_cache(center.x, center.y)
+	if chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):
+		chunk_manager.rebuild_chunk_at_world(float(center.x), float(center.y))
+
+
+func get_coverage_ratio() -> float:
+	var playable_cells: float = float(_WorldBorder.PLAYABLE_HALF_X * 2 * _WorldBorder.PLAYABLE_HALF_Z * 2)
+	if playable_cells <= 1.0:
+		return 0.0
+	return float(covered_cells) / playable_cells
+
+
 func get_debug_stats() -> Dictionary:
 	var max_depth := 0.0
-	for pos_variant in _depth.keys():
-		max_depth = maxf(max_depth, float(_depth[pos_variant]))
+	if _sim:
+		for pos_variant in _sim.depth.keys():
+			max_depth = maxf(max_depth, float(_sim.depth[pos_variant]))
 	return {
 		"tiles": covered_cells,
 		"volume": total_volume,

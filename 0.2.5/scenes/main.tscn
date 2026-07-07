@@ -1,16 +1,22 @@
 [gd_scene format=3 uid="uid://6ven06d5s8l"]
 
+[ext_resource type="Script" path="res://systems/config_service.gd" id="1_cfg"]
 [ext_resource type="Script" uid="uid://bysd6dgbhih1f" path="res://world/InfiniteNoiseWorld.gd" id="1_1bvp3"]
 [ext_resource type="Script" uid="uid://cwmhh7jh6kfp4" path="res://main.gd" id="1_lquwl"]
 [ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="2_lquwl"]
 [ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_272bh"]
 [ext_resource type="Script" uid="uid://cal8x0hpofgxq" path="res://ui/debug_panel.gd" id="7_272bh"]
 [ext_resource type="Script" uid="uid://dadn2djbvlj72" path="res://player/camera.gd" id="8_85g3d"]
+[ext_resource type="Script" uid="uid://gwmko0ktp10p" path="res://game/game_manager.gd" id="8_gmgr"]
+[ext_resource type="Script" uid="uid://c3ndc4ior2hrt" path="res://world/terrain_editor.gd" id="8_terrain"]
+[ext_resource type="PackedScene" path="res://ui/game_overlay.tscn" id="8_overlay"]
 [ext_resource type="Script" path="res://crystal/crystal_manager.gd" id="9_crystal"]
 [ext_resource type="Script" path="res://world/world_features.gd" id="10_features"]
 [ext_resource type="Script" path="res://world/town_manager.gd" id="11_town"]
 [ext_resource type="Script" path="res://world/vegetation_manager.gd" id="12_veg"]
 [ext_resource type="Script" path="res://entities/entity_manager.gd" id="13_entity"]
+[ext_resource type="Script" path="res://world/ruin_manager.gd" id="13_ruin"]
+[ext_resource type="Script" path="res://entities/crystal_enemy_spawner.gd" id="13_spawner"]
 [ext_resource type="Script" path="res://ui/hotbar.gd" id="14_hotbar"]
 [ext_resource type="Script" path="res://ui/inventory_panel.gd" id="15_inv"]
 
@@ -19,6 +25,9 @@ ambient_light_color = Color(1, 1, 1, 1)
 
 [node name="Game" type="Node3D" unique_id=238200303]
 script = ExtResource("1_lquwl")
+
+[node name="ConfigService" type="Node" parent="."]
+script = ExtResource("1_cfg")
 
 [node name="World" type="Node3D" parent="." unique_id=1367580773]
 script = ExtResource("1_1bvp3")
@@ -35,11 +44,23 @@ script = ExtResource("11_town")
 [node name="VegetationManager" type="Node" parent="WorldFeatures"]
 script = ExtResource("12_veg")
 
+[node name="RuinManager" type="Node" parent="WorldFeatures"]
+script = ExtResource("13_ruin")
+
 [node name="EntityManager" type="Node" parent="WorldFeatures"]
 script = ExtResource("13_entity")
 
 [node name="CrystalManager" type="Node3D" parent="."]
 script = ExtResource("9_crystal")
+
+[node name="CrystalEnemySpawner" type="Node" parent="CrystalManager"]
+script = ExtResource("13_spawner")
+
+[node name="GameManager" type="Node" parent="."]
+script = ExtResource("8_gmgr")
+
+[node name="TerrainEditor" type="Node" parent="."]
+script = ExtResource("8_terrain")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
 environment = SubResource("Environment_tipki")
@@ -58,6 +79,8 @@ target = NodePath("..")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Player" unique_id=1954782455]
 
 [node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=811969268]
+
+[node name="GameOverlay" parent="CanvasLayer" instance=ExtResource("8_overlay")]
 
 [node name="Hotbar" type="Control" parent="CanvasLayer"]
 layout_mode = 3

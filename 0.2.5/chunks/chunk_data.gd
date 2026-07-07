@@ -1,5 +1,7 @@
 class_name ChunkData
 
+const _WorldSettings = preload("res://config/world_settings.gd")
+
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
 
@@ -17,7 +19,8 @@ var ramp_map: Dictionary = {}
 var river_ctx: RiverJobContext = null
 
 const SIZE := 16
-const HEIGHT := 160
+## Legacy bound — prefer WorldSettings.get_active().chunk_height_bound() for checks.
+const HEIGHT := 48
 # Note: Worldgen is now fully volumetric (get_voxel). HEIGHT is still used as a safety bound.
 
 func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
@@ -66,14 +69,14 @@ func get_voxel(x: int, y: int, z: int) -> int:
 	# Synthesize from heightfield maps: only the surface y has the tile, everything else is AIR.
 	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and surface_map:
 		var sy: float = float(surface_map[x][z])
-		if absf(float(y) - sy) < 0.6:
+		if absf(float(y) - sy) < _surface_match_epsilon():
 			return get_tile_type(x, z)
 	return VoxelTypes.AIR
 
 func get_visibility(x: int, y: int, z: int) -> bool:
 	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and surface_map:
 		var sy: float = float(surface_map[x][z])
-		if absf(float(y) - sy) < 0.6:
+		if absf(float(y) - sy) < _surface_match_epsilon():
 			return get_tile_type(x, z) != VoxelTypes.AIR
 	return false
 
@@ -88,11 +91,25 @@ func set_visible(x: int, y: int, z: int, visible: bool):
 	set_visibility(x, y, z, visible)
 
 func set_ramp_cardinal(x: int, z: int, dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": false, "dir": dir, "dir2": Vector2i.ZERO}
+	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "dir": dir, "dir2": Vector2i.ZERO}
 
 
 func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": true, "dir": dir_a, "dir2": dir_b}
+	ramp_map[Vector2i(x, z)] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
+
+
+func set_ramp_side(x: int, z: int, face_dir: Vector2i, climb_dir: Vector2i) -> void:
+	ramp_map[Vector2i(x, z)] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
+
+
+func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int) -> void:
+	ramp_map[Vector2i(x, z)] = {
+		"concave": true,
+		"side": true,
+		"corner": false,
+		"dir": Vector2i(leg_x, 0),
+		"dir2": Vector2i(0, leg_z),
+	}
 
 
 func has_ramp(x: int, z: int) -> bool:
@@ -136,6 +153,10 @@ func get_tile_type(x: int, z: int) -> int:
 	var wz = position.y * SIZE + z
 	return world.get_tile_type_uncached(float(wx), float(wz))
 
+static func _surface_match_epsilon() -> float:
+	return _WorldSettings.get_active().layer_height() * 0.35
+
+
 func is_in_bounds(x: int, y: int, z: int) -> bool:
 	return x >= 0 and x < SIZE and y >= 0 and y < HEIGHT and z >= 0 and z < SIZE
 
@@ -164,7 +185,7 @@ func _compute_voxel_at_world(wx: int, wy: int, wz: int) -> int:
 	var surface_y = world.get_surface_height_uncached(float(wx), float(wz))
 	if float(wy) > surface_y + 0.5:
 		return VoxelTypes.AIR
-	if abs(float(wy) - surface_y) < 0.6:
+	if abs(float(wy) - surface_y) < _surface_match_epsilon():
 		return world.get_tile_type_uncached(float(wx), float(wz))
 	var biome = world.get_biome(float(wx), float(wy), float(wz))
 	return VoxelTypes.biome_to_voxel_id.get(biome.get("name", "air"), VoxelTypes.AIR)

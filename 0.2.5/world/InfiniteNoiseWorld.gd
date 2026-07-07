@@ -14,9 +14,18 @@
 class_name InfiniteNoiseWorld
 extends Node3D
 
+enum MapTemperature { HOT, MILD, COLD, HOT_MILD, MILD_COLD }
+
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _WorldGenConfig = preload("res://config/world_gen_config.gd")
+const _BiomeLayout = preload("res://world/biome_layout.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 var world_seed: int
+var map_temperature: MapTemperature = MapTemperature.MILD
+var map_temperature_label: String = "Mild"
+var world_config: _WorldGenConfig
 
 # --- Tunables for playable scale and feel ---
 # --- Tunables for playable scale and feel ---
@@ -63,7 +72,7 @@ const CAVE_SURFACE_BREACH_MIN := 0.42
 const CAVE_MOUTH_THRESHOLD := 0.48
 const CAVE_SURFACE_BREACH_CHANCE := 0.85
 
-const MAX_HEIGHT := 158.0
+const LEGACY_MAX_HEIGHT := 158.0
 const SEA_LEVEL := 38.0            # Baseline reference (rivers can go below in gorges)
 const MOUNTAIN_HEIGHT_BOOST := 78.0
 
@@ -97,17 +106,109 @@ var _surface_variation: FastNoiseLite   # small high-freq for micro detail on su
 
 func _ready():
 	add_to_group("world")
+	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	if cfg_svc and "world_settings" in cfg_svc and cfg_svc.world_settings:
+		apply_world_settings(cfg_svc.world_settings)
 
 func _init(p_seed: int = 12349):
 	world_seed = p_seed
+	_BiomeLayout.reset()
+	_roll_map_temperature()
 	_setup_noise()
+	_init_biome_regions()
+
+func apply_world_settings(ws: _WorldSettings) -> void:
+	if ws:
+		_WorldSettings.apply_active(ws)
+	_invalidate_height_caches()
+
+
+func apply_world_config(cfg: _WorldGenConfig) -> void:
+	world_config = cfg
+	_BiomeLayout.reset()
+	_init_biome_regions()
+	if _base_height != null:
+		_setup_noise()
+	TerrainRamps.placement_chance = _wg().ramp_placement_chance
+	_invalidate_height_caches()
+
+
+func _max_height() -> float:
+	return _WorldSettings.get_active().max_height_units()
+
+
+func _height_gen_scale() -> float:
+	return _WorldSettings.get_active().height_generation_scale()
+
+
+func _invalidate_height_caches() -> void:
+	_surface_cache.clear()
+	_tile_cache.clear()
+	_biome_cache.clear()
+
+
+func _init_biome_regions() -> void:
+	var wg := _wg()
+	_BiomeLayout.ensure_generated(
+		world_seed,
+		float(WorldBorder.PLAYABLE_HALF_X),
+		wg.biome_region_warp
+	)
+
+
+func _wg() -> _WorldGenConfig:
+	return world_config if world_config else _WorldGenConfig.create_default()
+
+
+func _roll_map_temperature() -> void:
+	var rng := RandomNumberGenerator.new()
+	var wg := _wg()
+	rng.seed = world_seed + (wg.temperature_roll_seed_offset if wg else 777)
+	var roll := rng.randf()
+	if roll < 0.25:
+		map_temperature = MapTemperature.HOT
+	elif roll < 0.50:
+		map_temperature = MapTemperature.MILD
+	elif roll < 0.75:
+		map_temperature = MapTemperature.COLD
+	elif roll < 0.85:
+		map_temperature = MapTemperature.HOT_MILD
+	else:
+		map_temperature = MapTemperature.MILD_COLD
+	map_temperature_label = get_map_temperature_label()
+
+func _apply_map_temperature_bias(t: float) -> float:
+	match map_temperature:
+		MapTemperature.HOT:
+			return clampf(t * 0.55 + 0.38, 0.0, 1.0)
+		MapTemperature.COLD:
+			return clampf(t * 0.42 + 0.04, 0.0, 1.0)
+		MapTemperature.HOT_MILD:
+			return clampf(t * 0.65 + 0.22, 0.0, 1.0)
+		MapTemperature.MILD_COLD:
+			return clampf(t * 0.65 + 0.08, 0.0, 1.0)
+		_:
+			return clampf(t * 0.58 + 0.21, 0.0, 1.0)
+
+func get_map_temperature_label() -> String:
+	match map_temperature:
+		MapTemperature.HOT:
+			return "Hot"
+		MapTemperature.COLD:
+			return "Cold"
+		MapTemperature.HOT_MILD:
+			return "Hot/Mild"
+		MapTemperature.MILD_COLD:
+			return "Mild/Cold"
+		_:
+			return "Mild"
 
 func _setup_noise():
 	# Domain warp (makes everything look natural, not grid-aligned)
 	_warp_x = FastNoiseLite.new()
 	_warp_x.seed = world_seed + 11
 	_warp_x.noise_type = FastNoiseLite.TYPE_PERLIN
-	_warp_x.frequency = 0.9 / BIOME_SCALE
+	_warp_x.frequency = 0.9 / _wg().biome_scale
 	_warp_x.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_warp_x.fractal_octaves = 2
 	_warp_x.fractal_gain = 0.55
@@ -115,7 +216,7 @@ func _setup_noise():
 	_warp_z = FastNoiseLite.new()
 	_warp_z.seed = world_seed + 12
 	_warp_z.noise_type = FastNoiseLite.TYPE_PERLIN
-	_warp_z.frequency = 0.9 / BIOME_SCALE
+	_warp_z.frequency = 0.9 / _wg().biome_scale
 	_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_warp_z.fractal_octaves = 2
 	_warp_z.fractal_gain = 0.55
@@ -285,8 +386,8 @@ func _compute_raw_elevation(wx: float, wz: float) -> float:
 	var detail: float = _detail.get_noise_2d(x * 1.7, z * 1.7) * 4.2
 	var micro: float = _surface_variation.get_noise_2d(wx, wz) * 0.8
 
-	var raw: float = base_h + mountain + detail + micro
-	return clamp(raw, -12.0, MAX_HEIGHT)
+	var raw: float = (base_h + mountain + detail + micro) * _height_gen_scale()
+	return clamp(raw, -12.0 * _height_gen_scale(), _max_height())
 
 func get_river_mask(wx: float, wz: float) -> Dictionary:
 	var r: float = _river_noise.get_noise_2d(wx, wz)
@@ -390,11 +491,12 @@ func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
 	var x: float = w.x
 	var z: float = w.y
 
-	# Temperature
+	# Temperature — local noise shaped by seed-rolled map theme (hot / mild / cold).
 	var t: float = (_temp.get_noise_2d(x, z) + 1.0) * 0.5
 	var elev_for_temp: float = get_surface_height_uncached(wx, wz)
 	var lapse: float = clamp((elev_for_temp - 42.0) / 115.0, 0.0, 0.92)
 	t = clamp(t - lapse * 0.82, 0.0, 1.0)
+	t = _apply_map_temperature_bias(t)
 
 	# Moisture - explicit balance for large scale
 	var raw_m: float = (_moist.get_noise_2d(x * 0.9, z * 0.9) + 1.0) * 0.5
@@ -417,17 +519,17 @@ func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
 
 	var rug: float = _compute_local_ruggedness(wx, wz)
 
-	var name: String
-	if elev_for_temp > 78.0 and rug > 0.48:
-		name = "forest" if m > 0.42 else "steppe"
-	elif m < 0.25:
-		name = "steppe"
-	elif m < 0.50:
-		name = "plains"
-	elif m < 0.76:
-		name = "forest"
-	else:
-		name = "marsh"
+	var wg := _wg()
+	var name: String = _BiomeLayout.biome_name_at(
+		wx, wz, world_seed, wg.biome_region_warp, float(WorldBorder.PLAYABLE_HALF_X)
+	)
+	# Intra-biome variation: moisture/temp still shape local character without changing region identity.
+	if name == "highland":
+		rug = maxf(rug, 0.45)
+	elif name == "marsh":
+		m = maxf(m, 0.62)
+	elif name == "steppe":
+		m = minf(m, 0.42)
 
 	# High altitude air override — use surface height, not passed wy
 	var surface_h: float = get_surface_height_uncached(wx, wz)
@@ -471,13 +573,24 @@ func get_surface_height(wx: float, wz: float) -> float:
 		return _surface_cache[k]
 
 	var h: float = _compute_surface_height(wx, wz)
+	h += _TerrainEdits.get_height_delta(k.x, k.y)
+	h = _quantize_to_voxel_layer(h)
 	_surface_cache[k] = h
 	if _surface_cache.size() > 12288:
 		_surface_cache.clear()
 	return h
 
 func get_surface_height_uncached(wx: float, wz: float) -> float:
-	return _compute_surface_height(wx, wz)
+	var h: float = _compute_surface_height(wx, wz)
+	h += _TerrainEdits.get_height_delta(floori(wx), floori(wz))
+	return _quantize_to_voxel_layer(h)
+
+
+func invalidate_column_cache(wx: int, wz: int) -> void:
+	var k := Vector2i(wx, wz)
+	_surface_cache.erase(k)
+	_tile_cache.erase(k)
+	_biome_cache.erase("%d,%d" % [wx, wz])
 
 
 func get_surface_height_smooth(wx: float, wz: float) -> float:
@@ -514,15 +627,25 @@ func _compute_surface_height(wx: float, wz: float) -> float:
 		var edge_h: float = edge_base - edge_river.carve
 		h = WorldBorder.apply_border_height(wx, wz, edge_h, border_info)
 
-	# Integer voxel steps — ramps are separate wedge geometry at 1-high transitions
-	h = clamp(h, -4.0, MAX_HEIGHT)
-	return round(h)
+	# Quantize to voxel-layer steps (each layer = WorldSettings.layer_height world units).
+	h = clamp(h, -4.0 * _height_gen_scale(), _max_height())
+	return _quantize_to_voxel_layer(h)
+
+
+func _quantize_to_voxel_layer(h: float) -> float:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if layer <= 0.001:
+		return round(h)
+	return round(h / layer) * layer
 
 # -----------------------------
 # Surface tile (what the heightfield renderer displays on top)
 # -----------------------------
 func get_tile_type(wx: float, wz: float) -> int:
 	var k: Vector2i = Vector2i(floori(wx), floori(wz))
+	var build_tile: int = _TerrainEdits.get_build_tile(k.x, k.y)
+	if build_tile >= 0:
+		return build_tile
 	var override: int = _FeatureRegistry.get_tile_override(k.x, k.y)
 	if override >= 0:
 		return override
@@ -536,7 +659,12 @@ func get_tile_type(wx: float, wz: float) -> int:
 	return id
 
 func get_tile_type_uncached(wx: float, wz: float) -> int:
-	var override: int = _FeatureRegistry.get_tile_override(floori(wx), floori(wz))
+	var ix := floori(wx)
+	var iz := floori(wz)
+	var build_tile: int = _TerrainEdits.get_build_tile(ix, iz)
+	if build_tile >= 0:
+		return build_tile
+	var override: int = _FeatureRegistry.get_tile_override(ix, iz)
 	if override >= 0:
 		return override
 	return _compute_surface_tile(wx, wz)
@@ -592,15 +720,22 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 	var name: String
 	match bname:
 		"plains":
-			if moist > 0.66:
+			if map_temperature == MapTemperature.COLD and temp2 < 0.45:
+				name = "snow" if tile_var < 0.55 else "snow2"
+			elif moist > 0.66:
 				name = "meadow" if tile_var < 0.6 else "grass"
 			elif temp2 < 0.34:
 				name = "savanna"
 			else:
 				name = "plains" if tile_var > 0.5 else "grass"
 		"steppe":
-			name = "steppe" if moist < 0.22 or rugged > 0.5 else "savanna"
-			if rugged > 0.62:
+			if map_temperature == MapTemperature.COLD or (map_temperature == MapTemperature.MILD_COLD and temp2 < 0.42):
+				name = "snow2" if tile_var < 0.5 else "snow"
+			elif map_temperature == MapTemperature.HOT or map_temperature == MapTemperature.HOT_MILD:
+				name = "savanna" if tile_var < 0.6 else "steppe"
+			else:
+				name = "steppe" if moist < 0.22 or rugged > 0.5 else "savanna"
+			if rugged > 0.62 and map_temperature != MapTemperature.COLD:
 				name = "basin"
 		"forest":
 			if moist > 0.72:
@@ -613,6 +748,13 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 			name = "marsh"
 			if rugged < 0.18 and moist > 0.78:
 				name = "basin"
+		"highland":
+			if surf > 72.0:
+				name = "mountain2" if tile_var < 0.5 else "mountain3"
+			elif rugged > 0.55:
+				name = "stone2" if tile_var < 0.45 else "stone"
+			else:
+				name = "meadow" if tile_var < 0.5 else "grass"
 		_:
 			name = "plains"
 

@@ -3,6 +3,8 @@ extends Node
 
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
+const _GameManager = preload("res://game/game_manager.gd")
+const _StatIds = preload("res://stats/stat_ids.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -16,6 +18,8 @@ var world: InfiniteNoiseWorld
 
 var _cooldown_timer: float = 0.0
 var _active_hotbar_index: int = 0
+var _terrain_editor: TerrainEditor
+var _terrain_bind_attempts: int = 0
 
 
 func _ready() -> void:
@@ -24,6 +28,14 @@ func _ready() -> void:
 		inventory = player.inventory
 	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 	world = get_tree().get_first_node_in_group("world")
+	_bind_terrain_editor()
+
+
+func _bind_terrain_editor() -> void:
+	_terrain_editor = get_tree().get_first_node_in_group("terrain_editor") as TerrainEditor
+	if _terrain_editor == null and _terrain_bind_attempts < 30:
+		_terrain_bind_attempts += 1
+		call_deferred("_bind_terrain_editor")
 
 
 func _process(delta: float) -> void:
@@ -32,6 +44,12 @@ func _process(delta: float) -> void:
 
 	if Input.is_action_just_pressed("attack"):
 		_try_attack()
+	if Input.is_action_just_pressed("interact"):
+		_try_build_wall()
+	if Input.is_action_just_pressed("plant"):
+		_try_plant()
+	if Input.is_action_just_pressed("channel_water"):
+		_try_channel_water()
 
 	for i in HOTBAR_INPUTS.size():
 		if Input.is_action_just_pressed(HOTBAR_INPUTS[i]):
@@ -99,11 +117,11 @@ func _attack_forward() -> Vector3:
 
 
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
-	var origin := player.voxel_position + Vector3(0.0, Player.PLAYER_HEIGHT * 0.5, 0.0)
+	var origin := player.voxel_position + Vector3(0.0, Player.get_player_height() * 0.5, 0.0)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 2.0))
-	var damage: float = float(def.get("damage", 5.0))
 	var hit_pos := origin + forward * range_v
+	var damage: float = _crystal_hit_damage(def)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
@@ -116,11 +134,11 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
-	var origin := player.voxel_position + Vector3(0.0, Player.PLAYER_HEIGHT * 0.6, 0.0)
+	var origin := player.voxel_position + Vector3(0.0, Player.get_player_height() * 0.6, 0.0)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 12.0))
-	var damage: float = float(def.get("damage", 8.0))
 	var hit_pos := origin + forward * range_v
+	var damage: float = _crystal_hit_damage(def, _StatIds.RANGED_DAMAGE)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
@@ -136,12 +154,65 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	var forward := _attack_forward()
 	var target := player.voxel_position + forward * float(def.get("range", 2.0))
 	dig_attempted.emit(target)
+	if _terrain_editor and _terrain_editor.try_dig(target):
+		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
 			Vector2i(floori(target.x), floori(target.z)),
-			float(def.get("damage", 4.0)),
+			_crystal_hit_damage(def),
 			1.8
 		)
 
 	attacked.emit(item_id, target)
+
+
+func _try_build_wall() -> void:
+	if _cooldown_timer > 0.0 or player == null or inventory == null or _terrain_editor == null:
+		return
+	var game_manager := get_tree().get_first_node_in_group("game_manager")
+	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
+		return
+	var forward := _attack_forward()
+	var target := player.voxel_position + forward * 2.0
+	if _terrain_editor.try_build_wall(target, inventory, inventory.count_item("stone") > 0):
+		_cooldown_timer = 0.35
+
+
+func _player_damage_mult(stat_id: StringName) -> float:
+	if player and player.has_method("get_stat"):
+		return player.get_stat(stat_id)
+	return 1.0
+
+
+func _crystal_hit_damage(def: Dictionary, weapon_stat: StringName = _StatIds.MELEE_DAMAGE) -> float:
+	var base := float(def.get("damage", 5.0))
+	return base * _player_damage_mult(weapon_stat) * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)
+
+
+func _try_plant() -> void:
+	if _cooldown_timer > 0.0 or player == null or inventory == null or _terrain_editor == null:
+		return
+	var game_manager := get_tree().get_first_node_in_group("game_manager")
+	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
+		return
+	var forward := _attack_forward()
+	var target := player.voxel_position + forward * 2.0
+	var plant_id: StringName = &"tree" if Input.is_key_pressed(KEY_SHIFT) else (
+		&"bush" if inventory.count_item("wood") >= 2 else &"grass_tuft"
+	)
+	if _terrain_editor.try_plant(target, inventory, plant_id):
+		_cooldown_timer = 0.45
+
+
+func _try_channel_water() -> void:
+	if _cooldown_timer > 0.0 or player == null or _terrain_editor == null:
+		return
+	var slot = get_active_item()
+	var using_pick: bool = slot != null and str(slot.id) == "stone_pick"
+	if not using_pick:
+		return
+	var forward := _attack_forward()
+	var target := player.voxel_position + forward * 2.0
+	if _terrain_editor.try_channel_water(target, inventory if inventory else null):
+		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
