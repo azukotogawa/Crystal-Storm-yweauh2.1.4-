@@ -1,0 +1,166 @@
+[gd_scene format=3 uid="uid://6ven06d5s8l"]
+
+[ext_resource type="Script" uid="uid://bysd6dgbhih1f" path="res://world/InfiniteNoiseWorld.gd" id="1_1bvp3"]
+[ext_resource type="Script" uid="uid://cwmhh7jh6kfp4" path="res://main.gd" id="1_2f3dj"]
+[ext_resource type="Script" uid="uid://5wlspcxmshqg" path="res://systems/config_service.gd" id="1_cfg"]
+[ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="2_lquwl"]
+[ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_272bh"]
+[ext_resource type="Script" uid="uid://cal8x0hpofgxq" path="res://ui/debug_panel.gd" id="7_272bh"]
+[ext_resource type="Script" uid="uid://dadn2djbvlj72" path="res://player/camera.gd" id="8_85g3d"]
+[ext_resource type="Script" uid="uid://gwmko0ktp10p" path="res://game/game_manager.gd" id="8_gmgr"]
+[ext_resource type="PackedScene" path="res://ui/game_overlay.tscn" id="8_overlay"]
+[ext_resource type="Script" uid="uid://c3ndc4ior2hrt" path="res://world/terrain_editor.gd" id="8_terrain"]
+[ext_resource type="Script" uid="uid://2jkrj3hkp7ds" path="res://crystal/crystal_manager.gd" id="9_crystal"]
+[ext_resource type="Script" uid="uid://bf6gf2w8cx7qg" path="res://world/world_features.gd" id="10_features"]
+[ext_resource type="Script" uid="uid://dt7b3rdbywun0" path="res://world/town_manager.gd" id="11_town"]
+[ext_resource type="Script" uid="uid://c7wxbt3gnlbue" path="res://world/vegetation_growth_manager.gd" id="12_growth"]
+[ext_resource type="Script" uid="uid://bvm823hmaawky" path="res://world/town_defense_manager.gd" id="12_town_def"]
+[ext_resource type="Script" uid="uid://bhm1sb1d8p80j" path="res://world/vegetation_manager.gd" id="12_veg"]
+[ext_resource type="Script" uid="uid://b18qcnexgqc8k" path="res://entities/entity_manager.gd" id="13_entity"]
+[ext_resource type="Script" uid="uid://bukkta81w7kpj" path="res://world/ruin_manager.gd" id="13_ruin"]
+[ext_resource type="Script" uid="uid://b3auxdki7c73p" path="res://entities/crystal_enemy_spawner.gd" id="13_spawner"]
+[ext_resource type="Script" uid="uid://22sxws7gc0rc" path="res://ui/hotbar.gd" id="14_hotbar"]
+[ext_resource type="Script" uid="uid://dp17tpxqfy85s" path="res://ui/inventory_panel.gd" id="15_inv"]
+[ext_resource type="Script" uid="uid://bojujeqi0g4dm" path="res://systems/save_game_service.gd" id="16_save"]
+[ext_resource type="Script" uid="uid://vwhnq8p6878x" path="res://ui/topographical_map.gd" id="17_map"]
+[ext_resource type="Script" uid="uid://bx2f2mbqw078k" path="res://systems/performance_service.gd" id="18_perf"]
+[ext_resource type="Script" uid="uid://ch41tjgq4adwr" path="res://systems/combat_visual_feedback.gd" id="19_vfx"]
+[ext_resource type="Script" uid="uid://da6pnwoqgsk83" path="res://systems/game_visual_registry.gd" id="20_visreg"]
+[ext_resource type="Script" uid="uid://d4e8upktb4r45" path="res://world/feature_visual_layer.gd" id="21_featvis"]
+[ext_resource type="Script" uid="uid://bwur1svbs5bg5" path="res://world/world_visuals.gd" id="22_wvis"]
+
+[sub_resource type="Environment" id="Environment_tipki"]
+background_mode = 1
+ambient_light_source = 2
+ambient_light_color = Color(0.58, 0.64, 0.74, 1)
+ambient_light_energy = 0.42
+tonemap_mode = 2
+tonemap_exposure = 1.05
+
+[node name="Game" type="Node3D" unique_id=238200303]
+script = ExtResource("1_2f3dj")
+
+[node name="ConfigService" type="Node" parent="." unique_id=368487200]
+script = ExtResource("1_cfg")
+
+[node name="PerformanceService" type="Node" parent="." unique_id=1649099418]
+script = ExtResource("18_perf")
+
+[node name="GameVisualRegistry" type="Node" parent="." unique_id=2135600267]
+script = ExtResource("20_visreg")
+
+[node name="World" type="Node3D" parent="." unique_id=1367580773]
+script = ExtResource("1_1bvp3")
+
+[node name="VoxelWorld" type="Node3D" parent="." unique_id=1061335547]
+script = ExtResource("2_lquwl")
+
+[node name="WorldVisuals" type="Node3D" parent="." unique_id=753540113]
+script = ExtResource("22_wvis")
+
+[node name="Entities" type="Node3D" parent="WorldVisuals" unique_id=114636890]
+
+[node name="Vegetation" type="Node3D" parent="WorldVisuals" unique_id=114636891]
+
+[node name="Buildings" type="Node3D" parent="WorldVisuals" unique_id=114636892]
+
+[node name="SpawnMarkers" type="Node3D" parent="WorldVisuals" unique_id=114636893]
+
+[node name="CombatVFX" type="Node3D" parent="WorldVisuals" unique_id=114636894]
+
+[node name="CombatVisualFeedback" type="Node3D" parent="WorldVisuals/CombatVFX" unique_id=1077117135]
+script = ExtResource("19_vfx")
+
+[node name="FeatureVisualLayer" type="Node3D" parent="WorldVisuals" unique_id=1677148353]
+script = ExtResource("21_featvis")
+
+[node name="WorldFeatures" type="Node" parent="." unique_id=1612266442]
+script = ExtResource("10_features")
+
+[node name="TownManager" type="Node" parent="WorldFeatures" unique_id=120492005]
+script = ExtResource("11_town")
+
+[node name="VegetationManager" type="Node" parent="WorldFeatures" unique_id=384769257]
+script = ExtResource("12_veg")
+
+[node name="VegetationGrowthManager" type="Node" parent="WorldFeatures" unique_id=740722095]
+script = ExtResource("12_growth")
+
+[node name="TownDefenseManager" type="Node" parent="WorldFeatures" unique_id=2109959450]
+script = ExtResource("12_town_def")
+
+[node name="RuinManager" type="Node" parent="WorldFeatures" unique_id=527806642]
+script = ExtResource("13_ruin")
+
+[node name="EntityManager" type="Node" parent="WorldFeatures" unique_id=1748043786]
+script = ExtResource("13_entity")
+
+[node name="CrystalManager" type="Node3D" parent="." unique_id=320320819]
+script = ExtResource("9_crystal")
+
+[node name="CrystalEnemySpawner" type="Node" parent="CrystalManager" unique_id=863251907]
+script = ExtResource("13_spawner")
+
+[node name="GameManager" type="Node" parent="." unique_id=1300885764]
+script = ExtResource("8_gmgr")
+
+[node name="TerrainEditor" type="Node" parent="." unique_id=792751418]
+script = ExtResource("8_terrain")
+
+[node name="SaveGameService" type="Node" parent="." unique_id=65740121]
+script = ExtResource("16_save")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
+environment = SubResource("Environment_tipki")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1030504662]
+transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.15
+shadow_enabled = true
+directional_shadow_mode = 1
+directional_shadow_max_distance = 80.0
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1228396210]
+script = ExtResource("4_272bh")
+
+[node name="Camera3D" type="Camera3D" parent="Player" unique_id=2047417874 node_paths=PackedStringArray("target")]
+projection = 1
+script = ExtResource("8_85g3d")
+target = NodePath("..")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Player" unique_id=1954782455]
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=811969268]
+
+[node name="GameOverlay" parent="CanvasLayer" unique_id=1123320473 instance=ExtResource("8_overlay")]
+
+[node name="Hotbar" type="Control" parent="CanvasLayer" unique_id=1700953840]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("14_hotbar")
+
+[node name="InventoryPanel" type="Control" parent="CanvasLayer" unique_id=1276332693]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("15_inv")
+
+[node name="TopographicalMap" type="Control" parent="CanvasLayer" unique_id=1380799680]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("17_map")
+
+[node name="DebugPanel" type="Control" parent="CanvasLayer" unique_id=2121095323]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("7_272bh")
+metadata/_edit_use_anchors_ = true
+
+[node name="DebugLabel" type="Label" parent="CanvasLayer/DebugPanel" unique_id=686040605]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0
+metadata/_edit_use_anchors_ = true

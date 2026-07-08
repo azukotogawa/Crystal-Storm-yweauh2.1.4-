@@ -21,6 +21,9 @@ enum Category {
 	ORE,
 	GROUND,
 	PARTICLE,
+	ENTITY,
+	VEGETATION,
+	BUILDING,
 }
 
 signal texture_generated(category: int, variant_id: StringName, texture: Texture2D)
@@ -101,6 +104,12 @@ func generate_image(
 					_fill_victory_glow(image, palette, seed_val)
 				_:
 					_fill_particle(image, palette, seed_val, 0.0)
+		Category.ENTITY:
+			_fill_entity_sprite(image, palette, seed_val, variant_id)
+		Category.VEGETATION:
+			_fill_vegetation_sprite(image, palette, seed_val, variant_id)
+		Category.BUILDING:
+			_fill_building_sprite(image, palette, seed_val, variant_id)
 
 	return image
 
@@ -114,6 +123,49 @@ func generate_combat_ui_bundle() -> Dictionary:
 		"spawn_miniboss": generate_texture(Category.PARTICLE, &"spawn_miniboss", 32),
 		"victory_glow": generate_texture(Category.PARTICLE, &"victory_glow", 64),
 	}
+
+
+func generate_game_visual_bundle() -> Dictionary:
+	var bundle := generate_combat_ui_bundle()
+	var entity_ids: Array[StringName] = [
+		&"rabbit", &"deer", &"boar", &"bird", &"town_militia",
+		&"crystal_mite", &"farm_bomber", &"crystal_stag", &"thornling",
+		&"corrupted_beast", &"shard_guard",
+	]
+	for id in entity_ids:
+		bundle["entity_%s" % id] = generate_texture(Category.ENTITY, id, 48)
+	for plant_stage in ["grass_tuft_s0", "grass_tuft_s1", "bush_s0", "bush_s1", "bush_s2", "tree_s0", "tree_s1", "tree_s2"]:
+		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
+	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar"]:
+		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
+	return bundle
+
+
+func export_game_visual_bundle(export_dir: String = "") -> String:
+	var dir := export_dir if not export_dir.is_empty() else config.export_path.path_join("game_visuals")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var bundle := generate_game_visual_bundle()
+	for key in bundle.keys():
+		var tex: Texture2D = bundle[key]
+		if tex == null:
+			continue
+		tex.get_image().save_png(dir.path_join("%s.png" % key))
+	var meta_path := dir.path_join("manifest.json")
+	_PaletteJsonIO.write_json(meta_path, {"keys": bundle.keys(), "count": bundle.size()})
+	sprite_sheet_exported.emit(dir, {"manifest": meta_path})
+	return dir
+
+
+func generate_entity_sprite_frames(entity_id: StringName, frame_count: int = 4, fps: float = 6.0) -> SpriteFrames:
+	var frames := SpriteFrames.new()
+	var anim_name := str(entity_id)
+	frames.add_animation(anim_name)
+	frames.set_animation_speed(anim_name, fps)
+	frames.set_animation_loop(anim_name, true)
+	for i in frame_count:
+		var img := generate_image(Category.ENTITY, entity_id, 48, i * 131)
+		frames.add_frame(anim_name, ImageTexture.create_from_image(img))
+	return frames
 
 
 func generate_crystal_variants(count: int = 4, palette_id: StringName = &"") -> Array[ImageTexture]:
@@ -443,6 +495,134 @@ func _fill_victory_glow(image: Image, palette: _Palette, seed_val: int) -> void:
 			image.set_pixel(x, y, c)
 
 
+func _fill_entity_sprite(image: Image, palette: _Palette, seed_val: int, variant_id: StringName) -> void:
+	var dim := image.get_width()
+	image.fill(Color(0, 0, 0, 0))
+	var id_str := str(variant_id)
+	var body_scale := 0.34
+	var is_crystal := id_str.begins_with("crystal") or id_str in ["thornling", "shard_guard", "corrupted_beast", "farm_bomber"]
+	var is_militia := id_str == "town_militia"
+	var is_bird := id_str == "bird"
+	var cx := float(dim) * 0.5
+	var cy := float(dim) * 0.58
+
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			var dx := u - 0.5
+			var dy := v - 0.58
+			var body := Vector2(dx / body_scale, dy / (body_scale * 1.15)).length()
+			if body > 1.0:
+				continue
+			var c := palette.primary.lerp(palette.secondary, body)
+			if is_crystal:
+				var spike := absf(sin((u + v) * 18.0 + float(seed_val))) * 0.35
+				c = c.lerp(palette.accent, spike)
+				c.a = 1.0 - smoothstep(0.75, 1.0, body)
+			elif is_militia and v < 0.42:
+				c = palette.secondary.lerp(palette.shadow, 0.5)
+			elif is_bird and dy < -0.05:
+				c = palette.accent
+			c.a = 1.0 - smoothstep(0.82, 1.0, body)
+			image.set_pixel(x, y, c)
+
+	# Ears / horns / crest
+	if id_str in ["rabbit", "deer", "boar"]:
+		for y in dim:
+			for x in dim:
+				var u := float(x) / float(dim)
+				var v := float(y) / float(dim)
+				for ear_x in [0.36, 0.64]:
+					var d := Vector2(u - ear_x, v - 0.28).length()
+					if d < 0.07:
+						var a := 1.0 - d / 0.07
+						var existing: Color = image.get_pixel(x, y)
+						if existing.a < 0.1:
+							image.set_pixel(x, y, Color(palette.secondary.r, palette.secondary.g, palette.secondary.b, a * 0.9))
+	if is_crystal:
+		for y in dim:
+			for x in dim:
+				var u := float(x) / float(dim)
+				var v := float(y) / float(dim)
+				if v > 0.35:
+					continue
+				var crest := absf(u - 0.5) < 0.08 and v < 0.32
+				if crest:
+					var crest_c := palette.glow_color.lerp(palette.accent, 0.4)
+					crest_c.a = 0.85
+					image.set_pixel(x, y, crest_c)
+
+
+func _fill_vegetation_sprite(image: Image, palette: _Palette, seed_val: int, variant_id: StringName) -> void:
+	var dim := image.get_width()
+	image.fill(Color(0, 0, 0, 0))
+	var parts := str(variant_id).split("_s")
+	var plant_id := parts[0] if parts.size() > 0 else str(variant_id)
+	var stage := int(parts[1]) if parts.size() > 1 else 0
+	var growth := float(stage + 1) / 3.0
+
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			if plant_id == "grass_tuft" or plant_id == "grass":
+				if v < 0.55 or v > 0.55 + growth * 0.35:
+					continue
+				var blade := absf(sin(u * TAU * (3.0 + growth * 4.0) + float(seed_val) * 0.01))
+				if blade < 0.55:
+					continue
+				var h := (v - 0.55) / maxf(growth * 0.35, 0.01)
+				var c := palette.primary.lerp(palette.accent, h)
+				c.a = (1.0 - h) * 0.9
+				image.set_pixel(x, y, c)
+			elif plant_id == "bush":
+				var d := Vector2(u - 0.5, v - 0.52).length()
+				var radius := 0.14 + growth * 0.16
+				if d > radius:
+					continue
+				var c := palette.primary.lerp(palette.secondary, d / radius)
+				c.a = 1.0 - smoothstep(radius * 0.7, radius, d)
+				image.set_pixel(x, y, c)
+			else:
+				if v > 0.72:
+					continue
+				var trunk_w := 0.06 + growth * 0.02
+				if absf(u - 0.5) < trunk_w and v > 0.42:
+					image.set_pixel(x, y, Color(palette.shadow.r, palette.shadow.g, palette.shadow.b, 0.95))
+					continue
+				var canopy_r := 0.12 + growth * 0.2
+				var d := Vector2(u - 0.5, v - 0.38).length()
+				if d < canopy_r:
+					var c := palette.primary.lerp(palette.accent, d / canopy_r)
+					c.a = 1.0 - smoothstep(canopy_r * 0.65, canopy_r, d)
+					image.set_pixel(x, y, c)
+
+
+func _fill_building_sprite(image: Image, palette: _Palette, seed_val: int, variant_id: StringName) -> void:
+	var dim := image.get_width()
+	image.fill(Color(0, 0, 0, 0))
+	var id_str := str(variant_id)
+	var is_ruin := id_str.contains("ruin")
+	var is_wood := id_str.contains("wood")
+
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			if v < 0.28 or v > 0.92 or u < 0.18 or u > 0.82:
+				continue
+			var c := palette.secondary.lerp(palette.primary, v)
+			if is_wood:
+				c = c.lerp(palette.accent, absf(sin(v * 22.0)) * 0.15)
+			if is_ruin:
+				c = c.lerp(palette.shadow, absf(sin(u * 31.0 + float(seed_val))) * 0.35)
+			if id_str == "town_hall" and v < 0.42 and absf(u - 0.5) < 0.22:
+				c = palette.accent
+			c.a = 0.95
+			image.set_pixel(x, y, c)
+
+
 func _fill_particle(image: Image, palette: _Palette, seed_val: int, phase: float) -> void:
 	var dim := image.get_width()
 	var cx := float(dim) * 0.5
@@ -469,6 +649,12 @@ func _fill_particle(image: Image, palette: _Palette, seed_val: int, phase: float
 # ---------------------------------------------------------------------------
 
 func _resolve_palette(category: Category, variant_id: StringName) -> _Palette:
+	if category == Category.ENTITY:
+		return _entity_palette(variant_id)
+	if category == Category.VEGETATION:
+		return _vegetation_palette(variant_id)
+	if category == Category.BUILDING:
+		return _building_palette(variant_id)
 	var list := _palettes_for(category)
 	for p in list:
 		if p.id == variant_id:
@@ -482,6 +668,85 @@ func _resolve_palette(category: Category, variant_id: StringName) -> _Palette:
 	fallback.secondary = Color.PURPLE
 	fallback.accent = Color.VIOLET
 	return fallback
+
+
+func _entity_palette(variant_id: StringName) -> _Palette:
+	var p := _Palette.new()
+	p.id = variant_id
+	p.glow_strength = 0.35
+	match str(variant_id):
+		"rabbit":
+			p.primary = Color(0.78, 0.72, 0.62)
+			p.secondary = Color(0.62, 0.55, 0.45)
+			p.accent = Color(0.92, 0.88, 0.75)
+		"deer":
+			p.primary = Color(0.72, 0.55, 0.38)
+			p.secondary = Color(0.52, 0.38, 0.28)
+			p.accent = Color(0.85, 0.68, 0.45)
+		"boar":
+			p.primary = Color(0.45, 0.35, 0.32)
+			p.secondary = Color(0.32, 0.25, 0.22)
+			p.accent = Color(0.62, 0.48, 0.42)
+		"bird":
+			p.primary = Color(0.55, 0.62, 0.78)
+			p.secondary = Color(0.35, 0.42, 0.58)
+			p.accent = Color(0.85, 0.92, 1.0)
+		"town_militia":
+			p.primary = Color(0.58, 0.6, 0.72)
+			p.secondary = Color(0.38, 0.4, 0.52)
+			p.accent = Color(0.78, 0.82, 0.95)
+		_:
+			p.primary = Color(0.68, 0.28, 0.92)
+			p.secondary = Color(0.42, 0.12, 0.62)
+			p.accent = Color(0.92, 0.55, 1.0)
+			p.glow_strength = 0.65
+			p.glow_color = Color(0.85, 0.35, 1.0)
+	p.shadow = p.secondary.darkened(0.3)
+	return p
+
+
+func _vegetation_palette(variant_id: StringName) -> _Palette:
+	var p := _Palette.new()
+	p.id = variant_id
+	var id_str := str(variant_id)
+	if id_str.begins_with("bush"):
+		p.primary = Color(0.28, 0.52, 0.28)
+		p.secondary = Color(0.18, 0.38, 0.18)
+		p.accent = Color(0.42, 0.68, 0.35)
+	elif id_str.begins_with("tree"):
+		p.primary = Color(0.22, 0.48, 0.25)
+		p.secondary = Color(0.35, 0.22, 0.14)
+		p.accent = Color(0.38, 0.62, 0.32)
+	else:
+		p.primary = Color(0.48, 0.75, 0.35)
+		p.secondary = Color(0.32, 0.58, 0.25)
+		p.accent = Color(0.62, 0.88, 0.42)
+	p.shadow = p.secondary.darkened(0.25)
+	return p
+
+
+func _building_palette(variant_id: StringName) -> _Palette:
+	var p := _Palette.new()
+	p.id = variant_id
+	match str(variant_id):
+		"wood_wall":
+			p.primary = Color(0.55, 0.38, 0.22)
+			p.secondary = Color(0.38, 0.26, 0.15)
+			p.accent = Color(0.72, 0.52, 0.32)
+		"town_hall":
+			p.primary = Color(0.62, 0.58, 0.52)
+			p.secondary = Color(0.45, 0.4, 0.36)
+			p.accent = Color(0.92, 0.78, 0.42)
+		"ruin_pillar":
+			p.primary = Color(0.52, 0.48, 0.44)
+			p.secondary = Color(0.35, 0.32, 0.3)
+			p.accent = Color(0.72, 0.55, 0.38)
+		_:
+			p.primary = Color(0.58, 0.56, 0.54)
+			p.secondary = Color(0.4, 0.38, 0.36)
+			p.accent = Color(0.75, 0.72, 0.68)
+	p.shadow = p.secondary.darkened(0.35)
+	return p
 
 
 func _palettes_for(category: Category) -> Array:
@@ -512,6 +777,9 @@ func _category_seed_bias(category: Category) -> int:
 		Category.ORE: return 303
 		Category.GROUND: return 404
 		Category.PARTICLE: return 505
+		Category.ENTITY: return 606
+		Category.VEGETATION: return 707
+		Category.BUILDING: return 808
 		_: return 0
 
 
@@ -522,6 +790,9 @@ func _category_name(category: Category) -> String:
 		Category.ORE: return "ore"
 		Category.GROUND: return "ground"
 		Category.PARTICLE: return "particle"
+		Category.ENTITY: return "entity"
+		Category.VEGETATION: return "vegetation"
+		Category.BUILDING: return "building"
 		_: return "texture"
 
 

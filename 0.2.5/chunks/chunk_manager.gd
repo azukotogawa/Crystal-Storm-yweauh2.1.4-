@@ -5,6 +5,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkMeshBufferBuilder = preload("res://chunks/chunk_mesh_buffer_builder.gd")
 
 signal chunk_ready(coord: Vector2i, data: ChunkData)
+signal chunk_unloaded(coord: Vector2i)
 
 @export var RENDER_DISTANCE : int = 3
 @export var MESH_CAVES : bool = false
@@ -36,6 +37,7 @@ var ramp_max_surface_height: float = 88.0
 var ramp_mountain_cutoff_height: float = 72.0
 var prebuild_chunk_buffers: bool = true
 var chunk_upload_budget_us: int = 3500
+var _rebuild_pending: Dictionary = {}
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
@@ -70,7 +72,9 @@ func _ready():
 		var cz = floori(col.y / float(ChunkData.SIZE))
 		update_stream(cx, cz)
 
-func _exit_tree() -> void:
+func shutdown_workers() -> void:
+	if _shutting_down:
+		return
 	_shutting_down = true
 	_mesh_completion_queue.clear()
 	for coord in _chunk_tasks.keys():
@@ -80,6 +84,27 @@ func _exit_tree() -> void:
 	for tid in tasks:
 		if tid is int:
 			WorkerThreadPool.wait_for_task_completion(tid)
+
+
+## Headless harness: drop chunk views before SceneTree quit to avoid teardown abort(134).
+func release_all_chunks_for_teardown() -> void:
+	shutdown_workers()
+	var keys := chunks.keys()
+	for key in keys:
+		var view: ChunkView = chunks[key]
+		if is_instance_valid(view):
+			if view.get_parent() == self:
+				remove_child(view)
+			view.queue_free()
+	chunks.clear()
+	pending.clear()
+	_rebuild_pending.clear()
+	if has_meta("_rebuild_flush_scheduled"):
+		remove_meta("_rebuild_flush_scheduled")
+
+
+func _exit_tree() -> void:
+	shutdown_workers()
 
 func request_chunk(coord: Vector2i, high_priority: bool = false):
 	if chunks.has(coord) or pending.has(coord) or _chunk_tasks.has(coord):
@@ -109,6 +134,7 @@ func _build_mesh(data: ChunkData) -> Dictionary:
 	var concave_cells := _find_concave_corner_cells(data)
 	_emit_ramps(data, out_quads, concave_cells)
 	_emit_concave_corner_prisms(data, out_quads, concave_cells)
+	_emit_dug_strata(data, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, 1, 0), FACE_TOP, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, -1, 0), 6, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, -1, 0), 4, out_quads)
@@ -381,7 +407,11 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		var z: int = cell.y
 		var leg_x: int = entry["leg_x"]
 		var leg_z: int = entry["leg_z"]
-		data.set_concave_prism(x, z, leg_x, leg_z)
+		var h: float = entry["h"]
+		var vox: int = entry["vox"]
+		data.set_concave_prism(x, z, leg_x, leg_z, h)
+		# Solid support under the diagonal prism (fills the hole + walkable collision).
+		_append_voxel_face(out_quads, float(x), h, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
 		out_quads.append({
 			"x": x,
 			"y": entry["h"],
@@ -438,7 +468,73 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 				"dir2": Vector2i.ZERO,
 			})
 
+	# Corner + side-entry ramps that blend into step faces (not only outward steps).
+	for x in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
+			var cell := Vector2i(x, z)
+			if concave_cells.has(cell) or data.has_ramp(x, z):
+				continue
+			var low_h: float = data.get_surface_y(x, z)
+			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+				continue
+			var corner_dirs: Array = _pick_corner_dirs(data, x, z, planned)
+			if corner_dirs.size() != 2:
+				continue
+			var d_a: Vector2i = corner_dirs[0]
+			var d_b: Vector2i = corner_dirs[1]
+			data.set_ramp_corner(x, z, d_a, d_b)
+			_append_ramp_quad(out_quads, x, z, low_h, data.get_tile_type(x, z), {
+				"dir": d_a,
+				"dir2": d_b,
+			})
 
+
+func _strata_tile(surface_tile: int) -> int:
+	match surface_tile:
+		VoxelTypes.GRASSLAND, VoxelTypes.GRASSLAND2, VoxelTypes.GRASSLAND3, VoxelTypes.GRASSLAND4, VoxelTypes.GRASSLAND5:
+			return VoxelTypes.DIRT
+		VoxelTypes.DIRT, VoxelTypes.DIRT2:
+			return VoxelTypes.DIRT2
+		_:
+			return VoxelTypes.STONE
+
+
+func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
+	if data.world == null:
+		return
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if layer <= 0.001:
+		return
+	for x in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
+			var delta: float = data.get_worker_height_delta(x, z)
+			if delta >= -layer * 0.15:
+				continue
+			var cur_h: float = data.get_surface_y(x, z)
+			var wx: int = data.position.x * ChunkData.SIZE + x
+			var wz: int = data.position.y * ChunkData.SIZE + z
+			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
+			var top_tile: int = data.get_tile_type(x, z)
+			if top_tile == VoxelTypes.AIR:
+				continue
+			for step in range(1, depth_layers + 1):
+				var layer_y: float = cur_h + float(step) * layer
+				if layer_y > natural_h + 0.01:
+					break
+				var tile: int = _strata_tile(top_tile) if step < depth_layers else top_tile
+				out_quads.append({
+					"x": x,
+					"y": layer_y,
+					"z": z,
+					"dim_x": 1.0,
+					"dim_y": 1.0,
+					"dim_z": 1.0,
+					"uv_w": 1.0,
+					"uv_h": 1.0,
+					"type": tile,
+					"face_code": FACE_TOP,
+				})
 func _is_ramp_landing(data: ChunkData, x: int, z: int) -> bool:
 	for d in _RAMP_DIRS:
 		var lx: int = x - d.x
@@ -538,6 +634,7 @@ func update_stream(cx: int, cz: int):
 		if not needed.has(key):
 			chunks[key].queue_free()
 			chunks.erase(key)
+			chunk_unloaded.emit(key)
 
 	for key in pending.keys():
 		if not needed.has(key):
@@ -835,12 +932,76 @@ func rebuild_chunk_at_world(wx: float, wz: float) -> void:
 	rebuild_chunk(key)
 
 
+func rebuild_region_at_world(wx: float, wz: float, ring: int = 1) -> void:
+	var cx := floori(wx / float(ChunkData.SIZE))
+	var cz := floori(wz / float(ChunkData.SIZE))
+	for dx in range(-ring, ring + 1):
+		for dz in range(-ring, ring + 1):
+			_rebuild_pending[Vector2i(cx + dx, cz + dz)] = true
+	if not is_inside_tree():
+		return
+	if not has_meta("_rebuild_flush_scheduled"):
+		set_meta("_rebuild_flush_scheduled", true)
+		call_deferred("_flush_rebuild_pending")
+
+
+func _flush_rebuild_pending() -> void:
+	if has_meta("_rebuild_flush_scheduled"):
+		remove_meta("_rebuild_flush_scheduled")
+	if _rebuild_pending.is_empty():
+		return
+	var keys: Array = _rebuild_pending.keys()
+	_rebuild_pending.clear()
+	for key_variant in keys:
+		rebuild_chunk(key_variant)
+
+
+func await_rebuild_idle(max_frames: int = 2400) -> void:
+	var frames := 0
+	while (has_meta("_rebuild_flush_scheduled") or not _rebuild_pending.is_empty()) and frames < max_frames:
+		await get_tree().process_frame
+		frames += 1
+	await get_tree().process_frame
+
+
+func world_to_chunk_coord(wx: int, wz: int) -> Vector2i:
+	return Vector2i(
+		floori(float(wx) / float(ChunkData.SIZE)),
+		floori(float(wz) / float(ChunkData.SIZE))
+	)
+
+
+func world_to_chunk_coord_v3(world_pos: Vector3) -> Vector2i:
+	return world_to_chunk_coord(floori(world_pos.x), floori(world_pos.z))
+
+
+func get_player_chunk_coord() -> Vector2i:
+	var col := _player_column_pos()
+	return Vector2i(
+		floori(col.x / float(ChunkData.SIZE)),
+		floori(col.y / float(ChunkData.SIZE))
+	)
+
+
+func is_chunk_loaded(coord: Vector2i) -> bool:
+	return chunks.has(coord)
+
+
+func is_world_cell_loaded(wx: int, wz: int) -> bool:
+	return is_chunk_loaded(world_to_chunk_coord(wx, wz))
+
+
+func is_world_pos_loaded(world_pos: Vector3) -> bool:
+	return is_world_cell_loaded(floori(world_pos.x), floori(world_pos.z))
+
+
 func rebuild_chunk(key: Vector2i) -> void:
 	if _shutting_down:
 		return
 	if chunks.has(key):
 		chunks[key].queue_free()
 		chunks.erase(key)
+		chunk_unloaded.emit(key)
 	pending.erase(key)
 	_chunk_tasks.erase(key)
 	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1

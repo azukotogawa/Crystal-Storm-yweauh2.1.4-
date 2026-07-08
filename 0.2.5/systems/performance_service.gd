@@ -41,10 +41,67 @@ func ensure_ready() -> void:
 		await get_tree().process_frame
 
 
+func reapply_to_chunk_manager(cm: ChunkManager) -> void:
+	if cm == null or quality == null:
+		return
+	if cm.has_method("apply_performance_config"):
+		cm.apply_performance_config(quality)
+	elif "RENDER_DISTANCE" in cm:
+		cm.RENDER_DISTANCE = quality.render_distance
+		cm.MAX_CHUNKS_PER_FRAME = quality.max_chunks_per_frame
+		cm.MAX_INFLIGHT_CHUNKS = quality.max_inflight_chunks
+		if "MESH_CAVES" in cm:
+			cm.MESH_CAVES = quality.mesh_caves
+
+
+func refresh_world_visuals() -> void:
+	if not is_inside_tree():
+		return
+	var visual_registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if visual_registry:
+		if visual_registry.has_method("apply_performance_config"):
+			visual_registry.apply_performance_config(quality)
+		if visual_registry.has_method("preload_game_bundle"):
+			visual_registry.preload_game_bundle()
+		if visual_registry.has_method("refresh_all"):
+			visual_registry.refresh_all()
+	var feature_visuals = get_tree().get_first_node_in_group("feature_visual_layer")
+	if feature_visuals:
+		if feature_visuals.has_method("apply_performance_config"):
+			feature_visuals.apply_performance_config(quality)
+		elif feature_visuals.has_method("repopulate_all"):
+			feature_visuals.repopulate_all()
+	var crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if crystal and crystal.has_method("refresh_spawn_marker_textures"):
+		crystal.refresh_spawn_marker_textures()
+	var combat_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	if combat_vfx and combat_vfx.has_method("apply_performance_config"):
+		combat_vfx.apply_performance_config(quality)
+
+
 func _ready() -> void:
 	if _env_flag("CRYSTALSTORM_SAFE_MODE") or _env_flag("CRYSTALSTORM_MINIMAL"):
 		apply_safe_mode()
+	else:
+		_apply_env_preset()
 	call_deferred("_apply_to_scene")
+
+
+func _apply_env_preset() -> void:
+	var raw := OS.get_environment("CRYSTALSTORM_PERF_PRESET").strip_edges().to_lower()
+	if raw.is_empty():
+		return
+	match raw:
+		"low", "0":
+			apply_preset(_PerformanceQualityConfig.Preset.LOW)
+		"medium", "med", "1":
+			apply_preset(_PerformanceQualityConfig.Preset.MEDIUM)
+		"high", "2":
+			apply_preset(_PerformanceQualityConfig.Preset.HIGH)
+		"safe", "minimal":
+			apply_safe_mode()
+		_:
+			push_warning("[Perf] Unknown CRYSTALSTORM_PERF_PRESET=%s (use low|medium|high|safe)" % raw)
 
 
 func _env_flag(name: String) -> bool:
@@ -76,8 +133,11 @@ func _apply_to_scene() -> void:
 			cfg_svc.world_gen.caves_enabled = quality.caves_enabled
 
 	var crystal = get_tree().get_first_node_in_group("crystal_manager")
-	if crystal and crystal.has_method("apply_performance_config"):
-		crystal.apply_performance_config(quality)
+	if crystal:
+		if crystal.has_method("apply_performance_config"):
+			crystal.apply_performance_config(quality)
+		if crystal.has_method("refresh_spawn_marker_textures"):
+			crystal.call_deferred("refresh_spawn_marker_textures")
 
 	var map_ui = get_tree().get_first_node_in_group("topographical_map")
 	if map_ui:
@@ -96,9 +156,7 @@ func _apply_to_scene() -> void:
 	if debug and debug.has_method("apply_performance_config"):
 		debug.apply_performance_config(quality)
 
-	var combat_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
-	if combat_vfx and combat_vfx.has_method("apply_performance_config"):
-		combat_vfx.apply_performance_config(quality)
+	call_deferred("refresh_world_visuals")
 
 	var growth_mgr = get_tree().get_first_node_in_group("vegetation_growth_manager")
 	if growth_mgr and growth_mgr.has_method("apply_performance_config"):

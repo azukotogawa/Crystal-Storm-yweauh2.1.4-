@@ -5,6 +5,7 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 @export var animals_per_biome_chunk: int = 2
 @export var max_entities: int = 128
@@ -24,6 +25,13 @@ var physics_skip_frames: int = 0
 
 func _enter_tree() -> void:
 	add_to_group("entity_manager")
+
+
+func _entity_parent() -> Node:
+	var visuals = get_tree().get_first_node_in_group("world_visuals_root")
+	if visuals and visuals.has_method("get_entities_root"):
+		return visuals.get_entities_root()
+	return self
 
 
 func apply_performance_config(cfg) -> void:
@@ -46,17 +54,33 @@ func _ready() -> void:
 func seed_spawns() -> void:
 	if world == null:
 		world = get_tree().get_first_node_in_group("world")
-	if chunk_manager == null:
-		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	if crystal_manager == null:
 		crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
-	if chunk_manager and chunk_manager.has_signal("chunk_ready"):
-		if not chunk_manager.chunk_ready.is_connected(_on_chunk_ready):
-			chunk_manager.chunk_ready.connect(_on_chunk_ready)
 	_seed_animal_spawns()
+	if chunk_manager == null:
+		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	if chunk_manager:
-		for coord in chunk_manager.chunks.keys():
-			_on_chunk_ready(coord, chunk_manager.chunks[coord].chunk_data)
+		_bind_chunk_streaming()
+
+
+func on_chunk_manager_ready(cm: ChunkManager) -> void:
+	if cm == null:
+		return
+	chunk_manager = cm
+	_bind_chunk_streaming()
+
+
+func _bind_chunk_streaming() -> void:
+	if chunk_manager == null:
+		return
+	if chunk_manager.has_signal("chunk_ready") and not chunk_manager.chunk_ready.is_connected(_on_chunk_ready):
+		chunk_manager.chunk_ready.connect(_on_chunk_ready)
+	if chunk_manager.has_signal("chunk_unloaded") and not chunk_manager.chunk_unloaded.is_connected(_on_chunk_unloaded):
+		chunk_manager.chunk_unloaded.connect(_on_chunk_unloaded)
+	for coord in chunk_manager.chunks.keys():
+		var entry = chunk_manager.chunks[coord]
+		var data: ChunkData = entry.chunk_data if entry else null
+		_on_chunk_ready(coord, data)
 
 
 func spawn_town_defenders(town: Dictionary, count: int) -> void:
@@ -125,6 +149,39 @@ func _is_valid_animal_cell(wx: int, wz: int) -> bool:
 	return true
 
 
+func _on_chunk_unloaded(coord: Vector2i) -> void:
+	_despawn_entities_in_chunk(coord)
+
+
+func _despawn_entities_in_chunk(coord: Vector2i) -> void:
+	if chunk_manager == null:
+		return
+	var to_remove: Array[Node3D] = []
+	for entity in _entities:
+		if not is_instance_valid(entity):
+			continue
+		var col: Vector3 = entity.global_position
+		if entity.has_method("get_combat_center"):
+			col = entity.get_combat_center()
+		var ws = _WorldSettings.get_active()
+		var wx := int(floori(ws.world_to_column(col.x)))
+		var wz := int(floori(ws.world_to_column(col.z)))
+		var entity_coord := chunk_manager.world_to_chunk_coord(wx, wz)
+		if entity_coord != coord:
+			continue
+		to_remove.append(entity)
+	for entity in to_remove:
+		_entities.erase(entity)
+		var ws = _WorldSettings.get_active()
+		var cell := Vector2i(
+			floori(ws.world_to_column(entity.global_position.x)),
+			floori(ws.world_to_column(entity.global_position.z))
+		)
+		_spawned_cells.erase(cell)
+		entity_despawned.emit(entity)
+		entity.queue_free()
+
+
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:
 		return
@@ -165,9 +222,13 @@ func _spawn_world_entity(
 	if brain_cfg == null:
 		return
 	var entity: _WorldEntity = _WorldEntity.new()
-	entity.setup(brain_cfg, Vector2i(wx, wz), world, chunk_manager, crystal_manager, defend_center, tint)
 	entity.died.connect(_on_entity_died.bind(entity))
-	add_child(entity)
+	var parent := _entity_parent()
+	parent.add_child(entity)
+	if not entity.is_inside_tree():
+		push_error("EntityManager: entity not in tree before setup")
+		return
+	entity.setup(brain_cfg, Vector2i(wx, wz), world, chunk_manager, crystal_manager, defend_center, tint)
 	_entities.append(entity)
 	entity_spawned.emit(entity)
 
@@ -220,6 +281,8 @@ func _spawn_from_save(data: Dictionary) -> void:
 	var tint_arr: Array = data.get("tint", [0.72, 0.72, 0.68, 1.0])
 	var tint := Color(float(tint_arr[0]), float(tint_arr[1]), float(tint_arr[2]), float(tint_arr[3]))
 	var entity: _WorldEntity = _WorldEntity.new()
+	entity.died.connect(_on_entity_died.bind(entity))
+	_entity_parent().add_child(entity)
 	entity.setup(brain_cfg, cell, world, chunk_manager, crystal_manager, defend, tint)
 	if data.has("health"):
 		entity.health = float(data.health)
@@ -228,8 +291,6 @@ func _spawn_from_save(data: Dictionary) -> void:
 		float(data.get("y", 1.0)),
 		float(data.get("z", float(cell.y) + 0.5))
 	)
-	entity.died.connect(_on_entity_died.bind(entity))
-	add_child(entity)
 	_entities.append(entity)
 	_spawned_cells[cell] = true
 

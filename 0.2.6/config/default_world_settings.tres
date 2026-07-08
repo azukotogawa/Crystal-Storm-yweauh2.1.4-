@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="WorldSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/world_settings.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+voxel_scale = 2.0
+max_world_height_voxels = 20
+chunk_size_voxels = 16
+max_height_world_units = 40.0
+legacy_height_reference = 158.0

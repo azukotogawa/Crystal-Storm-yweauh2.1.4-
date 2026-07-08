@@ -5,6 +5,8 @@ const _EntityBrain = preload("res://entities/entity_brain.gd")
 const _EntityBrainConfig = preload("res://config/entity_brain_config.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
+const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
+const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -22,6 +24,7 @@ var _chunk_manager: ChunkManager
 var _crystal: CrystalManager
 var _player: Node3D
 var _mesh: MeshInstance3D
+var _sprite: Sprite3D
 var _dead: bool = false
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
@@ -31,6 +34,7 @@ var _base_tint: Color = Color(0.72, 0.72, 0.68)
 func _ready() -> void:
 	add_to_group("world_entity")
 	_bind_scene()
+	_hook_visual_registry()
 
 
 func setup(
@@ -52,11 +56,24 @@ func setup(
 	brain = _EntityBrain.new(brain_config)
 	brain.reset_at(spawn_cell, defend_center, spawn_cell)
 	_base_tint = tint
-	_ensure_mesh(tint)
+	if not is_inside_tree():
+		push_warning("WorldEntity.setup called before add_child — deferring placement")
+		call_deferred("_finish_spawn_placement", spawn_cell, tint)
+		return
+	_finish_spawn_placement(spawn_cell, tint)
+
+
+func _finish_spawn_placement(spawn_cell: Vector2i, tint: Color) -> void:
+	if not is_inside_tree():
+		return
+	var col_x := float(spawn_cell.x) + 0.5
+	var col_z := float(spawn_cell.y) + 0.5
+	var spawn_pos := _WorldVisualCoords.column_to_world_pos(col_x, 0.0, col_z)
 	global_position = _EntityNavigation.snap_to_ground(
-		Vector3(float(spawn_cell.x) + 0.5, 0.0, float(spawn_cell.y) + 0.5),
+		spawn_pos,
 		_world, _chunk_manager, _crystal
 	)
+	_ensure_visual(tint)
 
 
 func _bind_scene() -> void:
@@ -70,18 +87,85 @@ func _bind_scene() -> void:
 		_player = get_tree().get_first_node_in_group("player")
 
 
+func refresh_visual() -> void:
+	if _dead:
+		return
+	_ensure_visual(_base_tint)
+
+
+func _ensure_visual(tint: Color) -> void:
+	_base_tint = tint
+	var registry = get_tree().get_first_node_in_group("game_visual_registry")
+	var use_sprite: bool = false
+	if registry != null:
+		use_sprite = bool(registry.entity_sprites_enabled)
+	var tex: Texture2D = _resolve_entity_texture(registry) if use_sprite else null
+	if use_sprite and tex != null:
+		_ensure_sprite(registry, tex, tint)
+	else:
+		_ensure_mesh(tint)
+
+
+func _hook_visual_registry() -> void:
+	var registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if registry == null:
+		return
+	if registry.has_method("is_ready") and registry.is_ready():
+		call_deferred("refresh_visual")
+		return
+	if registry.has_signal("visuals_ready") and not registry.visuals_ready.is_connected(_on_registry_visuals_ready):
+		registry.visuals_ready.connect(_on_registry_visuals_ready, CONNECT_ONE_SHOT)
+
+
+func _on_registry_visuals_ready() -> void:
+	refresh_visual()
+
+
+func _resolve_entity_texture(registry) -> Texture2D:
+	if registry == null:
+		return null
+	if registry.has_method("get_sprite_texture"):
+		return registry.get_sprite_texture(str(entity_kind))
+	if registry.has_method("get_entity_texture"):
+		return registry.get_entity_texture(entity_kind)
+	return null
+
+
+func _ensure_sprite(registry, tex: Texture2D, tint: Color) -> void:
+	if _sprite == null:
+		_sprite = Sprite3D.new()
+		_sprite.name = "Sprite3D"
+		_sprite.position.y = 0.55
+		add_child(_sprite)
+	if _mesh:
+		_mesh.visible = false
+	_sprite.visible = true
+	if registry.has_method("apply_to_sprite3d"):
+		registry.apply_to_sprite3d(_sprite, tex, tint, 0.009)
+	elif registry.has_method("configure_sprite3d"):
+		registry.configure_sprite3d(_sprite, tex, tint, 0.009)
+	else:
+		_sprite.texture = tex
+		_sprite.modulate = tint
+
+
 func _ensure_mesh(tint: Color) -> void:
+	if _sprite:
+		_sprite.visible = false
 	if _mesh == null:
 		_mesh = MeshInstance3D.new()
+		_mesh.name = "MeshInstance3D"
 		var mesh := CapsuleMesh.new()
 		mesh.radius = 0.22
 		mesh.height = 0.55
 		_mesh.mesh = mesh
 		_mesh.position.y = 0.35
 		add_child(_mesh)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = tint
-	_mesh.material_override = mat
+	_mesh.visible = true
+	if _mesh.material_override == null:
+		_mesh.material_override = StandardMaterial3D.new()
+	if _mesh.material_override is StandardMaterial3D:
+		(_mesh.material_override as StandardMaterial3D).albedo_color = tint
 
 
 func get_combat_center() -> Vector3:
@@ -108,14 +192,17 @@ func _physics_process(delta: float) -> void:
 
 	if _hit_flash_timer > 0.0:
 		_hit_flash_timer = maxf(_hit_flash_timer - delta, 0.0)
-		if _hit_flash_timer <= 0.0 and _mesh and _mesh.material_override is StandardMaterial3D:
-			(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
+		if _hit_flash_timer <= 0.0:
+			_reset_hit_tint()
 
 	if _dead or brain == null or config == null:
 		return
 	_bind_scene()
 
 	var self_cell := _EntityNavigation.column_pos(global_position)
+	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
+		if not _chunk_manager.is_world_cell_loaded(self_cell.x, self_cell.y):
+			return
 	var player_cell := self_cell
 	if _player:
 		player_cell = _EntityNavigation.column_pos(
@@ -183,8 +270,21 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 
 func _flash_hit() -> void:
 	_hit_flash_timer = 0.14
-	if _mesh and _mesh.material_override is StandardMaterial3D:
+	if _sprite and _sprite.visible:
+		_sprite.modulate = Color(1.0, 0.45, 0.45)
+		if _sprite.material_override is StandardMaterial3D:
+			(_sprite.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.45, 0.45)
+	elif _mesh and _mesh.material_override is StandardMaterial3D:
 		(_mesh.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.35, 0.35)
+
+
+func _reset_hit_tint() -> void:
+	if _sprite and _sprite.visible:
+		_sprite.modulate = Color.WHITE
+		if _sprite.material_override is StandardMaterial3D:
+			(_sprite.material_override as StandardMaterial3D).albedo_color = _base_tint
+	elif _mesh and _mesh.material_override is StandardMaterial3D:
+		(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
 
 
 func _die() -> void:

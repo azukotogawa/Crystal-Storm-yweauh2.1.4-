@@ -34,6 +34,10 @@ func _bootstrap() -> void:
 	if perf_svc.has_method("ensure_ready"):
 		await perf_svc.ensure_ready()
 
+	var visual_registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if visual_registry and visual_registry.has_method("ensure_ready"):
+		await visual_registry.ensure_ready()
+
 	world = get_tree().get_first_node_in_group("world")
 	while world == null:
 		await get_tree().process_frame
@@ -70,5 +74,28 @@ func _bootstrap() -> void:
 
 
 func on_chunk_manager_ready(cm: ChunkManager) -> void:
+	if cm == null:
+		return
 	chunk_manager = cm
-	# Feature registry is populated before ChunkManager exists — no full rebuild needed.
+
+	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	if cfg_svc and cfg_svc.has_method("on_chunk_manager_ready"):
+		cfg_svc.on_chunk_manager_ready(cm)
+
+	var terrain_editor = get_tree().get_first_node_in_group("terrain_editor")
+	if terrain_editor and terrain_editor.has_method("bind_chunk_manager"):
+		terrain_editor.bind_chunk_manager(cm)
+
+	var entity_mgr = get_node_or_null("EntityManager")
+	if entity_mgr and entity_mgr.has_method("on_chunk_manager_ready"):
+		entity_mgr.on_chunk_manager_ready(cm)
+
+	var feat_vis = get_tree().get_first_node_in_group("feature_visual_layer")
+	if feat_vis and feat_vis.has_method("on_chunk_manager_ready"):
+		feat_vis.on_chunk_manager_ready(cm)
+
+	var perf_svc = get_tree().get_first_node_in_group("performance_service")
+	if perf_svc and perf_svc.has_method("reapply_to_chunk_manager"):
+		perf_svc.reapply_to_chunk_manager(cm)
+	if perf_svc and perf_svc.has_method("refresh_world_visuals"):
+		perf_svc.refresh_world_visuals()

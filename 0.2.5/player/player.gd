@@ -172,6 +172,10 @@ func _physics_process(delta: float) -> void:
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
+	if current_state in [State.IDLE, State.RUNNING]:
+		if Input.is_action_just_pressed("jump") and _is_grounded():
+			change_state(State.JUMPING)
+
 	var input_dir := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"):
 		input_dir.x += 1
@@ -241,13 +245,10 @@ func _physics_process(delta: float) -> void:
 				voxel_position.y = next_pos.y
 
 		State.IDLE, State.RUNNING:
-			if Input.is_action_just_pressed("jump") and _is_grounded():
-				change_state(State.JUMPING)
-			else:
-				_snap_to_ground()
-				if not _is_grounded():
-					change_state(State.FALLING)
-					velocity.y = 0.0
+			_snap_to_ground()
+			if not _is_grounded():
+				change_state(State.FALLING)
+				velocity.y = 0.0
 
 	_sync_global_from_voxel()
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)

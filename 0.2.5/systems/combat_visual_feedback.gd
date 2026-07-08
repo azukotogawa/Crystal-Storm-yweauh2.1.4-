@@ -4,6 +4,8 @@ extends Node3D
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _GameManager = preload("res://game/game_manager.gd")
+const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
+const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 
 @export var enabled: bool = true
 
@@ -14,6 +16,8 @@ var _bursts: Array[Dictionary] = []
 var _textures: Dictionary = {}
 var _boss_ring: MeshInstance3D
 var _victory_flash: MeshInstance3D
+var _burst_root: Node3D
+var _labels_root: Node3D
 var _crystal: CrystalManager
 var _game_manager: Node
 
@@ -23,10 +27,24 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
+	_ensure_visual_roots()
 	_build_label_pool()
-	_load_textures()
+	call_deferred("_load_textures")
 	_build_indicators()
 	call_deferred("_connect_signals")
+
+
+func _ensure_visual_roots() -> void:
+	_burst_root = get_node_or_null("Bursts") as Node3D
+	if _burst_root == null:
+		_burst_root = Node3D.new()
+		_burst_root.name = "Bursts"
+		add_child(_burst_root)
+	_labels_root = get_node_or_null("DamageLabels") as Node3D
+	if _labels_root == null:
+		_labels_root = Node3D.new()
+		_labels_root.name = "DamageLabels"
+		add_child(_labels_root)
 
 
 func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
@@ -37,15 +55,44 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 	_trim_label_pool(maxi(int(cfg.max_damage_labels), 0))
 	if not enabled:
 		_clear_active_vfx()
+	else:
+		reload_textures()
+
+
+func reload_textures() -> void:
+	if not is_inside_tree():
+		return
+	_textures.clear()
+	call_deferred("_load_textures")
 
 
 func _load_textures() -> void:
-	if not Engine.has_singleton("CrystalTextureGenerator") and not has_node("/root/CrystalTextureGenerator"):
-		return
-	var gen = get_node_or_null("/root/CrystalTextureGenerator")
-	if gen == null or not gen.has_method("generate_combat_ui_bundle"):
-		return
-	_textures = gen.generate_combat_ui_bundle()
+	var registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if registry and registry.has_method("ensure_ready"):
+		await registry.ensure_ready()
+	if registry:
+		if registry.has_method("preload_game_bundle"):
+			registry.preload_game_bundle()
+		_textures = {
+			"damage_number": registry.get_combat_texture(&"damage_number"),
+			"hit_flash": registry.get_combat_texture(&"hit_flash"),
+			"shatter": registry.get_combat_texture(&"shatter"),
+			"spawn_boss": registry.get_combat_texture(&"spawn_boss"),
+			"spawn_miniboss": registry.get_combat_texture(&"spawn_miniboss"),
+			"victory_glow": registry.get_combat_texture(&"victory_glow"),
+		}
+	else:
+		var gen = get_node_or_null("/root/CrystalTextureGenerator")
+		if gen and gen.has_method("generate_combat_ui_bundle"):
+			_textures = gen.generate_combat_ui_bundle()
+	_apply_textures_to_indicators()
+
+
+func _apply_textures_to_indicators() -> void:
+	if _boss_ring and _boss_ring.material_override is StandardMaterial3D and _textures.has("spawn_boss"):
+		(_boss_ring.material_override as StandardMaterial3D).albedo_texture = _textures.spawn_boss
+	if _victory_flash and _victory_flash.material_override is StandardMaterial3D and _textures.has("victory_glow"):
+		(_victory_flash.material_override as StandardMaterial3D).albedo_texture = _textures.victory_glow
 
 
 func _build_label_pool() -> void:
@@ -58,9 +105,9 @@ func _clear_active_vfx() -> void:
 			_label_pool[i].visible = false
 		_label_slots[i] = {"active": false, "time": 0.0}
 	for b in _bursts:
-		var node: Sprite3D = b.get("node")
-		if is_instance_valid(node):
-			node.queue_free()
+		var anchor: Node3D = b.get("anchor")
+		if is_instance_valid(anchor):
+			anchor.queue_free()
 	_bursts.clear()
 	if _boss_ring:
 		_boss_ring.visible = false
@@ -69,6 +116,7 @@ func _clear_active_vfx() -> void:
 
 
 func _trim_label_pool(count: int) -> void:
+	_ensure_visual_roots()
 	while _label_pool.size() > count:
 		var n: Label3D = _label_pool.pop_back()
 		if is_instance_valid(n):
@@ -80,7 +128,7 @@ func _trim_label_pool(count: int) -> void:
 		label.outline_size = 6
 		label.modulate = Color(1.0, 0.92, 0.55, 1.0)
 		label.visible = false
-		add_child(label)
+		_labels_root.add_child(label)
 		_label_pool.append(label)
 	_label_slots.resize(_label_pool.size())
 	for i in _label_pool.size():
@@ -192,28 +240,40 @@ func _show_damage_at(world_pos: Vector3, amount: float, color: Color) -> void:
 func _spawn_burst(world_pos: Vector3, tint: Color, count: int = -1) -> void:
 	if not enabled:
 		return
+	_ensure_visual_roots()
 	var n: int = count if count > 0 else mini(4, _quality.max_burst_sprites)
+	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	for _i in n:
 		if _bursts.size() >= _quality.max_burst_sprites:
 			break
+		var anchor := Node3D.new()
+		anchor.name = "Burst"
+		_burst_root.add_child(anchor)
+		anchor.global_position = world_pos + Vector3(randf_range(-0.2, 0.2), 0.2, randf_range(-0.2, 0.2))
+
 		var sprite := Sprite3D.new()
-		sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		sprite.pixel_size = 0.012
-		if _textures.has("shatter"):
-			sprite.texture = _textures.shatter
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = tint
-		sprite.material_override = mat
-		add_child(sprite)
+		sprite.name = "Sprite3D"
+		anchor.add_child(sprite)
+		var tex: Texture2D = _textures.get("shatter") if _textures.has("shatter") else null
+		if tex == null and registry and registry.has_method("get_combat_texture"):
+			tex = registry.get_combat_texture(&"shatter")
+		if registry and registry.has_method("apply_to_sprite3d"):
+			registry.apply_to_sprite3d(sprite, tex, tint, 0.012)
+		elif registry and registry.has_method("configure_sprite3d"):
+			registry.configure_sprite3d(sprite, tex, tint, 0.012)
+		else:
+			sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			sprite.texture = tex
+			sprite.modulate = tint
+			sprite.pixel_size = 0.012
+
 		var vel := Vector3(randf_range(-1.2, 1.2), randf_range(1.5, 3.0), randf_range(-1.2, 1.2))
 		_bursts.append({
-			"node": sprite,
+			"anchor": anchor,
+			"sprite": sprite,
 			"vel": vel,
 			"life": randf_range(0.35, 0.65),
 		})
-		sprite.global_position = world_pos + Vector3(randf_range(-0.2, 0.2), 0.2, randf_range(-0.2, 0.2))
 
 
 func _column_to_world(col: Vector3) -> Vector3:
@@ -292,7 +352,20 @@ func _play_victory_flash() -> void:
 
 
 func _spawn_world_pos(spawn: CrystalSpawnPoint) -> Vector3:
-	return Vector3(float(spawn.world_pos.x) + 0.5, 0.0, float(spawn.world_pos.y) + 0.5)
+	var col_x := float(spawn.world_pos.x) + 0.5
+	var col_z := float(spawn.world_pos.y) + 0.5
+	var world_node = get_tree().get_first_node_in_group("world") as InfiniteNoiseWorld
+	var chunk_mgr = get_tree().get_first_node_in_group("chunk_manager")
+	var y := 0.0
+	if world_node:
+		var entry = null
+		if chunk_mgr and chunk_mgr.has_method("get_ramp_entry_at_world"):
+			entry = chunk_mgr.get_ramp_entry_at_world(col_x, col_z)
+		if entry != null:
+			y = TerrainRamps.walkable_height_from_entry(world_node, col_x, col_z, entry)
+		else:
+			y = TerrainRamps.walkable_height(world_node, col_x, col_z)
+	return _WorldVisualCoords.column_to_world_pos(col_x, y, col_z)
 
 
 func _pulse_spawn_marker(spawn: CrystalSpawnPoint, _destroyed: bool) -> void:
@@ -345,17 +418,21 @@ func _update_labels(delta: float) -> void:
 func _update_bursts(delta: float) -> void:
 	var kept: Array[Dictionary] = []
 	for b in _bursts:
-		var node: Sprite3D = b.node
-		if not is_instance_valid(node):
+		var anchor: Node3D = b.get("anchor")
+		var sprite: Sprite3D = b.get("sprite")
+		if not is_instance_valid(anchor):
 			continue
 		var life: float = float(b.life) - delta
 		if life <= 0.0:
-			node.queue_free()
+			anchor.queue_free()
 			continue
-		node.global_position += Vector3(b.vel) * delta
+		anchor.global_position += Vector3(b.vel) * delta
 		b.vel = Vector3(b.vel) + Vector3(0.0, -2.5, 0.0) * delta
-		if node.material_override is StandardMaterial3D:
-			(node.material_override as StandardMaterial3D).albedo_color.a = clampf(life / 0.5, 0.0, 1.0)
+		var fade := clampf(life / 0.5, 0.0, 1.0)
+		if is_instance_valid(sprite):
+			sprite.modulate.a = fade
+			if sprite.material_override is StandardMaterial3D:
+				(sprite.material_override as StandardMaterial3D).albedo_color.a = fade
 		b.life = life
 		kept.append(b)
 	_bursts = kept
