@@ -156,6 +156,7 @@ func _physics_process(delta: float) -> void:
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
 
+	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(
 		global_position,
 		target_cell,
@@ -165,6 +166,9 @@ func _physics_process(delta: float) -> void:
 		_chunk_manager,
 		_crystal
 	)
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("record_us"):
+		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
 	if brain.wants_attack(self_cell, player_cell):
 		if global_position.distance_to(target_pos) <= 1.8:

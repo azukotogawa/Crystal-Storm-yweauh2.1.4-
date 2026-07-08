@@ -9,6 +9,7 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 var _update_counter := 0
 var _debug_update_every := 12
 var _panel_enabled := true
+var _expensive_queries := false
 
 func _enter_tree() -> void:
 	add_to_group("debug_panel")
@@ -19,6 +20,8 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		return
 	_panel_enabled = bool(cfg.debug_panel_enabled)
 	_debug_update_every = maxi(int(cfg.debug_update_every), 4)
+	if "debug_expensive_queries" in cfg:
+		_expensive_queries = bool(cfg.debug_expensive_queries)
 	visible = _panel_enabled
 	set_process(_panel_enabled)
 
@@ -30,6 +33,10 @@ func _process(_delta: float) -> void:
 	_update_counter += 1
 	if _update_counter % _debug_update_every != 0:
 		return
+
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("debug_panel")
 
 	var seed_val := "???"
 	var chunks_count := 0
@@ -174,7 +181,7 @@ func _process(_delta: float) -> void:
 			spawn_progress += " BOSS"
 		if bool(stats.get("boss_sealed", false)):
 			spawn_progress += " SEALED"
-	if crystal_manager and player_voxel != Vector3.ZERO and crystal_manager.has_method("get_nearest_crystal_distance"):
+	if _expensive_queries and crystal_manager and player_voxel != Vector3.ZERO and crystal_manager.has_method("get_nearest_crystal_distance"):
 		var dist: float = crystal_manager.get_nearest_crystal_distance(player_voxel)
 		if dist == INF:
 			crystal_dist = "none"
@@ -218,7 +225,9 @@ func _process(_delta: float) -> void:
 		var q = perf_svc.quality
 		if q:
 			perf_hint = "LOW" if int(q.preset) == 0 else ("MED" if int(q.preset) == 1 else "HIGH")
-	if player and player.has_method("get_voxel_position"):
+	if profiler and profiler.has_method("format_debug_line"):
+		perf_hint = "%s | %s" % [perf_hint, profiler.format_debug_line()]
+	if _expensive_queries and player and player.has_method("get_voxel_position"):
 		nearest_target = _nearest_combat_target_summary(player.get_voxel_position())
 
 	label.text = """Seed: %s
@@ -274,6 +283,9 @@ FPS: %d""" % [
 		save_hint,
 		Engine.get_frames_per_second()
 	]
+
+	if profiler and profiler.has_method("end"):
+		profiler.end("debug_panel")
 
 
 func _nearest_combat_target_summary(player_col: Vector3) -> String:

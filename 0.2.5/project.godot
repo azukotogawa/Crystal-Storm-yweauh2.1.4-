@@ -18,6 +18,7 @@ config/icon="uid://tamt6vl1r5pg"
 [autoload]
 
 CrystalTextureGenerator="*res://systems/crystal_texture_generator.gd"
+PerfProfiler="*res://systems/perf_profiler.gd"
 
 [display]
 

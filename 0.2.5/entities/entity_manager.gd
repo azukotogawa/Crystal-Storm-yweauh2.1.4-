@@ -19,6 +19,7 @@ var crystal_manager: CrystalManager
 var _entities: Array[Node3D] = []
 var _spawned_cells: Dictionary = {}
 var _defenders_by_town: Dictionary = {}
+var physics_skip_frames: int = 0
 
 
 func _enter_tree() -> void:
@@ -30,6 +31,7 @@ func apply_performance_config(cfg) -> void:
 		return
 	max_entities = int(cfg.max_entities)
 	animals_per_biome_chunk = int(cfg.animals_per_biome_chunk)
+	physics_skip_frames = int(cfg.entity_physics_skip_frames)
 	if not bool(cfg.entity_spawning_enabled):
 		_clear_runtime_entities()
 

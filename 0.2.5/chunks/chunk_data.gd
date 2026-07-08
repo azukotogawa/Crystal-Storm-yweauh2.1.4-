@@ -25,8 +25,12 @@ var _worker_height_delta: Array = []
 var _worker_build_tile: Array = []
 var _worker_feature_tile: Array = []
 var _has_worker_snapshot: bool = false
+## 1-cell halo for greedy meshing at chunk borders (worker-safe).
+var _halo_surface: Array = []
+var _has_halo_surface: bool = false
 
 const SIZE := 16
+const HALO := 1
 ## Legacy bound — prefer WorldSettings.get_active().chunk_height_bound() for checks.
 const HEIGHT := 48
 # Note: Worldgen is now fully volumetric (get_voxel). HEIGHT is still used as a safety bound.
@@ -65,6 +69,46 @@ func capture_worker_snapshot() -> void:
 			_worker_build_tile[x][z] = _TerrainEdits.get_build_tile(wx, wz)
 			_worker_feature_tile[x][z] = _FeatureRegistry.get_tile_override(wx, wz)
 	_has_worker_snapshot = true
+	_capture_halo_surface()
+
+
+func _capture_halo_surface() -> void:
+	if world == null:
+		return
+	var dim := SIZE + HALO * 2
+	_halo_surface.resize(dim)
+	for ix in dim:
+		_halo_surface[ix] = []
+		_halo_surface[ix].resize(dim)
+		for iz in dim:
+			var lx := ix - HALO
+			var lz := iz - HALO
+			if lx >= 0 and lx < SIZE and lz >= 0 and lz < SIZE:
+				_halo_surface[ix][iz] = -9999.0
+				continue
+			var wx := position.x * SIZE + lx
+			var wz := position.y * SIZE + lz
+			var hdelta: float = _TerrainEdits.get_height_delta(wx, wz)
+			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
+	_has_halo_surface = true
+
+
+func _refresh_halo_interior_from_maps() -> void:
+	if not _has_halo_surface:
+		return
+	for x in SIZE:
+		for z in SIZE:
+			_halo_surface[x + HALO][z + HALO] = float(surface_map[x][z])
+
+
+func get_halo_surface_y(lx: int, lz: int) -> float:
+	if not _has_halo_surface:
+		return -9999.0
+	var ix := lx + HALO
+	var iz := lz + HALO
+	if ix < 0 or iz < 0 or ix >= _halo_surface.size() or iz >= _halo_surface[ix].size():
+		return -9999.0
+	return float(_halo_surface[ix][iz])
 
 
 func _compute_column_maps(use_uncached: bool = true):
@@ -97,6 +141,8 @@ func _compute_column_maps(use_uncached: bool = true):
 			else:
 				surface_map[x][z] = world.get_surface_height(wx, wz)
 				tile_map[x][z] = world.get_tile_type(wx, wz)
+	if _has_halo_surface:
+		_refresh_halo_interior_from_maps()
 
 func set_voxel(x: int, y: int, z: int, value: int):
 	# For heightfield, we only "set" at surface y via the maps (done in bg compute).

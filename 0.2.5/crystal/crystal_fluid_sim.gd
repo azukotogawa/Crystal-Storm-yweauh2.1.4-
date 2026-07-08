@@ -42,21 +42,22 @@ func _surface_level(pos: Vector2i) -> float:
 	return terrain.get_terrain_height(pos) + float(depth.get(pos, 0.0))
 
 
-func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1) -> void:
+func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool = true) -> void:
 	new_depth = clampf(new_depth, 0.0, config.max_depth)
 	if new_depth < config.min_depth:
 		if depth.has(pos):
 			depth.erase(pos)
 			spawn_id_by_cell.erase(pos)
-			depth_cleared.emit(pos)
-			depth_changed.emit(pos)
+			if emit:
+				depth_cleared.emit(pos)
+				depth_changed.emit(pos)
 		return
 
 	var changed: bool = not depth.has(pos) or absf(float(depth[pos]) - new_depth) > 0.02
 	depth[pos] = new_depth
 	if spawn_id >= 0:
 		spawn_id_by_cell[pos] = spawn_id
-	if changed:
+	if changed and emit:
 		depth_changed.emit(pos)
 
 
@@ -74,9 +75,10 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		set_depth(pos, current + minf(added, room), spawn.id)
 
 
-func tick_flow(delta: float) -> void:
+## Returns cells whose depth changed (batched — no per-cell signals during flow).
+func tick_flow(delta: float) -> Array:
 	if depth.is_empty():
-		return
+		return []
 
 	var cells: Array = depth.keys()
 	if max_cells_per_tick > 0 and cells.size() > max_cells_per_tick:
@@ -142,11 +144,24 @@ func tick_flow(delta: float) -> void:
 				deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + spread
 				_assign_spawn_on_flow(neighbor, pos)
 
+	var changed: Array = []
 	for pos_variant in deltas.keys():
 		var pos: Vector2i = pos_variant
-		var new_depth: float = float(depth.get(pos, 0.0)) + float(deltas[pos])
+		var old_depth: float = float(depth.get(pos, 0.0))
+		var new_depth: float = old_depth + float(deltas[pos])
 		var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
-		set_depth(pos, new_depth, spawn_id)
+		if new_depth < config.min_depth:
+			if depth.has(pos):
+				depth.erase(pos)
+				spawn_id_by_cell.erase(pos)
+				changed.append(pos)
+			continue
+		if absf(old_depth - new_depth) > 0.02 or not depth.has(pos):
+			depth[pos] = new_depth
+			if spawn_id >= 0:
+				spawn_id_by_cell[pos] = spawn_id
+			changed.append(pos)
+	return changed
 
 
 func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos: Vector2i) -> float:

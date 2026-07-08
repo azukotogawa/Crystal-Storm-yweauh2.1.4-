@@ -16,6 +16,7 @@ const FACE_RAMP_CORNER := 8
 const FACE_RAMP_SIDE := 9
 
 static var _shared_box_mesh: BoxMesh
+static var _shared_ramp_material: ShaderMaterial
 
 
 func setup(data: ChunkData, mesh_data: Dictionary):
@@ -31,6 +32,10 @@ func emit_quads():
 		child.queue_free()
 
 	if mesh_data.get("count", 0) == 0:
+		return
+
+	if mesh_data.has("terrain_buffer"):
+		_upload_prebuilt_buffers()
 		return
 
 	var quads: Array = mesh_data["quads"]
@@ -50,6 +55,75 @@ func emit_quads():
 	_emit_box_multimesh(terrain_quads)
 	_emit_ramp_multimesh(ramp_quads, "cardinal")
 	_emit_ramp_multimesh(diagonal_quads, "diagonal")
+
+
+func _upload_prebuilt_buffers() -> void:
+	var terrain_count: int = int(mesh_data.get("terrain_count", 0))
+	if terrain_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("terrain_buffer", PackedFloat32Array()),
+			terrain_count,
+			"mm_instance",
+			"box"
+		)
+	var ramp_count: int = int(mesh_data.get("ramp_count", 0))
+	if ramp_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("ramp_buffer", PackedFloat32Array()),
+			ramp_count,
+			"cardinal_mm_instance",
+			"cardinal"
+		)
+	var diagonal_count: int = int(mesh_data.get("diagonal_count", 0))
+	if diagonal_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("diagonal_buffer", PackedFloat32Array()),
+			diagonal_count,
+			"diagonal_mm_instance",
+			"diagonal"
+		)
+
+
+func _assign_buffer_multimesh(
+	buffer: PackedFloat32Array,
+	count: int,
+	node_name: String,
+	mesh_kind: String
+) -> void:
+	if count <= 0 or buffer.is_empty():
+		return
+
+	var mm_instance := MultiMeshInstance3D.new()
+	mm_instance.name = node_name
+	if mesh_kind != "box":
+		mm_instance.sorting_offset = 1.0
+	layer_container.add_child(mm_instance)
+
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	match mesh_kind:
+		"diagonal":
+			mm.mesh = _TerrainRamps.get_concave_corner_prism_mesh()
+		"cardinal":
+			mm.mesh = _TerrainRamps.get_wedge_mesh()
+		_:
+			if _shared_box_mesh == null:
+				_shared_box_mesh = BoxMesh.new()
+				_shared_box_mesh.size = Vector3.ONE
+			mm.mesh = _shared_box_mesh
+	mm.instance_count = count
+	mm.buffer = buffer
+	mm_instance.multimesh = mm
+
+	if chunk_material:
+		if mesh_kind == "box":
+			mm_instance.material_override = chunk_material
+		else:
+			if _shared_ramp_material == null:
+				_shared_ramp_material = chunk_material.duplicate()
+				_shared_ramp_material.render_priority = 1
+			mm_instance.material_override = _shared_ramp_material
 
 
 func _emit_box_multimesh(quads: Array) -> void:
@@ -127,9 +201,10 @@ func _emit_ramp_multimesh(quads: Array, ramp_kind: String = "cardinal") -> void:
 	mm_instance.multimesh = mm
 
 	if chunk_material:
-		var mat: ShaderMaterial = chunk_material.duplicate()
-		mat.render_priority = 1
-		mm_instance.material_override = mat
+		if _shared_ramp_material == null:
+			_shared_ramp_material = chunk_material.duplicate()
+			_shared_ramp_material.render_priority = 1
+		mm_instance.material_override = _shared_ramp_material
 
 	var ws = _WorldSettings.get_active()
 	var chunk_offset_x: float = ws.column_to_world(float(chunk_data.position.x * ChunkData.SIZE))

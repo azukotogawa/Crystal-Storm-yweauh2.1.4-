@@ -4,8 +4,11 @@ extends Node
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _TopographicalMapConfig = preload("res://config/topographical_map_config.gd")
 const _WorldGenConfig = preload("res://config/world_gen_config.gd")
+const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 
 var quality: _PerformanceQualityConfig = _PerformanceQualityConfig.create_default()
+var _safe_mode: bool = false
+var _applied: bool = false
 
 
 func _enter_tree() -> void:
@@ -20,11 +23,33 @@ func apply_quality(cfg: _PerformanceQualityConfig) -> void:
 
 
 func apply_preset(which: int) -> void:
+	_safe_mode = false
 	apply_quality(_PerformanceQualityConfig.apply_preset(which))
 
 
+func apply_safe_mode() -> void:
+	_safe_mode = true
+	apply_quality(_PerformanceQualityConfig.apply_safe_mode())
+
+
+func is_safe_mode() -> bool:
+	return _safe_mode
+
+
+func ensure_ready() -> void:
+	while not _applied:
+		await get_tree().process_frame
+
+
 func _ready() -> void:
+	if _env_flag("CRYSTALSTORM_SAFE_MODE") or _env_flag("CRYSTALSTORM_MINIMAL"):
+		apply_safe_mode()
 	call_deferred("_apply_to_scene")
+
+
+func _env_flag(name: String) -> bool:
+	var v := OS.get_environment(name)
+	return v == "1" or v.to_lower() == "true"
 
 
 func _apply_to_scene() -> void:
@@ -75,9 +100,19 @@ func _apply_to_scene() -> void:
 	if combat_vfx and combat_vfx.has_method("apply_performance_config"):
 		combat_vfx.apply_performance_config(quality)
 
+	var growth_mgr = get_tree().get_first_node_in_group("vegetation_growth_manager")
+	if growth_mgr and growth_mgr.has_method("apply_performance_config"):
+		growth_mgr.apply_performance_config(quality)
+
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler:
+		profiler.enabled = quality.perf_profiler_enabled
+
 	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
 	if entity_mgr and entity_mgr.has_method("apply_performance_config"):
 		entity_mgr.apply_performance_config(quality)
+
+	_EntityNavigation.use_lightweight_nav = bool(quality.use_lightweight_entity_nav)
 
 	var cfg_svc = get_tree().get_first_node_in_group("config_service")
 	var veg_mgr = get_tree().get_first_node_in_group("vegetation_manager")
@@ -87,11 +122,12 @@ func _apply_to_scene() -> void:
 			var base: int = int(wg.vegetation_scatter_attempts)
 			veg_mgr.scatter_attempts = maxi(0, int(float(base) * quality.vegetation_scatter_multiplier))
 
-	print("[Perf] Applied preset=%d dist=%d caves=%s crystal_skip=%d flow_cap=%d map=%.1fs" % [
+	_applied = true
+	print("[Perf] Applied preset=%d safe=%s dist=%d crystal=%s flow_cap=%d upload_budget=%dus" % [
 		quality.preset,
+		_safe_mode,
 		quality.render_distance,
-		quality.caves_enabled,
-		quality.crystal_sim_skip_frames,
+		"on" if quality.crystal_sim_enabled else "off",
 		quality.max_crystal_flow_cells,
-		quality.map_rebuild_interval_sec,
+		quality.chunk_upload_budget_us,
 	])

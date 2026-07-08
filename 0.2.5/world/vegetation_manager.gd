@@ -34,6 +34,31 @@ func generate() -> void:
 	_scatter_playable_vegetation()
 
 
+func generate_scatter_async() -> void:
+	if world == null:
+		world = get_tree().get_first_node_in_group("world")
+	if world == null:
+		return
+	_rng.seed = world.world_seed + 55002
+	var half := int(_WorldBorder.PLAYABLE_HALF_X) * 0.85
+	var attempts := maxi(scatter_attempts, 0)
+	var batch := 0
+	const BATCH_SIZE := 200
+	for _i in attempts:
+		var wx := _rng.randi_range(int(-half), int(half))
+		var wz := _rng.randi_range(int(-half), int(half))
+		if not _WorldBorder.is_playable(float(wx), float(wz)):
+			continue
+		var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+		if feat.has("kind") and int(feat.get("kind", 0)) == _WorldFeatureTypes.FeatureKind.TOWN:
+			continue
+		_try_place_vegetation(wx, wz)
+		batch += 1
+		if batch >= BATCH_SIZE:
+			batch = 0
+			await get_tree().process_frame
+
+
 func _scatter_playable_vegetation() -> void:
 	var half := int(_WorldBorder.PLAYABLE_HALF_X) * 0.85
 	for _i in scatter_attempts:

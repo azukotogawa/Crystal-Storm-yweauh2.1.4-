@@ -101,6 +101,11 @@ func is_combat_alive() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
+	if entity_mgr and int(entity_mgr.get("physics_skip_frames")) > 0:
+		if Engine.get_physics_frames() % (int(entity_mgr.physics_skip_frames) + 1) != 0:
+			return
+
 	if _hit_flash_timer > 0.0:
 		_hit_flash_timer = maxf(_hit_flash_timer - delta, 0.0)
 		if _hit_flash_timer <= 0.0 and _mesh and _mesh.material_override is StandardMaterial3D:
@@ -122,6 +127,7 @@ func _physics_process(delta: float) -> void:
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
 
+	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(
 		global_position,
 		target_cell,
@@ -131,6 +137,9 @@ func _physics_process(delta: float) -> void:
 		_chunk_manager,
 		_crystal
 	)
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("record_us"):
+		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
 	if _player and brain.wants_attack(self_cell, player_cell):
 		var player_pos: Vector3 = (

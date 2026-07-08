@@ -62,7 +62,14 @@ var _spawn_ctrl: _SpawnPointController
 var _perf_skip_counter: int = 0
 var _perf_max_rebuilds_per_frame: int = 5
 var _perf_crystal_skip_frames: int = 0
+var _perf_sim_hz: float = 20.0
+var _sim_accum: float = 0.0
+var _stats_dirty: bool = true
 var _cells_by_chunk: Dictionary = {}
+var _sim_tick_id: int = 0
+var _perf_mesh_budget_us: int = 2500
+var _absorption_scan_offset: int = 0
+var _absorption_cells_per_tick: int = 64
 
 
 func _enter_tree() -> void:
@@ -161,12 +168,14 @@ func _init_sim() -> void:
 func _on_sim_depth_changed(pos: Vector2i) -> void:
 	_index_crystal_cell(pos)
 	_mark_chunk_dirty(pos)
+	_stats_dirty = true
 	fluid_changed.emit(pos)
 
 
 func _on_sim_depth_cleared(pos: Vector2i) -> void:
 	_unindex_crystal_cell(pos)
 	_mark_chunk_dirty(pos)
+	_stats_dirty = true
 	fluid_changed.emit(pos)
 
 
@@ -383,6 +392,7 @@ func apply_performance_config(cfg) -> void:
 		return
 	_perf_crystal_skip_frames = int(cfg.crystal_sim_skip_frames)
 	_perf_max_rebuilds_per_frame = int(cfg.max_crystal_chunk_rebuilds_per_frame)
+	_perf_sim_hz = maxf(float(cfg.crystal_sim_hz), 4.0)
 	expansion_enabled = bool(cfg.crystal_sim_enabled)
 	if cfg.flow_substeps > 0:
 		flow_substeps = cfg.flow_substeps
@@ -390,30 +400,59 @@ func apply_performance_config(cfg) -> void:
 			sim_config.flow_substeps = cfg.flow_substeps
 	if _sim:
 		_sim.max_cells_per_tick = int(cfg.max_crystal_flow_cells)
+	if _terrain_query:
+		_terrain_query.use_fast_terrain_height = bool(cfg.use_fast_terrain_for_crystal)
+	if "main_thread_budget_us" in cfg:
+		_perf_mesh_budget_us = maxi(int(cfg.main_thread_budget_us) / 3, 800)
+	if "max_absorption_cells_per_tick" in cfg:
+		_absorption_cells_per_tick = maxi(int(cfg.max_absorption_cells_per_tick), 8)
 
 
 func _process(delta: float) -> void:
-	if not _initialized or not expansion_enabled:
+	if not _initialized:
 		return
 
+	if expansion_enabled:
+		_sim_accum += delta
+		var step_dt := 1.0 / _perf_sim_hz
+		var sim_steps := 0
+		while _sim_accum >= step_dt and sim_steps < 3:
+			_tick_crystal_sim(step_dt)
+			_sim_accum -= step_dt
+			sim_steps += 1
+		_tick_absorption(delta)
+		_tick_animal_absorption(delta)
+		_tick_ruin_absorption(delta)
+		_tick_power(delta)
+		_check_player_contact()
+
+	if expansion_enabled or not _dirty_chunks.is_empty():
+		_flush_dirty_chunks()
+
+
+func _tick_crystal_sim(delta: float) -> void:
 	if _perf_crystal_skip_frames > 0:
 		_perf_skip_counter = (_perf_skip_counter + 1) % (_perf_crystal_skip_frames + 1)
 		if _perf_skip_counter != 0:
 			return
 		delta *= float(_perf_crystal_skip_frames + 1)
 
+	_sim_tick_id += 1
+	if _terrain_query:
+		_terrain_query.begin_sim_tick(_sim_tick_id)
+
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("crystal_sim")
 	if _sim:
 		_sim.global_flow_mult = _relic_flow_mult()
 		_sim.tick_emitters(_spawn_points, delta, _spawn_ctrl.emit_weaken_mult)
 		var sub_delta := delta / float(max(sim_config.flow_substeps, 1))
 		for _i in sim_config.flow_substeps:
-			_sim.tick_flow(sub_delta)
-	_tick_absorption(delta)
-	_tick_animal_absorption(delta)
-	_tick_ruin_absorption(delta)
-	_flush_dirty_chunks()
-	_tick_power(delta)
-	_check_player_contact()
+			var changed: Array = _sim.tick_flow(sub_delta)
+			_apply_batched_flow_changes(changed)
+	if profiler and profiler.has_method("end"):
+		profiler.end("crystal_sim")
 
 
 func _set_depth(pos: Vector2i, depth: float, spawn_id: int = -1) -> void:
@@ -422,7 +461,9 @@ func _set_depth(pos: Vector2i, depth: float, spawn_id: int = -1) -> void:
 
 
 func _tick_power(delta: float) -> void:
-	_recalc_stats()
+	if _stats_dirty:
+		_recalc_stats()
+		_stats_dirty = false
 	if total_volume <= 0.0:
 		return
 	_add_power(total_volume * sim_config.power_per_volume * delta)
@@ -475,21 +516,38 @@ func _mark_chunk_dirty(pos: Vector2i) -> void:
 	_dirty_chunks[_chunk_coord_for(pos)] = true
 
 
+func _apply_batched_flow_changes(changed: Array) -> void:
+	if changed.is_empty():
+		return
+	_stats_dirty = true
+	for pos_variant in changed:
+		var pos: Vector2i = pos_variant
+		if _sim and _sim.depth.has(pos):
+			_index_crystal_cell(pos)
+		else:
+			_unindex_crystal_cell(pos)
+		_mark_chunk_dirty(pos)
+
+
 func _flush_dirty_chunks() -> void:
 	if _dirty_chunks.is_empty():
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("crystal_mesh")
+	var t0 := Time.get_ticks_usec()
 	var rebuilt := 0
-	for coord_variant in _dirty_chunks.keys():
+	var keys := _dirty_chunks.keys()
+	for coord_variant in keys:
 		_rebuild_chunk_layer(coord_variant)
+		_dirty_chunks.erase(coord_variant)
 		rebuilt += 1
 		if rebuilt >= _perf_max_rebuilds_per_frame:
 			break
-	if rebuilt >= _dirty_chunks.size():
-		_dirty_chunks.clear()
-	else:
-		var keys := _dirty_chunks.keys()
-		for i in rebuilt:
-			_dirty_chunks.erase(keys[i])
+		if Time.get_ticks_usec() - t0 >= _perf_mesh_budget_us:
+			break
+	if profiler and profiler.has_method("end"):
+		profiler.end("crystal_mesh")
 
 
 func _rebuild_chunk_layer(coord: Vector2i) -> void:
@@ -689,9 +747,15 @@ func get_nearest_crystal_distance(from_pos: Vector3) -> float:
 func _tick_absorption(delta: float) -> void:
 	if _sim == null or _sim.depth.is_empty():
 		return
+	var cells: Array = _sim.depth.keys()
+	if cells.is_empty():
+		return
 	var completed: Array[Vector2i] = []
-	for pos_variant in _sim.depth.keys():
-		var pos: Vector2i = pos_variant
+	var scanned := 0
+	var start := _absorption_scan_offset % cells.size()
+	while scanned < _absorption_cells_per_tick and scanned < cells.size():
+		var pos: Vector2i = cells[(start + scanned) % cells.size()]
+		scanned += 1
 		var depth: float = float(_sim.depth.get(pos, 0.0))
 		if depth < sim_config.min_depth:
 			continue
@@ -704,6 +768,7 @@ func _tick_absorption(delta: float) -> void:
 			completed.append(pos)
 		else:
 			_absorption[pos] = progress
+	_absorption_scan_offset += scanned
 	for pos in completed:
 		_complete_absorption(pos)
 
@@ -801,10 +866,14 @@ func _absorption_source_for(tile_id: int, feat: Dictionary) -> StringName:
 
 
 func _tick_animal_absorption(delta: float) -> void:
-	if _sim == null:
+	if _sim == null or _sim.depth.is_empty():
 		return
-	for pos_variant in _sim.depth.keys():
-		var pos: Vector2i = pos_variant
+	var cells: Array = _sim.depth.keys()
+	var scanned := 0
+	var start := _absorption_scan_offset % maxi(cells.size(), 1)
+	while scanned < _absorption_cells_per_tick and scanned < cells.size():
+		var pos: Vector2i = cells[(start + scanned) % cells.size()]
+		scanned += 1
 		if float(_sim.depth.get(pos, 0.0)) < sim_config.min_depth:
 			continue
 		var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)

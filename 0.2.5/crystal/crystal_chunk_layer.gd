@@ -38,12 +38,15 @@ func rebuild(cells: Array) -> void:
 		_mm_instance.material_override = _material
 
 	var count := cells.size()
-	mm.instance_count = count
 	if count == 0:
+		mm.instance_count = 0
 		visible = false
 		return
 
 	visible = true
+	if mm.instance_count != count:
+		mm.instance_count = count
+
 	for i in count:
 		var cell: CrystalCell = cells[i]
 		var depth := maxf(cell.depth, 0.12)
@@ -51,8 +54,10 @@ func rebuild(cells: Array) -> void:
 		var center_y := cell.terrain_y + depth * 0.5
 		var pulse := 0.94 + clampf(depth / 4.0, 0.0, 1.0) * 0.06
 		var basis := Basis.IDENTITY.scaled(Vector3(pulse, scale_y, pulse))
-		var transform := Transform3D(
-			basis,
-			Vector3(float(cell.world_pos.x) + 0.5, center_y, float(cell.world_pos.y) + 0.5)
+		mm.set_instance_transform(
+			i,
+			Transform3D(
+				basis,
+				Vector3(float(cell.world_pos.x) + 0.5, center_y, float(cell.world_pos.y) + 0.5)
+			)
 		)
-		mm.set_instance_transform(i, transform)

@@ -2,6 +2,7 @@ class_name ChunkManager
 extends Node3D
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _ChunkMeshBufferBuilder = preload("res://chunks/chunk_mesh_buffer_builder.gd")
 
 signal chunk_ready(coord: Vector2i, data: ChunkData)
 
@@ -13,7 +14,9 @@ signal chunk_ready(coord: Vector2i, data: ChunkData)
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var pending := {}
 var _chunk_tasks := {}  # coord -> WorkerThreadPool task id for async gen
+var _chunk_gen_tokens := {}  # coord -> monotonic token; stale worker results are dropped
 var _mesh_completion_queue: Array = []
+var _shutting_down: bool = false
 
 # Optimization: only update when player moves to new chunk
 var _last_chunk_key: Vector2i = Vector2i(-99999, -99999)
@@ -31,6 +34,8 @@ const _RAMP_DIRS := [
 var ramp_placement_chance: int = 28
 var ramp_max_surface_height: float = 88.0
 var ramp_mountain_cutoff_height: float = 72.0
+var prebuild_chunk_buffers: bool = true
+var chunk_upload_budget_us: int = 3500
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
@@ -65,12 +70,16 @@ func _ready():
 		var cz = floori(col.y / float(ChunkData.SIZE))
 		update_stream(cx, cz)
 
-func _exit_tree():
-	# Wait briefly for in-flight tasks (non-fatal if not)
-	for tid in _chunk_tasks.values():
+func _exit_tree() -> void:
+	_shutting_down = true
+	_mesh_completion_queue.clear()
+	for coord in _chunk_tasks.keys():
+		_chunk_gen_tokens[coord] = int(_chunk_gen_tokens.get(coord, 0)) + 1
+	var tasks: Array = _chunk_tasks.values()
+	_chunk_tasks.clear()
+	for tid in tasks:
 		if tid is int:
 			WorkerThreadPool.wait_for_task_completion(tid)
-	pass
 
 func request_chunk(coord: Vector2i, high_priority: bool = false):
 	if chunks.has(coord) or pending.has(coord) or _chunk_tasks.has(coord):
@@ -79,11 +88,19 @@ func request_chunk(coord: Vector2i, high_priority: bool = false):
 		return
 
 	pending[coord] = true
+	var token: int = int(_chunk_gen_tokens.get(coord, 0)) + 1
+	_chunk_gen_tokens[coord] = token
 
 	var data := ChunkData.new(coord, world)
+	if data == null:
+		pending.erase(coord)
+		return
 	data.capture_worker_snapshot()
 
-	var task_id := WorkerThreadPool.add_task(Callable(self, "_generate_chunk_task").bind(coord, data), high_priority)
+	var task_id := WorkerThreadPool.add_task(
+		Callable(self, "_generate_chunk_task").bind(coord, data, token),
+		high_priority
+	)
 	_chunk_tasks[coord] = task_id
 
 func _build_mesh(data: ChunkData) -> Dictionary:
@@ -204,6 +221,10 @@ func apply_performance_config(cfg) -> void:
 	MAX_CHUNKS_PER_FRAME = int(cfg.max_chunks_per_frame)
 	MAX_INFLIGHT_CHUNKS = int(cfg.max_inflight_chunks)
 	MESH_CAVES = bool(cfg.mesh_caves)
+	if "prebuild_chunk_buffers" in cfg:
+		prebuild_chunk_buffers = bool(cfg.prebuild_chunk_buffers)
+	if "chunk_upload_budget_us" in cfg:
+		chunk_upload_budget_us = maxi(int(cfg.chunk_upload_budget_us), 500)
 
 
 func _world_border_should_force_ramp(world_x: int, world_z: int) -> bool:
@@ -300,11 +321,7 @@ func _is_concave_corner_cell(data: ChunkData, x: int, z: int, fill_h: float) -> 
 func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
 	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
 		return data.get_tile_type(x, z)
-	if data.world:
-		return data.world.get_tile_type_uncached(
-			float(data.position.x * ChunkData.SIZE + x),
-			float(data.position.y * ChunkData.SIZE + z)
-		)
+	# Worker path: never touch live world/registries for halo neighbors.
 	return VoxelTypes.AIR
 
 
@@ -474,11 +491,23 @@ func _process(_delta):
 
 
 func _drain_mesh_queue() -> void:
-	var budget := maxi(MAX_CHUNKS_PER_FRAME, 1)
-	while _mesh_completion_queue.size() > 0 and budget > 0:
+	if _shutting_down:
+		_mesh_completion_queue.clear()
+		return
+	var count_budget := maxi(MAX_CHUNKS_PER_FRAME, 1)
+	var time_budget_us := maxi(chunk_upload_budget_us, 500)
+	var t0 := Time.get_ticks_usec()
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	while _mesh_completion_queue.size() > 0 and count_budget > 0:
+		if Time.get_ticks_usec() - t0 >= time_budget_us:
+			break
 		var item: Dictionary = _mesh_completion_queue.pop_front()
+		if profiler and profiler.has_method("begin"):
+			profiler.begin("chunk_upload")
 		_on_chunk_ready(item["data"], item["mesh"])
-		budget -= 1
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_upload")
+		count_budget -= 1
 	
 func update_stream(cx: int, cz: int):
 	var needed := {}
@@ -527,12 +556,12 @@ func _player_column_pos() -> Vector2:
 
 
 func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
+	var halo_h: float = data.get_halo_surface_y(lx, lz)
+	if halo_h > -9000.0:
+		return halo_h
 	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
 		return data.get_surface_y(lx, lz)
-	if data.world:
-		var gx := float(data.position.x * ChunkData.SIZE + lx)
-		var gz := float(data.position.y * ChunkData.SIZE + lz)
-		return data.world.get_surface_height_uncached(gx, gz)
+	# Worker path: rely on halo snapshot only (see capture_worker_snapshot).
 	return 0.0
 
 
@@ -634,7 +663,9 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 						})
 					run_start = -1
 
-func _generate_chunk(data: ChunkData):
+func _generate_chunk(data: ChunkData) -> void:
+	if data == null or not data._has_worker_snapshot or data.world == null:
+		return
 	data._compute_column_maps(true)
 					
 func _emit_cave_faces(data: ChunkData, out_quads: Array) -> void:
@@ -696,10 +727,10 @@ func _emit_cave_faces(data: ChunkData, out_quads: Array) -> void:
 					)
 
 
-func _on_chunk_ready(data: ChunkData, packed_quad_data: Dictionary):
-	if not is_inside_tree():
+func _on_chunk_ready(data: ChunkData, packed_quad_data: Dictionary) -> void:
+	if not is_inside_tree() or _shutting_down:
 		return
-	if not pending.has(data.position):
+	if data == null or not pending.has(data.position):
 		return
 	pending.erase(data.position)
 	if chunks.has(data.position):
@@ -716,20 +747,54 @@ func _on_chunk_ready(data: ChunkData, packed_quad_data: Dictionary):
 	chunk_ready.emit(data.position, data)
 
 
-func _generate_chunk_task(coord: Vector2i, data: ChunkData):
-	# Worker: noise + column maps only (no shared TerrainEdits / FeatureRegistry).
+func _generate_chunk_task(coord: Vector2i, data: ChunkData, token: int) -> void:
+	if data == null or not data._has_worker_snapshot:
+		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token)
+		return
+	# Worker: column maps + greedy mesh (uses halo snapshot — no live registry access).
+	var t0 := Time.get_ticks_usec()
 	_generate_chunk(data)
-	call_deferred("_on_chunk_columns_ready", coord, data)
-
-
-func _on_chunk_columns_ready(coord: Vector2i, data: ChunkData) -> void:
-	_chunk_tasks.erase(coord)
-	if not is_inside_tree():
-		return
-	if not pending.has(coord):
-		return
 	var quads := _build_mesh(data)
-	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": quads})
+	var mesh_us := Time.get_ticks_usec() - t0
+	var buffer_us := 0
+	var payload: Dictionary = quads.duplicate(true)
+	if prebuild_chunk_buffers:
+		var t_buf := Time.get_ticks_usec()
+		payload = _ChunkMeshBufferBuilder.build_mesh_payload(data, quads.get("quads", []))
+		buffer_us = Time.get_ticks_usec() - t_buf
+	# Detach world ref before handing results back to main thread.
+	data.world = null
+	call_deferred("_on_chunk_task_complete", coord, data, payload, mesh_us, buffer_us, token)
+
+
+func _on_chunk_task_complete(
+	coord: Vector2i,
+	data: ChunkData,
+	packed_quad_data: Dictionary,
+	mesh_us: int = 0,
+	buffer_us: int = 0,
+	token: int = -1
+) -> void:
+	_chunk_tasks.erase(coord)
+	if _shutting_down or token < 0 or int(_chunk_gen_tokens.get(coord, -1)) != token:
+		return
+	if data == null:
+		pending.erase(coord)
+		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if mesh_us > 0 and profiler and profiler.has_method("record_us"):
+		profiler.record_us("chunk_mesh", mesh_us)
+		if profiler.has_method("record_worker_us"):
+			profiler.record_worker_us(mesh_us)
+	if buffer_us > 0 and profiler and profiler.has_method("record_us"):
+		profiler.record_us("chunk_buffer", buffer_us)
+		if profiler.has_method("record_worker_us"):
+			profiler.record_worker_us(buffer_us)
+	if not is_inside_tree() or not pending.has(coord):
+		return
+	if data.world == null and world != null:
+		data.world = world
+	_mesh_completion_queue.append({"coord": coord, "data": data, "mesh": packed_quad_data})
 
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 	var entry := get_ramp_entry_at_world(wx, wz)
@@ -771,11 +836,14 @@ func rebuild_chunk_at_world(wx: float, wz: float) -> void:
 
 
 func rebuild_chunk(key: Vector2i) -> void:
+	if _shutting_down:
+		return
 	if chunks.has(key):
 		chunks[key].queue_free()
 		chunks.erase(key)
 	pending.erase(key)
 	_chunk_tasks.erase(key)
+	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
 	request_chunk(key, true)
 
 

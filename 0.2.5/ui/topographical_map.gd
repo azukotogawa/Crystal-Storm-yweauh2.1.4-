@@ -22,6 +22,10 @@ var _minimap_tex: ImageTexture
 var _full_tex: ImageTexture
 var _minimap_enabled: bool = true
 var _fullscreen_map_enabled: bool = true
+var _map_rows_per_frame: int = 8
+var _fast_map_sampling: bool = true
+var _map_job_queue: Array = []
+var _active_map_job: Dictionary = {}
 
 
 func _map_cfg():
@@ -51,6 +55,9 @@ func apply_performance_config(cfg) -> void:
 		return
 	_minimap_enabled = bool(cfg.minimap_enabled)
 	_fullscreen_map_enabled = bool(cfg.map_fullscreen_enabled)
+	_map_rows_per_frame = maxi(int(cfg.map_rows_per_frame), 1)
+	if "fast_map_sampling" in cfg:
+		_fast_map_sampling = bool(cfg.fast_map_sampling)
 	var mc = _map_cfg()
 	mc.rebuild_interval_sec = float(cfg.map_rebuild_interval_sec)
 	mc.minimap_size = int(cfg.minimap_pixel_size)
@@ -111,9 +118,13 @@ func _build_ui() -> void:
 
 
 func _process(delta: float) -> void:
-	if _world == null:
+	if _world == null or not is_instance_valid(_world):
 		_bind_scene()
-		return
+		if _world == null:
+			return
+
+	if not _active_map_job.is_empty():
+		_step_map_job()
 
 	if Input.is_action_just_pressed("toggle_map"):
 		if not _fullscreen_map_enabled:
@@ -121,7 +132,7 @@ func _process(delta: float) -> void:
 		_fullscreen_open = not _fullscreen_open
 		_fullscreen_panel.visible = _fullscreen_open
 		if _fullscreen_open:
-			_rebuild_maps(true)
+			_queue_map_rebuild(true)
 
 	if not _minimap_enabled and not _fullscreen_open:
 		return
@@ -131,7 +142,7 @@ func _process(delta: float) -> void:
 	var cfg = _map_cfg()
 	if _rebuild_timer <= 0.0 or center.distance_to(_last_center) >= cfg.rebuild_move_threshold_cells:
 		_rebuild_timer = cfg.rebuild_interval_sec
-		_rebuild_maps(_fullscreen_open)
+		_queue_map_rebuild(_fullscreen_open)
 		_last_center = center
 
 
@@ -143,19 +154,58 @@ func _player_center_cell() -> Vector2i:
 	return _EntityNavigation.column_pos(_player.global_position)
 
 
-func _rebuild_maps(include_full: bool) -> void:
+func _queue_map_rebuild(include_full: bool) -> void:
+	if not _active_map_job.is_empty():
+		return
+	if _world == null or not is_instance_valid(_world):
+		return
 	var center := _player_center_cell()
 	var cfg = _map_cfg()
-	if _minimap_enabled and _minimap_rect:
-		_minimap_tex = _TopographicalMapBuilder.build_local_map(_world, _crystal, center, cfg)
+	_map_job_queue.clear()
+	if _minimap_enabled:
+		_map_job_queue.append(
+			_TopographicalMapBuilder.begin_job(_world, _crystal, center, cfg, false, _fast_map_sampling)
+		)
+	if include_full and _fullscreen_map_enabled:
+		_map_job_queue.append(
+			_TopographicalMapBuilder.begin_job(_world, _crystal, center, cfg, true, _fast_map_sampling)
+		)
+	if not _map_job_queue.is_empty():
+		_active_map_job = _map_job_queue[0]
+
+
+func _step_map_job() -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("map_build")
+	var done: bool = _TopographicalMapBuilder.process_job_rows(_active_map_job, _map_rows_per_frame)
+	if profiler and profiler.has_method("end"):
+		profiler.end("map_build")
+	if not done:
+		return
+	_apply_finished_map_job(_active_map_job)
+	_map_job_queue.pop_front()
+	if _map_job_queue.is_empty():
+		_active_map_job = {}
+	else:
+		_active_map_job = _map_job_queue[0]
+
+
+func _apply_finished_map_job(job: Dictionary) -> void:
+	var tex: Texture2D = _TopographicalMapBuilder.finalize_job(job)
+	if tex == null:
+		return
+	var cfg = _map_cfg()
+	if _minimap_rect == null or _fullscreen_rect == null:
+		return
+	if bool(job.get("fullscreen", false)):
+		_full_tex = tex
+		_fullscreen_rect.texture = _full_tex
+		_fullscreen_player_dot.position = Vector2(
+			_fullscreen_rect.size.x * 0.5 - 4,
+			_fullscreen_rect.size.y * 0.5 - 4
+		)
+	else:
+		_minimap_tex = tex
 		_minimap_rect.texture = _minimap_tex
 		_player_dot.position = Vector2(cfg.minimap_size * 0.5 - 2, cfg.minimap_size * 0.5 - 2)
-
-	if include_full and _fullscreen_map_enabled:
-		_full_tex = _TopographicalMapBuilder.build_full_map(_world, _crystal, center, cfg)
-		_fullscreen_rect.texture = _full_tex
-		var rel := Vector2(0.5, 0.5)
-		_fullscreen_player_dot.position = Vector2(
-			_fullscreen_rect.size.x * rel.x - 4,
-			_fullscreen_rect.size.y * rel.y - 4
-		)

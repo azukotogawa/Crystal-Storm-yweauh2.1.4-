@@ -13,20 +13,50 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
+## Single-sample cached height (faster than smooth bilinear for flow sim).
+var use_fast_terrain_height: bool = true
+
+var _cache_tick: int = -1
+var _height_cache: Dictionary = {}
+var _tile_cache: Dictionary = {}
+var _flow_cache: Dictionary = {}
+var _channel_mult_cache: Dictionary = {}
+
+
+func begin_sim_tick(tick_id: int) -> void:
+	if _cache_tick == tick_id:
+		return
+	_cache_tick = tick_id
+	_height_cache.clear()
+	_tile_cache.clear()
+	_flow_cache.clear()
+	_channel_mult_cache.clear()
 
 
 func get_terrain_height(pos: Vector2i) -> float:
 	if world == null:
 		return 0.0
-	if world.has_method("get_surface_height_smooth"):
-		return world.get_surface_height_smooth(float(pos.x), float(pos.y))
-	return world.get_surface_height(float(pos.x), float(pos.y))
+	if _height_cache.has(pos):
+		return _height_cache[pos]
+	var h: float
+	if use_fast_terrain_height:
+		h = world.get_surface_height(float(pos.x), float(pos.y))
+	elif world.has_method("get_surface_height_smooth"):
+		h = world.get_surface_height_smooth(float(pos.x), float(pos.y))
+	else:
+		h = world.get_surface_height(float(pos.x), float(pos.y))
+	_height_cache[pos] = h
+	return h
 
 
 func get_tile(pos: Vector2i) -> int:
 	if world == null:
 		return VoxelTypes.AIR
-	return world.get_tile_type(float(pos.x), float(pos.y))
+	if _tile_cache.has(pos):
+		return _tile_cache[pos]
+	var tile: int = world.get_tile_type(float(pos.x), float(pos.y))
+	_tile_cache[pos] = tile
+	return tile
 
 
 func is_water_tile(tile_id: int) -> bool:
@@ -39,12 +69,26 @@ func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 
 
 func get_flow_factor_at(pos: Vector2i, tile_id: int) -> float:
+	var cache_key: int = pos.x * 73856093 ^ pos.y * 19349663 ^ tile_id * 83492791
+	if _flow_cache.has(cache_key):
+		return _flow_cache[cache_key]
 	var factor := _base_flow_factor(pos, tile_id)
 	factor *= _denial_mult_at(pos)
-	return clampf(factor, 0.02, 1.0)
+	factor = clampf(factor, 0.02, 1.0)
+	_flow_cache[cache_key] = factor
+	return factor
 
 
 func get_channel_flow_mult(from_pos: Vector2i, to_pos: Vector2i) -> float:
+	var key := Vector3i(from_pos.x, from_pos.y, to_pos.x * 17 + to_pos.y)
+	if _channel_mult_cache.has(key):
+		return _channel_mult_cache[key]
+	var mult: float = _channel_flow_mult_uncached(from_pos, to_pos)
+	_channel_mult_cache[key] = mult
+	return mult
+
+
+func _channel_flow_mult_uncached(from_pos: Vector2i, to_pos: Vector2i) -> float:
 	if not _ChannelRegistry.is_channel(from_pos.x, from_pos.y):
 		return 1.0
 
@@ -89,20 +133,4 @@ func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
 
 
 func _denial_mult_at(pos: Vector2i) -> float:
-	var mult := 1.0
-	for plant_pos_variant in _FeatureRegistry.get_plant_positions():
-		var plant_pos: Vector2i = plant_pos_variant
-		var feat: Dictionary = _FeatureRegistry.get_feature(plant_pos.x, plant_pos.y)
-		var plant_id: StringName = StringName(str(feat.get("plant_id", "")))
-		var def = _PlantableRegistry.get_def(plant_id) as _PlantableDef
-		if def == null or def.denial_radius <= 0:
-			continue
-		var stage: int = int(feat.get("growth_stage", 0))
-		if def.denial_requires_mature and stage < def.mature_stage():
-			continue
-		var dist: float = Vector2(pos).distance_to(Vector2(plant_pos))
-		if dist > float(def.denial_radius) + 0.01:
-			continue
-		var denial: float = def.mature_denial_flow_factor
-		mult = lerpf(mult, denial, 1.0 - sim_config.denial_stack_diminish * 0.5)
-	return mult
+	return _FeatureRegistry.get_denial_mult_at(pos.x, pos.y, sim_config.denial_stack_diminish)
