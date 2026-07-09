@@ -6,6 +6,7 @@ const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
+const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -29,6 +30,7 @@ var health: float = 24.0
 var _age: float = 0.0
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
+var _voxel_prop: Node3D
 var _patrol_anchor: Vector2i = Vector2i.ZERO
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
@@ -93,9 +95,10 @@ func _setup_visual(tint: Color, radius: float = 0.28, height: float = 0.7) -> vo
 		call_deferred("_setup_visual", tint, radius, height)
 		return
 	var registry = get_tree().get_first_node_in_group("game_visual_registry")
-	var use_sprite: bool = false
-	if registry != null:
-		use_sprite = bool(registry.entity_sprites_enabled)
+	if registry != null and bool(registry.get("entity_voxel_models_enabled")):
+		_setup_voxel(tint)
+		return
+	var use_sprite: bool = registry != null and bool(registry.entity_sprites_enabled)
 	var tex: Texture2D = _resolve_enemy_texture(registry) if use_sprite else null
 	if use_sprite and tex != null:
 		_setup_sprite(registry, tex, tint, height)
@@ -128,6 +131,22 @@ func _resolve_enemy_texture(registry) -> Texture2D:
 	return null
 
 
+func _setup_voxel(tint: Color) -> void:
+	if _sprite:
+		_sprite.visible = false
+	if _mesh:
+		_mesh.visible = false
+	if _voxel_prop == null or not is_instance_valid(_voxel_prop):
+		if _voxel_prop:
+			_voxel_prop.queue_free()
+		_voxel_prop = _VoxelPropBuilder.build_entity(enemy_id, tint)
+		_voxel_prop.name = "VoxelProp"
+		add_child(_voxel_prop)
+	else:
+		_VoxelPropBuilder.apply_tint(_voxel_prop, tint)
+	_voxel_prop.visible = true
+
+
 func _setup_sprite(registry, tex: Texture2D, tint: Color, height: float) -> void:
 	if _sprite == null:
 		_sprite = Sprite3D.new()
@@ -135,6 +154,8 @@ func _setup_sprite(registry, tex: Texture2D, tint: Color, height: float) -> void
 		add_child(_sprite)
 	if _mesh:
 		_mesh.visible = false
+	if _voxel_prop:
+		_voxel_prop.visible = false
 	_sprite.visible = true
 	_sprite.position.y = height * 0.55
 	if registry.has_method("apply_to_sprite3d"):
@@ -149,6 +170,8 @@ func _setup_sprite(registry, tex: Texture2D, tint: Color, height: float) -> void
 func _setup_mesh(tint: Color, radius: float = 0.28, height: float = 0.7) -> void:
 	if _sprite:
 		_sprite.visible = false
+	if _voxel_prop:
+		_voxel_prop.visible = false
 	if _mesh == null:
 		_mesh = MeshInstance3D.new()
 		_mesh.name = "MeshInstance3D"

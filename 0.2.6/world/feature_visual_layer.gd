@@ -144,7 +144,8 @@ func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: 
 	if anchor.get_node_or_null("VoxelProp"):
 		for child in anchor.get_children():
 			child.queue_free()
-		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage)
+		var biome_name := _biome_name_at(world_pos.x, world_pos.y)
+		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage, Color.WHITE, biome_name)
 		prop.name = "VoxelProp"
 		anchor.add_child(prop)
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
@@ -235,9 +236,10 @@ func _make_vegetation_anchor(
 ) -> Node3D:
 	var anchor := Node3D.new()
 	anchor.name = "Veg_%d_%d" % [wx, wz]
-	if _use_voxel_vegetation(wx, wz):
+	if _use_voxel_vegetation(wx, wz, plant_id):
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
-		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage)
+		var biome_name := _biome_name_at(wx, wz)
+		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage, Color.WHITE, biome_name)
 		prop.name = "VoxelProp"
 		anchor.add_child(prop)
 		return anchor
@@ -301,6 +303,18 @@ func _billboard_texture(id: String, stage: int = -1) -> Texture2D:
 	return null
 
 
+func _biome_name_at(wx: int, wz: int) -> String:
+	if world == null:
+		world = get_tree().get_first_node_in_group("world")
+	if world == null:
+		return ""
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if feat.has("biome"):
+		return str(feat.get("biome", ""))
+	var biome: Dictionary = world.get_biome(float(wx), 0.0, float(wz))
+	return str(biome.get("name", ""))
+
+
 func _resolve_registry() -> void:
 	if _registry == null:
 		_registry = get_tree().get_first_node_in_group("game_visual_registry")
@@ -337,13 +351,11 @@ func _anchor_y(column_x: float, column_z: float, height_offset: float) -> float:
 	return surface + height_offset + lift
 
 
-func _use_voxel_vegetation(wx: int, wz: int) -> bool:
+func _use_voxel_vegetation(wx: int, wz: int, plant_id: StringName = &"") -> bool:
 	_resolve_registry()
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return false
-	if not bool(_registry.get("vegetation_voxel_models_enabled")):
-		return false
-	return _player_column_distance(wx, wz) <= float(_registry.get("vegetation_billboard_distance_columns"))
+	return bool(_registry.get("vegetation_voxel_models_enabled"))
 
 
 func _player_column_distance(wx: int, wz: int) -> float:

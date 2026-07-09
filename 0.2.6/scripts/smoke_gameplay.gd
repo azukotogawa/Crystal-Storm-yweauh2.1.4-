@@ -1,9 +1,9 @@
 extends SceneTree
 ## Scripted play session: loads production main.tscn and exercises real gameplay paths.
-## Evidence → SCRATCH_PATH (scripted session, not human-hand manual QA).
+## Evidence → scripted_smoke_evidence.md under ProbePaths scratch (not human-hand manual QA).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
-const SCRATCH_PATH := "/tmp/grok-goal-e8916ce4c6d5/implementer/scripted_smoke_evidence.md"
+const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
@@ -13,6 +13,7 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
 
 
 func _init() -> void:
@@ -109,18 +110,21 @@ func _run() -> void:
 	var dug := false
 	var dig_wx := -1
 	var dig_wz := -1
-	if weapon != null and pick_def and weapon.has_method("_do_dig_attack") and weapon.has_method("_attack_forward"):
+	if weapon != null and pick_def and weapon.has_method("_do_dig_attack"):
 		var inv = player.get("inventory")
 		if inv:
 			inv.set_slot(1, "stone_pick", 1)
 		if weapon.has_method("set_active_hotbar_index"):
 			weapon.set_active_hotbar_index(1)
-		var forward: Vector3 = weapon.call("_attack_forward")
 		var range_v: float = float(pick_def.get("range", 2.0))
-		var target: Vector3 = player.get("voxel_position") + forward * range_v
-		dig_wx = floori(target.x)
-		dig_wz = floori(target.z)
+		_ActionTargeting.warp_mouse_to_column(player, world, 3.5, 5.5)
+		for _w in 8:
+			await process_frame
+		var dig_pick: Vector2i = _ActionTargeting.target_cell(player, range_v)
+		dig_wx = dig_pick.x
+		dig_wz = dig_pick.y
 		var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
+		weapon.set("_cooldown_timer", 0.0)
 		weapon.call("_do_dig_attack", "stone_pick", pick_def)
 		if chunk_manager.has_method("await_rebuild_idle"):
 			await chunk_manager.await_rebuild_idle()
@@ -198,6 +202,37 @@ func _run() -> void:
 		lines.append("- **Entities FAIL**: %d/%d textured sprites after EntityManager spawn." % [
 			sprite_stats.visible, sprite_stats.total
 		])
+		failed = true
+
+	# --- Melee damages spawned entity (production combat path) ---
+	lines.append("")
+	lines.append("## P0 — Melee entity damage")
+	var melee_entity_ok := false
+	var spawned_entity: Node = null
+	for entity in get_nodes_in_group("world_entity"):
+		if is_instance_valid(entity) and entity.has_method("take_damage"):
+			spawned_entity = entity
+			break
+	if spawned_entity and weapon and weapon.has_method("_do_melee_attack"):
+		var hp_before: float = float(spawned_entity.get("health"))
+		player.set("voxel_position", Vector3(float(test_cell.x) + 0.5, player.get("voxel_position").y, float(test_cell.y) + 0.5))
+		if player.has_method("_sync_global_from_voxel"):
+			player.call("_sync_global_from_voxel")
+		var inv_melee = player.get("inventory")
+		if inv_melee:
+			inv_melee.set_slot(0, "wooden_sword", 1)
+		if weapon.has_method("set_active_hotbar_index"):
+			weapon.set_active_hotbar_index(0)
+		var sword_def: Dictionary = _ItemTypes.get_def("wooden_sword")
+		weapon.call("_do_melee_attack", "wooden_sword", sword_def)
+		for _w in 12:
+			await process_frame
+		var hp_after: float = float(spawned_entity.get("health"))
+		melee_entity_ok = hp_after < hp_before - 0.01
+	if melee_entity_ok:
+		lines.append("- **Combat OK**: melee damaged spawned world_entity (HP reduced).")
+	else:
+		lines.append("- **Combat FAIL**: melee did not reduce spawned entity health.")
 		failed = true
 
 	# --- Vegetation ---
@@ -470,14 +505,15 @@ func _run() -> void:
 
 func _finish(lines: PackedStringArray, failed: bool) -> void:
 	var text := "\n".join(lines) + "\n"
-	DirAccess.make_dir_recursive_absolute("/tmp/grok-goal-e8916ce4c6d5/implementer")
-	var f := FileAccess.open(SCRATCH_PATH, FileAccess.WRITE)
+	var scratch_path := _ProbePaths.smoke_evidence_path()
+	DirAccess.make_dir_recursive_absolute(scratch_path.get_base_dir())
+	var f := FileAccess.open(scratch_path, FileAccess.WRITE)
 	if f:
 		f.store_string(text)
 		f.close()
 		print(text)
 	else:
-		push_error("Could not write %s" % SCRATCH_PATH)
+		push_error("Could not write %s" % scratch_path)
 		failed = true
 
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT") != "1":

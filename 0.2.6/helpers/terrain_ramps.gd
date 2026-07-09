@@ -13,19 +13,24 @@ const DIRS := [
 
 static var _wedge_mesh: ArrayMesh
 static var _concave_mesh: ArrayMesh
+static var _corner_step_mesh: ArrayMesh
 static var _mesh_scale_key: float = -1.0
-const CONCAVE_MESH_REV := 2
-const WEDGE_MESH_REV := 3
+const CONCAVE_MESH_REV := 3
+const WEDGE_MESH_REV := 6
+const CORNER_STEP_MESH_REV := 1
 static var _concave_mesh_rev: int = -1
 static var _wedge_mesh_rev: int = -1
+static var _corner_step_mesh_rev: int = -1
 
 
 static func invalidate_mesh_cache() -> void:
 	_wedge_mesh = null
 	_concave_mesh = null
+	_corner_step_mesh = null
 	_mesh_scale_key = -1.0
 	_concave_mesh_rev = -1
 	_wedge_mesh_rev = -1
+	_corner_step_mesh_rev = -1
 
 
 static func _ws():
@@ -68,13 +73,17 @@ static func _ensure_mesh_scale() -> void:
 		and _wedge_mesh != null
 		and _wedge_mesh_rev == WEDGE_MESH_REV
 		and _concave_mesh_rev == CONCAVE_MESH_REV
+		and _corner_step_mesh != null
+		and _corner_step_mesh_rev == CORNER_STEP_MESH_REV
 	):
 		return
 	_mesh_scale_key = s
 	_wedge_mesh = null
 	_concave_mesh = null
+	_corner_step_mesh = null
 	_wedge_mesh_rev = WEDGE_MESH_REV
 	_concave_mesh_rev = CONCAVE_MESH_REV
+	_corner_step_mesh_rev = CORNER_STEP_MESH_REV
 
 
 ## Step wedge: half-block diagonal cut, cell-centered.
@@ -86,35 +95,17 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Landing-anchored wedge spanning landing + approach columns (2 cells along slope axis).
+	# Only sloped walkable face + underside — no vertical box walls.
 	_add_quad_uv(st,
-		Vector3(-0.5, 1, -0.5) * s, Vector3(0.5, 2, -0.5) * s, Vector3(0.5, 2, 0.5) * s, Vector3(-0.5, 1, 0.5) * s,
+		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
 		Vector3(0, 0.70710678, 0.70710678),
 		Vector2(0, 0), Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)
 	)
 	_add_quad_uv(st,
-		Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 2, -0.5) * s, Vector3(0.5, 2, 0.5) * s, Vector3(0.5, 0, 0.5) * s,
-		Vector3.RIGHT,
-		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
-	)
-	_add_quad_uv(st,
-		Vector3(-0.5, 0, -0.5) * s, Vector3(-0.5, 1, -0.5) * s, Vector3(-0.5, 1, 0.5) * s, Vector3(-0.5, 0, 0.5) * s,
-		Vector3.LEFT,
-		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
-	)
-	_add_quad_uv(st,
-		Vector3(-0.5, 0, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-0.5, 0, 0.5) * s,
+		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, -1, -0.5) * s, Vector3(0.5, -1, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
 		Vector3.DOWN,
 		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
-	)
-	_add_quad_uv(st,
-		Vector3(-0.5, 0, -0.5) * s, Vector3(-0.5, 1, -0.5) * s, Vector3(0.5, 2, -0.5) * s, Vector3(0.5, 0, -0.5) * s,
-		Vector3(0, 0, -1),
-		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
-	)
-	_add_quad_uv(st,
-		Vector3(-0.5, 0, 0.5) * s, Vector3(-0.5, 1, 0.5) * s, Vector3(0.5, 2, 0.5) * s, Vector3(0.5, 0, 0.5) * s,
-		Vector3(0, 0, 1),
-		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
 	)
 	_wedge_mesh = st.commit()
 	return _wedge_mesh
@@ -143,6 +134,31 @@ static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	_add_quad_uv(st, b0, a0, a1, b1, Vector3(0.70710678, 0.0, 0.70710678), Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1))
 	_concave_mesh = st.commit()
 	return _concave_mesh
+
+
+## Step-corner ramp at the low cell when two perpendicular +1 steps meet.
+static func get_corner_step_mesh() -> ArrayMesh:
+	_ensure_mesh_scale()
+	if _corner_step_mesh != null:
+		return _corner_step_mesh
+	var s: float = _ws().voxel_scale
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var c0 := Vector3.ZERO
+	var a0 := Vector3(s, 0.0, 0.0)
+	var b0 := Vector3(0.0, 0.0, s)
+	var c1 := Vector3(0.0, s, 0.0)
+	var a1 := Vector3(s, s, 0.0)
+	var b1 := Vector3(0.0, s, s)
+	var d1 := Vector3(s, s, s)
+	_add_tri_uv(st, c0, a0, b0, Vector3.DOWN, Vector2(0, 0), Vector2(1, 0), Vector2(0, 1))
+	_add_tri_uv(st, c1, a1, d1, Vector3.UP, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
+	_add_tri_uv(st, c1, d1, b1, Vector3.UP, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
+	_add_quad_uv(st, a0, c0, c1, a1, Vector3(0, 0, -1), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+	_add_quad_uv(st, b0, c0, c1, b1, Vector3(-1, 0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
+	_add_quad_uv(st, a0, b0, b1, a1, Vector3(0.70710678, 0.0, 0.70710678), Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1))
+	_corner_step_mesh = st.commit()
+	return _corner_step_mesh
 
 
 static func _add_tri_uv(
@@ -200,7 +216,9 @@ static func voxel_top_y(surface_y: float) -> float:
 
 static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
 	var layer: float = _ws().layer_height()
-	return voxel_top_y(base_h) + clampf(axis_t(wx, wz, dir), 0.0, 1.0) * layer
+	var t: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
+	# Landing cell slopes down toward the low neighbor as t increases along dir.
+	return voxel_top_y(base_h) - t * layer
 
 
 static func walkable_height_from_entry(
@@ -222,6 +240,10 @@ static func walkable_height_from_entry(
 		var layer: float = _ws().layer_height()
 		var t: float = maxf(axis_t(wx, wz, dir), axis_t(wx, wz, dir2))
 		return voxel_top_y(base) + t * layer
+	if entry.get("approach", false) and dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
+		var layer_a: float = _ws().layer_height()
+		var t_a: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
+		return voxel_top_y(base) + t_a * layer_a
 	if dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
 		return surface_height_on_ramp(wx, wz, base, dir)
 	if entry.get("side", false) and dir != Vector2i.ZERO:
@@ -254,26 +276,43 @@ static func _ramp_origin(world_x: float, world_z: float, surface_y: float) -> Ve
 
 
 static func wedge_transform(world_x: float, world_z: float, surface_y: float, dir: Vector2i) -> Transform3D:
+	var away := Vector2i(-dir.x, -dir.y)
 	var yaw: float = 0.0
-	if dir == Vector2i(1, 0):
+	if away == Vector2i(1, 0):
 		yaw = 0.0
-	elif dir == Vector2i(-1, 0):
+	elif away == Vector2i(-1, 0):
 		yaw = PI
-	elif dir == Vector2i(0, 1):
+	elif away == Vector2i(0, 1):
 		yaw = -PI * 0.5
-	elif dir == Vector2i(0, -1):
+	elif away == Vector2i(0, -1):
 		yaw = PI * 0.5
 	else:
 		return Transform3D.IDENTITY.translated(_ramp_origin(world_x, world_z, surface_y))
-	var layer: float = _ws().layer_height()
-	var origin := _ramp_origin(world_x, world_z, surface_y)
-	# Nudge wedge into the step face so it meets the high voxel interior, not just the outer lip.
-	origin.x += float(dir.x) * layer * 0.2
-	origin.z += float(dir.y) * layer * 0.2
+	var origin := _ramp_origin(world_x, world_z, surface_y + _ws().layer_height())
 	return Transform3D(Basis(Vector3.UP, yaw), origin)
 
 
 static func concave_corner_prism_transform(
+	world_x: float, world_z: float, surface_y: float, leg_x: int, leg_z: int
+) -> Transform3D:
+	return _corner_prism_transform(world_x, world_z, surface_y, leg_x, leg_z)
+
+
+## Step-corner ramp: triangular prism in the low cell when two perpendicular steps meet.
+static func corner_ramp_legs(dir_a: Vector2i, dir_b: Vector2i) -> Vector2i:
+	var leg_x: int = dir_a.x if dir_a.x != 0 else dir_b.x
+	var leg_z: int = dir_b.y if dir_b.y != 0 else dir_a.y
+	return Vector2i(leg_x, leg_z)
+
+
+static func corner_ramp_transform(
+	world_x: float, world_z: float, surface_y: float, dir_a: Vector2i, dir_b: Vector2i
+) -> Transform3D:
+	var legs := corner_ramp_legs(dir_a, dir_b)
+	return _corner_prism_transform(world_x, world_z, surface_y, legs.x, legs.y)
+
+
+static func _corner_prism_transform(
 	world_x: float, world_z: float, surface_y: float, leg_x: int, leg_z: int
 ) -> Transform3D:
 	var ws = _ws()

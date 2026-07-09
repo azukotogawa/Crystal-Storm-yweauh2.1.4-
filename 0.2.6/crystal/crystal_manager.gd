@@ -230,12 +230,13 @@ func get_fluid_sim() -> _CrystalFluidSim:
 func _setup_materials() -> void:
 	_crystal_material = StandardMaterial3D.new()
 	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	_crystal_material.albedo_color = Color(0.62, 0.18, 0.98, 1.0)
+	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_crystal_material.albedo_color = Color(0.58, 0.22, 0.95, 0.78)
 	_crystal_material.emission_enabled = true
-	_crystal_material.emission = Color(0.42, 0.08, 0.82)
-	_crystal_material.emission_energy_multiplier = 2.2
-	_crystal_material.roughness = 0.1
-	_crystal_material.metallic = 0.4
+	_crystal_material.emission = Color(0.38, 0.12, 0.78)
+	_crystal_material.emission_energy_multiplier = 1.35
+	_crystal_material.roughness = 0.18
+	_crystal_material.metallic = 0.25
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -260,13 +261,13 @@ func _initialize_spawns() -> void:
 	_spawn_points.append(origin)
 	_seed_emitter(origin)
 
-	_add_feature_ruin_spawns()
-	var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
-	for _i in procedural:
-		var ruin_pos := _pick_ruin_spawn_position()
-		_add_ruin_spawn_at(ruin_pos)
-
-	_add_artifact_spawns()
+	if not sim_config.vertical_slice_mode:
+		_add_feature_ruin_spawns()
+		var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
+		for _i in procedural:
+			var ruin_pos := _pick_ruin_spawn_position()
+			_add_ruin_spawn_at(ruin_pos)
+		_add_artifact_spawns()
 	_sync_spawn_controller()
 	_recalc_stats()
 	call_deferred("refresh_spawn_marker_textures")
@@ -539,6 +540,17 @@ func _terrain_at(pos: Vector2i) -> float:
 	return world.get_surface_height(float(pos.x), float(pos.y))
 
 
+func _crystal_floor_at(pos: Vector2i) -> float:
+	if world == null:
+		return 0.0
+	var col_x := float(pos.x) + 0.5
+	var col_z := float(pos.y) + 0.5
+	var entry: Dictionary = {}
+	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
+		entry = chunk_manager.get_ramp_entry_at_world(col_x, col_z)
+	return TerrainRamps.walkable_height_from_entry(world, col_x, col_z, entry)
+
+
 func _tile_at(pos: Vector2i) -> int:
 	if world == null:
 		return VoxelTypes.AIR
@@ -744,7 +756,7 @@ func _rebuild_chunk_layer(coord: Vector2i) -> void:
 			continue
 		cells.append(CrystalCell.new(
 			pos,
-			_terrain_at(pos),
+			_crystal_floor_at(pos),
 			depth,
 			int(_sim.spawn_id_by_cell.get(pos, -1))
 		))
@@ -780,7 +792,7 @@ func _patch_chunk_layer(coord: Vector2i) -> void:
 			break
 		cells.append(CrystalCell.new(
 			pos,
-			_terrain_at(pos),
+			_crystal_floor_at(pos),
 			float(_sim.depth[pos]),
 			int(_sim.spawn_id_by_cell.get(pos, -1))
 		))
@@ -820,25 +832,27 @@ func _refresh_spawn_markers() -> void:
 	for spawn in _spawn_points:
 		if not spawn.active:
 			continue
-		var mesh := CylinderMesh.new()
-		mesh.top_radius = 0.55 if spawn.is_boss else 0.35
-		mesh.bottom_radius = 0.7 if spawn.is_boss else 0.45
-		mesh.height = 3.5 if spawn.is_boss else 2.2
+		var marker_size: float = 2.4 if spawn.is_boss else 1.6
 
 		var anchor := Node3D.new()
 		anchor.name = "SpawnMarker_%d" % spawn.id
 
-		var marker := MeshInstance3D.new()
-		marker.name = "Mesh"
-		marker.mesh = mesh
-		var mat: StandardMaterial3D = _marker_material.duplicate()
+		var marker := Sprite3D.new()
+		marker.name = "Sprite"
+		marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		marker.pixel_size = 0.022 if spawn.is_boss else 0.028
+		marker.modulate = Color(1.0, 0.92, 1.0, 0.95) if spawn.is_boss else Color(0.88, 0.78, 1.0, 0.88)
 		var vis = get_tree().get_first_node_in_group("game_visual_registry")
 		if vis and vis.spawn_marker_textures_enabled:
-			mat.albedo_texture = vis.get_spawn_texture(spawn.is_boss)
-			mat.emission_enabled = true
-			mat.emission = Color(0.85, 0.3, 0.95) if spawn.is_boss else Color(0.55, 0.25, 0.82)
-			mat.emission_energy_multiplier = 1.4 if spawn.is_boss else 0.9
-		marker.material_override = mat
+			var tex: Texture2D = vis.get_spawn_texture(spawn.is_boss)
+			if tex != null:
+				if vis.has_method("apply_to_sprite3d"):
+					vis.apply_to_sprite3d(marker, tex, marker.modulate, marker.pixel_size)
+				else:
+					marker.texture = tex
+		elif _marker_material:
+			var mat: StandardMaterial3D = _marker_material.duplicate()
+			marker.material_override = mat
 		anchor.add_child(marker)
 
 		var col_x := float(spawn.world_pos.x) + 0.5
@@ -846,7 +860,7 @@ func _refresh_spawn_markers() -> void:
 		var walkable := TerrainRamps.walkable_height(world, col_x, col_z) if world else _terrain_at(spawn.world_pos)
 		anchor.position = _WorldVisualCoords.column_to_world_pos(
 			col_x,
-			walkable + mesh.height * 0.5 + 0.08,
+			walkable + marker_size * 0.5 + 0.12,
 			col_z
 		)
 		_marker_root.add_child(anchor)
@@ -898,7 +912,7 @@ func get_crystal_top(wx: float, wz: float) -> float:
 	var depth: float = get_depth_at(key.x, key.y)
 	if depth < sim_config.min_depth:
 		return -INF
-	return _terrain_at(key) + depth
+	return _crystal_floor_at(key) + depth
 
 
 func get_walkable_height(wx: float, wz: float) -> float:
@@ -908,7 +922,7 @@ func get_walkable_height(wx: float, wz: float) -> float:
 	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, ramp_entry) if world else 1.0
 	var depth := get_depth_at(floori(wx), floori(wz))
 	if depth >= sim_config.min_depth:
-		return maxf(base, _terrain_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)
+		return maxf(base, _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)
 	return base
 
 
@@ -1295,11 +1309,14 @@ func import_state(data: Dictionary) -> void:
 	_log_spawn_status("restored")
 
 
-func get_spawn_marker(spawn_id: int) -> MeshInstance3D:
+func get_spawn_marker(spawn_id: int) -> Node3D:
 	var anchor: Node3D = _spawn_markers.get(spawn_id) as Node3D
 	if anchor == null:
 		return null
-	return anchor.get_node_or_null("Mesh") as MeshInstance3D
+	var sprite: Node3D = anchor.get_node_or_null("Sprite") as Node3D
+	if sprite != null:
+		return sprite
+	return anchor.get_node_or_null("Mesh") as Node3D
 
 
 func get_spawn_marker_ids() -> Array:

@@ -10,7 +10,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 ## Small lift above walkable surface to avoid z-fighting with voxel tops.
 const SURFACE_LIFT: float = 0.12
 ## World units per texture pixel (= voxel_scale * factor in 0.025–0.04 band).
-const SPRITE_PIXEL_SCALE: float = 0.032
+const SPRITE_PIXEL_SCALE: float = 0.026
 
 signal visuals_ready
 signal post_bootstrap_refreshed
@@ -19,7 +19,7 @@ var entity_sprites_enabled: bool = true
 var entity_voxel_models_enabled: bool = true
 var feature_billboards_enabled: bool = true
 var vegetation_voxel_models_enabled: bool = true
-var vegetation_billboard_distance_columns: int = 56
+var vegetation_billboard_distance_columns: int = 72
 var spawn_marker_textures_enabled: bool = true
 var max_feature_billboards_per_chunk: int = 48
 
@@ -193,6 +193,12 @@ func get_building_texture(building_id: StringName) -> Texture2D:
 	return _get_or_fallback("building_%s" % building_id, _category_building(), building_id)
 
 
+func get_item_texture(item_id: String) -> Texture2D:
+	if item_id.is_empty():
+		return null
+	return _get_or_fallback("item_%s" % item_id, _category_particle(), StringName(item_id))
+
+
 func get_combat_texture(variant_id: StringName) -> Texture2D:
 	return _get_or_fallback(str(variant_id), _category_particle(), variant_id)
 
@@ -264,6 +270,12 @@ func vegetation_anchor_height_offset(tex: Texture2D, plant_id: StringName, stage
 	match str(plant_id):
 		"grass_tuft", "grass":
 			return half + 0.04 * vs
+		"tall_grass":
+			return half + 0.1 * vs * growth
+		"wildflower":
+			return half + 0.06 * vs
+		"fern":
+			return half + 0.08 * vs * growth
 		"bush":
 			return half + 0.08 * vs * growth
 		_:

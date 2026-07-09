@@ -28,14 +28,16 @@
 [ext_resource type="Script" uid="uid://da6pnwoqgsk83" path="res://systems/game_visual_registry.gd" id="20_visreg"]
 [ext_resource type="Script" uid="uid://d4e8upktb4r45" path="res://world/feature_visual_layer.gd" id="21_featvis"]
 [ext_resource type="Script" uid="uid://bwur1svbs5bg5" path="res://world/world_visuals.gd" id="22_wvis"]
+[ext_resource type="Script" path="res://systems/developer_assistant.gd" id="23_devasst"]
+[ext_resource type="Script" path="res://ui/dev_chat_overlay.gd" id="24_devchat"]
 
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
 ambient_light_source = 2
-ambient_light_color = Color(0.58, 0.64, 0.74, 1)
-ambient_light_energy = 0.42
+ambient_light_color = Color(0.34, 0.38, 0.48, 1)
+ambient_light_energy = 0.22
 tonemap_mode = 2
-tonemap_exposure = 1.05
+tonemap_exposure = 0.72
 
 [node name="Game" type="Node3D" unique_id=238200303]
 script = ExtResource("1_2f3dj")
@@ -110,13 +112,16 @@ script = ExtResource("8_terrain")
 [node name="SaveGameService" type="Node" parent="." unique_id=65740121]
 script = ExtResource("16_save")
 
+[node name="DeveloperAssistant" type="Node" parent="."]
+script = ExtResource("23_devasst")
+
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
 environment = SubResource("Environment_tipki")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1030504662]
 transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
-light_color = Color(1, 0.96, 0.88, 1)
-light_energy = 1.15
+light_color = Color(0.72, 0.78, 0.9, 1)
+light_energy = 0.58
 shadow_enabled = true
 directional_shadow_mode = 1
 directional_shadow_max_distance = 80.0
@@ -164,3 +169,9 @@ layout_mode = 0
 offset_right = 40.0
 offset_bottom = 23.0
 metadata/_edit_use_anchors_ = true
+
+[node name="DevChatOverlay" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 0
+mouse_filter = 2
+script = ExtResource("24_devchat")

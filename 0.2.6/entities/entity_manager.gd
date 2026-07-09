@@ -248,7 +248,7 @@ func _spawn_world_entity(
 	if brain_cfg == null:
 		return
 	var entity: _WorldEntity = _WorldEntity.new()
-	entity.died.connect(_on_entity_died.bind(entity))
+	entity.died.connect(_on_entity_died)
 	var parent := _entity_parent()
 	parent.add_child(entity)
 	if not entity.is_inside_tree():
@@ -261,8 +261,11 @@ func _spawn_world_entity(
 	entity_spawned.emit(entity)
 
 
-func _on_entity_died(entity: Node3D) -> void:
+func _on_entity_died(entity: Node3D, _world_pos: Vector2i = Vector2i.ZERO) -> void:
+	if not is_instance_valid(entity):
+		return
 	_entities.erase(entity)
+	_spawned_cells.erase(_world_pos)
 	entity_despawned.emit(entity)
 
 
@@ -309,7 +312,7 @@ func _spawn_from_save(data: Dictionary) -> void:
 	var tint_arr: Array = data.get("tint", [0.72, 0.72, 0.68, 1.0])
 	var tint := Color(float(tint_arr[0]), float(tint_arr[1]), float(tint_arr[2]), float(tint_arr[3]))
 	var entity: _WorldEntity = _WorldEntity.new()
-	entity.died.connect(_on_entity_died.bind(entity))
+	entity.died.connect(_on_entity_died)
 	_entity_parent().add_child(entity)
 	entity.setup(brain_cfg, cell, world, chunk_manager, crystal_manager, defend, tint)
 	if data.has("health"):

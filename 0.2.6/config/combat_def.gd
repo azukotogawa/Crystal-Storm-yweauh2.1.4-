@@ -4,7 +4,7 @@ extends Resource
 @export_group("Melee")
 @export_range(20.0, 120.0, 1.0)
 var melee_arc_degrees: float = 70.0
-@export var melee_vertical_tolerance: float = 2.2
+@export var melee_vertical_tolerance: float = 3.6
 @export_range(1, 8, 1)
 var max_melee_targets: int = 4
 

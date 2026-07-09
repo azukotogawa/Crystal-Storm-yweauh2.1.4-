@@ -8,6 +8,8 @@ const _StatIds = preload("res://stats/stat_ids.gd")
 const _CombatDef = preload("res://config/combat_def.gd")
 const _CombatHitResolver = preload("res://systems/combat_hit_resolver.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -57,9 +59,12 @@ func _process(delta: float) -> void:
 	if _cooldown_timer > 0.0:
 		_cooldown_timer = maxf(_cooldown_timer - delta, 0.0)
 
+	if _GameplayInput.blocks_actions():
+		return
+
 	if Input.is_action_just_pressed("attack"):
 		_try_attack()
-	if Input.is_action_just_pressed("interact"):
+	if Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("build_place"):
 		_try_build_wall()
 	if Input.is_action_just_pressed("plant"):
 		_try_plant()
@@ -125,22 +130,19 @@ func _try_attack() -> void:
 
 
 func _attack_forward() -> Vector3:
-	var rot: int = player.locked_rotation if player.is_input_locked else (
-		player.camera.orbit_rotation if player.camera else 0
-	)
-	var rad := deg_to_rad(float(rot) * 90.0 + 45.0)
-	return Vector3(cos(rad), 0.0, sin(rad)).normalized()
+	return _ActionTargeting.attack_forward(player)
 
 
 func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
-	return player.voxel_position + Vector3(0.0, Player.get_player_height() * chest_ratio, 0.0)
+	return _ActionTargeting.attack_origin_world(player, chest_ratio)
 
 
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
-	var origin := _attack_origin(0.5)
-	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 2.0))
-	var hit_pos := origin + forward * range_v
+	var origin := _attack_origin(0.5)
+	var target_col := _ActionTargeting.target_column(player, range_v)
+	var forward := _ActionTargeting.attack_toward_column(player, range_v)
+	var hit_pos := Vector3(target_col.x, origin.y, target_col.z)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 
 	var targets := _CombatHitResolver.query_melee(
@@ -158,7 +160,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
-			Vector2i(floori(hit_pos.x), floori(hit_pos.z)),
+			_crystal_target_cell(range_v),
 			_crystal_hit_damage(def),
 			range_v
 		)
@@ -186,12 +188,16 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
-			Vector2i(floori(hit_pos.x), floori(hit_pos.z)),
+			_crystal_target_cell(range_v),
 			_crystal_hit_damage(def, _StatIds.RANGED_DAMAGE),
 			2.5
 		)
 
 	attacked.emit(item_id, hit_pos)
+
+
+func _crystal_target_cell(range_v: float) -> Vector2i:
+	return _ActionTargeting.target_cell(player, range_v)
 
 
 func _do_dig_attack(item_id: String, def: Dictionary) -> void:
@@ -200,9 +206,12 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	if _terrain_editor == null:
 		push_warning("WeaponController: terrain_editor not found for dig")
 		return
+	var range_v: float = float(def.get("range", 2.0))
+	if Input.is_key_pressed(KEY_SHIFT) or Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT):
+		_try_channel_water_at_target(range_v)
+		return
 	var forward := _attack_forward()
-	var target := player.voxel_position + forward * float(def.get("range", 2.0))
-	target.y = player.voxel_position.y
+	var target := _ActionTargeting.target_column(player, range_v)
 	dig_attempted.emit(target)
 	if _terrain_editor.try_dig(target):
 		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
@@ -224,7 +233,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
-			Vector2i(floori(target.x), floori(target.z)),
+			_crystal_target_cell(float(def.get("range", 2.0))),
 			_crystal_hit_damage(def),
 			1.8
 		)
@@ -233,13 +242,20 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 
 
 func _try_build_wall() -> void:
-	if _cooldown_timer > 0.0 or player == null or inventory == null or _terrain_editor == null:
+	if _cooldown_timer > 0.0 or player == null:
+		return
+	if inventory == null and player:
+		inventory = player.inventory
+	if inventory == null:
+		return
+	if _terrain_editor == null:
+		_bind_terrain_editor()
+	if _terrain_editor == null:
 		return
 	var game_manager := get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
 		return
-	var forward := _attack_forward()
-	var target := player.voxel_position + forward * 2.0
+	var target := _ActionTargeting.target_column(player, 2.0)
 	if _terrain_editor.try_build_wall(target, inventory, inventory.count_item("stone") > 0):
 		_cooldown_timer = 0.35
 
@@ -268,22 +284,36 @@ func _try_plant() -> void:
 		return
 	var forward := _attack_forward()
 	var target := player.voxel_position + forward * 2.0
-	var plant_id: StringName = &"tree" if Input.is_key_pressed(KEY_SHIFT) else (
-		&"bush" if inventory.count_item("wood") >= 2 else &"grass_tuft"
-	)
+	var plant_id: StringName
+	if Input.is_key_pressed(KEY_SHIFT):
+		plant_id = &"tree" if inventory.count_item("wood") >= 3 else &"fern"
+	elif Input.is_key_pressed(KEY_CTRL):
+		plant_id = &"wildflower"
+	elif inventory.count_item("wood") >= 2:
+		plant_id = &"bush"
+	elif inventory.count_item("herb") >= 2:
+		plant_id = &"tall_grass"
+	else:
+		plant_id = &"grass_tuft"
 	if _terrain_editor.try_plant(target, inventory, plant_id):
 		_cooldown_timer = _terrain_editor.get_plant_delay()
 
 
 func _try_channel_water() -> void:
+	_try_channel_water_at_target(2.0)
+
+
+func _try_channel_water_at_target(range_v: float) -> void:
 	if _cooldown_timer > 0.0 or player == null or _terrain_editor == null:
 		return
 	var slot = get_active_item()
 	var using_pick: bool = slot != null and str(slot.id) == "stone_pick"
 	if not using_pick:
 		return
-	var forward := _attack_forward()
-	var target := player.voxel_position + forward * 2.0
+	var forward := _ActionTargeting.attack_toward_column(player, range_v)
+	var target := _ActionTargeting.target_column(player, range_v)
+	if target == Vector3.ZERO:
+		target = player.voxel_position + forward * range_v
 	var mode: int = TerrainEditor.ChannelMode.DIG
 	if Input.is_key_pressed(KEY_SHIFT):
 		mode = TerrainEditor.ChannelMode.RAISE

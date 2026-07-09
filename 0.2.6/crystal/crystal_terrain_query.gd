@@ -13,6 +13,8 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
+## Headless tests: base height per cell when world is null.
+var test_base_heights: Dictionary = {}
 ## Single-sample cached height (faster than smooth bilinear for flow sim).
 var use_fast_terrain_height: bool = true
 
@@ -34,17 +36,21 @@ func begin_sim_tick(tick_id: int) -> void:
 
 
 func get_terrain_height(pos: Vector2i) -> float:
-	if world == null:
-		return 0.0
 	if _height_cache.has(pos):
 		return _height_cache[pos]
 	var h: float
-	if use_fast_terrain_height:
-		h = world.get_surface_height(float(pos.x), float(pos.y))
-	elif world.has_method("get_surface_height_smooth"):
-		h = world.get_surface_height_smooth(float(pos.x), float(pos.y))
+	if test_base_heights.has(pos):
+		h = float(test_base_heights[pos])
+		h += _TerrainEdits.get_height_delta(pos.x, pos.y)
+	elif world != null:
+		if use_fast_terrain_height:
+			h = world.get_surface_height(float(pos.x), float(pos.y))
+		elif world.has_method("get_surface_height_smooth"):
+			h = world.get_surface_height_smooth(float(pos.x), float(pos.y))
+		else:
+			h = world.get_surface_height(float(pos.x), float(pos.y))
 	else:
-		h = world.get_surface_height(float(pos.x), float(pos.y))
+		h = _TerrainEdits.get_height_delta(pos.x, pos.y)
 	_height_cache[pos] = h
 	return h
 

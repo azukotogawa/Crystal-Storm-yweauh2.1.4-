@@ -3,6 +3,7 @@ extends Control
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
 
 @onready var label = $DebugLabel
 
@@ -66,6 +67,14 @@ func _process(_delta: float) -> void:
 	var nearest_target := "—"
 	var spawn_progress := "—"
 	var last_spawn_kill := "—"
+	var terrain_atlas := "—"
+	var highlight_mode := "—"
+	var highlight_cell := "—"
+	var hotbar_item := "—"
+	var veg_voxel := 0
+	var veg_billboard := 0
+	var entity_voxel := 0
+	var entity_sprite := 0
 
 	# Find main nodes safely
 	var main = get_tree().root.get_node_or_null("Game")
@@ -210,6 +219,16 @@ func _process(_delta: float) -> void:
 	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
 	if entity_mgr and entity_mgr.has_method("get_active_entity_count"):
 		world_entities = entity_mgr.get_active_entity_count()
+	for node in get_tree().get_nodes_in_group("world_entity"):
+		if node.get_node_or_null("VoxelProp") != null and node.get_node_or_null("VoxelProp").visible:
+			entity_voxel += 1
+		elif node.get_node_or_null("Sprite3D") != null and node.get_node_or_null("Sprite3D").visible:
+			entity_sprite += 1
+	for node in get_tree().get_nodes_in_group("crystal_enemy"):
+		if node.get_node_or_null("VoxelProp") != null and node.get_node_or_null("VoxelProp").visible:
+			entity_voxel += 1
+		elif node.get_node_or_null("Sprite3D") != null and node.get_node_or_null("Sprite3D").visible:
+			entity_sprite += 1
 	var town_def = get_tree().get_first_node_in_group("town_defense_manager")
 	if town_def and town_def.has_method("get_status_summary"):
 		var towns: Array = town_def.get_status_summary()
@@ -230,12 +249,50 @@ func _process(_delta: float) -> void:
 	if _expensive_queries and player and player.has_method("get_voxel_position"):
 		nearest_target = _nearest_combat_target_summary(player.get_voxel_position())
 
+	if player and world:
+		var action := _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0)
+		var mode: String = str(action.get("mode", "none"))
+		if mode != "none":
+			highlight_mode = mode
+			var cell: Vector2i = action.get("cell", Vector2i.ZERO)
+			highlight_cell = "%d,%d" % [cell.x, cell.y]
+		var weapon := player.get_node_or_null("WeaponController")
+		if weapon and weapon.has_method("get_active_item"):
+			var slot = weapon.get_active_item()
+			if slot != null:
+				hotbar_item = str(slot.id)
+
+	var visuals_root = get_tree().get_first_node_in_group("world_visuals_root")
+	if visuals_root:
+		var veg_root = visuals_root.get_node_or_null("Vegetation")
+		if veg_root:
+			for anchor in veg_root.get_children():
+				if anchor.get_node_or_null("VoxelProp") != null:
+					veg_voxel += 1
+				elif anchor.get_node_or_null("Billboard") != null:
+					veg_billboard += 1
+	if chunk_manager and chunk_manager.chunks.size() > 0:
+		for coord in chunk_manager.chunks.keys():
+			var view: ChunkView = chunk_manager.chunks[coord] as ChunkView
+			if view == null:
+				continue
+			var mm: MultiMeshInstance3D = view.get_node_or_null("LayerContainer/mm_instance") as MultiMeshInstance3D
+			if mm == null or not mm.material_override is ShaderMaterial:
+				continue
+			var mat := mm.material_override as ShaderMaterial
+			var tex: Texture2D = mat.get_shader_parameter("texture_atlas") as Texture2D
+			if tex != null:
+				var n: int = mm.multimesh.instance_count if mm.multimesh else 0
+				terrain_atlas = "%s (%d inst)" % [tex.resource_path.get_file(), n]
+				break
+
 	label.text = """Seed: %s
 Map Temp: %s
 Phase: %s | HP: %s
 Voxel Pos: %.1f, %.1f, %.1f
 Chunk: %d, %d
 Chunks Loaded: %d
+Terrain Atlas: %s
 Tile: %s
 Biome: %s
 Map Zone: %s
@@ -253,6 +310,9 @@ Last Kill: %s
 Towns: %s
 Combat: %s
 Target: %s
+Highlight: %s @ %s
+Hotbar: %s
+Veg: %d voxel / %d bill | Ent: %d voxel / %d spr
 Perf: %s
 Save: %s
 FPS: %d""" % [
@@ -262,6 +322,7 @@ FPS: %d""" % [
 		player_voxel.x, player_voxel.y, player_voxel.z,
 		current_chunk.x, current_chunk.y,
 		chunks_count,
+		terrain_atlas,
 		tile_name,
 		biome_name,
 		map_zone,
@@ -279,6 +340,9 @@ FPS: %d""" % [
 		town_status,
 		combat_log,
 		nearest_target,
+		highlight_mode, highlight_cell,
+		hotbar_item,
+		veg_voxel, veg_billboard, entity_voxel, entity_sprite,
 		perf_hint,
 		save_hint,
 		Engine.get_frames_per_second()

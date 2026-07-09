@@ -2,6 +2,7 @@ extends Control
 
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
+const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
@@ -11,7 +12,9 @@ const _WeaponController = preload("res://weapons/weapon_controller.gd")
 
 var _weapon: _WeaponController
 var _slot_nodes: Array[PanelContainer] = []
+var _icon_nodes: Array[TextureRect] = []
 var _label_nodes: Array[Label] = []
+var _registry: _GameVisualRegistry
 
 
 func _ready() -> void:
@@ -22,7 +25,15 @@ func _ready() -> void:
 			_player.inventory.changed.connect(_refresh)
 			_player.inventory.hotbar_changed.connect(_on_hotbar_changed)
 	_build_slots()
+	call_deferred("_bind_registry")
 	call_deferred("_refresh")
+
+
+func _bind_registry() -> void:
+	_registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if _registry and _registry.has_method("ensure_textures_ready"):
+		await _registry.ensure_textures_ready()
+	_refresh()
 
 
 func _build_slots() -> void:
@@ -49,16 +60,27 @@ func _build_slots() -> void:
 		style.set_corner_radius_all(4)
 		panel.add_theme_stylebox_override("panel", style)
 
+		var icon := TextureRect.new()
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.custom_minimum_size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
+		icon.size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
+		icon.position = Vector2(4, 2)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(icon)
+
 		var label := Label.new()
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.size = Vector2(SLOT_SIZE, SLOT_SIZE)
-		label.add_theme_font_size_override("font_size", 11)
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		label.position = Vector2(2, SLOT_SIZE - 18)
+		label.size = Vector2(SLOT_SIZE - 4, 16)
+		label.add_theme_font_size_override("font_size", 9)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(label)
 
 		add_child(panel)
 		_slot_nodes.append(panel)
+		_icon_nodes.append(icon)
 		_label_nodes.append(label)
 
 
@@ -69,6 +91,8 @@ func _on_hotbar_changed(_index: int) -> void:
 func _refresh() -> void:
 	if _player == null or _player.inventory == null:
 		return
+	if _registry == null:
+		_registry = get_tree().get_first_node_in_group("game_visual_registry")
 	var active := 0
 	if _weapon:
 		active = _weapon.get_active_hotbar_index()
@@ -85,14 +109,17 @@ func _refresh() -> void:
 			style.bg_color = Color(0.08, 0.08, 0.12, 0.82)
 		panel.add_theme_stylebox_override("panel", style)
 
+		var icon := _icon_nodes[i]
 		var label := _label_nodes[i]
 		if slot == null:
+			icon.texture = null
 			label.text = str(i + 1)
 		else:
-			var name_short: String = _ItemTypes.display_name(slot.id)
-			if name_short.length() > 10:
-				name_short = name_short.substr(0, 9) + "…"
+			var tex: Texture2D = null
+			if _registry and _registry.has_method("get_item_texture"):
+				tex = _registry.get_item_texture(str(slot.id))
+			icon.texture = tex
 			if int(slot.count) > 1:
-				label.text = "%s\nx%d" % [name_short, int(slot.count)]
+				label.text = "x%d" % int(slot.count)
 			else:
-				label.text = name_short
+				label.text = ""

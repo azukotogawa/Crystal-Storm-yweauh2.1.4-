@@ -134,11 +134,55 @@ func generate_game_visual_bundle() -> Dictionary:
 	]
 	for id in entity_ids:
 		bundle["entity_%s" % id] = generate_texture(Category.ENTITY, id, 48)
-	for plant_stage in ["grass_tuft_s0", "grass_tuft_s1", "bush_s0", "bush_s1", "bush_s2", "tree_s0", "tree_s1", "tree_s2"]:
+	for plant_stage in [
+		"grass_tuft_s0", "grass_tuft_s1", "tall_grass_s0", "tall_grass_s1",
+		"wildflower_s0", "wildflower_s1", "fern_s0", "fern_s1",
+		"bush_s0", "bush_s1", "bush_s2", "tree_s0", "tree_s1", "tree_s2",
+	]:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
 	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar"]:
 		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
+	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb"]:
+		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id))
 	return bundle
+
+
+func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
+	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	image.fill(Color(0, 0, 0, 0))
+	var px := maxi(size / 8, 2)
+	match str(item_id):
+		"wooden_sword":
+			_paint_voxel_rect(image, 10, 6, 22, 8, Color(0.62, 0.42, 0.22))
+			_paint_voxel_rect(image, 18, 4, 24, 22, Color(0.78, 0.72, 0.55))
+		"stone_pick":
+			_paint_voxel_rect(image, 8, 8, 24, 10, Color(0.55, 0.55, 0.58))
+			_paint_voxel_rect(image, 14, 4, 20, 24, Color(0.68, 0.68, 0.72))
+			_paint_voxel_rect(image, 20, 2, 28, 10, Color(0.48, 0.48, 0.52))
+		"shortbow":
+			_paint_voxel_rect(image, 6, 14, 10, 18, Color(0.55, 0.36, 0.18))
+			_paint_voxel_rect(image, 10, 8, 26, 12, Color(0.72, 0.52, 0.28))
+			_paint_voxel_rect(image, 22, 14, 26, 18, Color(0.55, 0.36, 0.18))
+		"wood":
+			_paint_voxel_rect(image, 8, 10, 24, 22, Color(0.52, 0.34, 0.18))
+			_paint_voxel_rect(image, 10, 8, 22, 12, Color(0.62, 0.42, 0.22))
+		"stone":
+			_paint_voxel_rect(image, 8, 10, 24, 22, Color(0.5, 0.52, 0.55))
+			_paint_voxel_rect(image, 10, 8, 22, 12, Color(0.62, 0.64, 0.68))
+		"herb":
+			_paint_voxel_rect(image, 14, 18, 18, 24, Color(0.32, 0.58, 0.28))
+			_paint_voxel_rect(image, 10, 8, 14, 18, Color(0.42, 0.72, 0.35))
+			_paint_voxel_rect(image, 18, 10, 22, 20, Color(0.38, 0.68, 0.32))
+		_:
+			_paint_voxel_rect(image, 10, 10, 22, 22, Color(0.7, 0.7, 0.75))
+	return ImageTexture.create_from_image(image)
+
+
+func _paint_voxel_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) -> void:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height():
+				img.set_pixel(x, y, color)
 
 
 func export_game_visual_bundle(export_dir: String = "") -> String:

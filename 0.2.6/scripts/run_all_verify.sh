@@ -16,13 +16,29 @@ SUITES=(
 	"res://scripts/verify_player_jump.gd"
 	"res://scripts/verify_jump_while_moving.gd"
 	"res://scripts/verify_terrain_dig.gd"
+	"res://scripts/verify_terrain_build.gd"
 	"res://scripts/verify_dug_strata_no_cap.gd"
 	"res://scripts/verify_chunk_surface_zero.gd"
 	"res://scripts/verify_chunk_atlas.gd"
+	"res://scripts/verify_ramp_concave.gd"
+	"res://scripts/verify_ramp_corner.gd"
+	"res://scripts/verify_ramp_landing.gd"
+	"res://scripts/verify_ramp_cell_exclusive.gd"
+	"res://scripts/verify_ramp_slope.gd"
+	"res://scripts/verify_target_highlight.gd"
+	"res://scripts/verify_target_facing.gd"
+	"res://scripts/verify_main_runtime_health.gd"
+	"res://scripts/verify_manual_checklist_corroboration.gd"
+	"res://scripts/verify_perf_preset_boot.gd"
 	"res://scripts/verify_weapon_attack.gd"
+	"res://scripts/verify_combat_entity_hit.gd"
+	"res://scripts/verify_combat_crystal_damage.gd"
+	"res://scripts/verify_item_icons.gd"
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_visual_perf.gd"
 	"res://scripts/verify_crystal_spread_limits.gd"
+	"res://scripts/verify_crystal_grid_align.gd"
+	"res://scripts/verify_entity_death_signal.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
 	"res://scripts/verify_topographical_map.gd"
 	"res://scripts/verify_vegetation_perf.gd"
@@ -40,12 +56,29 @@ SUITES=(
 	"res://scripts/verify_smoke_contract.gd"
 	"res://scripts/verify_smoke_quit_path.gd"
 	"res://scripts/verify_smoke_gameplay.gd"
+	"res://scripts/verify_dev_chat.gd"
+)
+
+# Main-scene probes SIGKILL on OK to avoid Godot teardown abort(134); match terminal marker not exit code.
+declare -A ABRUPT_OK_MARKER=(
+	["res://scripts/verify_bootstrap_no_deadlock.gd"]="All bootstrap deadlock tests OK"
+	["res://scripts/verify_main_runtime_health.gd"]="All main runtime health tests OK"
+	["res://scripts/verify_manual_checklist_corroboration.gd"]="Manual checklist corroboration OK"
 )
 
 FAILED=0
 for path in "${SUITES[@]}"; do
 	echo ">>> Running ${path}"
-	if godot --headless --path "$ROOT" -s "$path" >/dev/null 2>&1; then
+	if [[ -n "${ABRUPT_OK_MARKER[$path]:-}" ]]; then
+		out="$(env CRYSTALSTORM_PROBE_ABRUPT_EXIT=1 godot --headless --path "$ROOT" -s "$path" 2>&1 || true)"
+		if grep -qF "${ABRUPT_OK_MARKER[$path]}" <<<"$out"; then
+			echo "    OK"
+		else
+			echo "    FAIL (missing OK marker)"
+			printf '%s\n' "$out" | tail -8
+			FAILED=1
+		fi
+	elif godot --headless --path "$ROOT" -s "$path" >/dev/null 2>&1; then
 		echo "    OK"
 	else
 		echo "    FAIL (exit $?)"

@@ -63,11 +63,16 @@ func _update_map_temp_label() -> void:
 		_phase_label.text = "Phase: Assault — push back to the origin%s" % temp_label
 
 
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+
+
 func _process(_delta: float) -> void:
 	if _game_manager == null:
 		_game_manager = get_tree().get_first_node_in_group("game_manager")
 	if _crystal == null:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if _GameplayInput.blocks_actions():
+		return
 	if Input.is_action_just_pressed("interact") and _panel.visible:
 		if _game_manager and _game_manager.has_method("restart_run"):
 			_game_manager.restart_run()

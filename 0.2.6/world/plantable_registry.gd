@@ -15,6 +15,9 @@ static func ensure_builtins() -> void:
 	if not _defs.is_empty():
 		return
 	_register(_make_grass())
+	_register(_make_tall_grass())
+	_register(_make_wildflower())
+	_register(_make_fern())
 	_register(_make_bush())
 	_register(_make_tree())
 
@@ -40,6 +43,60 @@ static func _make_grass() -> _PlantableDef:
 	d.stage_flow_factors = PackedFloat32Array([0.88, 0.55])
 	d.stage_absorb_rates = PackedFloat32Array([0.05, 0.14])
 	d.denial_radius = 0
+	return d
+
+
+static func _make_tall_grass() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"tall_grass"
+	d.display_name = "Tall Grass"
+	d.tile_id = VoxelTypes.GRASSLAND3
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.GRASS_PATCH
+	d.material_id = "herb"
+	d.material_cost = 1
+	d.crystal_flow_factor = 0.5
+	d.absorb_rate = 0.11
+	d.growth_stage_count = 2
+	d.growth_seconds_per_stage = 10.0
+	d.stage_flow_factors = PackedFloat32Array([0.9, 0.5])
+	d.stage_absorb_rates = PackedFloat32Array([0.04, 0.11])
+	d.denial_radius = 0
+	return d
+
+
+static func _make_wildflower() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"wildflower"
+	d.display_name = "Wildflower"
+	d.tile_id = VoxelTypes.GRASSLAND2
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.GRASS_PATCH
+	d.material_id = "herb"
+	d.material_cost = 1
+	d.crystal_flow_factor = 0.48
+	d.absorb_rate = 0.1
+	d.growth_stage_count = 2
+	d.growth_seconds_per_stage = 12.0
+	d.stage_flow_factors = PackedFloat32Array([0.92, 0.48])
+	d.stage_absorb_rates = PackedFloat32Array([0.03, 0.1])
+	d.denial_radius = 0
+	return d
+
+
+static func _make_fern() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"fern"
+	d.display_name = "Fern"
+	d.tile_id = VoxelTypes.HILLS2
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.BUSH
+	d.material_id = "herb"
+	d.material_cost = 2
+	d.crystal_flow_factor = 0.42
+	d.absorb_rate = 0.08
+	d.growth_stage_count = 2
+	d.growth_seconds_per_stage = 16.0
+	d.stage_flow_factors = PackedFloat32Array([0.88, 0.42])
+	d.stage_absorb_rates = PackedFloat32Array([0.03, 0.08])
+	d.denial_radius = 1
 	return d
 
 

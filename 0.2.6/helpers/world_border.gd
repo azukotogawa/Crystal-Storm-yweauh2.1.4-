@@ -59,6 +59,24 @@ static func is_playable(wx: float, wz: float) -> bool:
 	return zone_info(wx, wz).zone == "playable"
 
 
+## Deep border bands are impassable (ocean sink / unclimbable mountain wall).
+static func blocks_player_movement(wx: float, wz: float) -> bool:
+	var info: Dictionary = zone_info(wx, wz)
+	if info.zone == "playable":
+		return false
+	var deep: float = float(info.get("deep", 0.0))
+	var side: String = str(info.get("side", ""))
+	match side:
+		"ocean":
+			return deep > 0.28
+		"mountain":
+			return deep > 0.18
+		"corner":
+			return deep > 0.32
+		_:
+			return deep > 0.45
+
+
 static func edge_interior_coords(wx: float, wz: float) -> Vector2:
 	var cx: float = clampf(wx, -float(PLAYABLE_HALF_X), float(PLAYABLE_HALF_X))
 	var cz: float = clampf(wz, -float(PLAYABLE_HALF_Z), float(PLAYABLE_HALF_Z))

@@ -1,5 +1,7 @@
 extends Camera3D
 
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+
 @export var target: Node3D
 @export var use_smoothing := true
 @export var smooth_speed: float = 3.0
@@ -76,6 +78,8 @@ func get_offset_from_rotation() -> Vector3:
 	return Vector3(x, height_offset, z)
 
 func _unhandled_input(event):
+	if _GameplayInput.blocks_actions():
+		return
 	if event.is_action_pressed("rotate_left"):
 		orbit_rotation = (orbit_rotation + 3) % 4
 		_update_camera_transform()
@@ -90,6 +94,8 @@ func _update_camera_transform():
 	rotation_degrees = Vector3(-35.264, 45.0 + orbit_rotation * 90.0, 0.0)
 
 func _input(event):
+	if _GameplayInput.blocks_actions():
+		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			zoom_level = max(zoom_level - ZOOM_STEP, MIN_ZOOM)

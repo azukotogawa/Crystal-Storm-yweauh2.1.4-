@@ -3,6 +3,7 @@ extends Control
 const _TopographicalMapConfig = preload("res://config/topographical_map_config.gd")
 const _TopographicalMapBuilder = preload("res://systems/topographical_map_builder.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 @export var map_config: Resource
 
@@ -142,7 +143,7 @@ func _process(delta: float) -> void:
 	elif not _crystal_overlay_job.is_empty():
 		_step_crystal_overlay_job()
 
-	if Input.is_action_just_pressed("toggle_map"):
+	if not _GameplayInput.blocks_actions() and Input.is_action_just_pressed("toggle_map"):
 		if not _fullscreen_map_enabled:
 			return
 		_fullscreen_open = not _fullscreen_open

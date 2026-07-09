@@ -65,6 +65,51 @@ static func get_atlas_coord(tile_type: int) -> Vector2i:
 	return ATLAS_COORDS.get(tile_type, Vector2i(6, 0))
 
 
+## Minecraft-style face picking: grass tops on FACE_TOP, dirt/earth on vertical sides, dirt underside.
+static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i:
+	if face_code <= 0 or face_code >= 7:
+		return get_atlas_coord(tile_type)
+	if face_code == 2:
+		return get_atlas_coord(DIRT2)
+	if _is_grass_surface(tile_type):
+		return get_atlas_coord(DIRT) if face_code >= 3 else get_atlas_coord(tile_type)
+	if _is_forest_surface(tile_type):
+		return get_atlas_coord(TREE_TRUNK) if face_code >= 3 else get_atlas_coord(tile_type)
+	if _is_snow_surface(tile_type):
+		return get_atlas_coord(STONE2) if face_code >= 3 else get_atlas_coord(tile_type)
+	if _is_stone_surface(tile_type):
+		return get_atlas_coord(tile_type)
+	if _is_desert_surface(tile_type):
+		return get_atlas_coord(DESERT3) if face_code >= 3 else get_atlas_coord(tile_type)
+	return get_atlas_coord(tile_type)
+
+
+static func _is_grass_surface(tile_type: int) -> bool:
+	return tile_type in [
+		GRASSLAND, GRASSLAND2, GRASSLAND3, GRASSLAND4, GRASSLAND5,
+		GRASS_TUFT, FARMLAND, TOWN_PATH,
+	]
+
+
+static func _is_forest_surface(tile_type: int) -> bool:
+	return tile_type in [HILLS, HILLS2, HILLS3, HILLS4]
+
+
+static func _is_snow_surface(tile_type: int) -> bool:
+	return tile_type in [SNOW, SNOW2, SNOW3, TUNDRA, TUNDRA2, TUNDRA3]
+
+
+static func _is_stone_surface(tile_type: int) -> bool:
+	return tile_type in [
+		MOUNTAIN, MOUNTAIN2, MOUNTAIN3, MOUNTAIN4, MOUNTAIN5, MOUNTAIN6, MOUNTAIN7,
+		STONE, STONE2, CAVE_STONE, VALLEY, VALLEY2, VALLEY3, BASIN, BASIN2, BASIN3,
+	]
+
+
+static func _is_desert_surface(tile_type: int) -> bool:
+	return tile_type in [DESERT, DESERT2, DESERT3]
+
+
 static func atlas_grid_vec2() -> Vector2:
 	return Vector2(float(ATLAS_GRID_COLUMNS), float(ATLAS_GRID_ROWS))
 
@@ -154,7 +199,7 @@ const ATLAS_COORDS = {
 	VoxelTypes.HILLS: Vector2i(0,3),
 	VoxelTypes.HILLS2: Vector2i(1,3),
 	VoxelTypes.HILLS3: Vector2i(2,3),
-	VoxelTypes.HILLS4: Vector2i(3,3),
+	VoxelTypes.HILLS4: Vector2i(4,3),
 
 	VoxelTypes.MOUNTAIN: Vector2i(0,4),
 	VoxelTypes.MOUNTAIN2: Vector2i(1,4),

@@ -39,8 +39,13 @@ func _ready() -> void:
 	_connect_autosave_hooks()
 
 
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_echo():
+		return
+	if _GameplayInput.blocks_actions():
 		return
 	if event.is_action_pressed("quick_save"):
 		quick_save()

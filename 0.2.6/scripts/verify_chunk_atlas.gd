@@ -25,6 +25,29 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK ChunkView atlas=%s" % atlas_tex.resource_path)
+	var atlas_img: Image = Image.load_from_file(_VoxelTypes.ATLAS_TEXTURE_PATH)
+	if atlas_img == null or atlas_img.is_empty():
+		push_error("Cube.png image unavailable for atlas detail check")
+		failed = true
+	else:
+		var grass_colors: Dictionary = {}
+		var tw: int = _VoxelTypes.ATLAS_TILE_PIXELS
+		var grass_coord: Vector2i = _VoxelTypes.get_atlas_coord(_VoxelTypes.GRASSLAND)
+		for py in tw:
+			for px in tw:
+				var c: Color = atlas_img.get_pixel(
+					grass_coord.x * tw + px,
+					grass_coord.y * tw + py
+				)
+				grass_colors[c.to_html(false)] = true
+		if grass_colors.size() < 4:
+			push_error("grass atlas tile must have pixel variation, got %d colors" % grass_colors.size())
+			failed = true
+		elif grass_colors.size() > 24:
+			push_error("grass atlas tile too noisy, got %d colors (want 4-24)" % grass_colors.size())
+			failed = true
+		else:
+			print("OK grass tile pixel colors=%d" % grass_colors.size())
 
 	var grid: Vector2 = _ChunkMaterial.get_shader_parameter("atlas_grid")
 	if grid != _VoxelTypes.atlas_grid_vec2():
@@ -42,6 +65,15 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK biome coords grass=%s stone=%s snow=%s dirt=%s" % [grass, stone, snow, dirt])
+
+	var grass_top := _VoxelTypes.get_atlas_coord_for_face(_VoxelTypes.GRASSLAND3, 0)
+	var grass_side := _VoxelTypes.get_atlas_coord_for_face(_VoxelTypes.GRASSLAND3, 3)
+	var grass_bottom := _VoxelTypes.get_atlas_coord_for_face(_VoxelTypes.GRASSLAND3, 2)
+	if grass_top == grass_side or grass_top == grass_bottom:
+		push_error("grass block faces must differ top=%s side=%s bottom=%s" % [grass_top, grass_side, grass_bottom])
+		failed = true
+	else:
+		print("OK minecraft grass faces top=%s side=%s bottom=%s" % [grass_top, grass_side, grass_bottom])
 
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	world.world_seed = 42
@@ -88,7 +120,28 @@ func _run() -> void:
 			print("OK ChunkView multimesh instances=%d material bound" % mm.multimesh.instance_count)
 
 	root3d.queue_free()
+
+	var world_gen = load("res://world/InfiniteNoiseWorld.gd").new()
+	world_gen.world_seed = 12345
+	var biome_tiles: Dictionary = {}
+	for coord in [Vector2i(0, 0), Vector2i(3, -2), Vector2i(-2, 4), Vector2i(5, 5)]:
+		var gen_data := _ChunkData.new(coord, world_gen)
+		gen_data.capture_worker_snapshot()
+		gen_data._compute_column_maps(true)
+		for gx in _ChunkData.SIZE:
+			for gz in _ChunkData.SIZE:
+				var tid: int = gen_data.get_tile_type(gx, gz)
+				if tid != _VoxelTypes.AIR:
+					biome_tiles[tid] = true
+	if biome_tiles.size() < 3:
+		push_error("worldgen should scatter >=3 surface tile types across chunks, got %d" % biome_tiles.size())
+		failed = true
+	else:
+		print("OK worldgen biome tile types=%d" % biome_tiles.size())
+
 	if failed:
+		print("Chunk atlas tests FAILED")
 		quit(1)
+		return
 	print("All chunk atlas tests OK")
 	quit(0)

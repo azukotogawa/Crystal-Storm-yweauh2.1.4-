@@ -747,6 +747,8 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 	# This avoids any linear position hashes that produce stripes, while keeping
 	# InfiniteNoiseWorld's noise setup and members completely unchanged.
 	var tile_var: float = (_surface_variation.get_noise_2d(wx * 2.3, wz * 2.3) + 1.0) * 0.5
+	var patch_var: float = (_surface_variation.get_noise_2d(wx * 0.71 + 17.0, wz * 0.71 - 9.0) + 1.0) * 0.5
+	var micro_var: float = (_detail.get_noise_2d(wx * 5.1, wz * 5.1) + 1.0) * 0.5
 
 	var name: String
 	match bname:
@@ -754,11 +756,25 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 			if map_temperature == MapTemperature.COLD and temp2 < 0.45:
 				name = "snow" if tile_var < 0.55 else "snow2"
 			elif moist > 0.66:
-				name = "meadow" if tile_var < 0.6 else "grass"
+				if patch_var < 0.22:
+					name = "meadow"
+				elif patch_var < 0.48:
+					name = "grass"
+				elif patch_var < 0.72:
+					name = "plains"
+				else:
+					name = "savanna" if micro_var > 0.5 else "meadow"
 			elif temp2 < 0.34:
-				name = "savanna"
+				name = "savanna" if patch_var > 0.35 else "steppe"
 			else:
-				name = "plains" if tile_var > 0.5 else "grass"
+				if patch_var < 0.3:
+					name = "grass"
+				elif patch_var < 0.55:
+					name = "plains"
+				elif patch_var < 0.78:
+					name = "meadow"
+				else:
+					name = "steppe" if micro_var > 0.55 else "grass"
 		"steppe":
 			if map_temperature == MapTemperature.COLD or (map_temperature == MapTemperature.MILD_COLD and temp2 < 0.42):
 				name = "snow2" if tile_var < 0.5 else "snow"
@@ -770,14 +786,24 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 				name = "basin"
 		"forest":
 			if moist > 0.72:
-				name = "dense forest"
+				name = "dense forest" if patch_var > 0.4 else "jungle"
 			elif temp2 < 0.38:
-				name = "pine forest"
+				name = "pine forest" if patch_var > 0.35 else "forest"
 			else:
-				name = "forest" if tile_var > 0.4 else "meadow"
+				if patch_var < 0.35:
+					name = "meadow"
+				elif patch_var < 0.65:
+					name = "forest"
+				else:
+					name = "dense forest"
 		"marsh":
-			name = "marsh"
-			if rugged < 0.18 and moist > 0.78:
+			if patch_var < 0.4:
+				name = "marsh"
+			elif patch_var < 0.7:
+				name = "meadow"
+			else:
+				name = "basin"
+			if rugged < 0.18 and moist > 0.78 and patch_var < 0.55:
 				name = "basin"
 		"highland":
 			if surf > 72.0:

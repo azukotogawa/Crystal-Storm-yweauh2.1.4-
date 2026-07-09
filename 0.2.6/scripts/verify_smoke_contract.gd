@@ -27,7 +27,7 @@ func _run() -> void:
 	if 'SCRATCH_PATH := "' in text and "manual_verification.md" in text.split("SCRATCH_PATH")[1]:
 		push_error("smoke SCRATCH_PATH must not be manual_verification.md")
 		ok = false
-	if "scripted_smoke_evidence.md" not in text:
+	if "scripted_smoke_evidence.md" not in text and "smoke_evidence_path" not in text:
 		push_error("smoke must write scripted_smoke_evidence.md only")
 		ok = false
 	if "probe_exit.gd" not in text or "_ProbeExit.finish_tree" not in text:
@@ -47,6 +47,9 @@ func _run() -> void:
 		ok = false
 	if "Combat VFX" not in text:
 		push_error("smoke must include combat VFX section")
+		ok = false
+	if "Melee entity damage" not in text:
+		push_error("smoke must include melee entity damage section")
 		ok = false
 	if "Sustained session" not in text:
 		push_error("smoke must include sustained session section")

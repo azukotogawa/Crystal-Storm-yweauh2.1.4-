@@ -56,7 +56,8 @@ const CAVE_MESH_DEPTH := 32
 
 func _ready():
 	add_to_group("chunk_manager")
-	
+	TerrainRamps.invalidate_mesh_cache()
+
 	player = get_tree().get_first_node_in_group("player")
 	world = get_tree().get_first_node_in_group("world")
 	
@@ -124,6 +125,12 @@ func _unload_chunk_view(key: Vector2i) -> void:
 func request_chunk(coord: Vector2i, high_priority: bool = false):
 	if chunks.has(coord) or pending.has(coord) or _chunk_tasks.has(coord):
 		return
+	_enqueue_chunk_generation(coord, high_priority)
+
+
+func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> void:
+	if pending.has(coord) or _chunk_tasks.has(coord):
+		return
 	if world == null:
 		return
 
@@ -143,6 +150,13 @@ func request_chunk(coord: Vector2i, high_priority: bool = false):
 	)
 	_chunk_tasks[coord] = task_id
 
+
+func _regenerate_chunk_mesh(coord: Vector2i, high_priority: bool = true) -> void:
+	if world == null or not chunks.has(coord):
+		return
+	_enqueue_chunk_generation(coord, high_priority)
+
+
 func _build_mesh(data: ChunkData) -> Dictionary:
 	var out_quads := []
 
@@ -150,6 +164,7 @@ func _build_mesh(data: ChunkData) -> Dictionary:
 	_emit_ramps(data, out_quads, concave_cells)
 	_emit_concave_corner_prisms(data, out_quads, concave_cells)
 	_emit_dug_strata(data, out_quads)
+	_emit_build_strata(data, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, 1, 0), FACE_TOP, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, -1, 0), 6, out_quads)
 	_greedy_mesh_plane(data, Vector3i(0, -1, 0), 4, out_quads)
@@ -166,6 +181,33 @@ func _build_mesh(data: ChunkData) -> Dictionary:
 		"count": out_quads.size()
 	}
 
+func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int) -> bool:
+	if data.has_ramp(x, z):
+		return true
+	return _is_ramp_approach_from_landing(data, x, z)
+
+
+func _is_ramp_approach_from_landing(data: ChunkData, x: int, z: int) -> bool:
+	var entry: Dictionary = data.get_ramp_entry(x, z)
+	if not entry.is_empty():
+		return entry.get("approach", false)
+	for d in _RAMP_DIRS:
+		var lx: int = x - d.x
+		var lz: int = z - d.y
+		if lx < 0 or lx >= ChunkData.SIZE or lz < 0 or lz >= ChunkData.SIZE:
+			continue
+		if not data.has_ramp(lx, lz):
+			continue
+		var landing: Dictionary = data.get_ramp_entry(lx, lz)
+		if landing.get("approach", false) or landing.get("corner", false):
+			continue
+		if landing.get("dir2", Vector2i.ZERO) != Vector2i.ZERO:
+			continue
+		if landing.get("dir", Vector2i.ZERO) == d:
+			return true
+	return false
+
+
 func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, out_quads: Array):
 	if normal_dir.y != 0:
 		var visited := []
@@ -178,7 +220,7 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 
 		for x in range(ChunkData.SIZE):
 			for z in range(ChunkData.SIZE):
-				if visited[x][z] or data.has_ramp(x, z):
+				if visited[x][z] or _skips_greedy_surface_cell(data, x, z):
 					continue
 				var sy: float = data.get_surface_y(x, z)
 				if sy >= float(ChunkData.HEIGHT):
@@ -189,6 +231,7 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 
 				var dx := 1
 				while x + dx < ChunkData.SIZE and not visited[x + dx][z] \
+						and not _skips_greedy_surface_cell(data, x + dx, z) \
 						and is_equal_approx(data.get_surface_y(x + dx, z), sy) \
 						and data.get_tile_type(x + dx, z) == vox:
 					dx += 1
@@ -199,7 +242,8 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 					for xx in range(dx):
 						var cx := x + xx
 						var cz := z + dz
-						if visited[cx][cz] or not is_equal_approx(data.get_surface_y(cx, cz), sy) \
+						if visited[cx][cz] or _skips_greedy_surface_cell(data, cx, cz) \
+								or not is_equal_approx(data.get_surface_y(cx, cz), sy) \
 								or data.get_tile_type(cx, cz) != vox:
 							can = false
 							break
@@ -234,6 +278,14 @@ func _is_step_height(diff: float) -> bool:
 
 func _cliff_height() -> float:
 	return _WorldSettings.get_active().cliff_height()
+
+
+func _has_player_build_at(data: ChunkData, x: int, z: int) -> bool:
+	if data.get_worker_build_tile(x, z) >= 0:
+		return true
+	var layer_h: float = _WorldSettings.get_active().layer_height()
+	var delta: float = data.get_worker_height_delta(x, z)
+	return absf(delta) > layer_h * 0.08
 
 
 func _should_place_ramp(world_x: int, world_z: int, dir: Vector2i, surface_h: float = -1.0) -> bool:
@@ -294,11 +346,32 @@ func _perpendicular_dirs(d: Vector2i) -> Array:
 
 
 func _step_out_dirs(data: ChunkData, x: int, z: int, low_h: float, world_x: int, world_z: int) -> Array:
+	if _has_player_build_at(data, x, z):
+		return []
 	var out: Array = []
 	for d in _RAMP_DIRS:
+		if _has_player_build_at(data, x + d.x, z + d.y):
+			continue
 		var nh: float = _sample_height(data, x + d.x, z + d.y)
 		if _is_step_height(nh - low_h) and _should_place_ramp(world_x, world_z, d, low_h):
 			out.append(d)
+	return out
+
+
+## Cardinal ramps sit on the landing (higher) column, sloping down toward the lower neighbor.
+func _step_in_dirs(data: ChunkData, x: int, z: int, cell_h: float, world_x: int, world_z: int) -> Array:
+	if _has_player_build_at(data, x, z):
+		return []
+	var out: Array = []
+	for d in _RAMP_DIRS:
+		var lx: int = x - d.x
+		var lz: int = z - d.y
+		if _has_player_build_at(data, lx, lz):
+			continue
+		var lh: float = _sample_height(data, lx, lz)
+		var toward_low := Vector2i(-d.x, -d.y)
+		if _is_step_height(cell_h - lh) and _should_place_ramp(world_x, world_z, toward_low, cell_h):
+			out.append(toward_low)
 	return out
 
 
@@ -331,6 +404,9 @@ func _pick_corner_dirs(data: ChunkData, x: int, z: int, planned: Dictionary) -> 
 
 
 func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int, entry: Dictionary) -> void:
+	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
+	var dir2: Vector2i = entry.get("dir2", Vector2i.ZERO)
+	var is_corner: bool = dir2 != Vector2i.ZERO
 	var quad := {
 		"x": x,
 		"y": low_h,
@@ -338,14 +414,14 @@ func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int,
 		"dim_x": 1.0,
 		"dim_y": 1.0,
 		"dim_z": 1.0,
-		"ramp_dir_x": entry.get("dir", Vector2i.ZERO).x,
-		"ramp_dir_z": entry.get("dir", Vector2i.ZERO).y,
-		"ramp_dir2_x": entry.get("dir2", Vector2i.ZERO).x,
-		"ramp_dir2_z": entry.get("dir2", Vector2i.ZERO).y,
+		"ramp_dir_x": dir.x,
+		"ramp_dir_z": dir.y,
+		"ramp_dir2_x": dir2.x,
+		"ramp_dir2_z": dir2.y,
 		"uv_w": 1.0,
 		"uv_h": 1.0,
 		"type": vox,
-		"face_code": FACE_RAMP,
+		"face_code": FACE_RAMP_CORNER if is_corner else FACE_RAMP,
 	}
 	out_quads.append(quad)
 
@@ -380,7 +456,7 @@ func _find_concave_corner_cells(data: ChunkData) -> Dictionary:
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
 			var cell := Vector2i(x, z)
-			if result.has(cell):
+			if result.has(cell) or _has_player_build_at(data, x, z):
 				continue
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
@@ -417,6 +493,10 @@ func _find_concave_corner_cells(data: ChunkData) -> Dictionary:
 
 func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cells: Dictionary) -> void:
 	for cell in concave_cells:
+		if _skips_greedy_surface_cell(data, cell.x, cell.y):
+			continue
+		if _has_player_build_at(data, cell.x, cell.y):
+			continue
 		var entry: Dictionary = concave_cells[cell]
 		var x: int = cell.x
 		var z: int = cell.y
@@ -425,6 +505,25 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		var h: float = entry["h"]
 		var vox: int = entry["vox"]
 		data.set_concave_prism(x, z, leg_x, leg_z, h)
+		var gap_h: float = data.get_surface_y(x, z)
+		var layer: float = _WorldSettings.get_active().layer_height()
+		var gap_tile: int = data.get_tile_type(x, z)
+		if gap_tile == VoxelTypes.AIR:
+			gap_tile = vox
+		_append_voxel_face(out_quads, float(x), gap_h + layer, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, gap_tile, FACE_TOP)
+		if gap_h < h - layer * 0.1:
+			var fill_y: float = gap_h
+			while fill_y < h - layer * 0.05:
+				fill_y += layer
+				_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
+				if leg_x > 0:
+					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_NEG_X)
+				else:
+					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_POS_X)
+				if leg_z > 0:
+					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_NEG_Z)
+				else:
+					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_POS_Z)
 		# Solid support under the diagonal prism (fills the hole + walkable collision).
 		_append_voxel_face(out_quads, float(x), h, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
 		out_quads.append({
@@ -445,28 +544,52 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		})
 
 
-func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = {}) -> void:
-	data.ramp_map.clear()
-	var planned: Dictionary = {}
-
+func _find_corner_low_cells(data: ChunkData) -> Dictionary:
+	var result: Dictionary = {}
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
-			var cell := Vector2i(x, z)
-			if concave_cells.has(cell):
+			if _has_player_build_at(data, x, z) or data.get_tile_type(x, z) == VoxelTypes.AIR:
 				continue
 			var low_h: float = data.get_surface_y(x, z)
-			if data.get_tile_type(x, z) == VoxelTypes.AIR:
-				continue
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
 			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
-			if not step_outs.is_empty():
-				planned[cell] = step_outs[0]
+			if step_outs.size() != 2:
+				continue
+			var d_a: Vector2i = step_outs[0]
+			var d_b: Vector2i = step_outs[1]
+			if _dirs_perpendicular(d_a, d_b):
+				result[Vector2i(x, z)] = [d_a, d_b]
+	return result
+
+
+func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = {}) -> void:
+	data.ramp_map.clear()
+	var planned: Dictionary = {}
+	var corner_low_cells: Dictionary = _find_corner_low_cells(data)
 
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
 			var cell := Vector2i(x, z)
 			if concave_cells.has(cell):
+				continue
+			if _has_player_build_at(data, x, z):
+				continue
+			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+				continue
+			var cell_h: float = data.get_surface_y(x, z)
+			var world_x: int = data.position.x * ChunkData.SIZE + x
+			var world_z: int = data.position.y * ChunkData.SIZE + z
+			var step_ins: Array = _step_in_dirs(data, x, z, cell_h, world_x, world_z)
+			if not step_ins.is_empty():
+				planned[cell] = step_ins[0]
+
+	for x in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
+			var cell := Vector2i(x, z)
+			if concave_cells.has(cell):
+				continue
+			if _has_player_build_at(data, x, z):
 				continue
 			var low_h: float = data.get_surface_y(x, z)
 			var vox := data.get_tile_type(x, z)
@@ -476,8 +599,17 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			if not planned.has(cell):
 				continue
 
+			# L-shaped steps need a corner prism, not a single cardinal wedge.
+			var corner_dirs: Array = _pick_corner_dirs(data, x, z, planned)
+			if corner_dirs.size() == 2:
+				continue
+
 			var d: Vector2i = planned[cell]
+			var approach_cell := Vector2i(x + d.x, z + d.y)
+			if corner_low_cells.has(approach_cell):
+				continue
 			data.set_ramp_cardinal(x, z, d)
+			_clear_ramp_approach_block(data, x, z, d)
 			_append_ramp_quad(out_quads, x, z, low_h, vox, {
 				"dir": d,
 				"dir2": Vector2i.ZERO,
@@ -487,21 +619,38 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
 			var cell := Vector2i(x, z)
-			if concave_cells.has(cell) or data.has_ramp(x, z):
+			if concave_cells.has(cell) or _has_player_build_at(data, x, z):
 				continue
 			var low_h: float = data.get_surface_y(x, z)
 			if data.get_tile_type(x, z) == VoxelTypes.AIR:
 				continue
-			var corner_dirs: Array = _pick_corner_dirs(data, x, z, planned)
+			var corner_dirs: Array = corner_low_cells.get(cell, _pick_corner_dirs(data, x, z, planned))
 			if corner_dirs.size() != 2:
+				continue
+			if _skips_greedy_surface_cell(data, x, z) and not corner_low_cells.has(cell):
 				continue
 			var d_a: Vector2i = corner_dirs[0]
 			var d_b: Vector2i = corner_dirs[1]
+			var vox_corner: int = data.get_tile_type(x, z)
 			data.set_ramp_corner(x, z, d_a, d_b)
-			_append_ramp_quad(out_quads, x, z, low_h, data.get_tile_type(x, z), {
+			_append_ramp_quad(out_quads, x, z, low_h, vox_corner, {
 				"dir": d_a,
 				"dir2": d_b,
 			})
+
+
+## Remove the approach-column box so only the landing wedge renders (no z-fight).
+func _clear_ramp_approach_block(data: ChunkData, landing_x: int, landing_z: int, toward_low: Vector2i) -> void:
+	var ax: int = landing_x + toward_low.x
+	var az: int = landing_z + toward_low.y
+	if ax < 0 or ax >= ChunkData.SIZE or az < 0 or az >= ChunkData.SIZE:
+		return
+	if data.get_tile_type(ax, az) == VoxelTypes.AIR:
+		return
+	if data.has_ramp(ax, az):
+		return
+	var climb := Vector2i(-toward_low.x, -toward_low.y)
+	data.set_ramp_approach(ax, az, climb)
 
 
 func _strata_tile(surface_tile: int) -> int:
@@ -514,6 +663,40 @@ func _strata_tile(surface_tile: int) -> int:
 			return VoxelTypes.STONE
 
 
+func _emit_build_strata(data: ChunkData, out_quads: Array) -> void:
+	if data.world == null:
+		return
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if layer <= 0.001:
+		return
+	for x in range(ChunkData.SIZE):
+		for z in range(ChunkData.SIZE):
+			if _skips_greedy_surface_cell(data, x, z):
+				continue
+			var delta: float = data.get_worker_height_delta(x, z)
+			if delta <= layer * 0.15:
+				continue
+			var cur_h: float = data.get_surface_y(x, z)
+			var wx: int = data.position.x * ChunkData.SIZE + x
+			var wz: int = data.position.y * ChunkData.SIZE + z
+			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var layers_built: int = maxi(1, int(round(delta / layer)))
+			var tile: int = data.get_worker_build_tile(x, z)
+			if tile < 0:
+				tile = data.get_tile_type(x, z)
+			if tile == VoxelTypes.AIR:
+				continue
+			for step in range(1, layers_built):
+				var layer_y: float = natural_h + float(step) * layer
+				if layer_y >= cur_h - layer * 0.05:
+					break
+				_append_voxel_face(out_quads, float(x), layer_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, tile, FACE_TOP)
+				_append_voxel_face(out_quads, float(x), layer_y, float(z), 0.001, 1.0, 1.0, 1.0, 1.0, tile, FACE_NEG_X)
+				_append_voxel_face(out_quads, float(x) + 1.0, layer_y, float(z), 0.001, 1.0, 1.0, 1.0, 1.0, tile, FACE_POS_X)
+				_append_voxel_face(out_quads, float(x), layer_y, float(z), 1.0, 1.0, 0.001, 1.0, 1.0, tile, FACE_NEG_Z)
+				_append_voxel_face(out_quads, float(x), layer_y, float(z) + 1.0, 1.0, 1.0, 0.001, 1.0, 1.0, tile, FACE_POS_Z)
+
+
 func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
 	if data.world == null:
 		return
@@ -522,6 +705,8 @@ func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
 		return
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
+			if _skips_greedy_surface_cell(data, x, z):
+				continue
 			var delta: float = data.get_worker_height_delta(x, z)
 			if delta >= -layer * 0.15:
 				continue
@@ -554,17 +739,14 @@ func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
 					"face_code": FACE_TOP,
 				})
 func _is_ramp_landing(data: ChunkData, x: int, z: int) -> bool:
-	for d in _RAMP_DIRS:
-		var lx: int = x - d.x
-		var lz: int = z - d.y
-		if lx < 0 or lx >= ChunkData.SIZE or lz < 0 or lz >= ChunkData.SIZE:
-			continue
-		if not data.has_ramp(lx, lz):
-			continue
-		var entry: Dictionary = data.get_ramp_entry(lx, lz)
-		if entry.get("dir", Vector2i.ZERO) == d:
-			return true
-	return false
+	if not data.has_ramp(x, z):
+		return false
+	var entry: Dictionary = data.get_ramp_entry(x, z)
+	return (
+		not entry.get("approach", false)
+		and not entry.get("corner", false)
+		and entry.get("dir2", Vector2i.ZERO) == Vector2i.ZERO
+	)
 
 
 func _append_voxel_face(
@@ -679,12 +861,14 @@ func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
 
 
 func _ramp_covers_drop(data: ChunkData, low_x: int, low_z: int, toward_high: Vector2i) -> bool:
-	if low_x < 0 or low_x >= ChunkData.SIZE or low_z < 0 or low_z >= ChunkData.SIZE:
+	var hx: int = low_x + toward_high.x
+	var hz: int = low_z + toward_high.y
+	if hx < 0 or hx >= ChunkData.SIZE or hz < 0 or hz >= ChunkData.SIZE:
 		return false
-	if not data.has_ramp(low_x, low_z):
+	if not data.has_ramp(hx, hz):
 		return false
-	var entry: Dictionary = data.get_ramp_entry(low_x, low_z)
-	return entry.get("dir", Vector2i.ZERO) == toward_high
+	var entry: Dictionary = data.get_ramp_entry(hx, hz)
+	return entry.get("dir", Vector2i.ZERO) == Vector2i(-toward_high.x, -toward_high.y)
 
 
 func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: int, out_quads: Array):
@@ -702,7 +886,7 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if z < ChunkData.SIZE and not data.has_ramp(x, z):
+				if z < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
 					curr_h = data.get_surface_y(x, z)
 					curr_t = data.get_tile_type(x, z)
 					var nx = x + dx
@@ -743,7 +927,7 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if x < ChunkData.SIZE and not data.has_ramp(x, z):
+				if x < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
 					curr_h = data.get_surface_y(x, z)
 					curr_t = data.get_tile_type(x, z)
 					var nx = x
@@ -846,10 +1030,14 @@ func _on_chunk_ready(data: ChunkData, packed_quad_data: Dictionary) -> void:
 	if data == null or not pending.has(data.position):
 		return
 	pending.erase(data.position)
-	if chunks.has(data.position):
-		return
 	if not packed_quad_data.has("count") or packed_quad_data.get("count", 0) == 0:
 		return
+	if chunks.has(data.position):
+		var existing: ChunkView = chunks[data.position] as ChunkView
+		if existing and is_instance_valid(existing):
+			existing.setup(data, packed_quad_data)
+			chunk_ready.emit(data.position, data)
+			return
 	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()
 	if view == null:
 		push_warning("ChunkManager: failed to instantiate ChunkView for %s" % str(data.position))
@@ -961,6 +1149,10 @@ func rebuild_region_at_world(wx: float, wz: float, ring: int = 1) -> void:
 		call_deferred("_flush_rebuild_pending")
 
 
+func flush_rebuild_pending() -> void:
+	_flush_rebuild_pending()
+
+
 func _flush_rebuild_pending() -> void:
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")
@@ -1014,11 +1206,12 @@ func is_world_pos_loaded(world_pos: Vector3) -> bool:
 func rebuild_chunk(key: Vector2i) -> void:
 	if _shutting_down:
 		return
+	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
 	if chunks.has(key):
-		_unload_chunk_view(key)
+		_regenerate_chunk_mesh(key, true)
+		return
 	pending.erase(key)
 	_chunk_tasks.erase(key)
-	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
 	request_chunk(key, true)
 
 

@@ -8,6 +8,7 @@ const _RelicManager = preload("res://relics/relic_manager.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -101,6 +102,10 @@ func _ready():
 	weapon.name = "WeaponController"
 	add_child(weapon)
 
+	var highlight := preload("res://player/target_highlight.gd").new()
+	highlight.name = "TargetHighlight"
+	add_child(highlight)
+
 	world = get_tree().get_first_node_in_group("world")
 	camera = get_tree().get_first_node_in_group("camera")
 	while chunk_manager == null:
@@ -173,18 +178,21 @@ func _physics_process(delta: float) -> void:
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
 	var input_dir := Vector2.ZERO
-	if Input.is_action_pressed("ui_right"):
-		input_dir.x += 1
-	if Input.is_action_pressed("ui_left"):
-		input_dir.x -= 1
-	if Input.is_action_pressed("ui_down"):
-		input_dir.y += 1
-	if Input.is_action_pressed("ui_up"):
-		input_dir.y -= 1
-	input_dir = input_dir.normalized()
+	if not _GameplayInput.blocks_actions():
+		if Input.is_action_pressed("ui_right"):
+			input_dir.x += 1
+		if Input.is_action_pressed("ui_left"):
+			input_dir.x -= 1
+		if Input.is_action_pressed("ui_down"):
+			input_dir.y += 1
+		if Input.is_action_pressed("ui_up"):
+			input_dir.y -= 1
+		input_dir = input_dir.normalized()
 
 	var moving := input_dir != Vector2.ZERO
-	if current_state in [State.IDLE, State.RUNNING] and Input.is_action_just_pressed("jump"):
+	if not _GameplayInput.blocks_actions() \
+			and current_state in [State.IDLE, State.RUNNING] \
+			and Input.is_action_just_pressed("jump"):
 		if _can_initiate_jump(moving):
 			change_state(State.JUMPING)
 
@@ -198,25 +206,27 @@ func _physics_process(delta: float) -> void:
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
 	speed *= _slope_speed_multiplier()
 
+	var airborne := current_state in [State.JUMPING, State.FALLING]
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta := move_vec * speed * delta
 
 		var target_pos_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
-		if _can_move_to(target_pos_x):
+		if _can_move_to(target_pos_x, airborne):
 			voxel_position.x = target_pos_x.x
-			_snap_to_ground()
+			if not airborne:
+				_snap_to_ground()
 
 		var target_pos_z := voxel_position + Vector3(0.0, 0.0, move_delta.y)
-		if _can_move_to(target_pos_z):
+		if _can_move_to(target_pos_z, airborne):
 			voxel_position.z = target_pos_z.z
-			_snap_to_ground()
+			if not airborne:
+				_snap_to_ground()
 
-		if current_state == State.IDLE:
+		if not airborne and current_state == State.IDLE:
 			change_state(State.RUNNING)
-	else:
-		if current_state == State.RUNNING:
-			change_state(State.IDLE)
+	elif not airborne and current_state == State.RUNNING:
+		change_state(State.IDLE)
 
 	match current_state:
 		State.JUMPING:
@@ -241,7 +251,7 @@ func _physics_process(delta: float) -> void:
 				landing_timer += delta
 				if landing_timer > 0.2:
 					landing_timer = 0.0
-					change_state(State.IDLE)
+					change_state(State.RUNNING if moving else State.IDLE)
 			else:
 				voxel_position.y = next_pos.y
 
@@ -291,9 +301,10 @@ func is_colliding_at(pos: Vector3) -> bool:
 	return _floor_probe.is_blocked_at(pos, _player_height(), _player_radius())
 
 
-func _can_move_to(proposed: Vector3) -> bool:
+func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
+	if not airborne:
+		airborne = current_state == State.JUMPING or current_state == State.FALLING
 	var max_step: float = _ws().max_step_up_walk()
-	var airborne := current_state == State.JUMPING or current_state == State.FALLING
 	if airborne:
 		max_step = _ws().max_step_up_jump()
 	return _floor_probe.can_step_to(

@@ -3,7 +3,8 @@ extends SceneTree
 ## Writes to display_session_evidence.md — NOT manual_verification.md (human-hand only).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
-const SCRATCH_PATH := "/tmp/grok-goal-e8916ce4c6d5/implementer/display_session_evidence.md"
+const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
@@ -99,10 +100,19 @@ func _run() -> void:
 		weapon.set_active_hotbar_index(0)
 	var dig_wx := 3
 	var dig_wz := 5
-	var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-	Input.action_press("attack")
+	_ActionTargeting.warp_mouse_to_column(player, world, float(dig_wx) + 0.5, float(dig_wz) + 0.5)
 	for _w in 8:
 		await process_frame
+	var dig_pick: Vector2i = _ActionTargeting.target_cell(player, 2.0)
+	dig_wx = dig_pick.x
+	dig_wz = dig_pick.y
+	var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
+	if weapon:
+		weapon.set("_cooldown_timer", 0.0)
+		if weapon.has_method("_try_attack"):
+			weapon.call("_try_attack")
+	Input.action_press("attack")
+	await process_frame
 	Input.action_release("attack")
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
@@ -133,11 +143,98 @@ func _run() -> void:
 		])
 		failed = true
 
+	# Target highlight modes (mouse column pick)
+	lines.append("")
+	lines.append("## P0 — Cursor highlight")
+	var test_cell := Vector2i(11, 11)
+	if inv:
+		inv.set_slot(0, "wooden_sword", 1)
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+	_ActionTargeting.warp_mouse_to_column(player, world, float(test_cell.x) + 0.5, float(test_cell.y) + 0.5)
+	for _w in 6:
+		await process_frame
+	var atk_info: Dictionary = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0)
+	if atk_info.get("mode", &"") == &"attack":
+		lines.append("- PASS %s — Melee highlight mode=attack cell=%s." % [stamp, atk_info.get("cell")])
+	else:
+		lines.append("- [ ] %s — Melee highlight FAIL mode=%s" % [stamp, atk_info.get("mode")])
+		failed = true
+	if inv:
+		inv.set_slot(0, "stone_pick", 1)
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+	var dig_info: Dictionary = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0)
+	if dig_info.get("mode", &"") == &"dig":
+		lines.append("- PASS %s — Dig highlight mode=dig cell=%s." % [stamp, dig_info.get("cell")])
+	else:
+		lines.append("- [ ] %s — Dig highlight FAIL mode=%s" % [stamp, dig_info.get("mode")])
+		failed = true
+	if inv:
+		inv.clear_slot(0)
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+	for _w in 4:
+		await process_frame
+	if weapon:
+		weapon.set_process(false)
+	var build_info: Dictionary = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.0, true
+	)
+	if weapon:
+		weapon.set_process(true)
+	if build_info.get("mode", &"") == &"build":
+		lines.append("- PASS %s — Build highlight mode=build cell=%s." % [stamp, build_info.get("cell")])
+	else:
+		lines.append("- [ ] %s — Build highlight FAIL mode=%s" % [stamp, build_info.get("mode")])
+		failed = true
+
+	# Build placement
+	lines.append("")
+	lines.append("## P0 — Build placement")
+	var build_wx := 8
+	var build_wz := 8
+	player.set("voxel_position", Vector3(float(build_wx - 1) + 0.5, player.get("voxel_position").y, float(build_wz) + 0.5))
+	if player.has_method("_sync_global_from_voxel"):
+		player.call("_sync_global_from_voxel")
+	_ActionTargeting.warp_mouse_to_column(player, world, float(build_wx) + 0.5, float(build_wz) + 0.5)
+	if inv:
+		inv.clear_slot(0)
+		if inv.count_item("stone") < 2:
+			inv.add_item("stone", 4)
+	var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor")
+	for _w in 10:
+		await process_frame
+	var build_target: Vector3 = _ActionTargeting.target_column(player, 2.0)
+	var build_pick: Vector2i = _ActionTargeting.cell_column(build_target)
+	build_wx = build_pick.x
+	build_wz = build_pick.y
+	var build_ok := false
+	if weapon:
+		weapon.set("_cooldown_timer", 0.0)
+		if weapon.has_method("_try_build_wall"):
+			weapon.call("_try_build_wall")
+			build_ok = _TerrainEdits.get_height_delta(build_wx, build_wz) > 0.01
+	if not build_ok and terrain_editor and inv:
+		build_ok = terrain_editor.try_build_wall(build_target, inv, inv.count_item("stone") > 0)
+	if chunk_manager.has_method("await_rebuild_idle"):
+		await chunk_manager.await_rebuild_idle()
+	for _w in 40:
+		await process_frame
+	var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
+	if build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
+		lines.append("- PASS %s — Build via interact at (%d,%d) delta=%.2f." % [stamp, build_wx, build_wz, build_delta])
+	else:
+		var stone_n: int = inv.count_item("stone") if inv else -1
+		lines.append("- [ ] %s — Build FAIL at (%d,%d) delta=%.2f stone=%d editor=%s." % [
+			stamp, build_wx, build_wz, build_delta, stone_n, terrain_editor != null
+		])
+		failed = true
+
 	# Entities
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
 	var entity_mgr = get_first_node_in_group("entity_manager")
-	var test_cell := Vector2i(11, 11)
 	if entity_mgr and entity_mgr.has_method("apply_performance_config"):
 		var perf_svc = get_first_node_in_group("performance_service")
 		if perf_svc and perf_svc.get("quality"):
@@ -310,10 +407,13 @@ func _count_entity_sprites() -> Dictionary:
 		if not is_instance_valid(entity):
 			continue
 		var spr: Sprite3D = entity.get_node_or_null("Sprite3D") as Sprite3D
-		if spr == null:
+		var voxel: Node3D = entity.get_node_or_null("VoxelProp") as Node3D
+		if spr == null and voxel == null:
 			continue
 		total += 1
-		if spr.visible and (spr.texture != null or (spr.material_override is StandardMaterial3D and (spr.material_override as StandardMaterial3D).albedo_texture != null)):
+		if voxel and voxel.visible and voxel.get_child_count() > 0:
+			visible += 1
+		elif spr and spr.visible and (spr.texture != null or (spr.material_override is StandardMaterial3D and (spr.material_override as StandardMaterial3D).albedo_texture != null)):
 			visible += 1
 	return {"visible": visible, "total": total}
 
@@ -325,6 +425,10 @@ func _count_vegetation(visuals) -> Dictionary:
 	if veg_root:
 		for child in veg_root.get_children():
 			total += 1
+			var voxel: Node3D = child.get_node_or_null("VoxelProp") as Node3D
+			if voxel and voxel.visible and voxel.get_child_count() > 0:
+				textured += 1
+				continue
 			var spr: Sprite3D = child.get_node_or_null("Billboard") as Sprite3D
 			if spr and spr.visible and spr.texture != null:
 				textured += 1
@@ -333,8 +437,12 @@ func _count_vegetation(visuals) -> Dictionary:
 
 func _finish(lines: PackedStringArray, failed: bool) -> void:
 	var text := "\n".join(lines) + "\n"
-	DirAccess.make_dir_recursive_absolute("/tmp/grok-goal-e8916ce4c6d5/implementer")
-	var f := FileAccess.open(SCRATCH_PATH, FileAccess.WRITE)
+	var scratch_path := OS.get_environment("CRYSTALSTORM_SCRATCH")
+	if scratch_path.is_empty():
+		scratch_path = _ProbePaths.display_evidence_path()
+	var scratch_dir := scratch_path.get_base_dir()
+	DirAccess.make_dir_recursive_absolute(scratch_dir)
+	var f := FileAccess.open(scratch_path, FileAccess.WRITE)
 	if f:
 		f.store_string(text)
 		f.close()

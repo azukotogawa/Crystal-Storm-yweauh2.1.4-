@@ -175,7 +175,11 @@ func set_visible(x: int, y: int, z: int, visible: bool):
 	set_visibility(x, y, z, visible)
 
 func set_ramp_cardinal(x: int, z: int, dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "dir": dir, "dir2": Vector2i.ZERO}
+	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": false, "dir": dir, "dir2": Vector2i.ZERO}
+
+
+func set_ramp_approach(x: int, z: int, climb_dir: Vector2i) -> void:
+	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": true, "dir": climb_dir, "dir2": Vector2i.ZERO}
 
 
 func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
@@ -226,6 +230,14 @@ func get_worker_height_delta(lx: int, lz: int) -> float:
 	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
 		return 0.0
 	return float(_worker_height_delta[lx][lz])
+
+
+func get_worker_build_tile(lx: int, lz: int) -> int:
+	if not _has_worker_snapshot:
+		return -1
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return -1
+	return int(_worker_build_tile[lx][lz])
 
 
 func get_surface_y(x: int, z: int) -> float:

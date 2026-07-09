@@ -5,10 +5,13 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
-@export var grass_density: float = 0.18
-@export var tree_density: float = 0.045
-@export var bush_density: float = 0.06
-@export var scatter_attempts: int = 12000
+@export var grass_density: float = 0.68
+@export var tall_grass_density: float = 0.38
+@export var flower_density: float = 0.10
+@export var fern_density: float = 0.08
+@export var tree_density: float = 0.085
+@export var bush_density: float = 0.11
+@export var scatter_attempts: int = 18000
 
 signal vegetation_registered(world_pos: Vector2i, kind: int)
 
@@ -113,7 +116,38 @@ func _try_place_vegetation(wx: int, wz: int) -> void:
 		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.BUSH)
 		return
 
-	if float(bucket % 983) / 983.0 < grass_density:
+	var grass_roll: float = float(bucket % 983) / 983.0
+	if grass_roll < flower_density and moist > 0.42 and biome_name in ["plains", "forest", "marsh"]:
+		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.GRASSLAND2)
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.GRASS_PATCH, {
+			"plant_id": "wildflower",
+			"growth_stage": 1,
+			"growth_progress": 1.0,
+		})
+		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.GRASS_PATCH)
+		return
+
+	if grass_roll < flower_density + fern_density and biome_name == "forest":
+		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.HILLS2)
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.BUSH, {
+			"plant_id": "fern",
+			"growth_stage": 1,
+			"growth_progress": 1.0,
+		})
+		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.BUSH)
+		return
+
+	if grass_roll < flower_density + fern_density + tall_grass_density:
+		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.GRASSLAND3)
+		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.GRASS_PATCH, {
+			"plant_id": "tall_grass",
+			"growth_stage": 1,
+			"growth_progress": 1.0,
+		})
+		vegetation_registered.emit(Vector2i(wx, wz), _WorldFeatureTypes.FeatureKind.GRASS_PATCH)
+		return
+
+	if grass_roll < flower_density + fern_density + tall_grass_density + grass_density:
 		_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.GRASS_TUFT)
 		_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.GRASS_PATCH, {
 			"plant_id": "grass_tuft",

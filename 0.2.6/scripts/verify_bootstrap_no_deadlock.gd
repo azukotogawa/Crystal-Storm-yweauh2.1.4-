@@ -6,9 +6,12 @@ const _WorldFeatures = preload("res://world/world_features.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _ConfigService = preload("res://systems/config_service.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 
 func _init() -> void:
+	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
+		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
 	call_deferred("_run")
 
 
@@ -71,10 +74,7 @@ func _run() -> void:
 
 	if cm.has_method("release_all_chunks_for_teardown"):
 		cm.release_all_chunks_for_teardown()
-	for _i in 30:
-		await process_frame
-	root3d.queue_free()
 	if failed:
-		quit(1)
-	print("All bootstrap deadlock tests OK")
-	quit(0)
+		_ProbeExit.finish_tree(self, 1, "Bootstrap deadlock tests FAILED")
+	else:
+		_ProbeExit.finish_tree(self, 0, "All bootstrap deadlock tests OK")

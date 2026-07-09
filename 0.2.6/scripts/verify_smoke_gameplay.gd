@@ -1,8 +1,8 @@
 extends SceneTree
 ## Regression: run smoke via wrapper; audit enhanced gameplay evidence file.
 
+const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"
-const SMOKE_EVIDENCE := "/tmp/grok-goal-e8916ce4c6d5/implementer/scripted_smoke_evidence.md"
 const RUNS := 1
 
 
@@ -32,11 +32,12 @@ func _run() -> void:
 			push_error("Smoke run %d wrapper exit %d" % [run_idx + 1, exit_code])
 			ok = false
 			break
-		if not FileAccess.file_exists(SMOKE_EVIDENCE):
-			push_error("Smoke run %d missing evidence file" % (run_idx + 1))
+		var smoke_evidence := _ProbePaths.smoke_evidence_path()
+		if not FileAccess.file_exists(smoke_evidence):
+			push_error("Smoke run %d missing evidence file at %s" % [run_idx + 1, smoke_evidence])
 			ok = false
 			break
-		var evidence := FileAccess.get_file_as_string(SMOKE_EVIDENCE)
+		var evidence := FileAccess.get_file_as_string(smoke_evidence)
 		if "SMOKE GAMEPLAY OK" not in text and "**Session OK**" not in evidence:
 			push_error("Smoke run %d missing OK marker" % (run_idx + 1))
 			ok = false

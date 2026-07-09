@@ -4,7 +4,9 @@ extends RefCounted
 ## Shared heightfield + ramp floor sampling and voxel body collision.
 ## Used by Player (CharacterBody3D) and EntityNavigation.
 
+const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -136,6 +138,13 @@ func can_step_to(
 	max_step: float,
 	airborne: bool = false
 ) -> bool:
+	if _WorldBorder.blocks_player_movement(to_pos.x, to_pos.z):
+		return false
+	if world != null:
+		var tile: int = world.get_tile_type(to_pos.x, to_pos.z)
+		if tile in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3]:
+			if _WorldBorder.zone_info(to_pos.x, to_pos.z).zone == "border":
+				return false
 	var target_feet := sample_walkable_feet(to_pos.x, to_pos.z)
 	var rise := target_feet - from_pos.y
 	var snap_dist: float = _ws().floor_snap_distance()

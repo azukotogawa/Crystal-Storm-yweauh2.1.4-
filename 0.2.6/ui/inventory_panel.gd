@@ -3,10 +3,13 @@ extends Control
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WeaponController = preload("res://weapons/weapon_controller.gd")
+const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 var _player: Player
 var _grid: GridContainer
 var _visible_panel := false
+var _registry: _GameVisualRegistry
 
 
 func _ready() -> void:
@@ -17,9 +20,19 @@ func _enter_tree() -> void:
 	if _player and _player.inventory:
 		_player.inventory.changed.connect(_refresh)
 	_build_ui()
+	call_deferred("_bind_registry")
+
+
+func _bind_registry() -> void:
+	_registry = get_tree().get_first_node_in_group("game_visual_registry")
+	if _registry and _registry.has_method("ensure_textures_ready"):
+		await _registry.ensure_textures_ready()
+	_refresh()
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _GameplayInput.blocks_actions():
+		return
 	if event.is_action_pressed("inventory_toggle"):
 		_visible_panel = not _visible_panel
 		visible = _visible_panel
@@ -100,10 +113,18 @@ func _refresh() -> void:
 		var slot = _player.inventory.get_slot(i)
 		if slot == null:
 			btn.text = ""
+			btn.icon = null
 			btn.tooltip_text = ""
 		else:
+			var tex: Texture2D = null
+			if _registry == null:
+				_registry = get_tree().get_first_node_in_group("game_visual_registry")
+			if _registry and _registry.has_method("get_item_texture"):
+				tex = _registry.get_item_texture(str(slot.id))
+			btn.icon = tex
+			btn.expand_icon = true
 			var count_suffix := ""
 			if int(slot.count) > 1:
-				count_suffix = " x%d" % int(slot.count)
-			btn.text = _ItemTypes.display_name(slot.id).substr(0, 6) + count_suffix
+				count_suffix = "x%d" % int(slot.count)
+			btn.text = count_suffix
 			btn.tooltip_text = _ItemTypes.display_name(slot.id)

@@ -1,6 +1,6 @@
 shader_type spatial;
 
-render_mode cull_disabled, depth_draw_opaque;
+render_mode cull_disabled, depth_draw_opaque, diffuse_lambert;
 
 uniform sampler2D texture_atlas : source_color, filter_nearest;	
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
@@ -85,14 +85,15 @@ void fragment() {
     if (render_this_face < 0.5) discard;
 
     ALBEDO = tex_color.rgb;
-    ROUGHNESS = 0.88;
-    METALLIC = 0.0;
 
-    // Face-based ambient occlusion (works with directional + ambient lighting).
+    // Face-based pixel-art shading layered under scene lighting.
     if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) {
-        ALBEDO *= 0.78;
+        ALBEDO *= 0.68;
     }
     if (face_code == 2.0) {
-        ALBEDO *= 0.62;
+        ALBEDO *= 0.48;
+    }
+    if (face_code < 0.5) {
+        ALBEDO *= 0.96;
     }
 }

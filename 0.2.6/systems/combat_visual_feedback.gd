@@ -6,6 +6,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _GameManager = preload("res://game/game_manager.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
 
 @export var enabled: bool = true
 
@@ -195,6 +196,9 @@ func _connect_signals() -> void:
 		if weapon and weapon.has_signal("entity_hit"):
 			if not weapon.entity_hit.is_connected(_on_entity_hit):
 				weapon.entity_hit.connect(_on_entity_hit)
+		if weapon and weapon.has_signal("attacked"):
+			if not weapon.attacked.is_connected(_on_weapon_attacked):
+				weapon.attacked.connect(_on_weapon_attacked)
 
 	if _crystal:
 		if _crystal.has_signal("spawn_destroyed") and not _crystal.spawn_destroyed.is_connected(_on_spawn_destroyed):
@@ -313,6 +317,20 @@ func _on_world_entity_died(entity: Node, _world_pos: Vector2i) -> void:
 		return
 	var pos: Vector3 = entity.global_position
 	_spawn_burst(pos + Vector3(0.0, 0.5, 0.0), Color(0.85, 0.55, 0.35), 3)
+
+
+func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
+	if not enabled:
+		return
+	var def := _ItemTypes.get_def(item_id)
+	if def.is_empty():
+		return
+	var kind := int(def.get("weapon_kind", _ItemTypes.WeaponKind.MELEE))
+	match kind:
+		_ItemTypes.WeaponKind.MELEE, _ItemTypes.WeaponKind.DIG:
+			_spawn_burst(hit_pos + Vector3(0.0, 0.35, 0.0), Color(1.0, 0.88, 0.45), 2)
+		_ItemTypes.WeaponKind.RANGED:
+			_spawn_burst(hit_pos + Vector3(0.0, 0.45, 0.0), Color(0.65, 0.82, 1.0), 1)
 
 
 func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:

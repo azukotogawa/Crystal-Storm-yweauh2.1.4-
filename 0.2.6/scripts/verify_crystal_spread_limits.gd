@@ -3,6 +3,7 @@ extends SceneTree
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 
 func _init() -> void:
 	var failed := false
@@ -41,6 +42,47 @@ func _init() -> void:
 		failed = true
 	else:
 		print("OK last_new_cells=", sim.last_new_cells, " cap=", sim.max_new_cells_per_tick)
+
+	sim.clear()
+	sim.set_depth(Vector2i(0, 0), 2.0, 0, false)
+	var before_frontier: int = sim.cell_count()
+	sim.tick_flow(0.15)
+	var after_frontier: int = sim.cell_count()
+	var frontier_ok := true
+	for pos_variant in sim.depth.keys():
+		var pos: Vector2i = pos_variant
+		if pos == Vector2i(0, 0):
+			continue
+		var touches := 0
+		for dir in _CrystalTypes.NEIGHBOR_DIRS:
+			var n: Vector2i = pos + dir
+			if float(sim.depth.get(n, 0.0)) >= sim.config.min_depth:
+				touches += 1
+		if touches < 1:
+			frontier_ok = false
+			break
+	if not frontier_ok and after_frontier > before_frontier:
+		push_error("new crystal cells should touch existing fluid front")
+		failed = true
+	elif after_frontier > before_frontier:
+		print("OK frontier cells contiguous after first spread tick")
+
+	sim.tick_flow(0.05)
+	if sim.last_mesh_dirty_cells > sim.last_changed_cells:
+		push_error("mesh_dirty=%d exceeded changed=%d" % [sim.last_mesh_dirty_cells, sim.last_changed_cells])
+		failed = true
+	elif sim.last_mesh_dirty_cells > 64:
+		push_error("mesh_dirty=%d too large for incremental tick" % sim.last_mesh_dirty_cells)
+		failed = true
+	else:
+		print("OK incremental mesh_dirty=%d changed=%d" % [sim.last_mesh_dirty_cells, sim.last_changed_cells])
+
+	var mgr_src := (load("res://crystal/crystal_manager.gd") as GDScript).source_code
+	if "_patch_chunk_layer" not in mgr_src or "get_last_mesh_dirty" not in mgr_src:
+		push_error("crystal_manager must patch incremental mesh dirty cells")
+		failed = true
+	else:
+		print("OK crystal_manager incremental patch path")
 
 	var med = load("res://config/performance_quality_config.gd").apply_preset(1)
 	if med.max_crystal_new_cells_per_tick <= 0 or med.max_crystal_new_cells_per_tick > 64:

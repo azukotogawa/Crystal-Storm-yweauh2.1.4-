@@ -211,7 +211,14 @@ func _ensure_mesh(tint: Color) -> void:
 
 
 func get_combat_center() -> Vector3:
-	return global_position
+	var center := global_position
+	if _voxel_prop and is_instance_valid(_voxel_prop):
+		var h := _VoxelPropBuilder.model_height(_voxel_prop)
+		if h > 0.01:
+			center.y += h * 0.42
+	elif _mesh and is_instance_valid(_mesh):
+		center.y += 0.35
+	return center
 
 
 func get_combat_radius() -> float:
@@ -255,6 +262,9 @@ func _physics_process(delta: float) -> void:
 	var crystal_sim = _crystal.get_fluid_sim() if _crystal and _crystal.has_method("get_fluid_sim") else null
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
+	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
+		if not _chunk_manager.is_world_cell_loaded(target_cell.x, target_cell.y):
+			target_cell = self_cell
 
 	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(

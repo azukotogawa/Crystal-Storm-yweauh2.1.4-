@@ -34,6 +34,7 @@ var last_changed_cells: int = 0
 var last_mesh_dirty_cells: int = 0
 
 var _interior_flow_offset: int = 0
+var _frontier_new_offset: int = 0
 ## When set, flow/emitters only affect cells where this returns true (loaded chunks).
 var is_cell_active: Callable = Callable()
 
@@ -130,13 +131,31 @@ func _is_empty_neighbor(amount: float) -> bool:
 	return amount < config.min_depth
 
 
-func _cap_transfer_to_empty(transfer: float, new_budget: int) -> float:
+func _cap_transfer_to_empty(transfer: float, _new_budget: int = 0) -> float:
 	transfer = minf(transfer, empty_cell_inflow_cap)
-	if max_new_cells_per_tick > 0 and new_budget <= 0:
-		return 0.0
 	if transfer < config.min_depth * 0.15:
 		return 0.0
 	return transfer
+
+
+func _new_cell_touch_count(pos: Vector2i) -> int:
+	var touches := 0
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var neighbor: Vector2i = pos + dir
+		if float(depth.get(neighbor, 0.0)) >= config.min_depth:
+			touches += 1
+	return touches
+
+
+func _new_cell_priority(pos: Vector2i, magnitude: float) -> float:
+	var touches: int = _new_cell_touch_count(pos)
+	var hole_bonus := 0
+	for axis in [Vector2i(1, 0), Vector2i(0, 1)]:
+		var a: Vector2i = pos + axis
+		var b: Vector2i = pos - axis
+		if float(depth.get(a, 0.0)) >= config.min_depth and float(depth.get(b, 0.0)) >= config.min_depth:
+			hole_bonus += 4
+	return float(touches) * 12.0 + float(hole_bonus) + magnitude
 
 
 func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool = true) -> void:
@@ -203,7 +222,6 @@ func tick_flow(delta: float) -> Array:
 	var cells: Array = _select_flow_cells(active_cells)
 
 	var deltas: Dictionary = {}
-	var new_budget: int = max_new_cells_per_tick
 
 	for pos_variant in cells:
 		var pos: Vector2i = pos_variant
@@ -242,11 +260,9 @@ func tick_flow(delta: float) -> Array:
 				pressure * 0.5
 			)
 			if _is_empty_neighbor(n_amount):
-				transfer = _cap_transfer_to_empty(transfer, new_budget)
+				transfer = _cap_transfer_to_empty(transfer)
 				if transfer <= 0.0:
 					continue
-				if max_new_cells_per_tick > 0:
-					new_budget -= 1
 			if transfer < config.min_depth * 0.2:
 				continue
 
@@ -270,11 +286,9 @@ func tick_flow(delta: float) -> Array:
 				)
 				var spread: float = min(amount * conduct * delta, config.max_flow_per_cell * delta * 0.35)
 				if _is_empty_neighbor(n_amount):
-					spread = _cap_transfer_to_empty(spread, new_budget)
+					spread = _cap_transfer_to_empty(spread)
 					if spread <= 0.0:
 						continue
-					if max_new_cells_per_tick > 0:
-						new_budget -= 1
 				if spread < config.min_depth * 0.15:
 					continue
 				deltas[pos] = float(deltas.get(pos, 0.0)) - spread
@@ -319,11 +333,20 @@ func tick_flow(delta: float) -> Array:
 
 	if not pending_new.is_empty():
 		pending_new.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-			return float(a.magnitude) > float(b.magnitude)
+			var score_a: float = _new_cell_priority(a.pos, float(a.magnitude))
+			var score_b: float = _new_cell_priority(b.pos, float(b.magnitude))
+			return score_a > score_b
 		)
 		var allow: int = pending_new.size()
 		if max_new_cells_per_tick > 0:
 			allow = mini(allow, max_new_cells_per_tick)
+		if allow < pending_new.size():
+			var rotated: Array = []
+			var start: int = _frontier_new_offset % pending_new.size()
+			for i in pending_new.size():
+				rotated.append(pending_new[(start + i) % pending_new.size()])
+			pending_new = rotated
+			_frontier_new_offset += allow
 		for i in allow:
 			var entry: Dictionary = pending_new[i]
 			var pos: Vector2i = entry.pos

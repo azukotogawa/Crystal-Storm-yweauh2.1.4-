@@ -113,8 +113,41 @@ func try_dig(world_pos: Vector3) -> bool:
 		return false
 	if not _TerrainEdits.dig(wx, wz, 1):
 		return false
+	var inv = null
+	var player := get_tree().get_first_node_in_group("player")
+	if player and "inventory" in player:
+		inv = player.inventory
+	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
 	return true
+
+
+func _grant_dig_loot(wx: int, wz: int, inventory) -> void:
+	if inventory == null or world == null:
+		return
+	var tile: int = world.get_tile_type(float(wx), float(wz))
+	var item_id := _loot_item_for_tile(tile)
+	if item_id.is_empty():
+		return
+	inventory.add_item(item_id, 1)
+
+
+func _loot_item_for_tile(tile: int) -> String:
+	if tile in [
+		VoxelTypes.HILLS, VoxelTypes.HILLS2, VoxelTypes.HILLS3, VoxelTypes.HILLS4,
+		VoxelTypes.TREE_TRUNK, VoxelTypes.BUSH,
+	]:
+		return "wood"
+	if tile in [VoxelTypes.BASIN, VoxelTypes.BASIN2, VoxelTypes.BASIN3, VoxelTypes.VALLEY, VoxelTypes.VALLEY2]:
+		return "herb"
+	if tile in [
+		VoxelTypes.STONE, VoxelTypes.STONE2, VoxelTypes.MOUNTAIN, VoxelTypes.MOUNTAIN2,
+		VoxelTypes.MOUNTAIN3, VoxelTypes.MOUNTAIN4, VoxelTypes.MOUNTAIN5, VoxelTypes.MOUNTAIN6,
+		VoxelTypes.MOUNTAIN7, VoxelTypes.SNOW, VoxelTypes.SNOW2, VoxelTypes.SNOW3,
+		VoxelTypes.CAVE_STONE,
+	]:
+		return "stone"
+	return "stone"
 
 
 func try_build_wall(world_pos: Vector3, inventory, prefer_stone: bool = true) -> bool:
@@ -330,6 +363,8 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 			if world and world.has_method("invalidate_column_cache"):
 				world.invalidate_column_cache(wx + dx, wz + dz)
 	if chunk_manager and chunk_manager.has_method("rebuild_region_at_world"):
-		chunk_manager.rebuild_region_at_world(float(wx), float(wz), 1)
+		chunk_manager.rebuild_region_at_world(float(wx), float(wz), 0)
+		if chunk_manager.has_method("flush_rebuild_pending"):
+			chunk_manager.flush_rebuild_pending()
 	elif chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
