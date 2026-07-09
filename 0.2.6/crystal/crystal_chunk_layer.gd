@@ -1,20 +1,20 @@
 class_name CrystalChunkLayer
 extends Node3D
 
+const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 var chunk_coord: Vector2i = Vector2i.ZERO
 var _mm_instance: MultiMeshInstance3D
-var _material: StandardMaterial3D
+var _material: Material
 var _pos_to_index: Dictionary = {}
-static var _shared_box_mesh: BoxMesh
 
 
 func has_cell(pos: Vector2i) -> bool:
 	return _pos_to_index.has(pos)
 
 
-func setup(coord: Vector2i, material: StandardMaterial3D) -> void:
+func setup(coord: Vector2i, material: Material) -> void:
 	chunk_coord = coord
 	_material = material
 	var ws = _WorldSettings.get_active()
@@ -36,10 +36,7 @@ func rebuild(cells: Array) -> void:
 		mm = MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = false
-		if _shared_box_mesh == null:
-			_shared_box_mesh = BoxMesh.new()
-			_shared_box_mesh.size = Vector3.ONE
-		mm.mesh = _shared_box_mesh
+		mm.mesh = _CrystalClusterMesh.get_mesh()
 		_mm_instance.multimesh = mm
 
 	if _material:
@@ -83,21 +80,26 @@ func patch_cells(cells: Array) -> bool:
 	return patched > 0
 
 
+func _cell_yaw(pos: Vector2i) -> float:
+	var seed_val := pos.x * 92837111 ^ pos.y * 1234567
+	return float(seed_val & 0xffff) / 65535.0 * TAU
+
+
 func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 	var ws = _WorldSettings.get_active()
 	var voxel_s: float = ws.voxel_scale
 	var depth := maxf(cell.depth, 0.12)
 	var layer_h: float = ws.layer_height()
 	var visual_depth := maxf(depth, layer_h * 0.55)
-	var footprint := voxel_s * 1.02
-	var scale_y := visual_depth
-	# terrain_y is walkable top (feet level); crystal grows upward from there.
+	var footprint := voxel_s * 0.96
+	var scale_y := visual_depth / voxel_s
 	var center_y := cell.terrain_y + visual_depth * 0.5
 	var chunk_origin_x: float = ws.column_to_world(float(chunk_coord.x * ChunkData.SIZE))
 	var chunk_origin_z: float = ws.column_to_world(float(chunk_coord.y * ChunkData.SIZE))
 	var local_x: float = ws.column_to_world(float(cell.world_pos.x) + 0.5) - chunk_origin_x
 	var local_z: float = ws.column_to_world(float(cell.world_pos.y) + 0.5) - chunk_origin_z
-	var basis := Basis.IDENTITY.scaled(Vector3(footprint, scale_y, footprint))
+	var yaw := _cell_yaw(cell.world_pos)
+	var basis := Basis(Vector3.UP, yaw).scaled(Vector3(footprint, scale_y, footprint))
 	mm.set_instance_transform(
 		idx,
 		Transform3D(

@@ -6,6 +6,7 @@ const _WeaponController = preload("res://weapons/weapon_controller.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
+
 var _player: Player
 var _grid: GridContainer
 var _visible_panel := false

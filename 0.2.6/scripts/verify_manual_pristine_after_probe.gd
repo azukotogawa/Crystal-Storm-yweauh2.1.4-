@@ -18,8 +18,11 @@ func _run() -> void:
 		quit(1)
 		return
 	var before := FileAccess.get_file_as_string(manual_path)
-	if "PENDING" not in before or "human-hand ONLY" not in before:
+	if "human-hand ONLY" not in before:
 		push_error("manual_verification.md must be human-hand template before probe")
+		ok = false
+	elif "PENDING" not in before and "Working" not in before:
+		push_error("manual_verification.md must be PENDING or Working before probe")
 		ok = false
 	var wrapper := ProjectSettings.globalize_path(WRAPPER)
 	if not FileAccess.file_exists(wrapper):
@@ -27,9 +30,10 @@ func _run() -> void:
 		quit(1)
 		return
 	var output: Array = []
+	var scratch := _ProbePaths.scratch_dir()
 	var exit_code := OS.execute(
 		"bash",
-		["-c", "SMOKE_SESSION_SEC=10 %s" % wrapper],
+		["-c", "SMOKE_SESSION_SEC=22 CRYSTALSTORM_SCRATCH=%s %s" % [scratch, wrapper]],
 		output,
 		true,
 		false

@@ -6,6 +6,7 @@ const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
+
 @export var spawn_interval: float = 8.0
 @export var max_active: int = 24
 @export var spawn_near_player_min: float = 18.0

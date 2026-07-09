@@ -25,7 +25,7 @@ const ITEMS: Dictionary = {
 		"damage": 6.0,
 		"entity_damage": 5.0,
 		"range": 2.4,
-		"cooldown": 0.55,
+		"cooldown": 0.22,
 		"stackable": false,
 		"max_stack": 1,
 	},

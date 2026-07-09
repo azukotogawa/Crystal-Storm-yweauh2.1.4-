@@ -1,6 +1,6 @@
 shader_type spatial;
 
-render_mode cull_disabled, depth_draw_opaque, diffuse_lambert;
+render_mode cull_disabled, depth_draw_opaque, unshaded;
 
 uniform sampler2D texture_atlas : source_color, filter_nearest;	
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
@@ -11,9 +11,13 @@ varying flat vec4 instance_data;
 varying vec2 voxel_tiling;
 varying flat float face_code;
 varying flat float render_this_face;
+varying vec3 primitive_obj_normal;
 
 void vertex() {
     instance_data = INSTANCE_CUSTOM;
+    // Mesh-local normals for all primitives (ramps, corners, concave). Concave orientation is
+    // handled by the instance basis; per-face shading uses authored local normals.
+    primitive_obj_normal = normalize(NORMAL);
     
     // Unpack uv_w directly from Alpha channel (width for UV tiling)
     voxel_tiling.x = instance_data.a;
@@ -34,7 +38,7 @@ void vertex() {
     //   (prevents "bottom face appearing on a side face").
     // - Bottoms (face 2) and sides (3-6) are correctly distinguished for darkening.
     vec3 obj_n = normalize(NORMAL);
-    float thresh = 0.9;  // strict for pure axis normals after scaling
+    float thresh = 0.7;  // axis normals after non-uniform instance scale
     int f = int(face_code + 0.1);  // face_code is floor(...) + small frac from uv_h/100
     render_this_face = 0.0;
     if (f == 0) { // TOP
@@ -49,7 +53,7 @@ void vertex() {
         if (obj_n.z < -thresh) render_this_face = 1.0;
     } else if (f == 6) { // POS_Z
         if (obj_n.z > thresh) render_this_face = 1.0;
-    } else if (f == 7 || f == 8 || f == 9) { // RAMP / corner / side diagonal
+    } else if (f == 7 || f == 8 || f == 9) { // RAMP / corner / concave primitives — all faces (fills + slopes)
         render_this_face = 1.0;
     }
 }
@@ -87,13 +91,42 @@ void fragment() {
     ALBEDO = tex_color.rgb;
 
     // Face-based pixel-art shading layered under scene lighting.
-    if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) {
+    int f_shade = int(face_code + 0.1);
+    if (f_shade == 9) {
+        // Concave diagonal prism: top/bottom/diagonal/vertical walls (not walkable slopes).
+        vec3 n = normalize(primitive_obj_normal);
+        float ax = abs(n.x);
+        float ay = abs(n.y);
+        float az = abs(n.z);
+        if (ay > 0.85) {
+            ALBEDO *= (n.y > 0.0) ? 0.96 : 0.48;
+        } else if (ax > 0.85 || az > 0.85) {
+            ALBEDO *= 0.68;
+        } else if (ax > 0.3 && az > 0.3) {
+            ALBEDO *= 0.85;
+        } else {
+            ALBEDO *= 0.68;
+        }
+    } else if (f_shade == 7 || f_shade == 8) {
+        // Walkable slopes tilt upward (n.y ~0.7); keep them as bright as flat tops.
+        vec3 n = normalize(primitive_obj_normal);
+        float ax = abs(n.x);
+        float ay = abs(n.y);
+        float az = abs(n.z);
+        if (n.y > 0.45) {
+            ALBEDO *= 0.96;
+        } else if (n.y < -0.45) {
+            ALBEDO *= 0.48;
+        } else if (ax > 0.85 || az > 0.85) {
+            ALBEDO *= 0.68;
+        } else {
+            ALBEDO *= 0.85;
+        }
+    } else if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) {
         ALBEDO *= 0.68;
-    }
-    if (face_code == 2.0) {
+    } else if (face_code == 2.0) {
         ALBEDO *= 0.48;
-    }
-    if (face_code < 0.5) {
+    } else if (face_code < 0.5) {
         ALBEDO *= 0.96;
     }
 }

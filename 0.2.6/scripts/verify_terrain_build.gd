@@ -9,6 +9,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
@@ -98,11 +99,11 @@ func _run() -> void:
 		print("OK stacked build mesh tops=%d" % top_quads)
 
 	var weapon_src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
-	if "_ActionTargeting.target_column" not in weapon_src:
-		push_error("weapon_controller must use ActionTargeting for build column")
+	if "_ActionTargeting.resolve_action" not in weapon_src:
+		push_error("weapon_controller must use ActionTargeting.resolve_action for build")
 		failed = true
 	else:
-		print("OK weapon build uses ActionTargeting")
+		print("OK weapon build uses ActionTargeting.resolve_action")
 
 	_TerrainEdits.reset()
 	_FeatureRegistry.reset()

@@ -60,8 +60,22 @@ func _process(_delta: float) -> void:
 	var ws = _WorldSettings.get_active()
 	var layer: float = ws.layer_height()
 	var scale: float = ws.voxel_scale
-	_mesh.scale = Vector3(scale * 1.02, layer * 1.04, scale * 1.02)
-	_mesh.global_position = info.get("world_pos", Vector3.ZERO)
+	var face_normal: Vector3 = info.get("face_normal", Vector3.UP)
+	if face_normal.length_squared() < 0.01:
+		face_normal = Vector3.UP
+	else:
+		face_normal = face_normal.normalized()
+	var thin: float = maxf(scale * 0.006, 0.004)
+	var pad: float = scale * 1.02
+	var height: float = layer * 1.02
+	if absf(face_normal.x) > 0.5:
+		_mesh.scale = Vector3(thin, height, pad)
+	elif absf(face_normal.y) > 0.5:
+		_mesh.scale = Vector3(pad, thin, pad)
+	else:
+		_mesh.scale = Vector3(pad, height, thin)
+	var face_pos: Vector3 = info.get("world_pos", Vector3.ZERO)
+	_mesh.global_position = face_pos + face_normal * (thin * 0.5 + scale * 0.002)
 	match mode:
 		&"dig":
 			_mat.albedo_color = Color(0.95, 0.55, 0.15, 0.42)
@@ -85,4 +99,4 @@ func _active_range() -> float:
 	var def := _ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
 		return 2.0
-	return float(def.get("range", 2.0))
+	return float(def.get("range", 2.8))

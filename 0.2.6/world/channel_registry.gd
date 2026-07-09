@@ -2,10 +2,14 @@ class_name ChannelRegistry
 extends RefCounted
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _FluidRegistry = preload("res://helpers/fluid_registry.gd")
 
-## Player-dug water channels: per-cell water level and preferred flow direction.
+const FLUID_WATER := &"water"
+const FLUID_CRYSTAL := &"crystal"
 
-static var _channels: Dictionary = {}  # Vector2i -> { water_level: float, flow_dir: Vector2i }
+## Per-cell channel metadata: fluids map + legacy flow_dir at root when single-fluid.
+
+static var _channels: Dictionary = {}
 
 
 static func reset() -> void:
@@ -16,18 +20,57 @@ static func is_channel(wx: int, wz: int) -> bool:
 	return _channels.has(Vector2i(wx, wz))
 
 
+static func has_fluid(wx: int, wz: int, fluid_id: StringName = FLUID_WATER) -> bool:
+	var entry: Dictionary = get_channel(wx, wz)
+	var fluids: Dictionary = entry.get("fluids", {})
+	return fluids.has(fluid_id)
+
+
 static func get_channel(wx: int, wz: int) -> Dictionary:
 	return _channels.get(Vector2i(wx, wz), {})
 
 
+static func get_fluid_level(wx: int, wz: int, fluid_id: StringName = FLUID_WATER) -> float:
+	var entry: Dictionary = get_channel(wx, wz)
+	var fluids: Dictionary = entry.get("fluids", {})
+	if fluids.has(fluid_id):
+		return float(fluids[fluid_id].get("level", 0.0))
+	if fluid_id == FLUID_WATER:
+		return float(entry.get("water_level", 0.0))
+	return 0.0
+
+
 static func get_water_level(wx: int, wz: int) -> float:
-	var entry: Dictionary = get_channel(wx, wz)
-	return float(entry.get("water_level", 0.0))
+	return get_fluid_level(wx, wz, FLUID_WATER)
 
 
-static func get_flow_dir(wx: int, wz: int) -> Vector2i:
+static func get_flow_dir(wx: int, wz: int, fluid_id: StringName = FLUID_WATER) -> Vector2i:
 	var entry: Dictionary = get_channel(wx, wz)
+	var fluids: Dictionary = entry.get("fluids", {})
+	if fluids.has(fluid_id):
+		return fluids[fluid_id].get("flow_dir", Vector2i.ZERO)
 	return entry.get("flow_dir", Vector2i.ZERO)
+
+
+static func register_fluid(
+	wx: int,
+	wz: int,
+	fluid_id: StringName,
+	flow_dir: Vector2i,
+	level: float
+) -> void:
+	var key := Vector2i(wx, wz)
+	var entry: Dictionary = _channels.get(key, {})
+	var fluids: Dictionary = entry.get("fluids", {})
+	fluids[fluid_id] = {
+		"level": clampf(level, 0.05, 1.0),
+		"flow_dir": _normalize_cardinal(flow_dir),
+	}
+	entry["fluids"] = fluids
+	if fluid_id == FLUID_WATER:
+		entry["water_level"] = fluids[fluid_id]["level"]
+		entry["flow_dir"] = fluids[fluid_id]["flow_dir"]
+	_channels[key] = entry
 
 
 static func register_channel(
@@ -36,107 +79,106 @@ static func register_channel(
 	flow_dir: Vector2i,
 	water_level: float = 0.5
 ) -> void:
-	_channels[Vector2i(wx, wz)] = {
-		"water_level": clampf(water_level, 0.05, 1.0),
-		"flow_dir": _normalize_cardinal(flow_dir),
-	}
+	register_fluid(wx, wz, FLUID_WATER, flow_dir, water_level)
 
 
-static func set_water_level(wx: int, wz: int, level: float) -> float:
+static func set_fluid_level(wx: int, wz: int, fluid_id: StringName, level: float) -> float:
 	var key := Vector2i(wx, wz)
 	if not _channels.has(key):
 		return 0.0
 	var entry: Dictionary = _channels[key]
-	var clamped := clampf(level, 0.05, 1.0)
-	entry["water_level"] = clamped
+	var fluids: Dictionary = entry.get("fluids", {})
+	if not fluids.has(fluid_id):
+		fluids[fluid_id] = {"level": 0.5, "flow_dir": Vector2i.ZERO}
+	var clamped := clampf(level, 0.0, 1.0)
+	fluids[fluid_id]["level"] = clamped if clamped >= 0.05 else 0.0
+	entry["fluids"] = fluids
+	if fluid_id == FLUID_WATER:
+		entry["water_level"] = fluids[fluid_id]["level"]
+	if fluids[fluid_id]["level"] < 0.05:
+		fluids.erase(fluid_id)
+		if fluids.is_empty():
+			_channels.erase(key)
+		else:
+			_channels[key] = entry
+		return 0.0
 	_channels[key] = entry
 	return clamped
 
 
-static func adjust_water_level(wx: int, wz: int, delta: float) -> float:
-	var current := get_water_level(wx, wz)
-	if current <= 0.0 and not is_channel(wx, wz):
+static func set_water_level(wx: int, wz: int, level: float) -> float:
+	return set_fluid_level(wx, wz, FLUID_WATER, level)
+
+
+static func adjust_fluid_level(wx: int, wz: int, fluid_id: StringName, delta: float) -> float:
+	var current := get_fluid_level(wx, wz, fluid_id)
+	if current <= 0.0 and not has_fluid(wx, wz, fluid_id):
 		return 0.0
-	return set_water_level(wx, wz, current + delta)
+	return set_fluid_level(wx, wz, fluid_id, current + delta)
 
 
-static func set_flow_dir(wx: int, wz: int, flow_dir: Vector2i) -> void:
+static func adjust_water_level(wx: int, wz: int, delta: float) -> float:
+	return adjust_fluid_level(wx, wz, FLUID_WATER, delta)
+
+
+static func set_flow_dir(wx: int, wz: int, flow_dir: Vector2i, fluid_id: StringName = FLUID_WATER) -> void:
 	var key := Vector2i(wx, wz)
 	if not _channels.has(key):
 		return
 	var entry: Dictionary = _channels[key]
-	entry["flow_dir"] = _normalize_cardinal(flow_dir)
+	var fluids: Dictionary = entry.get("fluids", {})
+	if fluids.has(fluid_id):
+		fluids[fluid_id]["flow_dir"] = _normalize_cardinal(flow_dir)
+		entry["fluids"] = fluids
+	if fluid_id == FLUID_WATER:
+		entry["flow_dir"] = _normalize_cardinal(flow_dir)
 	_channels[key] = entry
+
+
+static func unregister_fluid(wx: int, wz: int, fluid_id: StringName) -> void:
+	var key := Vector2i(wx, wz)
+	if not _channels.has(key):
+		return
+	var entry: Dictionary = _channels[key]
+	var fluids: Dictionary = entry.get("fluids", {})
+	fluids.erase(fluid_id)
+	if fluids.is_empty():
+		_channels.erase(key)
+	else:
+		entry["fluids"] = fluids
+		_channels[key] = entry
 
 
 static func all_positions() -> Array:
 	return _channels.keys()
 
 
-static func unregister_channel(wx: int, wz: int) -> void:
-	_channels.erase(Vector2i(wx, wz))
-
-
-static func tick_equilibrium(
-	world,
-	sim_config,
-	delta: float
-) -> void:
-	if _channels.is_empty() or world == null or sim_config == null:
-		return
-
-	var rate: float = float(sim_config.channel_equilibrate_rate) * delta
-	if rate <= 0.0:
-		return
-
-	var pending: Dictionary = {}
+static func all_fluid_positions(fluid_id: StringName = FLUID_WATER) -> Array:
+	var out: Array = []
 	for key_variant in _channels.keys():
 		var key: Vector2i = key_variant
-		var entry: Dictionary = _channels[key]
-		var level: float = float(entry.get("water_level", 0.5))
-		var flow_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)
-		var my_h: float = _surface_height(world, key.x, key.y)
+		if has_fluid(key.x, key.y, fluid_id):
+			out.append(key)
+	return out
 
-		for dir in _CrystalTypes.NEIGHBOR_DIRS:
-			var neighbor: Vector2i = key + dir
-			var n_h: float = _surface_height(world, neighbor.x, neighbor.y)
-			var downhill: float = my_h - n_h
-			if downhill <= 0.02:
-				continue
 
-			var n_level: float = get_water_level(neighbor.x, neighbor.y)
-			if not is_channel(neighbor.x, neighbor.y):
-				if _is_water_tile(world, neighbor):
-					n_level = 1.0
-				else:
-					continue
+static func unregister_channel(wx: int, wz: int) -> void:
+	unregister_fluid(wx, wz, FLUID_WATER)
 
-			var bias := 1.0
-			if flow_dir != Vector2i.ZERO:
-				bias = sim_config.channel_along_flow_mult if dir == flow_dir else sim_config.channel_cross_flow_mult
 
-			var transfer: float = minf(
-				level * rate * bias,
-				downhill * 0.08 * rate * 10.0
-			)
-			if transfer < 0.001:
-				continue
-			pending[key] = float(pending.get(key, 0.0)) - transfer
-			pending[neighbor] = float(pending.get(neighbor, 0.0)) + transfer * 0.85
-
-	for key_variant in pending.keys():
+static func sync_depth_from_engine(engine, fluid_id: StringName = FLUID_WATER) -> void:
+	if engine == null:
+		return
+	for key_variant in _channels.keys():
 		var key: Vector2i = key_variant
-		if not _channels.has(key):
-			if float(pending[key]) > 0.0:
-				register_channel(key.x, key.y, Vector2i.ZERO, float(pending[key]))
+		if not has_fluid(key.x, key.y, fluid_id):
 			continue
-		var entry: Dictionary = _channels[key]
-		entry["water_level"] = clampf(
-			float(entry.get("water_level", 0.5)) + float(pending[key]),
-			0.05,
-			1.0
-		)
-		_channels[key] = entry
+		engine.depth[key] = get_fluid_level(key.x, key.y, fluid_id)
+	for pos_variant in engine.depth.keys():
+		var pos: Vector2i = pos_variant
+		if not is_channel(pos.x, pos.y):
+			continue
+		set_fluid_level(pos.x, pos.y, fluid_id, float(engine.depth[pos]))
 
 
 static func compute_downhill_dir(world, wx: int, wz: int) -> Vector2i:
@@ -183,11 +225,22 @@ static func to_dict() -> Dictionary:
 	for key_variant in _channels.keys():
 		var key: Vector2i = key_variant
 		var entry: Dictionary = _channels[key]
-		var flow_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)
-		encoded[_Codec.vec2i_key(key)] = {
-			"water_level": float(entry.get("water_level", 0.5)),
-			"flow_dir": [flow_dir.x, flow_dir.y],
-		}
+		var fluids_out: Dictionary = {}
+		var fluids: Dictionary = entry.get("fluids", {})
+		for fluid_key in fluids.keys():
+			var f_entry: Dictionary = fluids[fluid_key]
+			var flow_dir: Vector2i = f_entry.get("flow_dir", Vector2i.ZERO)
+			fluids_out[str(fluid_key)] = {
+				"level": float(f_entry.get("level", 0.5)),
+				"flow_dir": [flow_dir.x, flow_dir.y],
+			}
+		if fluids_out.is_empty() and entry.has("water_level"):
+			var legacy_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)
+			fluids_out["water"] = {
+				"level": float(entry.get("water_level", 0.5)),
+				"flow_dir": [legacy_dir.x, legacy_dir.y],
+			}
+		encoded[_Codec.vec2i_key(key)] = {"fluids": fluids_out}
 	return {"channels": encoded}
 
 
@@ -197,7 +250,17 @@ static func load_from_dict(data: Dictionary) -> void:
 	var channels: Dictionary = data.get("channels", {})
 	for key in channels.keys():
 		var entry: Dictionary = channels[key]
-		var flow_arr: Array = entry.get("flow_dir", [0, 0])
-		var flow_dir := Vector2i(int(flow_arr[0]), int(flow_arr[1]))
 		var cell := _Codec.vec2i_from_key(str(key))
-		register_channel(cell.x, cell.y, flow_dir, float(entry.get("water_level", 0.5)))
+		if entry.has("fluids"):
+			for fluid_key in entry["fluids"].keys():
+				var f_entry: Dictionary = entry["fluids"][fluid_key]
+				var flow_arr: Array = f_entry.get("flow_dir", [0, 0])
+				var flow_dir := Vector2i(int(flow_arr[0]), int(flow_arr[1]))
+				register_fluid(
+					cell.x, cell.y, StringName(str(fluid_key)), flow_dir,
+					float(f_entry.get("level", 0.5))
+				)
+		else:
+			var flow_arr: Array = entry.get("flow_dir", [0, 0])
+			var flow_dir := Vector2i(int(flow_arr[0]), int(flow_arr[1]))
+			register_channel(cell.x, cell.y, flow_dir, float(entry.get("water_level", 0.5)))

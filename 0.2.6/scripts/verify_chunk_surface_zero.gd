@@ -4,6 +4,8 @@ extends SceneTree
 
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 
 const FACE_TOP := 0
 
@@ -21,6 +23,9 @@ func _run() -> void:
 	var found_h := INF
 	for wx in range(-128, 128):
 		for wz in range(-128, 128):
+			var tile: int = world.get_tile_type(float(wx), float(wz))
+			if tile == _VoxelTypes.AIR or _CrystalTypes.is_water_tile(tile):
+				continue
 			var h: float = world.get_surface_height(float(wx), float(wz))
 			if h < found_h:
 				found_h = h

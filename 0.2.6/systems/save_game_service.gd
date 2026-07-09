@@ -203,16 +203,19 @@ func apply_snapshot(data: Dictionary) -> void:
 	_ChannelRegistry.load_from_dict(data.get("channels", {}))
 	_FeatureRegistry.apply_save_overlay(data.get("features", {}))
 
+	if world and world.has_method("invalidate_column_cache"):
+		for key in _TerrainEdits.to_dict().get("height_delta", {}).keys():
+			var cell := _SaveCodec.vec2i_from_key(str(key))
+			world.invalidate_column_cache(cell.x, cell.y)
+		for key in _TerrainEdits.to_dict().get("build_tile", {}).keys():
+			var cell := _SaveCodec.vec2i_from_key(str(key))
+			world.invalidate_column_cache(cell.x, cell.y)
+
 	var chunk_mgr = get_tree().get_first_node_in_group("chunk_manager")
 	if chunk_mgr and chunk_mgr.has_method("rebuild_chunks"):
 		chunk_mgr.rebuild_chunks()
 		if chunk_mgr.has_method("await_rebuild_idle"):
 			await chunk_mgr.await_rebuild_idle()
-	elif chunk_mgr and chunk_mgr.has_method("rebuild_chunk_at_world"):
-		if world and world.has_method("invalidate_column_cache"):
-			for key in _TerrainEdits.to_dict().get("height_delta", {}).keys():
-				var cell := _SaveCodec.vec2i_from_key(str(key))
-				world.invalidate_column_cache(cell.x, cell.y)
 
 	var crystal = get_tree().get_first_node_in_group("crystal_manager")
 	if crystal:

@@ -82,6 +82,10 @@ func _push_to_systems() -> void:
 	if game_manager and game_manager.has_method("apply_game_config"):
 		game_manager.apply_game_config(game_config)
 
+	var town_defense := get_tree().get_first_node_in_group("town_defense_manager")
+	if town_defense and "fall_depth" in town_defense:
+		town_defense.fall_depth = game_config.town_fall_depth
+
 	var town_mgr := get_tree().get_first_node_in_group("town_manager")
 	if town_mgr and world_gen and town_mgr.has_method("apply_world_config"):
 		town_mgr.apply_world_config(world_gen)

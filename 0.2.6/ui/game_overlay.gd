@@ -6,6 +6,7 @@ const _GameManager = preload("res://game/game_manager.gd")
 @onready var _title: Label = $Panel/VBox/Title
 @onready var _subtitle: Label = $Panel/VBox/Subtitle
 @onready var _phase_label: Label = $PhaseLabel
+@onready var _game_hud: Label = $GameHud
 
 var _game_manager: Node
 var _crystal: CrystalManager
@@ -38,9 +39,11 @@ func _spawn_goal_line() -> String:
 	if total <= 0:
 		return ""
 	var last: String = str(prog.get("last_destroyed", ""))
-	var boss: bool = bool(prog.get("boss_active", false))
-	var line := "Goal: destroy spawns %d/%d remain" % [active, total]
-	if boss:
+	var boss_sealed: bool = bool(prog.get("boss_sealed", false))
+	var line := "Destroy spawns %d/%d remain" % [active, total]
+	if boss_sealed:
+		line += " | Origin boss sealed — clear minors first"
+	elif bool(prog.get("boss_active", false)):
 		line += " | Origin boss active"
 	if last != "":
 		line += " | Last: %s" % last
@@ -56,7 +59,7 @@ func _update_map_temp_label() -> void:
 	if _game_manager and _game_manager.run_state == _GameManager.RunState.WON:
 		_phase_label.text = "Phase: Victory — all spawns destroyed%s" % temp_label
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
-		_phase_label.text = "Phase: Maze — build routes, weaken spawns%s" % temp_label
+		_phase_label.text = "Phase: Maze — dig, build, collect, steer the crystal%s" % temp_label
 	elif goal != "":
 		_phase_label.text = "Phase: Assault — %s%s" % [goal, temp_label]
 	else:
@@ -71,11 +74,31 @@ func _process(_delta: float) -> void:
 		_game_manager = get_tree().get_first_node_in_group("game_manager")
 	if _crystal == null:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	_update_game_hud()
 	if _GameplayInput.blocks_actions():
 		return
 	if Input.is_action_just_pressed("interact") and _panel.visible:
 		if _game_manager and _game_manager.has_method("restart_run"):
 			_game_manager.restart_run()
+
+
+func _update_game_hud() -> void:
+	if _game_hud == null:
+		return
+	if _crystal == null or _game_manager == null:
+		return
+	if _game_manager.run_state != _GameManager.RunState.PLAYING:
+		_game_hud.visible = false
+		return
+	_game_hud.visible = true
+	var cov_pct: float = _crystal.get_coverage_ratio() * 100.0
+	var max_cov: float = float(_game_manager.max_crystal_coverage) * 100.0
+	var prog: Dictionary = _crystal.get_spawn_progress() if _crystal.has_method("get_spawn_progress") else {}
+	var spawns_line := "%d/%d spawns" % [int(prog.get("active", 0)), int(prog.get("total", 0))]
+	_game_hud.text = (
+		"Crystal %.1f%% / %.0f%%  |  %s  |  Pick dig  RMB build  LMB fight  M map  I inventory"
+		% [cov_pct, max_cov, spawns_line]
+	)
 
 
 func _on_phase_changed(_new_phase: int) -> void:

@@ -6,7 +6,10 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 
 
 class _FakeCamera extends Camera3D:
-	var orbit_rotation: int = 0
+	var orbit_yaw_deg: float = 0.0
+
+	func get_move_yaw_deg() -> float:
+		return 45.0 + orbit_yaw_deg
 
 	func _init() -> void:
 		rotation_degrees = Vector3(-35.264, 45.0, 0.0)
@@ -14,7 +17,7 @@ class _FakeCamera extends Camera3D:
 
 class _FakePlayer extends Node3D:
 	var voxel_position := Vector3(10.0, 8.0, 10.0)
-	var locked_rotation := 0
+	var locked_move_yaw_deg: float = 45.0
 	var is_input_locked := false
 	var camera: _FakeCamera
 
@@ -42,7 +45,7 @@ func _run() -> void:
 
 	var cells: Dictionary = {}
 	for rot in 4:
-		cam.orbit_rotation = rot
+		cam.orbit_yaw_deg = float(rot) * 90.0
 		cam.rotation_degrees = Vector3(-35.264, 45.0 + float(rot) * 90.0, 0.0)
 		await process_frame
 		var fwd := _ActionTargeting.attack_forward(player)
@@ -60,8 +63,8 @@ func _run() -> void:
 	if "global_transform.basis.z" not in src and "_rotate_input_to_world" not in src:
 		push_error("action_targeting must use camera basis or movement rotation")
 		failed = true
-	elif "_pick_column_from_mouse" not in src or "warp_mouse_to_column" not in src:
-		push_error("action_targeting must support mouse column pick")
+	elif "raycast_voxel" not in src or "warp_mouse_to_column" not in src:
+		push_error("action_targeting must support voxel raycast mouse pick")
 		failed = true
 	else:
 		print("OK action_targeting camera + mouse column pick")

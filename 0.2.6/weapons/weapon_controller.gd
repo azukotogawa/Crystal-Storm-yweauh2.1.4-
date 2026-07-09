@@ -62,9 +62,13 @@ func _process(delta: float) -> void:
 	if _GameplayInput.blocks_actions():
 		return
 
-	if Input.is_action_just_pressed("attack"):
+	if _can_dig_hold() and _cooldown_timer <= 0.0:
+		_try_dig()
+	elif Input.is_action_just_pressed("attack"):
 		_try_attack()
-	if Input.is_action_just_pressed("interact") or Input.is_action_just_pressed("build_place"):
+	if _cooldown_timer <= 0.0 and (
+			Input.is_action_pressed("build_place") or Input.is_action_just_pressed("interact")
+	):
 		_try_build_wall()
 	if Input.is_action_just_pressed("plant"):
 		_try_plant()
@@ -126,7 +130,7 @@ func _try_attack() -> void:
 		ItemTypes.WeaponKind.RANGED:
 			_do_ranged_attack(item_id, def)
 		ItemTypes.WeaponKind.DIG:
-			_do_dig_attack(item_id, def)
+			return
 
 
 func _attack_forward() -> Vector3:
@@ -200,40 +204,76 @@ func _crystal_target_cell(range_v: float) -> Vector2i:
 	return _ActionTargeting.target_cell(player, range_v)
 
 
-func _do_dig_attack(item_id: String, def: Dictionary) -> void:
+func _can_dig_hold() -> bool:
+	if not Input.is_action_pressed("attack"):
+		return false
+	var slot = get_active_item()
+	if slot == null:
+		return false
+	var def := ItemTypes.get_def(str(slot.id))
+	if def.is_empty():
+		return false
+	return int(def.get("weapon_kind", -1)) == ItemTypes.WeaponKind.DIG
+
+
+func _dig_tool_def() -> Dictionary:
+	var slot = get_active_item()
+	if slot == null:
+		return {}
+	return ItemTypes.get_def(str(slot.id))
+
+
+func _chunk_manager() -> ChunkManager:
+	if player == null or not player.is_inside_tree():
+		return null
+	return player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
+
+
+func _try_dig() -> void:
+	if player == null or inventory == null:
+		return
 	if _terrain_editor == null:
 		_bind_terrain_editor()
 	if _terrain_editor == null:
 		push_warning("WeaponController: terrain_editor not found for dig")
 		return
+	var def := _dig_tool_def()
+	if def.is_empty():
+		return
+	var item_id: String = str(get_active_item().id)
 	var range_v: float = float(def.get("range", 2.0))
 	if Input.is_key_pressed(KEY_SHIFT) or Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_ALT):
 		_try_channel_water_at_target(range_v)
 		return
-	var forward := _attack_forward()
-	var target := _ActionTargeting.target_column(player, range_v)
+	var info := _ActionTargeting.resolve_action(
+		player, world, _chunk_manager(), range_v, false, &"dig"
+	)
+	if not info.get("valid", false) or info.get("mode", &"") != &"dig":
+		return
+	var target: Vector3 = info.get("column", Vector3.ZERO)
+	if target == Vector3.ZERO:
+		return
 	dig_attempted.emit(target)
-	if _terrain_editor.try_dig(target):
-		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_dig_delay(target))
+	if not _terrain_editor.try_dig(target):
+		return
+	_cooldown_timer = maxf(
+		_terrain_editor.get_dig_delay(target),
+		float(def.get("cooldown", 0.22))
+	)
 
+	var forward := _ActionTargeting.attack_toward_column(player, range_v)
 	var origin := _attack_origin(0.45)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
-	var melee_targets := _CombatHitResolver.query_melee(
-		self,
-		origin,
-		forward,
-		float(def.get("range", 2.0)) * 0.9,
-		_combat_def,
-		melee_arc_degrees * 0.85
-	)
-	for enemy in melee_targets:
+	for enemy in _CombatHitResolver.query_melee(
+			self, origin, forward, range_v * 0.9, _combat_def, melee_arc_degrees * 0.85
+	):
 		var dealt := _CombatHitResolver.apply_damage(enemy, entity_damage, StringName(item_id))
 		if dealt > 0.0:
 			entity_hit.emit(enemy, dealt, item_id)
 
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(
-			_crystal_target_cell(float(def.get("range", 2.0))),
+			_ActionTargeting.cell_column(target),
 			_crystal_hit_damage(def),
 			1.8
 		)
@@ -255,9 +295,17 @@ func _try_build_wall() -> void:
 	var game_manager := get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
 		return
-	var target := _ActionTargeting.target_column(player, 2.0)
+	const BUILD_RANGE := 2.8
+	var info := _ActionTargeting.resolve_action(
+		player, world, _chunk_manager(), BUILD_RANGE, true, &"build"
+	)
+	if not info.get("valid", false) or info.get("mode", &"") != &"build":
+		return
+	var target: Vector3 = info.get("column", Vector3.ZERO)
+	if target == Vector3.ZERO:
+		return
 	if _terrain_editor.try_build_wall(target, inventory, inventory.count_item("stone") > 0):
-		_cooldown_timer = 0.35
+		_cooldown_timer = _terrain_editor.get_build_delay()
 
 
 func _player_damage_mult(stat_id: StringName) -> float:
@@ -311,7 +359,10 @@ func _try_channel_water_at_target(range_v: float) -> void:
 	if not using_pick:
 		return
 	var forward := _ActionTargeting.attack_toward_column(player, range_v)
-	var target := _ActionTargeting.target_column(player, range_v)
+	var info := _ActionTargeting.resolve_action(
+		player, world, _chunk_manager(), range_v, false, &"dig"
+	)
+	var target: Vector3 = info.get("column", Vector3.ZERO)
 	if target == Vector3.ZERO:
 		target = player.voxel_position + forward * range_v
 	var mode: int = TerrainEditor.ChannelMode.DIG

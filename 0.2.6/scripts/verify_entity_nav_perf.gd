@@ -76,8 +76,11 @@ func _init() -> void:
 	var empty_payload: Dictionary = _ChunkMeshBufferBuilder.build_mesh_payload(
 		ChunkData.new(Vector2i.ZERO), []
 	)
-	if not empty_payload.has("terrain_buffer") or int(empty_payload.get("count", -1)) != 0:
+	if not empty_payload.has("mesh_groups") or int(empty_payload.get("count", -1)) != 0:
 		push_error("empty mesh payload invalid")
+		failed = true
+	elif not empty_payload.get("mesh_groups", []).is_empty():
+		push_error("empty mesh payload should have no mesh groups")
 		failed = true
 	else:
 		print("OK empty mesh payload")

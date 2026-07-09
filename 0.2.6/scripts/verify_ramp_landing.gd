@@ -1,5 +1,5 @@
 extends SceneTree
-## Regression: cardinal step ramps emit on landing (high) column, not the lower approach cell.
+## Regression: cardinal landing ramp only on high column; low column keeps full terrain.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -9,6 +9,7 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 const FACE_RAMP := 7
+const FACE_TOP := 0
 
 
 func _init() -> void:
@@ -45,11 +46,15 @@ func _run() -> void:
 
 	var ramp_on_low := 0
 	var ramp_on_high := 0
+	var terrain_top_on_low := 0
 	for q in quads:
+		if int(q.get("x", -1)) == low_x and int(q.get("z", -1)) == low_z:
+			if int(q.get("face_code", -1)) == FACE_RAMP:
+				ramp_on_low += 1
+			elif int(q.get("face_code", -1)) == FACE_TOP:
+				terrain_top_on_low += 1
 		if int(q.get("face_code", -1)) != FACE_RAMP:
 			continue
-		if int(q.get("x", -1)) == low_x and int(q.get("z", -1)) == low_z:
-			ramp_on_low += 1
 		if int(q.get("x", -1)) == high_x and int(q.get("z", -1)) == high_z:
 			ramp_on_high += 1
 			var dir := Vector2i(int(q.get("ramp_dir_x", 0)), int(q.get("ramp_dir_z", 0)))
@@ -58,10 +63,22 @@ func _run() -> void:
 				failed = true
 
 	if ramp_on_low > 0:
-		push_error("cardinal ramp must not emit on approach cell (%d,%d), got %d" % [low_x, low_z, ramp_on_low])
+		push_error("low cell (%d,%d) must not emit approach wedge, got %d" % [low_x, low_z, ramp_on_low])
 		failed = true
 	else:
-		print("OK no cardinal ramp on approach cell")
+		print("OK no ramp mesh on low cell")
+
+	if terrain_top_on_low < 1:
+		push_error("low cell (%d,%d) must keep terrain top face" % [low_x, low_z])
+		failed = true
+	else:
+		print("OK low cell terrain top preserved")
+
+	if data.has_ramp(low_x, low_z):
+		push_error("ramp_map must not mark low approach cell")
+		failed = true
+	else:
+		print("OK ramp_map no approach cell")
 
 	if ramp_on_high < 1:
 		push_error("cardinal ramp must emit on landing cell (%d,%d), got %d" % [high_x, high_z, ramp_on_high])

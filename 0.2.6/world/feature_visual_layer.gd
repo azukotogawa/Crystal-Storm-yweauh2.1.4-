@@ -31,15 +31,6 @@ func _bind() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_registry = get_tree().get_first_node_in_group("game_visual_registry")
-	if _registry and _registry.has_method("ensure_textures_ready"):
-		await _registry.ensure_textures_ready()
-	elif _registry and _registry.has_method("ensure_ready"):
-		await _registry.ensure_ready()
-	var world_features = get_tree().get_first_node_in_group("world_features")
-	if world_features and world_features.has_method("ensure_ready"):
-		await world_features.ensure_ready()
-	await _await_chunk_manager()
-	_bind_chunk_streaming()
 	var growth = get_tree().get_first_node_in_group("vegetation_growth_manager")
 	if growth and growth.has_signal("growth_stage_changed"):
 		if not growth.growth_stage_changed.is_connected(_on_growth_stage_changed):
@@ -53,14 +44,6 @@ func on_chunk_manager_ready(cm: ChunkManager) -> void:
 	_bind_layer_roots()
 	_resolve_registry()
 	_bind_chunk_streaming()
-
-
-func _await_chunk_manager() -> void:
-	while chunk_manager == null:
-		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
-		if chunk_manager != null:
-			break
-		await get_tree().process_frame
 
 
 func _bind_chunk_streaming() -> void:

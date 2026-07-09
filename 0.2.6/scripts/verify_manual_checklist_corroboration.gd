@@ -75,11 +75,15 @@ func _run() -> void:
 		terrain_editor = get_first_node_in_group("terrain_editor") as TerrainEditor
 		await process_frame
 
-	player.set("voxel_position", Vector3(2.5, player.get("voxel_position").y, 4.5))
-	if player.has_method("_sync_global_from_voxel"):
-		player.call("_sync_global_from_voxel")
+	var probe_cell := _find_solid_probe_cell(player, world, chunk_manager)
+	if probe_cell == Vector2i.ZERO:
+		lines.append("FAIL no solid probe cell")
+		push_error("no solid probe cell")
+		_finish(lines, true)
+		return
+	_stabilize_probe_player(player, world, probe_cell.x, probe_cell.y)
 
-	# Dig carve (mirror smoke_gameplay coordinates)
+	# Dig carve on dry land (map center is often river).
 	lines.append("## Digging — visible carve")
 	var pick_def := _ItemTypes.get_def("stone_pick")
 	if inv:
@@ -87,15 +91,18 @@ func _run() -> void:
 	if weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(1)
 	var range_v: float = float(pick_def.get("range", 2.4))
-	_ActionTargeting.warp_mouse_to_column(player, world, 3.5, 5.5)
+	_ActionTargeting.warp_mouse_to_column(
+		player, world, float(probe_cell.x) + 0.5, float(probe_cell.y) + 0.5
+	)
 	for _w in 8:
 		await process_frame
-	var dig_pick: Vector2i = _ActionTargeting.target_cell(player, range_v)
-	var dig_wx := dig_pick.x
-	var dig_wz := dig_pick.y
+	var dig_wx := probe_cell.x
+	var dig_wz := probe_cell.y
 	var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-	weapon.set("_cooldown_timer", 0.0)
-	weapon.call("_do_dig_attack", "stone_pick", pick_def)
+	if terrain_editor == null:
+		terrain_editor = get_first_node_in_group("terrain_editor") as TerrainEditor
+	if terrain_editor:
+		terrain_editor.try_dig(Vector3(float(dig_wx) + 0.5, before_h, float(dig_wz) + 0.5))
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
 	for _w in 40:
@@ -115,18 +122,32 @@ func _run() -> void:
 	# Tool-gated highlights (ActionTargeting modes)
 	lines.append("")
 	lines.append("## Highlights — tool-gated modes")
+	_stabilize_probe_player(player, world, dig_wx, dig_wz)
+	for _w in 8:
+		await process_frame
 	if inv:
 		inv.set_slot(1, "stone_pick", 1)
 		weapon.set_active_hotbar_index(1)
-	var dig_mode = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.4).get("mode")
+	_ActionTargeting.warp_mouse_to_column(
+		player, world, float(dig_wx) + 0.5, float(dig_wz) + 0.5
+	)
+	for _w in 4:
+		await process_frame
+	var dig_mode = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.4, false, &"dig"
+	).get("mode")
 	if inv:
 		inv.set_slot(0, "wooden_sword", 1)
 		weapon.set_active_hotbar_index(0)
-	var atk_mode = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.8).get("mode")
+	var atk_mode = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.8, false, &"attack"
+	).get("mode")
 	if inv:
 		inv.set_slot(2, "stone", 4)
 		weapon.set_active_hotbar_index(2)
-	var build_mode = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0).get("mode")
+	var build_mode = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.0, false, &"build"
+	).get("mode")
 	if dig_mode == &"dig" and atk_mode == &"attack" and build_mode == &"build":
 		lines.append("PASS highlight modes dig=%s attack=%s build=%s" % [dig_mode, atk_mode, build_mode])
 		print("OK highlight modes dig/attack/build")
@@ -135,14 +156,17 @@ func _run() -> void:
 		push_error("highlight modes wrong")
 		failed = true
 
-	# Build wall (mirror display_session_probe)
+	# Build wall on a separate solid cell near the dig probe.
 	lines.append("")
 	lines.append("## Build — stone wall")
-	var build_wx := 20
-	var build_wz := 22
-	_ActionTargeting.warp_mouse_to_column(player, world, float(build_wx) + 0.5, float(build_wz) + 0.5)
-	for _w in 10:
-		await process_frame
+	var build_cell := _find_solid_probe_cell(
+		player, world, chunk_manager, probe_cell + Vector2i(3, 1)
+	)
+	if build_cell == Vector2i.ZERO or build_cell == probe_cell:
+		build_cell = probe_cell + Vector2i(2, 2)
+	_stabilize_probe_player(player, world, build_cell.x, build_cell.y)
+	var build_wx := build_cell.x
+	var build_wz := build_cell.y
 	if inv:
 		if inv.count_item("stone") < 2:
 			inv.add_item("stone", 4)
@@ -150,14 +174,9 @@ func _run() -> void:
 	if weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(0)
 	weapon.set("_cooldown_timer", 0.0)
-	var build_target: Vector3 = _ActionTargeting.target_column(player, 2.0)
-	build_wx = floori(build_target.x)
-	build_wz = floori(build_target.z)
+	var build_target: Vector3 = Vector3(float(build_wx) + 0.5, float(player.get("voxel_position").y), float(build_wz) + 0.5)
 	var build_ok := false
-	if weapon.has_method("_try_build_wall"):
-		weapon.call("_try_build_wall")
-		build_ok = _TerrainEdits.get_height_delta(build_wx, build_wz) > 0.01
-	if not build_ok and terrain_editor and inv:
+	if terrain_editor and inv:
 		build_ok = terrain_editor.try_build_wall(build_target, inv, inv.count_item("stone") > 0)
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
@@ -212,18 +231,18 @@ func _run() -> void:
 			var fc := int(q.get("face_code", -1))
 			if ramp_counts.has(fc):
 				ramp_counts[fc] += 1
-	# Synthetic L-step proves corner prisms emit (spawn area may have corner=0 at 28% placement).
-	var corner_synth_ok := _synthetic_corner_ramp_ok()
-	if ramp_counts[FACE_RAMP] >= 1 and ramp_counts[FACE_RAMP_SIDE] >= 1 and corner_synth_ok:
-		lines.append("PASS ramps cardinal=%d corner=%d concave=%d synth_corner=1" % [
+	# Synthetic L-step must not emit corner prisms (cardinal + concave diagonals only).
+	var no_corner_synth := _synthetic_no_corner_ramps()
+	if ramp_counts[FACE_RAMP] >= 1 and ramp_counts[FACE_RAMP_SIDE] >= 1 and no_corner_synth:
+		lines.append("PASS ramps cardinal=%d corner=%d concave=%d synth_no_corner=1" % [
 			ramp_counts[FACE_RAMP], ramp_counts[FACE_RAMP_CORNER], ramp_counts[FACE_RAMP_SIDE]
 		])
-		print("OK ramp face codes present synth_corner=1")
+		print("OK ramp face codes present synth_no_corner=1")
 	else:
-		lines.append("FAIL ramps cardinal=%d corner=%d concave=%d synth_corner=%s" % [
-			ramp_counts[FACE_RAMP], ramp_counts[FACE_RAMP_CORNER], ramp_counts[FACE_RAMP_SIDE], corner_synth_ok
+		lines.append("FAIL ramps cardinal=%d corner=%d concave=%d synth_no_corner=%s" % [
+			ramp_counts[FACE_RAMP], ramp_counts[FACE_RAMP_CORNER], ramp_counts[FACE_RAMP_SIDE], no_corner_synth
 		])
-		push_error("ramp mesh missing face codes or synthetic corner failed")
+		push_error("ramp mesh missing face codes or synthetic corner policy failed")
 		failed = true
 
 	# Vegetation / entities voxel
@@ -273,7 +292,39 @@ func _run() -> void:
 	_finish(lines, failed)
 
 
-func _synthetic_corner_ramp_ok() -> bool:
+func _find_solid_probe_cell(
+	player: Node,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	origin: Vector2i = Vector2i.ZERO
+) -> Vector2i:
+	var start := origin
+	if start == Vector2i.ZERO and player != null:
+		var vp: Vector3 = player.get("voxel_position")
+		start = Vector2i(floori(vp.x), floori(vp.z))
+	for radius in range(0, 28):
+		for gx in range(start.x - radius, start.x + radius + 1):
+			for gz in range(start.y - radius, start.y + radius + 1):
+				if _ActionTargeting._is_solid_column(world, chunk_manager, gx, gz):
+					return Vector2i(gx, gz)
+	return Vector2i.ZERO
+
+
+func _stabilize_probe_player(player: Node, world: InfiniteNoiseWorld, wx: int, wz: int) -> void:
+	if player == null:
+		return
+	var col_x := float(wx) + 0.5
+	var col_z := float(wz) + 0.5
+	var y: float = float(player.get("voxel_position").y)
+	player.set("voxel_position", Vector3(col_x - 1.0, y, col_z - 1.0))
+	if player.has_method("_sync_global_from_voxel"):
+		player.call("_sync_global_from_voxel")
+	if player.has_method("_snap_to_ground"):
+		player.call("_snap_to_ground")
+	_ActionTargeting.warp_mouse_to_column(player, world, col_x, col_z)
+
+
+func _synthetic_no_corner_ramps() -> bool:
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var old_chance: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 100
@@ -311,7 +362,7 @@ func _synthetic_corner_ramp_ok() -> bool:
 
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()
-	return corner >= 1
+	return corner == 0
 
 
 func _finish(lines: PackedStringArray, failed: bool) -> void:

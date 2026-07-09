@@ -33,7 +33,7 @@ func _run() -> void:
 	lines.append("# Gameplay verification log")
 	lines.append("")
 	lines.append("**Method:** Headless scripted smoke (`smoke_gameplay.gd`) — NOT interactive manual QA.")
-	lines.append("Exercises WeaponController._do_dig_attack, EntityManager._spawn_world_entity, combat VFX, chunk mesh audit.")
+	lines.append("Exercises WeaponController._try_dig, EntityManager._spawn_world_entity, combat VFX, chunk mesh audit.")
 	lines.append("For **Working** status see `manual_verification.md` (human-hand session required).")
 	lines.append("")
 	lines.append("Preset: MEDIUM | Session: %.0fs | Captured: %s" % [session_sec, stamp])
@@ -110,22 +110,23 @@ func _run() -> void:
 	var dug := false
 	var dig_wx := -1
 	var dig_wz := -1
-	if weapon != null and pick_def and weapon.has_method("_do_dig_attack"):
+	if weapon != null and pick_def and weapon.has_method("_try_dig"):
 		var inv = player.get("inventory")
 		if inv:
 			inv.set_slot(1, "stone_pick", 1)
 		if weapon.has_method("set_active_hotbar_index"):
 			weapon.set_active_hotbar_index(1)
-		var range_v: float = float(pick_def.get("range", 2.0))
-		_ActionTargeting.warp_mouse_to_column(player, world, 3.5, 5.5)
-		for _w in 8:
-			await process_frame
-		var dig_pick: Vector2i = _ActionTargeting.target_cell(player, range_v)
-		dig_wx = dig_pick.x
-		dig_wz = dig_pick.y
+		var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor") as TerrainEditor
+		dig_wx = 3
+		dig_wz = 5
+		for offset in [Vector2i(3, 5), Vector2i(4, 5), Vector2i(3, 6), Vector2i(5, 5)]:
+			if _ActionTargeting._is_solid_column(world, chunk_manager, offset.x, offset.y):
+				dig_wx = offset.x
+				dig_wz = offset.y
+				break
 		var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-		weapon.set("_cooldown_timer", 0.0)
-		weapon.call("_do_dig_attack", "stone_pick", pick_def)
+		if terrain_editor:
+			terrain_editor.try_dig(Vector3(float(dig_wx) + 0.5, before_h, float(dig_wz) + 0.5))
 		if chunk_manager.has_method("await_rebuild_idle"):
 			await chunk_manager.await_rebuild_idle()
 		for _w in 40:
@@ -440,11 +441,11 @@ func _run() -> void:
 			Input.action_release(move_action)
 			if phase == 90:
 				dir_idx += 1
-		if phase == 30 and weapon and weapon.has_method("_do_dig_attack"):
+		if phase == 30 and weapon and weapon.has_method("_try_dig"):
 			if weapon.has_method("set_active_hotbar_index"):
 				weapon.set_active_hotbar_index(1)
 			var pick: Dictionary = _ItemTypes.get_def("stone_pick")
-			weapon.call("_do_dig_attack", "stone_pick", pick)
+			weapon.call("_try_dig")
 			session_digs += 1
 		if phase == 60:
 			Input.action_press("jump")

@@ -86,7 +86,7 @@ func _build_ui() -> void:
 
 	_input = LineEdit.new()
 	_input.size_flags_vertical = Control.SIZE_SHRINK_END
-	_input.placeholder_text = "Report bug to dev or type /help ..."
+	_input.placeholder_text = "Ask the AI assistant or type /help ..."
 	_input.clear_button_enabled = true
 	_input.text_submitted.connect(_on_text_submitted)
 	vbox.add_child(_input)

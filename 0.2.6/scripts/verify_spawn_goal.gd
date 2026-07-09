@@ -37,6 +37,8 @@ func _run_all() -> void:
 	_test_crystal_manager_damage_path()
 	_test_emit_weaken_in_tick_emitters()
 	_test_game_manager_victory_phase()
+	_test_game_manager_coverage_lose()
+	_test_full_game_spawn_defaults()
 
 
 func _compile_check() -> void:
@@ -239,6 +241,27 @@ func _test_game_manager_victory_phase() -> void:
 		_fail("GameManager should set Phase.VICTORY")
 		return
 	_log("OK GameManager Phase.VICTORY + RunState.WON")
+
+
+func _test_game_manager_coverage_lose() -> void:
+	var gm = _GameManager.new()
+	gm.max_crystal_coverage = 0.01
+	var cm := _CrystalManager.new()
+	cm.covered_cells = 50000
+	gm._crystal = cm
+	gm._check_crystal_overrun()
+	if gm.run_state != _GameManager.RunState.LOST:
+		_fail("GameManager should set RunState.LOST on coverage overrun")
+		return
+	_log("OK GameManager RunState.LOST on coverage >= max_crystal_coverage")
+
+
+func _test_full_game_spawn_defaults() -> void:
+	var cfg = _CrystalSimConfig.create_default()
+	if cfg.ruin_spawn_count < 1 or cfg.artifact_spawn_count < 1:
+		_fail("full game needs ruin and artifact spawn counts")
+		return
+	_log("OK full game spawn defaults ruin=%d artifact=%d" % [cfg.ruin_spawn_count, cfg.artifact_spawn_count])
 
 
 func _log(msg: String) -> void:

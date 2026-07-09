@@ -52,21 +52,25 @@ func _run() -> void:
 		print("OK ramp cell exclusive mesh")
 	var ax := 5
 	var az := 5
-	var terrain_on_approach := 0
+	var terrain_on_low := 0
+	var ramp_on_low := 0
 	for q in cm._build_mesh(data).get("quads", []):
 		if int(q.get("x", -1)) != ax or int(q.get("z", -1)) != az:
 			continue
 		var fc := int(q.get("face_code", -1))
 		if fc == FACE_RAMP:
-			continue
-		if fc == FACE_TOP or fc in [3, 4, 5, 6]:
-			terrain_on_approach += 1
-	if terrain_on_approach > 0:
-		push_error("approach cell (%d,%d) has %d terrain box faces under ramp" % [ax, az, terrain_on_approach])
+			ramp_on_low += 1
+		elif fc == FACE_TOP or fc in [3, 4, 5, 6]:
+			terrain_on_low += 1
+	if ramp_on_low > 0:
+		push_error("low cell (%d,%d) must not emit ramp mesh, got %d" % [ax, az, ramp_on_low])
+		failed = true
+	elif terrain_on_low < 1:
+		push_error("low cell (%d,%d) must emit terrain faces" % [ax, az])
 		failed = true
 	else:
-		print("OK approach cell has no terrain box under ramp")
-	# Corner L-step low cell: flat FACE_TOP at base must not coexist with corner prism.
+		print("OK low cell full terrain block")
+	# L-step low cell: no corner prisms (cardinal + concave diagonals only).
 	var data2 := _ChunkData.new(Vector2i(0, 0), world)
 	data2.capture_worker_snapshot()
 	for x in _ChunkData.SIZE:
@@ -78,24 +82,15 @@ func _run() -> void:
 	data2.surface_map[cx][cz] = low_h
 	for d in [Vector2i(1, 0), Vector2i(0, 1)]:
 		data2.surface_map[cx + d.x][cz + d.y] = low_h + layer
-	var tops_at_base := 0
 	var corner_prism := 0
 	for q in cm._build_mesh(data2).get("quads", []):
-		if int(q.get("x", -1)) != cx or int(q.get("z", -1)) != cz:
-			continue
-		var fc := int(q.get("face_code", -1))
-		if fc == 8:
+		if int(q.get("face_code", -1)) == 8:
 			corner_prism += 1
-		elif fc == FACE_TOP and is_equal_approx(float(q.get("y", -1)), low_h):
-			tops_at_base += 1
-	if corner_prism < 1:
-		push_error("corner prism missing")
-		failed = true
-	elif tops_at_base > 0:
-		push_error("corner cell has flat top at base y=%.2f (block under prism), tops=%d" % [low_h, tops_at_base])
+	if corner_prism > 0:
+		push_error("L-step must not emit corner prism, got %d" % corner_prism)
 		failed = true
 	else:
-		print("OK corner cell no flat base top under prism")
+		print("OK L-step emits no corner prism")
 
 	if failed:
 		quit(1)

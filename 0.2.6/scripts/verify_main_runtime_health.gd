@@ -4,6 +4,7 @@ extends SceneTree
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
@@ -112,6 +113,26 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK spawn markers use Sprite3D")
+
+	if crystal and crystal.has_method("get_spawn_progress"):
+		var prog: Dictionary = crystal.get_spawn_progress()
+		var total: int = int(prog.get("total", 0))
+		var active: int = int(prog.get("active", 0))
+		if total < 3 or active < 3:
+			push_error("full game expects >=3 spawns, got %d/%d active" % [active, total])
+			failed = true
+		else:
+			var boss_pos := Vector2i.ZERO
+			for spawn in crystal.get_active_spawns():
+				if spawn.is_boss:
+					boss_pos = spawn.world_pos
+					break
+			if boss_pos != Vector2i.ZERO and crystal.has_method("_tile_at") \
+					and _CrystalTypes.is_water_tile(crystal._tile_at(boss_pos)):
+				push_error("origin boss spawn %s is on water" % boss_pos)
+				failed = true
+			else:
+				print("OK spawns active=%d total=%d boss_at=%s" % [active, total, boss_pos])
 
 	var entity_voxel := 0
 	for _w in 200:

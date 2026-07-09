@@ -14,17 +14,23 @@ extends Resource
 @export var mountain_height_boost: float = 78.0
 
 @export_group("Rivers")
-@export var river_target_prevalence: float = 0.20
+@export var river_target_prevalence: float = 0.16
 @export var river_freq_base: float = 0.068
 @export var river_scale_factor: float = 2.9
-@export var river_core_power: float = 1.48
-@export var river_core_offset: float = -0.025
-@export var river_core_scale: float = 1.08
-@export var river_is_river_threshold: float = 0.142
-@export var river_surface_tile_threshold: float = 0.172
-@export var river_min_carve_for_tile: float = 0.48
-@export var river_max_carve: float = 27.0
-@export var river_valley_width_factor: float = 1.8
+@export var river_core_power: float = 1.95
+@export var river_core_offset: float = -0.04
+@export var river_core_scale: float = 1.05
+@export var river_is_river_threshold: float = 0.19
+@export var river_surface_tile_threshold: float = 0.22
+@export var river_min_carve_for_tile: float = 0.55
+@export var river_max_carve: float = 17.0
+@export var river_valley_width_factor: float = 1.05
+## Zero-crossing distance for ribbon mask (lower = thinner rivers).
+@export var river_mask_threshold: float = 0.013
+## Carve depth required to emit RIVER without mask (higher = narrower wet footprint).
+@export var river_carve_surface_threshold: float = 11.5
+@export var river_warp_strength: float = 11.0
+@export var river_meander_mix: float = 0.30
 
 @export_group("Caves")
 @export var caves_enabled: bool = true

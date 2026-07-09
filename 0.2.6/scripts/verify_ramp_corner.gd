@@ -1,5 +1,5 @@
 extends SceneTree
-## Regression: L-shaped step corners emit triangular prism (FACE_RAMP_CORNER), not cardinal wedge.
+## Regression: L-shaped step corners must not emit corner prisms (cardinal + concave only).
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -42,49 +42,36 @@ func _run() -> void:
 
 	var cm := _ChunkManager.new()
 	cm.ramp_placement_chance = 100
-	var mesh: Dictionary = cm._build_mesh(data)
-	var quads: Array = mesh.get("quads", [])
+	var quads: Array = cm._build_mesh(data).get("quads", [])
 
 	var corner := 0
 	var cardinal_at_cell := 0
-	var floor_tops := 0
 	for q in quads:
 		var fc := int(q.get("face_code", -1))
 		if int(q.get("x", -1)) != cx or int(q.get("z", -1)) != cz:
 			continue
 		if fc == FACE_RAMP_CORNER:
 			corner += 1
-			if int(q.get("ramp_dir2_x", 0)) == 0 and int(q.get("ramp_dir2_z", 0)) == 0:
-				push_error("corner ramp must set ramp_dir2")
-				failed = true
 		elif fc == FACE_RAMP:
 			cardinal_at_cell += 1
-		elif fc == FACE_TOP and float(q.get("y", -1.0)) == low_h:
-			floor_tops += 1
 
-	if corner < 1:
-		push_error("L-step must emit corner prism at low cell, got corner=%d cardinal=%d" % [corner, cardinal_at_cell])
+	if corner > 0:
+		push_error("L-step low cell must not emit corner prism, got %d" % corner)
 		failed = true
 	else:
-		print("OK step-corner prisms=%d" % corner)
+		print("OK no corner prism on L-step low cell")
 
 	if cardinal_at_cell > 0:
 		push_error("L-step low cell must not get cardinal wedge, got %d" % cardinal_at_cell)
 		failed = true
 	else:
-		print("OK no cardinal wedge on corner cell")
+		print("OK no cardinal wedge on L-step low cell")
 
-	if floor_tops > 0:
-		push_error("corner cell must not emit flat block at low_h under prism, tops=%d" % floor_tops)
+	if data.is_ramp_corner(cx, cz):
+		push_error("ramp_map must not mark corner at (%d,%d)" % [cx, cz])
 		failed = true
 	else:
-		print("OK corner cell no flat base top under prism")
-
-	if not data.is_ramp_corner(cx, cz):
-		push_error("ramp_map must mark corner at (%d,%d)" % [cx, cz])
-		failed = true
-	else:
-		print("OK ramp_map corner flag")
+		print("OK ramp_map no corner flag")
 
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()

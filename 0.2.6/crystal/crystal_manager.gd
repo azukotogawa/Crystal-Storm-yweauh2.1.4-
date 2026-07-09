@@ -54,7 +54,8 @@ var _dirty_chunks: Dictionary = {}
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
 var _rng: RandomNumberGenerator
-var _crystal_material: StandardMaterial3D
+var _crystal_material: ShaderMaterial
+var _crystal_pulse_phase: float = 0.0
 var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
@@ -132,6 +133,9 @@ func _bootstrap_when_ready() -> void:
 	_rebuild_cell_index()
 	_bind_chunk_stream()
 	_initialized = true
+	var perf_svc = get_tree().get_first_node_in_group("performance_service")
+	if perf_svc and perf_svc.get("quality"):
+		apply_performance_config(perf_svc.quality)
 
 
 func configure_evolution() -> void:
@@ -228,15 +232,20 @@ func get_fluid_sim() -> _CrystalFluidSim:
 
 
 func _setup_materials() -> void:
-	_crystal_material = StandardMaterial3D.new()
-	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_crystal_material.albedo_color = Color(0.58, 0.22, 0.95, 0.78)
-	_crystal_material.emission_enabled = true
-	_crystal_material.emission = Color(0.38, 0.12, 0.78)
-	_crystal_material.emission_energy_multiplier = 1.35
-	_crystal_material.roughness = 0.18
-	_crystal_material.metallic = 0.25
+	var shader := load("res://shaders/crystal_procedural.gdshader") as Shader
+	_crystal_material = ShaderMaterial.new()
+	_crystal_material.shader = shader
+	var crystal_tex: Texture2D = null
+	var tex_gen = get_node_or_null("/root/CrystalTextureGenerator")
+	if tex_gen:
+		crystal_tex = tex_gen.generate_texture(tex_gen.Category.CRYSTAL, &"amethyst", 128)
+	if crystal_tex:
+		_crystal_material.set_shader_parameter("albedo_tex", crystal_tex)
+	_crystal_material.set_shader_parameter("glow_color", Color(0.62, 0.22, 1.0, 1.0))
+	_crystal_material.set_shader_parameter("glow_strength", 1.15)
+	_crystal_material.set_shader_parameter("iridescence", 0.42)
+	_crystal_material.set_shader_parameter("roughness", 0.14)
+	_crystal_material.set_shader_parameter("metallic", 0.35)
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -257,17 +266,17 @@ func _initialize_spawns() -> void:
 	_SpawnPointRegistry.ensure_builtins()
 
 	var origin_def := _spawn_def_for_kind(CrystalTypes.SpawnKind.ORIGIN)
-	var origin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), Vector2i.ZERO, origin_def)
+	var origin_pos := _resolve_origin_spawn_position()
+	var origin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), origin_pos, origin_def)
 	_spawn_points.append(origin)
 	_seed_emitter(origin)
 
-	if not sim_config.vertical_slice_mode:
-		_add_feature_ruin_spawns()
-		var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
-		for _i in procedural:
-			var ruin_pos := _pick_ruin_spawn_position()
-			_add_ruin_spawn_at(ruin_pos)
-		_add_artifact_spawns()
+	_add_feature_ruin_spawns()
+	var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
+	for _i in procedural:
+		var ruin_pos := _pick_ruin_spawn_position()
+		_add_ruin_spawn_at(ruin_pos)
+	_add_artifact_spawns()
 	_sync_spawn_controller()
 	_recalc_stats()
 	call_deferred("refresh_spawn_marker_textures")
@@ -375,6 +384,61 @@ func _pick_artifact_spawn_position() -> Vector2i:
 	return best
 
 
+func pick_origin_spawn_cell() -> Vector2i:
+	return _resolve_origin_spawn_position()
+
+
+func _resolve_origin_spawn_position() -> Vector2i:
+	var preferred := Vector2i.ZERO
+	if _origin_cell_unsuitable(preferred):
+		var land := _pick_nearest_land_spawn(preferred)
+		if land != preferred:
+			print("[Crystal] Origin relocated %s → %s (avoid water at map center)" % [preferred, land])
+		return land
+	return preferred
+
+
+func _origin_cell_unsuitable(pos: Vector2i) -> bool:
+	if world == null:
+		return false
+	if CrystalTypes.is_water_tile(_tile_at(pos)):
+		return true
+	var surface := _terrain_at(pos)
+	return not _is_origin_land_surface(surface)
+
+
+func _origin_surface_bounds() -> Vector2:
+	# Valley grass near rivers can sit well below SEA_LEVEL; still walkable/buildable.
+	return Vector2(4.0, 138.0)
+
+
+func _is_origin_land_surface(surface: float) -> bool:
+	var bounds := _origin_surface_bounds()
+	return surface >= bounds.x and surface <= bounds.y
+
+
+func _pick_nearest_land_spawn(around: Vector2i) -> Vector2i:
+	if world == null:
+		return around
+	var bounds := _origin_surface_bounds()
+	for radius in 128:
+		for dx in range(-radius, radius + 1):
+			for dz in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dz)) != radius:
+					continue
+				var pos := Vector2i(around.x + dx, around.y + dz)
+				if not _WorldBorder.is_playable(float(pos.x), float(pos.y)):
+					continue
+				if CrystalTypes.is_water_tile(_tile_at(pos)):
+					continue
+				var surface := _terrain_at(pos)
+				if surface < bounds.x or surface > bounds.y:
+					continue
+				return pos
+	push_warning("[Crystal] No dry land near %s — using fallback (12, 0)" % around)
+	return Vector2i(12, 0)
+
+
 func _pick_ruin_spawn_position() -> Vector2i:
 	var best := Vector2i(64, 64)
 	var best_score := -1.0
@@ -445,6 +509,11 @@ func apply_performance_config(cfg) -> void:
 func _process(delta: float) -> void:
 	if not _initialized:
 		return
+
+	if _crystal_material:
+		_crystal_pulse_phase += delta
+		var pulse := 0.82 + 0.18 * sin(_crystal_pulse_phase * 2.4)
+		_crystal_material.set_shader_parameter("glow_strength", 1.05 * pulse)
 
 	if expansion_enabled:
 		_sim_accum += delta
@@ -927,6 +996,8 @@ func get_walkable_height(wx: float, wz: float) -> float:
 
 
 func get_active_spawns() -> Array[CrystalSpawnPoint]:
+	if _spawn_ctrl:
+		return _spawn_ctrl.get_active_spawns()
 	var active: Array[CrystalSpawnPoint] = []
 	for spawn in _spawn_points:
 		if spawn.active:

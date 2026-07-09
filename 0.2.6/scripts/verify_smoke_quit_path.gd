@@ -3,6 +3,7 @@ extends SceneTree
 
 const ROOT := "res://"
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"
+const _ProbePaths = preload("res://scripts/probe_paths.gd")
 
 
 func _init() -> void:
@@ -24,9 +25,10 @@ func _run_case(label: String, force_env: String, expect_ok: bool) -> bool:
 	if not FileAccess.file_exists(wrapper):
 		push_error("missing run_smoke_gameplay.sh")
 		return false
-	var cmd := "bash \"%s\"" % wrapper
+	var scratch := _ProbePaths.scratch_dir()
+	var cmd := "CRYSTALSTORM_SCRATCH=%s bash \"%s\"" % [scratch, wrapper]
 	if not force_env.is_empty():
-		cmd = "SMOKE_FORCE_FAIL=%s %s" % [force_env, cmd]
+		cmd = "SMOKE_FORCE_FAIL=%s CRYSTALSTORM_SCRATCH=%s bash \"%s\"" % [force_env, scratch, wrapper]
 	var output: Array = []
 	var exit_code := OS.execute("bash", ["-c", cmd], output, true, false)
 	var text := "\n".join(output)

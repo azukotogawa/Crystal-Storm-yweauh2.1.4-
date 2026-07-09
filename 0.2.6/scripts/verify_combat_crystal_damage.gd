@@ -25,7 +25,7 @@ func _run() -> void:
 	var player := Player.new()
 	player.voxel_position = Vector3(8.5, 12.0, 8.5)
 	player.is_input_locked = true
-	player.locked_rotation = 0
+	player.locked_move_yaw_deg = 45.0
 
 	var range_v: float = float(_ItemTypes.get_def("wooden_sword").get("range", 2.8))
 	var target_cell := _ActionTargeting.target_cell(player, range_v)
@@ -68,7 +68,7 @@ func _run() -> void:
 	var prod_player := Player.new()
 	prod_player.voxel_position = Vector3(8.5, 12.0, 8.5)
 	prod_player.is_input_locked = true
-	prod_player.locked_rotation = 0
+	prod_player.locked_move_yaw_deg = 45.0
 	prod_player.world_ready = true
 	weapon.player = prod_player
 	holder.add_child(weapon)

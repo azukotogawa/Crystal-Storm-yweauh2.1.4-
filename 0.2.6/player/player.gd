@@ -9,6 +9,8 @@ const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _ChunkData = preload("res://chunks/chunk_data.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -39,7 +41,8 @@ var current_state := State.IDLE
 var landing_timer: float = 0.0
 
 var is_input_locked: bool = false
-var locked_rotation: int = 0
+## World yaw (degrees) locked when movement starts — matches camera orbit + isometric bias.
+var locked_move_yaw_deg: float = 45.0
 
 var camera: Camera3D
 var world_ready := false
@@ -118,7 +121,14 @@ func _ready():
 
 	_setup_body_collision()
 
-	while not chunk_manager.spawn_area_ready(0, 0):
+	if crystal_manager:
+		await crystal_manager.ensure_ready()
+
+	var spawn_col := _resolve_spawn_column()
+	_ensure_spawn_chunks_loaded(spawn_col)
+	for _warmup in 180:
+		if chunk_manager.spawn_area_ready(spawn_col.x, spawn_col.y):
+			break
 		await get_tree().process_frame
 
 	var ph := _player_height()
@@ -138,8 +148,8 @@ func _ready():
 	player_mesh.material_override = player_material
 	player_mesh.position.y = ph / 2.0
 
-	var spawn_x := 0.5
-	var spawn_z := 0.5
+	var spawn_x := float(spawn_col.x) + 0.5
+	var spawn_z := float(spawn_col.y) + 0.5
 	_floor_probe.feet_height_hint = _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
@@ -150,6 +160,8 @@ func _ready():
 
 	_sync_global_from_voxel()
 	world_ready = true
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(1)
 
 
 func _setup_body_collision() -> void:
@@ -198,7 +210,10 @@ func _physics_process(delta: float) -> void:
 
 	if input_dir != Vector2.ZERO:
 		if not is_input_locked:
-			locked_rotation = camera.orbit_rotation if camera else 0
+			if camera and camera.has_method("get_move_yaw_deg"):
+				locked_move_yaw_deg = camera.get_move_yaw_deg()
+			else:
+				locked_move_yaw_deg = 45.0
 			is_input_locked = true
 	else:
 		is_input_locked = false
@@ -208,7 +223,7 @@ func _physics_process(delta: float) -> void:
 
 	var airborne := current_state in [State.JUMPING, State.FALLING]
 	if input_dir != Vector2.ZERO:
-		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
+		var move_vec := rotate_input_to_world(input_dir, locked_move_yaw_deg)
 		var move_delta := move_vec * speed * delta
 
 		var target_pos_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
@@ -276,9 +291,8 @@ func _slope_speed_multiplier() -> float:
 	return clampf(1.0 - (excess - slope_limit) / layer, 0.35, 1.0)
 
 
-func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
-	var angle := rot * 90.0 + 45.0
-	var rad := deg_to_rad(angle)
+func rotate_input_to_world(input: Vector2, yaw_deg: float) -> Vector2:
+	var rad := deg_to_rad(yaw_deg)
 	var ca := cos(rad)
 	var sa := sin(rad)
 	return Vector2(
@@ -350,6 +364,42 @@ func _give_starting_loadout() -> void:
 	inventory.set_slot(3, "wood", 16)
 	inventory.set_slot(4, "stone", 8)
 	inventory.set_slot(5, "herb", 4)
+
+
+func _ensure_spawn_chunks_loaded(spawn_col: Vector2i) -> void:
+	if chunk_manager == null or not chunk_manager.has_method("request_chunk"):
+		return
+	var cols: Array[Vector2i] = [spawn_col]
+	if crystal_manager:
+		for spawn in crystal_manager.get_active_spawns():
+			cols.append(spawn.world_pos)
+	for col in cols:
+		var coord := Vector2i(
+			floori(float(col.x) / float(_ChunkData.SIZE)),
+			floori(float(col.y) / float(_ChunkData.SIZE))
+		)
+		chunk_manager.request_chunk(coord, true)
+
+
+func _resolve_spawn_column() -> Vector2i:
+	var col := Vector2i(0, 0)
+	if crystal_manager == null:
+		return col
+	var source: Vector2i = Vector2i.ZERO
+	for spawn in crystal_manager.get_active_spawns():
+		if spawn.is_boss:
+			source = spawn.world_pos
+			break
+	if source == Vector2i.ZERO:
+		var spawns: Array = crystal_manager.get_active_spawns()
+		if not spawns.is_empty():
+			source = spawns[0].world_pos
+	# Stand uphill from the origin boss so crystal fluid flows toward the player.
+	for offset in [Vector2i(4, -4), Vector2i(3, -5), Vector2i(5, -3), Vector2i(2, -6), Vector2i(6, -2)]:
+		var candidate: Vector2i = source + offset
+		if world and not _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
+			return candidate
+	return source + Vector2i(4, -4)
 
 
 func get_stat(stat_id: StringName) -> float:

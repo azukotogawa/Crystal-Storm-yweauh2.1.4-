@@ -21,8 +21,8 @@ func _run() -> void:
 	if "terrain.try_dig" in text:
 		push_error("smoke must not call terrain.try_dig for dig proof")
 		ok = false
-	if "_do_dig_attack" not in text:
-		push_error("smoke must call WeaponController._do_dig_attack")
+	if "_try_dig" not in text:
+		push_error("smoke must call WeaponController._try_dig")
 		ok = false
 	if 'SCRATCH_PATH := "' in text and "manual_verification.md" in text.split("SCRATCH_PATH")[1]:
 		push_error("smoke SCRATCH_PATH must not be manual_verification.md")

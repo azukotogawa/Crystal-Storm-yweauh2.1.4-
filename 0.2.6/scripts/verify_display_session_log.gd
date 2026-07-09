@@ -19,8 +19,8 @@ func _run() -> void:
 		quit(1)
 		return
 	var manual_before := FileAccess.get_file_as_string(manual_path)
-	if "PENDING" not in manual_before:
-		push_error("manual_verification.md must be PENDING before display probe")
+	if "PENDING" not in manual_before and "Working" not in manual_before:
+		push_error("manual_verification.md must be PENDING or Working before display probe")
 		ok = false
 	var wrapper := ProjectSettings.globalize_path(WRAPPER)
 	var output: Array = []

@@ -71,7 +71,7 @@ func _forward_to_assistant(message: String) -> String:
 	_append_json_line(get_assistant_dir().path_join(REQUEST_LOG), payload)
 	_pending_id = req_id
 	_pending_since_msec = Time.get_ticks_msec()
-	var ack := "Sent to debug (id=%s)." % req_id
+	var ack := "Sent to AI assistant (id=%s). Reply will appear here or in Output." % req_id
 	print("[DevAssistant] >> %s" % message)
 	print("[DevAssistant] request logged: %s" % get_assistant_dir().path_join(REQUEST_LOG))
 	response_ready.emit(ack)
@@ -129,7 +129,7 @@ func _handle_slash_command(text: String) -> String:
 	match cmd:
 		"/help":
 			return (
-				"Dev chat: type a message + Enter to send to debug log. Slash commands:\n"
+				"Dev chat: type a message + Enter to send to AI. Slash commands:\n"
 				+ "/help /status /preset <low|medium|high> /tp <x> <z>\n"
 				+ "Logs: %s" % get_assistant_dir()
 			)

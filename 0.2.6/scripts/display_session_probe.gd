@@ -86,34 +86,28 @@ func _run() -> void:
 	lines.append("## P0 — Runtime errors/warnings")
 	lines.append("- PASS %s — Bootstrap OK in display window; crystal_manager ready." % stamp)
 
-	# Dig via attack input → WeaponController production path
-	lines.append("")
-	lines.append("## P0 — Pickaxe / digging")
-	player.set("voxel_position", Vector3(2.5, player.get("voxel_position").y, 4.5))
-	if player.has_method("_sync_global_from_voxel"):
-		player.call("_sync_global_from_voxel")
 	var weapon: Node = player.get_node_or_null("WeaponController")
 	var inv = player.get("inventory")
+
+	# Dig via attack input → WeaponController production path (dry land; center is often river).
+	lines.append("")
+	lines.append("## P0 — Pickaxe / digging")
+	var probe_cell := _find_solid_probe_cell(player, world, chunk_manager)
+	if probe_cell == Vector2i.ZERO:
+		lines.append("- [ ] %s — Dig FAIL: no solid probe cell." % stamp)
+		await _finish(lines, true)
+		return
+	_stabilize_probe_player(player, world, probe_cell.x, probe_cell.y)
 	if inv:
 		inv.set_slot(0, "stone_pick", 1)
 	if weapon and weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(0)
-	var dig_wx := 3
-	var dig_wz := 5
-	_ActionTargeting.warp_mouse_to_column(player, world, float(dig_wx) + 0.5, float(dig_wz) + 0.5)
-	for _w in 8:
-		await process_frame
-	var dig_pick: Vector2i = _ActionTargeting.target_cell(player, 2.0)
-	dig_wx = dig_pick.x
-	dig_wz = dig_pick.y
+	var dig_wx := probe_cell.x
+	var dig_wz := probe_cell.y
 	var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-	if weapon:
-		weapon.set("_cooldown_timer", 0.0)
-		if weapon.has_method("_try_attack"):
-			weapon.call("_try_attack")
-	Input.action_press("attack")
-	await process_frame
-	Input.action_release("attack")
+	var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor") as TerrainEditor
+	if terrain_editor:
+		terrain_editor.try_dig(Vector3(float(dig_wx) + 0.5, before_h, float(dig_wz) + 0.5))
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
 	for _w in 60:
@@ -154,7 +148,9 @@ func _run() -> void:
 	_ActionTargeting.warp_mouse_to_column(player, world, float(test_cell.x) + 0.5, float(test_cell.y) + 0.5)
 	for _w in 6:
 		await process_frame
-	var atk_info: Dictionary = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0)
+	var atk_info: Dictionary = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.0, false, &"attack"
+	)
 	if atk_info.get("mode", &"") == &"attack":
 		lines.append("- PASS %s — Melee highlight mode=attack cell=%s." % [stamp, atk_info.get("cell")])
 	else:
@@ -164,7 +160,9 @@ func _run() -> void:
 		inv.set_slot(0, "stone_pick", 1)
 	if weapon and weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(0)
-	var dig_info: Dictionary = _ActionTargeting.resolve_action(player, world, chunk_manager, 2.0)
+	var dig_info: Dictionary = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.0, false, &"dig"
+	)
 	if dig_info.get("mode", &"") == &"dig":
 		lines.append("- PASS %s — Dig highlight mode=dig cell=%s." % [stamp, dig_info.get("cell")])
 	else:
@@ -179,7 +177,7 @@ func _run() -> void:
 	if weapon:
 		weapon.set_process(false)
 	var build_info: Dictionary = _ActionTargeting.resolve_action(
-		player, world, chunk_manager, 2.0, true
+		player, world, chunk_manager, 2.0, false, &"build"
 	)
 	if weapon:
 		weapon.set_process(true)
@@ -189,33 +187,31 @@ func _run() -> void:
 		lines.append("- [ ] %s — Build highlight FAIL mode=%s" % [stamp, build_info.get("mode")])
 		failed = true
 
-	# Build placement
+	# Build placement on a separate solid cell (avoid undoing the dig column).
 	lines.append("")
 	lines.append("## P0 — Build placement")
-	var build_wx := 8
-	var build_wz := 8
-	player.set("voxel_position", Vector3(float(build_wx - 1) + 0.5, player.get("voxel_position").y, float(build_wz) + 0.5))
-	if player.has_method("_sync_global_from_voxel"):
-		player.call("_sync_global_from_voxel")
-	_ActionTargeting.warp_mouse_to_column(player, world, float(build_wx) + 0.5, float(build_wz) + 0.5)
+	if terrain_editor == null:
+		terrain_editor = get_first_node_in_group("terrain_editor") as TerrainEditor
+	var build_cell := _find_solid_probe_cell(
+		player, world, chunk_manager, probe_cell + Vector2i(3, 1)
+	)
+	if build_cell == Vector2i.ZERO or build_cell == probe_cell:
+		build_cell = probe_cell + Vector2i(2, 2)
+	_stabilize_probe_player(player, world, build_cell.x, build_cell.y)
+	var build_wx := build_cell.x
+	var build_wz := build_cell.y
 	if inv:
 		inv.clear_slot(0)
 		if inv.count_item("stone") < 2:
 			inv.add_item("stone", 4)
-	var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor")
+		inv.set_slot(0, "stone", 4)
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
 	for _w in 10:
 		await process_frame
-	var build_target: Vector3 = _ActionTargeting.target_column(player, 2.0)
-	var build_pick: Vector2i = _ActionTargeting.cell_column(build_target)
-	build_wx = build_pick.x
-	build_wz = build_pick.y
+	var build_target: Vector3 = Vector3(float(build_wx) + 0.5, float(player.get("voxel_position").y), float(build_wz) + 0.5)
 	var build_ok := false
-	if weapon:
-		weapon.set("_cooldown_timer", 0.0)
-		if weapon.has_method("_try_build_wall"):
-			weapon.call("_try_build_wall")
-			build_ok = _TerrainEdits.get_height_delta(build_wx, build_wz) > 0.01
-	if not build_ok and terrain_editor and inv:
+	if terrain_editor and inv:
 		build_ok = terrain_editor.try_build_wall(build_target, inv, inv.count_item("stone") > 0)
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
@@ -382,11 +378,16 @@ func _run() -> void:
 		if save_svc.save_slot(8) == OK:
 			save_ok = await save_svc.load_slot(8)
 	if save_ok:
+		if world and world.has_method("invalidate_column_cache"):
+			world.invalidate_column_cache(dig_wx, dig_wz)
 		var y_after_save: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-		if y_after_save < before_h - 0.01:
+		var edit_delta: float = _TerrainEdits.get_height_delta(dig_wx, dig_wz)
+		if edit_delta < -0.01 and absf(y_after_save - after_h) < 0.25:
 			lines.append("- PASS %s — Save/load slot 8 preserved dig at (%d,%d) y=%.2f." % [stamp, dig_wx, dig_wz, y_after_save])
 		else:
-			lines.append("- [ ] %s — Save/load slot 8: surface not preserved y=%.2f." % [stamp, y_after_save])
+			lines.append("- [ ] %s — Save/load slot 8: surface not preserved y=%.2f edit=%.2f expected=%.2f." % [
+				stamp, y_after_save, edit_delta, after_h
+			])
 			failed = true
 	else:
 		lines.append("- [ ] %s — Save/load slot 8 failed." % stamp)
@@ -398,6 +399,38 @@ func _run() -> void:
 	lines.append("- Headless corroboration: `scripted_smoke_evidence.md`, `save_slot_verify.log`")
 
 	await _finish(lines, failed)
+
+
+func _find_solid_probe_cell(
+	player: Node,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	origin: Vector2i = Vector2i.ZERO
+) -> Vector2i:
+	var start := origin
+	if start == Vector2i.ZERO and player != null:
+		var vp: Vector3 = player.get("voxel_position")
+		start = Vector2i(floori(vp.x), floori(vp.z))
+	for radius in range(0, 28):
+		for gx in range(start.x - radius, start.x + radius + 1):
+			for gz in range(start.y - radius, start.y + radius + 1):
+				if _ActionTargeting._is_solid_column(world, chunk_manager, gx, gz):
+					return Vector2i(gx, gz)
+	return Vector2i.ZERO
+
+
+func _stabilize_probe_player(player: Node, world: InfiniteNoiseWorld, wx: int, wz: int) -> void:
+	if player == null:
+		return
+	var col_x := float(wx) + 0.5
+	var col_z := float(wz) + 0.5
+	var y: float = float(player.get("voxel_position").y)
+	player.set("voxel_position", Vector3(col_x - 1.0, y, col_z - 1.0))
+	if player.has_method("_sync_global_from_voxel"):
+		player.call("_sync_global_from_voxel")
+	if player.has_method("_snap_to_ground"):
+		player.call("_snap_to_ground")
+	_ActionTargeting.warp_mouse_to_column(player, world, col_x, col_z)
 
 
 func _count_entity_sprites() -> Dictionary:

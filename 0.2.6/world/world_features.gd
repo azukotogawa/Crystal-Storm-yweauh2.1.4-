@@ -100,10 +100,6 @@ func on_chunk_manager_ready(cm: ChunkManager) -> void:
 	if world_visuals and world_visuals.has_method("on_chunk_manager_ready"):
 		world_visuals.on_chunk_manager_ready(cm)
 
-	var feat_vis = get_tree().get_first_node_in_group("feature_visual_layer")
-	if feat_vis and feat_vis.has_method("on_chunk_manager_ready"):
-		feat_vis.on_chunk_manager_ready(cm)
-
 	var combat_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if combat_vfx and combat_vfx.has_method("on_chunk_manager_ready"):
 		combat_vfx.on_chunk_manager_ready(cm)
@@ -111,8 +107,6 @@ func on_chunk_manager_ready(cm: ChunkManager) -> void:
 	var perf_svc = get_tree().get_first_node_in_group("performance_service")
 	if perf_svc and perf_svc.has_method("reapply_to_chunk_manager"):
 		perf_svc.reapply_to_chunk_manager(cm)
-	if perf_svc and perf_svc.has_method("refresh_world_visuals"):
-		perf_svc.refresh_world_visuals()
 
 	call_deferred("_post_bootstrap_visual_refresh")
 

@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://gwmko0ktp10p" path="res://game/game_manager.gd" id="8_gmgr"]
 [ext_resource type="PackedScene" path="res://ui/game_overlay.tscn" id="8_overlay"]
 [ext_resource type="Script" uid="uid://c3ndc4ior2hrt" path="res://world/terrain_editor.gd" id="8_terrain"]
+[ext_resource type="Script" path="res://fluids/voxel_fluid_service.gd" id="8_vfluid"]
 [ext_resource type="Script" uid="uid://2jkrj3hkp7ds" path="res://crystal/crystal_manager.gd" id="9_crystal"]
 [ext_resource type="Script" uid="uid://bf6gf2w8cx7qg" path="res://world/world_features.gd" id="10_features"]
 [ext_resource type="Script" uid="uid://dt7b3rdbywun0" path="res://world/town_manager.gd" id="11_town"]
@@ -108,6 +109,9 @@ script = ExtResource("8_gmgr")
 
 [node name="TerrainEditor" type="Node" parent="." unique_id=792751418]
 script = ExtResource("8_terrain")
+
+[node name="VoxelFluidService" type="Node" parent="." unique_id=792751419]
+script = ExtResource("8_vfluid")
 
 [node name="SaveGameService" type="Node" parent="." unique_id=65740121]
 script = ExtResource("16_save")

@@ -3,6 +3,8 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+export CRYSTALSTORM_SCRATCH="${CRYSTALSTORM_SCRATCH:-/tmp/grok-goal-eb56502acfa8/implementer}"
+mkdir -p "$CRYSTALSTORM_SCRATCH"
 
 SUITES=(
 	"res://scripts/verify_stability_perf.gd"
@@ -23,8 +25,16 @@ SUITES=(
 	"res://scripts/verify_ramp_concave.gd"
 	"res://scripts/verify_ramp_corner.gd"
 	"res://scripts/verify_ramp_landing.gd"
+	"res://scripts/verify_ramp_side_cell.gd"
+	"res://scripts/verify_ramp_ridge_cardinal.gd"
+	"res://scripts/verify_ramp_perpendicular.gd"
+	"res://scripts/verify_ramp_flank_faces.gd"
+	"res://scripts/verify_ramp_landing_corner.gd"
 	"res://scripts/verify_ramp_cell_exclusive.gd"
 	"res://scripts/verify_ramp_slope.gd"
+	"res://scripts/verify_ramp_mesh_faces.gd"
+	"res://scripts/verify_ramp_walk.gd"
+	"res://scripts/verify_voxel_geometry_path.gd"
 	"res://scripts/verify_target_highlight.gd"
 	"res://scripts/verify_target_facing.gd"
 	"res://scripts/verify_main_runtime_health.gd"
@@ -37,6 +47,11 @@ SUITES=(
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_visual_perf.gd"
 	"res://scripts/verify_crystal_spread_limits.gd"
+	"res://scripts/verify_crystal_flow_mechanics.gd"
+	"res://scripts/verify_crystal_live_spread.gd"
+	"res://scripts/verify_full_game_loop.gd"
+	"res://scripts/verify_crystal_terrain_routing.gd"
+	"res://scripts/verify_voxel_fluid_engine.gd"
 	"res://scripts/verify_crystal_grid_align.gd"
 	"res://scripts/verify_entity_death_signal.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
@@ -63,6 +78,8 @@ SUITES=(
 declare -A ABRUPT_OK_MARKER=(
 	["res://scripts/verify_bootstrap_no_deadlock.gd"]="All bootstrap deadlock tests OK"
 	["res://scripts/verify_main_runtime_health.gd"]="All main runtime health tests OK"
+	["res://scripts/verify_crystal_live_spread.gd"]="All crystal live spread tests OK"
+	["res://scripts/verify_full_game_loop.gd"]="All full game loop tests OK"
 	["res://scripts/verify_manual_checklist_corroboration.gd"]="Manual checklist corroboration OK"
 )
 

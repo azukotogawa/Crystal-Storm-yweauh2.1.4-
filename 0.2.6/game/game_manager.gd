@@ -1,7 +1,6 @@
 class_name GameManager
 extends Node
 
-const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -16,7 +15,6 @@ signal run_state_changed(new_state: RunState)
 @export var maze_min_distance: float = 200.0
 @export var max_crystal_coverage: float = 0.72
 @export var crystal_damage_per_second: float = 28.0
-@export var town_fall_depth: float = 0.45
 
 var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
@@ -37,7 +35,9 @@ func apply_game_config(cfg: _GameConfig) -> void:
 	assault_distance = cfg.assault_distance
 	maze_min_distance = cfg.maze_min_distance
 	crystal_damage_per_second = cfg.crystal_damage_per_second
-	town_fall_depth = cfg.town_fall_depth
+	var town_defense = get_tree().get_first_node_in_group("town_defense_manager")
+	if town_defense and "fall_depth" in town_defense:
+		town_defense.fall_depth = cfg.town_fall_depth
 	if cfg.crystal_sim:
 		max_crystal_coverage = cfg.crystal_sim.max_coverage_ratio
 
@@ -91,15 +91,6 @@ func _check_towns_lost() -> void:
 	if town_defense and town_defense.has_method("is_any_town_fallen"):
 		if town_defense.is_any_town_fallen():
 			_set_lost("A settlement fell to the crystal.")
-		return
-	if _crystal == null:
-		return
-	for town in _FeatureRegistry.get_towns():
-		var center: Vector2i = town.get("center", Vector2i.ZERO)
-		if _crystal.get_depth_at(center.x, center.y) >= town_fall_depth:
-			var town_name: String = str(town.get("name", "A settlement"))
-			_set_lost("%s fell to the crystal." % town_name)
-			return
 
 
 func _apply_crystal_damage(delta: float) -> void:

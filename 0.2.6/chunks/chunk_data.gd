@@ -3,6 +3,7 @@ class_name ChunkData
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _VoxelGeometryKind = preload("res://helpers/voxel_geometry_kind.gd")
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -18,7 +19,8 @@ var surface_map: Array = []  # [x][z] -> float
 var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for this chunk)
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
-var river_ctx: RiverJobContext = null
+## Per-cell surface geometry: VoxelGeometryKind.Kind (full cube / ramp / diagonal / corner / air).
+var geometry_map: Dictionary = {}
 
 # Snapshotted on main thread before worker generation (avoids TerrainEdits/FeatureRegistry races).
 var _worker_height_delta: Array = []
@@ -174,24 +176,38 @@ func is_visible(x: int, y: int, z: int) -> bool:
 func set_visible(x: int, y: int, z: int, visible: bool):
 	set_visibility(x, y, z, visible)
 
+func _sync_geometry_from_ramp(cell: Vector2i) -> void:
+	var entry: Dictionary = ramp_map.get(cell, {})
+	geometry_map[cell] = _VoxelGeometryKind.from_ramp_entry(entry)
+
+
 func set_ramp_cardinal(x: int, z: int, dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": false, "dir": dir, "dir2": Vector2i.ZERO}
+	var cell := Vector2i(x, z)
+	ramp_map[cell] = {"corner": false, "side": false, "approach": false, "dir": dir, "dir2": Vector2i.ZERO}
+	_sync_geometry_from_ramp(cell)
 
 
 func set_ramp_approach(x: int, z: int, climb_dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": true, "dir": climb_dir, "dir2": Vector2i.ZERO}
+	var cell := Vector2i(x, z)
+	ramp_map[cell] = {"corner": false, "side": false, "approach": true, "dir": climb_dir, "dir2": Vector2i.ZERO}
+	_sync_geometry_from_ramp(cell)
 
 
 func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
+	var cell := Vector2i(x, z)
+	ramp_map[cell] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
+	_sync_geometry_from_ramp(cell)
 
 
 func set_ramp_side(x: int, z: int, face_dir: Vector2i, climb_dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
+	var cell := Vector2i(x, z)
+	ramp_map[cell] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
+	_sync_geometry_from_ramp(cell)
 
 
 func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int, surface_h: float = 0.0) -> void:
-	ramp_map[Vector2i(x, z)] = {
+	var cell := Vector2i(x, z)
+	ramp_map[cell] = {
 		"concave": true,
 		"side": true,
 		"corner": false,
@@ -199,6 +215,27 @@ func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int, surface_h: float 
 		"dir2": Vector2i(0, leg_z),
 		"surface_h": surface_h,
 	}
+	_sync_geometry_from_ramp(cell)
+
+
+func set_geometry_kind(x: int, z: int, kind: int) -> void:
+	geometry_map[Vector2i(x, z)] = kind
+
+
+func get_geometry_kind(x: int, z: int) -> int:
+	return int(geometry_map.get(Vector2i(x, z), _VoxelGeometryKind.Kind.FULL_CUBE))
+
+
+func finalize_surface_geometry() -> void:
+	for x in SIZE:
+		for z in SIZE:
+			var cell := Vector2i(x, z)
+			if geometry_map.has(cell):
+				continue
+			if get_tile_type(x, z) == VoxelTypes.AIR:
+				geometry_map[cell] = _VoxelGeometryKind.Kind.AIR
+			else:
+				geometry_map[cell] = _VoxelGeometryKind.Kind.FULL_CUBE
 
 
 func has_ramp(x: int, z: int) -> bool:

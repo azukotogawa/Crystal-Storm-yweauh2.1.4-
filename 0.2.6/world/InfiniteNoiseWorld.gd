@@ -2,9 +2,8 @@
 # Best-in-class world generation for Crystalstorm.
 # 4 playable biomes (plains, steppe, forest, marsh) inside a bordered map.
 # Ocean borders on -X/+X, mountain borders on -Z/+Z (features, not interior biomes).
-# Playable human-scale features (rivers 6-18 voxels wide, hills/mountains walkable and buildable).
-# Rivers are now as common as biomes: dedicated river feature system produces RIVER tiles
-#   and carved valleys at ~biome prevalence (visible river area comparable to any one biome).
+# Playable human-scale features (rivers ~2-6 voxels wide, hills/mountains walkable and buildable).
+# River ribbons follow valleys via noise mask + carved depth; tuned via WorldGenConfig.
 # Full 3D volumetric caves (tunnels + chambers) via 3D noise -- caves made significantly more likely
 #   both in volume (underground hollows) and surface expression (breaches, gorges, mouths, exposed stone).
 # Real carved rivers that depress terrain + create valleys/banks.
@@ -38,26 +37,7 @@ const DETAIL_FREQ := 4.5
 # River & Biome balance
 
 
-# River feature system (redesigned for rivers to be as common as biomes).
-# River "systems" are now generated at a density such that visible RIVER surface tiles
-# (and their carved valley influence) occur at a prevalence comparable to any single
-# one of the 5 primary biomes (~18-25% area in samples). Achieved by:
-#   - Moderate absolute RIVER_FREQ for a dense but natural network of drainage lines
-#   - Reduced core-sharpening POWER and offset so bands around cores are wider
-#   - Explicit, documented thresholds for "is_river" (carve+moisture) vs "surface tile"
-# Rivers remain visually narrow coherent features thanks to warping + core shape.
-const RIVER_TARGET_PREVALENCE := 0.20   # ~20% like other major features
-
-const RIVER_FREQ_BASE := 0.068
-const RIVER_SCALE_FACTOR := 2.9
-const RIVER_CORE_POWER := 1.48
-const RIVER_CORE_OFFSET := -0.025
-const RIVER_CORE_SCALE := 1.08
-const RIVER_IS_RIVER_THRESHOLD := 0.142
-const RIVER_SURFACE_TILE_THRESHOLD := 0.172
-const RIVER_MIN_CARVE_FOR_TILE := 0.48
-const RIVER_MAX_CARVE := 27.0
-const RIVER_VALLEY_WIDTH_FACTOR := 1.8
+# River tuning lives in WorldGenConfig (see config/world_gen_config.gd).
 
 # Cave feature system (redesigned for higher likelihood overall).
 # Increased base frequencies for both tunnels and rooms, stronger signal weights,
@@ -166,6 +146,10 @@ func _init_biome_regions() -> void:
 
 func _wg() -> _WorldGenConfig:
 	return world_config if world_config else _WorldGenConfig.create_default()
+
+
+func _biome_scale() -> float:
+	return _wg().biome_scale
 
 
 func _roll_map_temperature() -> void:
@@ -282,7 +266,7 @@ func _setup_noise():
 	_river_valley = FastNoiseLite.new()
 	_river_valley.seed = world_seed + 600
 	_river_valley.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_valley.frequency = RIVER_FREQ_BASE * (92.0 / (BIOME_SCALE * RIVER_SCALE_FACTOR))
+	_river_valley.frequency = _wg().river_freq_base * (92.0 / (_biome_scale() * _wg().river_scale_factor))
 	_river_valley.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_valley.fractal_octaves = 6      # extra octave for longer features
 	_river_valley.fractal_lacunarity = 1.92
@@ -291,21 +275,21 @@ func _setup_noise():
 	_river_warp_x = FastNoiseLite.new()
 	_river_warp_x.seed = world_seed + 610
 	_river_warp_x.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_warp_x.frequency = 1.25 * (92.0 / BIOME_SCALE)
+	_river_warp_x.frequency = 1.25 * (92.0 / _biome_scale())
 	_river_warp_x.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_warp_x.fractal_octaves = 2
 
 	_river_warp_z = FastNoiseLite.new()  # same as above
 	_river_warp_z.seed = world_seed + 611
 	_river_warp_z.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_warp_z.frequency = 1.25 * (92.0 / BIOME_SCALE)
+	_river_warp_z.frequency = 1.25 * (92.0 / _biome_scale())
 	_river_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_warp_z.fractal_octaves = 2
 	
 	_river_mask_noise = FastNoiseLite.new()
 	_river_mask_noise.seed = world_seed + 650
 	_river_mask_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_mask_noise.frequency = 0.042 / (BIOME_SCALE / 920.0)
+	_river_mask_noise.frequency = 0.042 / (_biome_scale() / 920.0)
 	_river_mask_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_mask_noise.fractal_octaves = 5
 	_river_mask_noise.fractal_gain = 0.45
@@ -313,7 +297,7 @@ func _setup_noise():
 	_river_noise = FastNoiseLite.new()
 	_river_noise.seed = world_seed + 7000
 	_river_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_noise.frequency = 0.9 / BIOME_SCALE
+	_river_noise.frequency = 0.9 / _biome_scale()
 	_river_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_noise.fractal_octaves = 4
 	_river_noise.fractal_gain = 0.5
@@ -321,14 +305,14 @@ func _setup_noise():
 	_river_length_noise = FastNoiseLite.new()
 	_river_length_noise.seed = world_seed + 7100
 	_river_length_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_length_noise.frequency = 0.45 / BIOME_SCALE
+	_river_length_noise.frequency = 0.45 / _biome_scale()
 	_river_length_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_length_noise.fractal_octaves = 2
 
 	_river_width_noise = FastNoiseLite.new()
 	_river_width_noise.seed = world_seed + 7050
 	_river_width_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_width_noise.frequency = 2.4 / BIOME_SCALE
+	_river_width_noise.frequency = 2.4 / _biome_scale()
 	_river_width_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_width_noise.fractal_octaves = 2
 
@@ -402,18 +386,16 @@ func get_river_mask(wx: float, wz: float) -> Dictionary:
 	var len_mod: float = _river_length_noise.get_noise_2d(wx * 0.65, wz * 0.65)
 	var width_var: float = (_river_width_noise.get_noise_2d(wx * 2.1, wz * 2.1) + 1.0) * 0.5
 	
-	# Distance from zero-crossing (ridge line) for thin, natural strips
+	var wg := _wg()
 	var dist: float = abs(r)
-	var threshold: float = 0.026   # ~5-9 tiles wide at BIOME_SCALE=920
-	
-	# Add gentle meander bias and length modulation
+	var threshold: float = wg.river_mask_threshold
+
 	var active: bool = dist < threshold and len_mod > -0.32
-	
+
 	var strength: float = 0.0
 	if active:
-		strength = 1.0 - (dist / threshold) * 0.65
-		# Variable width + slight taper
-		strength = clamp(strength * (0.7 + width_var * 0.55), 0.0, 1.0)
+		strength = 1.0 - (dist / threshold) * 0.72
+		strength = clamp(strength * (0.52 + width_var * 0.32), 0.0, 1.0)
 	
 	return {"active": active, "strength": strength, "dist": dist}
 
@@ -421,28 +403,22 @@ func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
 	# Returns {carve: float, is_river: bool, water_depth: float, river_factor: float}
 	# Redesigned shaping: explicit consts give river tiles a prevalence on par with biomes
 	# while preserving narrow coherent river aesthetics via core + warp.
-	var w: Vector2 = _warped_coords_river(wx, wz, 17.0)
+	var wg := _wg()
+	var w: Vector2 = _warped_coords_river(wx, wz, wg.river_warp_strength)
 	var rx: float = w.x
 	var rz: float = w.y
 
-	# Primary valley potential (low freq winding "drainage")
 	var valley: float = _river_valley.get_noise_2d(rx, rz)
-	# Core computation uses the new tunable power/offset/scale (lower power => fatter cores => more area).
-	var u: float = max(0.0, (valley + RIVER_CORE_OFFSET) * RIVER_CORE_SCALE)
-	var river_core: float = pow(u, RIVER_CORE_POWER)
+	var u: float = max(0.0, (valley + wg.river_core_offset) * wg.river_core_scale)
+	var river_core: float = pow(u, wg.river_core_power)
 
-	# Secondary meander detail for natural width variation
 	var meander: float = _river_valley.get_noise_2d(rx * 2.6, rz * 2.6) * 0.28
-	river_core = clamp(river_core + meander * 0.55, 0.0, 1.35)
+	river_core = clamp(river_core + meander * wg.river_meander_mix, 0.0, 1.35)
 
-	# River is stronger / wider in lowlands and marshy areas
-	var lowland_factor: float = clamp(1.0 - (base_elev - 18.0) / 95.0, 0.35, 1.35)
-	var carve_depth: float = river_core * RIVER_MAX_CARVE * lowland_factor * RIVER_VALLEY_WIDTH_FACTOR
+	var lowland_factor: float = clamp(1.0 - (base_elev - 18.0) / 95.0, 0.35, 1.25)
+	var carve_depth: float = river_core * wg.river_max_carve * lowland_factor * wg.river_valley_width_factor
 
-	# "is_river" here means "has meaningful river influence" (for height carving + biome moisture boost).
-	# The threshold is now RIVER_IS_RIVER_THRESHOLD; actual visible ribbon uses the stricter
-	# RIVER_SURFACE_TILE_THRESHOLD in _compute_surface_tile.
-	var is_river: bool = river_core > RIVER_IS_RIVER_THRESHOLD
+	var is_river: bool = river_core > wg.river_is_river_threshold
 	var water_depth: float = 0.0
 	if is_river:
 		water_depth = clamp(1.8 + river_core * 2.8 + lowland_factor * 1.5, 2.0, 7.5)
@@ -727,8 +703,8 @@ func _compute_surface_tile(wx: float, wz: float) -> int:
 	var river_mask_dict: Dictionary = get_river_mask(wx, wz)
 	var river: Dictionary = _compute_river_carve(wx, wz, surf)
 
-	# More rivers visible — require mask OR strong carve
-	if river_mask_dict.get("active", false) or river.carve > 6.0:
+	var wg := _wg()
+	if river_mask_dict.get("active", false) or river.carve > wg.river_carve_surface_threshold:
 		return VoxelTypes.RIVER
 
 	# Cave mouth / exposed stone on surface (strong near-surface cave or very steep)

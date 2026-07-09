@@ -1,14 +1,17 @@
 extends SceneTree
-## Regression: diagonal concave ramps emit support fill + prism mesh; wedge stays in-column.
+## Regression: diagonal concave cell emits only the in-voxel prism (no support stack).
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
+const _VoxelGeometryKind = preload("res://helpers/voxel_geometry_kind.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 const FACE_TOP := 0
+const FACE_POS_X := 4
+const FACE_POS_Z := 6
 const FACE_RAMP_SIDE := 9
 
 
@@ -21,21 +24,17 @@ func _run() -> void:
 	var layer: float = _WorldSettings.get_active().layer_height()
 
 	var ramp_src := (load("res://helpers/terrain_ramps.gd") as GDScript).source_code
-	if "CONCAVE_MESH_REV := 3" not in ramp_src:
-		push_error("terrain_ramps must use concave mesh rev 3")
+	var prim_src := (load("res://helpers/voxel_primitive_meshes.gd") as GDScript).source_code
+	if "PRIMITIVE_MESH_REV := 5" not in ramp_src:
+		push_error("terrain_ramps must reference primitive mesh rev 5")
 		failed = true
 	else:
-		print("OK concave mesh rev 3")
-	if "WEDGE_MESH_REV := 6" not in ramp_src:
-		push_error("terrain_ramps must use landing-anchored wedge rev 6")
+		print("OK primitive mesh rev 5")
+	if "MESH_REV := 11" not in prim_src:
+		push_error("voxel_primitive_meshes must use MESH_REV 11 (oriented concave wedges)")
 		failed = true
 	else:
-		print("OK wedge mesh rev 6")
-	if "CORNER_STEP_MESH_REV := 1" not in ramp_src:
-		push_error("terrain_ramps must define corner step mesh rev 1")
-		failed = true
-	else:
-		print("OK corner step mesh rev 1")
+		print("OK voxel_primitive_meshes rev 11")
 
 	var old_chance: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 100
@@ -64,46 +63,62 @@ func _run() -> void:
 	var quads: Array = mesh.get("quads", [])
 
 	var diagonal := 0
-	var support_tops := 0
-	var side_walls := 0
+	var substrate := 0
+	var substrate_y := high_h - layer
 	for q in quads:
 		var fc := int(q.get("face_code", -1))
+		var qx := int(q.get("x", -1))
+		var qz := int(q.get("z", -1))
 		if fc == FACE_RAMP_SIDE:
+			if qx != gx or qz != gz:
+				continue
 			diagonal += 1
-		elif fc == FACE_TOP and int(q.get("x", -1)) == gx and int(q.get("z", -1)) == gz:
-			var y: float = float(q.get("y", -999.0))
-			if y > gap_h + layer * 0.25 and y <= high_h + 0.01:
-				support_tops += 1
-		elif fc in [3, 4, 5, 6] and int(q.get("x", -1)) == gx and int(q.get("z", -1)) == gz:
-			side_walls += 1
+			if not is_equal_approx(float(q.get("y", -1)), high_h):
+				push_error("concave prism must anchor at arm height %.2f, got %.2f" % [high_h, float(q.get("y", -1))])
+				failed = true
+		elif int(q.get("geometry_kind", -1)) == _VoxelGeometryKind.Kind.FULL_CUBE:
+			var belongs := false
+			match fc:
+				FACE_POS_X:
+					belongs = qx == gx + 1 and qz == gz
+				FACE_POS_Z:
+					belongs = qx == gx and qz == gz + 1
+				_:
+					belongs = qx == gx and qz == gz
+			if not belongs:
+				continue
+			substrate += 1
+			if not is_equal_approx(float(q.get("y", -1)), substrate_y):
+				push_error("concave substrate must sit at %.2f, got %.2f" % [substrate_y, float(q.get("y", -1))])
+				failed = true
 
-	if diagonal < 1:
-		push_error("concave L-corner must emit diagonal prism, got %d" % diagonal)
+	if diagonal != 1:
+		push_error("concave gap must emit exactly one diagonal prism, got %d" % diagonal)
 		failed = true
 	else:
-		print("OK concave diagonal prisms=%d" % diagonal)
+		print("OK concave diagonal prism at arm height")
 
-	if support_tops < 2:
-		push_error("concave gap needs stacked support tops, got %d" % support_tops)
+	if substrate != 6:
+		push_error("concave gap must emit six substrate faces underneath, got %d" % substrate)
 		failed = true
 	else:
-		print("OK concave support tops=%d" % support_tops)
+		print("OK concave substrate cube underneath")
 
-	if side_walls < 2:
-		push_error("concave gap needs inner side-wall fill, got %d" % side_walls)
+	var geo_kind: int = data.get_geometry_kind(gx, gz)
+	if geo_kind != _VoxelGeometryKind.Kind.DIAGONAL_RAMP:
+		push_error("concave gap geometry kind expected DIAGONAL_RAMP, got %d" % geo_kind)
 		failed = true
 	else:
-		print("OK concave side walls=%d" % side_walls)
+		print("OK concave geometry kind")
 
-	var dir := Vector2i(1, 0)
-	var xform := _TerrainRamps.wedge_transform(float(gx), float(gz), gap_h, dir)
-	var origin_y: float = xform.origin.y
-	var expected_y: float = gap_h + layer
-	if absf(origin_y - expected_y) > 0.01:
-		push_error("wedge origin must anchor at low walkable %.2f, got %.2f" % [expected_y, origin_y])
+	var entry: Dictionary = data.get_ramp_entry(gx, gz)
+	var h_a: float = _TerrainRamps.walkable_height_from_entry(world, float(gx) + 0.2, float(gz) + 0.2, entry)
+	var h_b: float = _TerrainRamps.walkable_height_from_entry(world, float(gx) + 0.8, float(gz) + 0.8, entry)
+	if not is_equal_approx(h_a, h_b):
+		push_error("concave must be flat walkable h_a=%.2f h_b=%.2f" % [h_a, h_b])
 		failed = true
 	else:
-		print("OK wedge in-column origin_y=%.2f" % origin_y)
+		print("OK concave not walkable slope")
 
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()

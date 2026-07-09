@@ -59,13 +59,6 @@ func _ensure_layer_roots() -> void:
 
 
 func _bootstrap() -> void:
-	var registry = get_tree().get_first_node_in_group("game_visual_registry")
-	if registry and registry.has_method("ensure_textures_ready"):
-		await registry.ensure_textures_ready()
-	elif registry and registry.has_method("ensure_ready"):
-		await registry.ensure_ready()
-	if not is_instance_valid(self) or not is_inside_tree():
-		return
 	var world_features = get_tree().get_first_node_in_group("world_features")
 	if world_features and world_features.has_method("ensure_ready"):
 		await world_features.ensure_ready()
@@ -74,28 +67,21 @@ func _bootstrap() -> void:
 	await _await_chunk_manager()
 	if not is_instance_valid(self) or not is_inside_tree():
 		return
-	var cm: ChunkManager = get_tree().get_first_node_in_group("chunk_manager")
-	if cm and registry and registry.has_method("on_chunk_manager_ready"):
-		registry.on_chunk_manager_ready(cm)
+	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if registry and registry.has_signal("visuals_ready"):
 		if not registry.visuals_ready.is_connected(_on_visuals_ready):
 			registry.visuals_ready.connect(_on_visuals_ready)
 		if registry.has_method("is_ready") and registry.is_ready():
 			_on_visuals_ready()
-	call_deferred("post_bootstrap_refresh")
 
 
 func on_chunk_manager_ready(cm: ChunkManager) -> void:
 	if cm == null:
 		return
 	_bind_chunk_streaming(cm)
-	var registry = get_tree().get_first_node_in_group("game_visual_registry")
-	if registry and registry.has_method("on_chunk_manager_ready"):
-		registry.on_chunk_manager_ready(cm)
 	var feat := get_feature_layer()
 	if feat and feat.has_method("on_chunk_manager_ready"):
 		feat.on_chunk_manager_ready(cm)
-	call_deferred("post_bootstrap_refresh")
 
 
 func post_bootstrap_refresh() -> void:
