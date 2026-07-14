@@ -9,12 +9,13 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var max_depth: float = 12.0
 @export var min_flow_diff: float = 0.05
 ## Pressure equalization rate — higher feels more fluid/pool-like.
-@export var pressure_flow_rate: float = 0.17
-@export var max_flow_per_cell: float = 0.26
-@export var max_outflow_ratio: float = 0.10
+@export var pressure_flow_rate: float = 0.20
+@export var max_flow_per_cell: float = 0.28
+@export var max_outflow_ratio: float = 0.12
 @export var cliff_height: float = 1.05
 @export var flow_substeps: int = 1
-@export var lateral_spread_bias: float = 0.0
+## Gentle lateral bleed fills checkerboard gaps between pressure fronts.
+@export var lateral_spread_bias: float = 0.12
 @export var uphill_flow_penalty: float = 0.06
 @export var downhill_flow_bonus: float = 0.30
 

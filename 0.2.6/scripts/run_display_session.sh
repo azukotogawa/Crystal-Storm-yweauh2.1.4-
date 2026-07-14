@@ -10,7 +10,7 @@ else
 fi
 mkdir -p "$SCRATCH_DIR"
 LOG="${DISPLAY_LOG:-$SCRATCH_DIR/display_session.log}"
-timeout 90s env CRYSTALSTORM_PERF_PRESET=medium CRYSTALSTORM_PROBE_ABRUPT_EXIT=1 CRYSTALSTORM_SCRATCH="$SCRATCH_DIR/display_session_evidence.md" godot --path "$ROOT" -s "$ROOT/scripts/display_session_probe.gd" 2>&1 | tee "$LOG" || true
+timeout 180s env CRYSTALSTORM_PERF_PRESET=medium CRYSTALSTORM_PROBE_ABRUPT_EXIT=1 CRYSTALSTORM_SCRATCH="$SCRATCH_DIR/display_session_evidence.md" godot --path "$ROOT" -s "$ROOT/scripts/display_session_probe.gd" 2>&1 | tee "$LOG" || true
 if grep -q "DISPLAY SESSION FAILED" "$LOG"; then
 	exit 1
 fi

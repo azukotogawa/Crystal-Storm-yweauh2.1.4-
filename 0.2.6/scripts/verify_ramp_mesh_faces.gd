@@ -25,8 +25,17 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK west cardinal reference tris=%d" % west_tris)
-	if wn_tris != 10:
-		push_error("WN corner reference must have 10 triangles, got %d" % wn_tris)
+	var wn_up_floor := false
+	for face in wn_faces:
+		if face["kind"] == &"tri" and face["normal"].is_equal_approx(Vector3.UP):
+			wn_up_floor = true
+	if not wn_up_floor:
+		push_error("WN corner reference must include upward interior floor tri")
+		failed = true
+	else:
+		print("OK WN corner reference up floor")
+	if wn_tris != 12:
+		push_error("WN corner reference must have 12 triangles, got %d" % wn_tris)
 		failed = true
 	else:
 		print("OK WN corner reference tris=%d" % wn_tris)

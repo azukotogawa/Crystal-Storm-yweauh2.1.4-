@@ -12,7 +12,7 @@ const DIRS := [
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 ]
 
-const PRIMITIVE_MESH_REV := 5
+const PRIMITIVE_MESH_REV := 6
 
 
 static func invalidate_mesh_cache() -> void:

@@ -6,6 +6,8 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
+const BUILD_PREVIEW_RANGE: float = 2.8
+
 var player: Player
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -51,7 +53,16 @@ func _process(_delta: float) -> void:
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	var range_v := _active_range()
-	var info := _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
+	var build_preview: bool = (
+		Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
+	)
+	var info: Dictionary
+	if build_preview:
+		info = _ActionTargeting.resolve_action(
+			player, world, chunk_manager, BUILD_PREVIEW_RANGE, false, &"build"
+		)
+	else:
+		info = _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
 	var mode: StringName = info.get("mode", &"none")
 	if mode not in [&"dig", &"build", &"attack"] or not info.get("valid", false):
 		_mesh.visible = false
@@ -90,6 +101,8 @@ func _process(_delta: float) -> void:
 
 
 func _active_range() -> float:
+	if Input.is_action_pressed("build_place") or Input.is_action_pressed("interact"):
+		return BUILD_PREVIEW_RANGE
 	var weapon := player.get_node_or_null("WeaponController")
 	if weapon == null or not weapon.has_method("get_active_item"):
 		return 2.0
@@ -99,4 +112,6 @@ func _active_range() -> float:
 	var def := _ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
 		return 2.0
+	if str(slot.id) == "stone":
+		return BUILD_PREVIEW_RANGE
 	return float(def.get("range", 2.8))

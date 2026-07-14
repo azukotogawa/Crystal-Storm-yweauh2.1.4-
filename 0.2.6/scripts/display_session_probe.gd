@@ -13,6 +13,7 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _CrystalTextureGenerator = preload("res://systems/crystal_texture_generator.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 
 
 func _init() -> void:
@@ -76,6 +77,8 @@ func _run() -> void:
 		lines.append("## FAIL — bootstrap timeout")
 		await _finish(lines, true)
 		return
+
+	_probe_sandbox(player)
 
 	var perf = get_first_node_in_group("performance_service")
 	if perf and perf.has_method("refresh_world_visuals"):
@@ -169,22 +172,102 @@ func _run() -> void:
 		lines.append("- [ ] %s — Dig highlight FAIL mode=%s" % [stamp, dig_info.get("mode")])
 		failed = true
 	if inv:
-		inv.clear_slot(0)
+		inv.set_slot(0, "stone", 4)
 	if weapon and weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(0)
-	for _w in 4:
+	_ActionTargeting.warp_mouse_to_column(player, world, float(test_cell.x) + 0.5, float(test_cell.y) + 0.5)
+	for _w in 8:
 		await process_frame
-	if weapon:
-		weapon.set_process(false)
 	var build_info: Dictionary = _ActionTargeting.resolve_action(
 		player, world, chunk_manager, 2.0, false, &"build"
 	)
-	if weapon:
-		weapon.set_process(true)
 	if build_info.get("mode", &"") == &"build":
-		lines.append("- PASS %s — Build highlight mode=build cell=%s." % [stamp, build_info.get("cell")])
+		var build_cell: Vector2i = build_info.get("cell", Vector2i.ZERO)
+		var ws = _WorldSettings.get_active()
+		var build_walk: float = _ActionTargeting._walkable_top(
+			world, chunk_manager, float(build_cell.x) + 0.5, float(build_cell.y) + 0.5
+		)
+		var build_y: float = float(build_info.get("world_pos", Vector3.ZERO).y)
+		var on_top: bool = build_y >= build_walk + ws.layer_height() * 0.92
+		for _w in 8:
+			await process_frame
+		var hl: Node = player.get_node_or_null("TargetHighlight")
+		var hl_box: MeshInstance3D = hl.get_node_or_null("TargetBox") as MeshInstance3D if hl else null
+		var hl_visible := hl_box != null and hl_box.visible
+		var hl_green := false
+		if hl_box != null and hl_box.material_override is StandardMaterial3D:
+			var c: Color = (hl_box.material_override as StandardMaterial3D).albedo_color
+			hl_green = c.g > 0.75 and c.r < 0.55
+		lines.append(
+			"- PASS %s — Build highlight mode=build cell=%s y=%.2f walk=%.2f on_top=%s visible=%s green=%s (color human confirm pending)."
+			% [stamp, build_cell, build_y, build_walk, on_top, hl_visible, hl_green]
+		)
+		if not on_top:
+			lines.append("- [ ] %s — Build highlight Y below placement top." % stamp)
+			failed = true
+		elif not hl_visible or not hl_green:
+			lines.append("- [ ] %s — Build TargetBox not visible green (visible=%s green=%s)." % [stamp, hl_visible, hl_green])
+			failed = true
 	else:
 		lines.append("- [ ] %s — Build highlight FAIL mode=%s" % [stamp, build_info.get("mode")])
+		failed = true
+
+	if inv:
+		inv.set_slot(0, "wooden_sword", 1)
+	if weapon and weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+	Input.action_press("build_place")
+	for _w in 6:
+		await process_frame
+	var sword_build_mode := _ActionTargeting._weapon_mode_from_player(player, false)
+	var sword_build_resolve: Dictionary = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, 2.8, false, &"build"
+	)
+	Input.action_release("build_place")
+	if sword_build_mode == &"build" and sword_build_resolve.get("mode", &"") == &"build":
+		lines.append(
+			"- PASS %s — Build modifier: sword hotbar + build_place -> build mode cell=%s (human confirm pending)."
+			% [stamp, sword_build_resolve.get("cell")]
+		)
+	else:
+		lines.append(
+			"- [ ] %s — Build modifier FAIL mode=%s resolve=%s."
+			% [stamp, sword_build_mode, sword_build_resolve.get("mode")]
+		)
+		failed = true
+
+	lines.append("")
+	lines.append("## P0 — Forward-arc targeting (no mouse)")
+	var solid_cell := _find_solid_probe_cell(player, world, chunk_manager)
+	if solid_cell != Vector2i.ZERO and weapon:
+		if inv:
+			inv.set_slot(0, "wooden_sword", 1)
+		if weapon.has_method("set_active_hotbar_index"):
+			weapon.set_active_hotbar_index(0)
+		var sword_def: Dictionary = _ItemTypes.get_def("wooden_sword")
+		var sword_range: float = float(sword_def.get("range", 2.0)) if sword_def else 2.0
+		_SmokeProbeHelpers.position_player_for_forward_dig(
+			player, world, chunk_manager, solid_cell.x, solid_cell.y, sword_range, &"attack"
+		)
+		_SmokeProbeHelpers.clear_mouse_offscreen(player)
+		for _w in 8:
+			await process_frame
+		var fwd_info: Dictionary = _ActionTargeting.resolve_action(
+			player, world, chunk_manager, sword_range, false, &"attack"
+		)
+		if fwd_info.get("valid", false) and fwd_info.get("mode", &"") == &"attack":
+			var hl: Node = player.get_node_or_null("TargetHighlight")
+			var hl_box: MeshInstance3D = hl.get_node_or_null("TargetBox") as MeshInstance3D if hl else null
+			var hl_visible := hl_box != null and hl_box.visible
+			lines.append(
+				"- PASS %s — Forward-arc attack resolves without mouse cell=%s highlight_visible=%s (red color human confirm pending)."
+				% [stamp, fwd_info.get("cell"), hl_visible]
+			)
+		else:
+			lines.append("- [ ] %s — Forward-arc attack FAIL mode=%s" % [stamp, fwd_info.get("mode")])
+			failed = true
+	else:
+		lines.append("- [ ] %s — Forward-arc attack FAIL: no solid cell or weapon." % stamp)
 		failed = true
 
 	# Build placement on a separate solid cell (avoid undoing the dig column).
@@ -227,6 +310,48 @@ func _run() -> void:
 		])
 		failed = true
 
+	lines.append("")
+	lines.append("## P0 — Built wall collision (main scene)")
+	var floor_probe_build = player.get("_floor_probe") if player else null
+	if build_delta <= 0.01 or floor_probe_build == null:
+		lines.append("- [ ] %s — Collision SKIP build_delta=%.2f floor_probe=%s." % [
+			stamp, build_delta, floor_probe_build != null
+		])
+		failed = true
+	else:
+		var one_layer: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			floor_probe_build, build_wx, build_wz, true, false
+		)
+		if one_layer.get("ok", false):
+			lines.append(
+				"- PASS %s — Collision 1-layer raise=%.2f step_ok at (%d,%d) (human feel pending)."
+				% [stamp, one_layer.get("raise", 0.0), build_wx, build_wz]
+			)
+		else:
+			lines.append("- [ ] %s — Collision 1-layer FAIL %s." % [stamp, one_layer.get("reason", "?")])
+			failed = true
+		if terrain_editor and inv:
+			if inv.count_item("stone") < 2:
+				inv.add_item("stone", 4)
+			var stack_h: float = world.get_surface_height(float(build_wx), float(build_wz))
+			terrain_editor.try_build_wall(
+				Vector3(float(build_wx) + 0.5, stack_h, float(build_wz) + 0.5), inv, true
+			)
+			if chunk_manager.has_method("await_rebuild_idle"):
+				await chunk_manager.await_rebuild_idle()
+			for _w in 40:
+				await process_frame
+		var stacked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			floor_probe_build, build_wx, build_wz, false, true
+		)
+		if stacked.get("ok", false):
+			lines.append("- PASS %s — Collision stacked wall blocks natural-feet entry at (%d,%d)." % [
+				stamp, build_wx, build_wz
+			])
+		else:
+			lines.append("- [ ] %s — Collision stacked FAIL %s." % [stamp, stacked.get("reason", "?")])
+			failed = true
+
 	# Entities
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
@@ -237,6 +362,8 @@ func _run() -> void:
 			entity_mgr.apply_performance_config(perf_svc.quality)
 	var brain_cfg = _EntityBrainRegistry.get_def(&"rabbit")
 	if entity_mgr and entity_mgr.has_method("_spawn_world_entity") and brain_cfg:
+		if not entity_mgr.entity_spawned.is_connected(_freeze_probe_entity):
+			entity_mgr.entity_spawned.connect(_freeze_probe_entity, CONNECT_ONE_SHOT)
 		entity_mgr.call("_spawn_world_entity", test_cell.x, test_cell.y, brain_cfg, test_cell, Color(0.72, 0.58, 0.42))
 	var entity_ok := false
 	for _attempt in 16:
@@ -256,6 +383,33 @@ func _run() -> void:
 		var stats2 := _count_entity_sprites()
 		lines.append("- [ ] %s — Entity FAIL: %d/%d textured at %s." % [stamp, stats2.visible, stats2.total, test_cell])
 		failed = true
+	else:
+		for entity in get_nodes_in_group("world_entity"):
+			if not is_instance_valid(entity) or entity.get("home_cell") != test_cell:
+				continue
+			var ws = _WorldSettings.get_active()
+			var col_x := float(test_cell.x) + 0.5
+			var col_z := float(test_cell.y) + 0.5
+			var tex = registry.get_sprite_texture(str(entity.get("entity_kind"))) if registry.has_method("get_sprite_texture") else null
+			var height_off: float = 0.0
+			if tex != null and registry.has_method("entity_anchor_height_offset"):
+				height_off = registry.entity_anchor_height_offset(tex)
+			var expected: Vector3 = registry.column_sprite_position(
+				world, chunk_manager, crystal, col_x, col_z, height_off
+			)
+			var xz_err := Vector2(entity.global_position.x - expected.x, entity.global_position.z - expected.z).length()
+			if xz_err <= 0.15:
+				lines.append(
+					"- PASS %s — Entity home_cell %s anchor xz_err=%.3f vs column_sprite_position."
+					% [stamp, test_cell, xz_err]
+				)
+			else:
+				lines.append(
+					"- [ ] %s — Entity anchor misaligned home=%s xz_err=%.3f expected=%s actual=%s."
+					% [stamp, test_cell, xz_err, expected, entity.global_position]
+				)
+				failed = true
+			break
 
 	# Vegetation
 	lines.append("")
@@ -356,6 +510,43 @@ func _run() -> void:
 	else:
 		lines.append("- [ ] %s — Ramp math FAIL %.2f." % [stamp, concave_h])
 		failed = true
+	var floor_probe = player.get("_floor_probe") if player else null
+	if floor_probe:
+		var step_audit: Dictionary = _SmokeProbeHelpers.audit_ramp_step_corner_walk(floor_probe)
+		if step_audit.get("ok", false):
+			lines.append(
+				"- PASS %s — Step-corner walk: feet=%.2f center=%.2f steps=%d (human feel pending)."
+				% [stamp, step_audit.get("corner_feet", 0.0), step_audit.get("center_h", 0.0), step_audit.get("steps", 0)]
+			)
+		else:
+			lines.append("- [ ] %s — Step-corner walk FAIL %s." % [stamp, step_audit.get("reason", "?")])
+			failed = true
+		var feet_corner: float = floor_probe.sample_walkable_feet(float(test_cell.x) + 0.5, float(test_cell.y) + 0.5)
+		if feet_corner > 0.0:
+			lines.append("- PASS %s — Floor probe feet=%.2f at spawn column." % [stamp, feet_corner])
+		else:
+			lines.append("- [ ] %s — Floor probe returned non-positive feet at spawn column." % stamp)
+			failed = true
+	else:
+		lines.append("- [ ] %s — Floor probe missing for step-corner audit." % stamp)
+		failed = true
+
+	lines.append("")
+	lines.append("## P1 — Crystal frontier envelope")
+	var crystal_origin := Vector2i(-5, 5)
+	if crystal.has_method("pick_origin_spawn_cell"):
+		crystal_origin = crystal.pick_origin_spawn_cell()
+	for _w in 60:
+		await process_frame
+	var frontier: Dictionary = _SmokeProbeHelpers.audit_crystal_frontier_holes(crystal, crystal_origin)
+	if frontier.get("ok", false):
+		lines.append(
+			"- PASS %s — Crystal frontier holes=%d filled=%d cap=%d (motion visuals human pending)."
+			% [stamp, frontier.get("holes", 0), frontier.get("filled", 0), frontier.get("hole_cap", 0)]
+		)
+	else:
+		lines.append("- [ ] %s — Crystal frontier FAIL %s." % [stamp, frontier.get("reason", "?")])
+		failed = true
 
 	lines.append("")
 	lines.append("## P1 — Crystal loaded/unloaded chunks")
@@ -399,6 +590,26 @@ func _run() -> void:
 	lines.append("- Headless corroboration: `scripted_smoke_evidence.md`, `save_slot_verify.log`")
 
 	await _finish(lines, failed)
+
+
+func _probe_sandbox(player: Node) -> void:
+	var gm = get_first_node_in_group("game_manager")
+	if gm and player and player.has_signal("died") and gm.has_method("_on_player_died"):
+		var cb := Callable(gm, "_on_player_died")
+		if player.died.is_connected(cb):
+			player.died.disconnect(cb)
+	if player and "health" in player:
+		player.set("health", 9999.0)
+	for ent in get_nodes_in_group("world_entity"):
+		if is_instance_valid(ent):
+			ent.set_process(false)
+			ent.set_physics_process(false)
+
+
+func _freeze_probe_entity(entity: Node) -> void:
+	if is_instance_valid(entity):
+		entity.set_process(false)
+		entity.set_physics_process(false)
 
 
 func _find_solid_probe_cell(

@@ -202,6 +202,33 @@ func _run() -> void:
 
 	var ws = _WorldSettings.get_active()
 	var layer: float = ws.layer_height()
+	_ActionTargeting.warp_mouse_to_column(
+		player, world, float(start_cell.x) + 0.5, float(start_cell.y) + 0.5
+	)
+	var build_info := _ActionTargeting.resolve_action(
+		player, world, null, 2.0, false, &"build"
+	)
+	if build_info.get("mode", &"") != &"build":
+		push_error("resolve_action force build must return build mode")
+		failed = true
+	elif not build_info.get("valid", false):
+		push_error("build resolve_action must be valid at probe cell")
+		failed = true
+	else:
+		var build_cell: Vector2i = build_info.get("cell", Vector2i.ZERO)
+		var build_walk: float = _ActionTargeting._walkable_top(
+			world, null, float(build_cell.x) + 0.5, float(build_cell.y) + 0.5
+		)
+		var build_y: float = float(build_info.get("world_pos", Vector3.ZERO).y)
+		var min_top: float = build_walk + layer * 0.92
+		if build_y < min_top:
+			push_error(
+				"build highlight Y %.2f below placement top %.2f (walk=%.2f)"
+				% [build_y, min_top, build_walk]
+			)
+			failed = true
+		else:
+			print("OK build highlight on placement top y=%.2f walk=%.2f" % [build_y, build_walk])
 	var face_pos: Vector3 = dig_hit.get("face_pos", Vector3.ZERO)
 	var flat_y: float = face_pos.y
 	var dig_cell: Vector2i = dig_hit.get("cell", Vector2i.ZERO)

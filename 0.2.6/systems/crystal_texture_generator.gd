@@ -504,23 +504,42 @@ func _fill_shatter_particle(image: Image, palette: _Palette, seed_val: int) -> v
 
 func _fill_spawn_indicator(image: Image, palette: _Palette, seed_val: int, is_boss: bool) -> void:
 	var dim := image.get_width()
-	var cx := float(dim) * 0.5
-	var cy := float(dim) * 0.5
-	var ring_r := 0.38 if is_boss else 0.32
+	var sparkle := _get_noise("spawn_sparkle", seed_val, FastNoiseLite.TYPE_SIMPLEX, 0.18)
 	image.fill(Color(0, 0, 0, 0))
 	for y in dim:
 		for x in dim:
-			var uv := Vector2(float(x) / float(dim), float(y) / float(dim))
-			var d := Vector2(uv.x - 0.5, uv.y - 0.5).length()
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			var dx := u - 0.5
+			var dy := v - 0.5
+			var d := Vector2(dx, dy).length()
+			var angle := atan2(dy, dx)
+			var shard_count := 6 if is_boss else 5
+			var shard := absf(sin(angle * float(shard_count) + float(seed_val) * 0.17))
+			var core_r := 0.14 if is_boss else 0.11
+			var ring_r := 0.34 if is_boss else 0.28
+			var ring_w := 0.055 if is_boss else 0.045
 			var ring := absf(d - ring_r)
-			if ring > 0.06:
-				continue
-			var pulse := 0.5 + 0.5 * sin((uv.x + uv.y + float(seed_val)) * TAU)
-			var c := palette.glow_color.lerp(palette.accent, pulse)
-			c.a = (1.0 - ring / 0.06) * (0.85 if is_boss else 0.65)
-			image.set_pixel(x, y, c)
-			if is_boss and d < 0.12:
-				image.set_pixel(x, y, Color(1.0, 0.5, 0.95, 0.9))
+			var pulse := 0.5 + 0.5 * sin((u + v + float(seed_val) * 0.03) * TAU)
+			var n := sparkle.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
+			var c := Color(0, 0, 0, 0)
+
+			if d <= core_r:
+				c = palette.glow_color.lerp(palette.accent, shard * 0.55 + pulse * 0.25)
+				c.a = smoothstep(core_r, core_r * 0.35, d) * (0.95 if is_boss else 0.82)
+			elif ring <= ring_w:
+				c = palette.accent.lerp(palette.glow_color, pulse)
+				c.a = (1.0 - ring / ring_w) * (0.9 if is_boss else 0.72)
+			elif d < ring_r + ring_w + 0.08:
+				var halo := smoothstep(ring_r + ring_w + 0.08, ring_r + ring_w, d)
+				c = palette.glow_color.lerp(palette.primary, 0.35)
+				c.a = halo * 0.22 * (0.85 + n * 0.15)
+			elif is_boss and shard > 0.82 and d > ring_r + ring_w and d < 0.46:
+				c = palette.accent.lerp(Color(1.0, 0.72, 1.0), n)
+				c.a = (shard - 0.82) * 2.8
+
+			if c.a > 0.01:
+				image.set_pixel(x, y, c)
 
 
 func _fill_victory_glow(image: Image, palette: _Palette, seed_val: int) -> void:

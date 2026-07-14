@@ -1,0 +1,128 @@
+extends SceneTree
+## Regression: dig highlight anchors on column top (not buried in terrain).
+
+
+const MAIN_SCENE := "res://scenes/main.tscn"
+const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
+
+
+func _init() -> void:
+	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
+	OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
+	call_deferred("_run")
+
+
+func _run() -> void:
+	var failed := false
+	var main_packed: PackedScene = load(MAIN_SCENE) as PackedScene
+	if main_packed == null:
+		push_error("main scene load failed")
+		_ProbeExit.finish_tree(self, 1, "Dig highlight placement FAILED")
+		return
+
+	var game: Node = main_packed.instantiate()
+	root.add_child(game)
+
+	var player: Node = null
+	var chunk_manager: ChunkManager = null
+	var world: InfiniteNoiseWorld = null
+	var weapon: Node = null
+
+	for _attempt in 600:
+		player = get_first_node_in_group("player")
+		chunk_manager = get_first_node_in_group("chunk_manager")
+		world = get_first_node_in_group("world")
+		weapon = player.get_node_or_null("WeaponController") if player else null
+		if (
+			player != null and chunk_manager != null and world != null and weapon != null
+			and bool(player.get("world_ready"))
+		):
+			break
+		await process_frame
+
+	if player == null:
+		push_error("bootstrap timeout")
+		_ProbeExit.finish_tree(self, 1, "Dig highlight placement FAILED")
+		return
+
+	for _w in 60:
+		await process_frame
+
+	var inv = player.get("inventory")
+	if inv and inv.has_method("set_slot"):
+		inv.set_slot(0, "stone_pick", 1)
+	if weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var player_col := Vector2i(
+		floori(float(player.get("voxel_position").x)),
+		floori(float(player.get("voxel_position").z))
+	)
+	var targeting_src := (load("res://player/action_targeting.gd") as GDScript).source_code
+	if 'mode == &"dig"' not in targeting_src or "walk_top" not in targeting_src:
+		push_error("action_targeting must anchor dig highlight on walk_top")
+		failed = true
+	else:
+		print("OK action_targeting dig top-face anchor")
+
+	var placement_ok := false
+	for radius in range(1, 12):
+		for dx in range(-radius, radius + 1):
+			for dz in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dz)) != radius:
+					continue
+				var wx: int = player_col.x + dx
+				var wz: int = player_col.y + dz
+				if not _ActionTargeting._can_dig_column(world, chunk_manager, wx, wz):
+					continue
+				_SmokeProbeHelpers.position_player_for_forward_dig(
+					player, world, chunk_manager, wx, wz, 2.4, &"dig"
+				)
+				_SmokeProbeHelpers.clear_mouse_offscreen(player)
+				for _w in 12:
+					await process_frame
+				var dig_info: Dictionary = _ActionTargeting.resolve_action(
+					player, world, chunk_manager, 2.4, false, &"dig"
+				)
+				if dig_info.get("mode", &"") != &"dig" or not dig_info.get("valid", false):
+					continue
+				var walk: float = _ActionTargeting._walkable_top(
+					world, chunk_manager, float(wx) + 0.5, float(wz) + 0.5
+				)
+				var dig_y: float = float(dig_info.get("world_pos", Vector3.ZERO).y)
+				if dig_y < walk - layer * 0.05:
+					continue
+				for _w in 8:
+					await process_frame
+				var highlight: Node = player.get_node_or_null("TargetHighlight")
+				var box: MeshInstance3D = highlight.get_node_or_null("TargetBox") as MeshInstance3D if highlight else null
+				var hl_visible := box != null and box.visible
+				var hl_orange := false
+				if box != null and box.material_override is StandardMaterial3D:
+					var c: Color = (box.material_override as StandardMaterial3D).albedo_color
+					hl_orange = c.r > 0.75 and c.g < 0.65
+				if not hl_visible or not hl_orange:
+					continue
+				print(
+					"OK dig highlight visible cell=%s y=%.2f walk=%.2f orange=%s"
+					% [dig_info.get("cell"), dig_y, walk, hl_orange]
+				)
+				placement_ok = true
+				break
+			if placement_ok:
+				break
+		if placement_ok:
+			break
+
+	if not placement_ok:
+		push_error("dig highlight never visible orange on column top in main scene")
+		failed = true
+
+	if failed:
+		_ProbeExit.finish_tree(self, 1, "Dig highlight placement FAILED")
+		return
+	_ProbeExit.finish_tree(self, 0, "All dig highlight placement tests OK")

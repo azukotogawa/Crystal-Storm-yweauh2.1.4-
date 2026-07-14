@@ -87,8 +87,10 @@ func refresh_visual() -> void:
 	if _dead:
 		return
 	_bind_scene()
-	if brain != null:
-		global_position = _column_world_position(home_cell)
+	var anchor_cell: Vector2i = _EntityNavigation.column_pos(global_position)
+	if anchor_cell == Vector2i.ZERO and home_cell != Vector2i.ZERO:
+		anchor_cell = home_cell
+	global_position = _column_world_position(anchor_cell)
 	_ensure_visual(_base_tint)
 
 

@@ -7,6 +7,10 @@ signal response_ready(text: String)
 const REQUEST_LOG := "requests.jsonl"
 const RESPONSE_LOG := "responses.jsonl"
 
+const _ScenarioPresets = preload("res://helpers/scenario_presets.gd")
+const _BugReporter = preload("res://systems/bug_reporter.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
+
 var _request_seq: int = 0
 var _pending_id: String = ""
 var _pending_since_msec: int = 0
@@ -129,9 +133,13 @@ func _handle_slash_command(text: String) -> String:
 	match cmd:
 		"/help":
 			return (
-				"Dev chat: type a message + Enter to send to AI. Slash commands:\n"
-				+ "/help /status /preset <low|medium|high> /tp <x> <z>\n"
-				+ "Logs: %s" % get_assistant_dir()
+				(
+					"Dev chat (T): AI messages + slash cheats. Keys: F3 debug overlay, F11 bug report.\n"
+					+ "/help /status /preset <low|medium|high|safe> /tp <x> <z>\n"
+					+ "/scenario <id> /scenarios /give <item> [n] /bugreport\n"
+					+ "Scenarios: %s\n"
+					+ "Shift+T = channel water. Logs: %s"
+				) % [", ".join(_ScenarioPresets.list_ids()), get_assistant_dir()]
 			)
 		"/status":
 			return _status_line()
@@ -143,6 +151,20 @@ func _handle_slash_command(text: String) -> String:
 			if parts.size() < 3:
 				return "Usage: /tp <world_x> <world_z>"
 			return _teleport_player(parts[1], parts[2])
+		"/scenario", "/scenarios":
+			if parts.size() < 2 or cmd == "/scenarios":
+				return "Scenarios: %s\nUsage: /scenario <id>" % ", ".join(_ScenarioPresets.list_ids())
+			return _ScenarioPresets.apply(get_tree(), parts[1])
+		"/give":
+			if parts.size() < 2:
+				return "Usage: /give <item_id> [count]"
+			var count := 1
+			if parts.size() >= 3 and parts[2].is_valid_int():
+				count = int(parts[2])
+			return _give_item(parts[1], count)
+		"/bugreport":
+			var bundle: Dictionary = _BugReporter.capture(get_tree(), true)
+			return "Bug report saved: %s" % bundle.get("dir", "?")
 		_:
 			return "Unknown command '%s'. Try /help" % cmd
 
@@ -179,6 +201,20 @@ func _apply_preset(name: String) -> String:
 			return "Unknown preset '%s'" % name
 	perf.apply_preset(preset_id)
 	return "Applied preset=%s" % name
+
+
+func _give_item(item_id: String, count: int) -> String:
+	var player: Node = get_tree().get_first_node_in_group("player")
+	if player == null or not ("inventory" in player):
+		return "Player/inventory unavailable"
+	var inv: Inventory = player.inventory
+	if inv == null:
+		return "Inventory missing"
+	var def := _ItemTypes.get_def(item_id)
+	if def.is_empty():
+		return "Unknown item '%s'" % item_id
+	var added: int = inv.add_item(item_id, maxi(count, 1))
+	return "Gave %s x%d (added %d)" % [item_id, count, added]
 
 
 func _teleport_player(sx: String, sz: String) -> String:

@@ -31,6 +31,7 @@
 [ext_resource type="Script" uid="uid://bwur1svbs5bg5" path="res://world/world_visuals.gd" id="22_wvis"]
 [ext_resource type="Script" path="res://systems/developer_assistant.gd" id="23_devasst"]
 [ext_resource type="Script" path="res://ui/dev_chat_overlay.gd" id="24_devchat"]
+[ext_resource type="Script" path="res://systems/dev_tools_coordinator.gd" id="25_devtools"]
 
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
@@ -118,6 +119,9 @@ script = ExtResource("16_save")
 
 [node name="DeveloperAssistant" type="Node" parent="."]
 script = ExtResource("23_devasst")
+
+[node name="DevToolsCoordinator" type="Node" parent="."]
+script = ExtResource("25_devtools")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
 environment = SubResource("Environment_tipki")

@@ -21,7 +21,7 @@ func _run() -> void:
 		var output: Array = []
 		var exit_code := OS.execute(
 			"bash",
-			["-c", "SMOKE_SESSION_SEC=30 %s" % wrapper],
+			["-c", "SMOKE_SESSION_SEC=60 %s" % wrapper],
 			output,
 			true,
 			false
@@ -51,9 +51,15 @@ func _run() -> void:
 			"EntityManager spawn",
 			"billboards textured",
 			"mesh instances, no holes",
+			"forward-arc melee",
 			"Combat VFX OK",
+			"melee_ok=",
+			"Collision OK",
+			"stacked wall blocks",
+			"step-corner walk",
+			"Crystal frontier OK",
 			"Session OK",
-			"30s target",
+			"60s target",
 		]:
 			if marker not in evidence:
 				push_error("Smoke run %d missing evidence marker: %s" % [run_idx + 1, marker])
@@ -62,7 +68,9 @@ func _run() -> void:
 		if not ok:
 			break
 		if "**Dig FAIL**" in evidence or "**Entities FAIL**" in evidence or "**Vegetation FAIL**" in evidence \
-				or "**Combat VFX FAIL**" in evidence or "**Session FAIL**" in evidence:
+				or "**Combat FAIL**" in evidence or "**Combat VFX FAIL**" in evidence \
+				or "**Collision FAIL**" in evidence or "**Ramp FAIL**" in evidence \
+				or "**Crystal frontier FAIL**" in evidence or "**Session FAIL**" in evidence:
 			push_error("Smoke run %d contains FAIL markers" % (run_idx + 1))
 			ok = false
 			break

@@ -226,17 +226,7 @@ func _physics_process(delta: float) -> void:
 		var move_vec := rotate_input_to_world(input_dir, locked_move_yaw_deg)
 		var move_delta := move_vec * speed * delta
 
-		var target_pos_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
-		if _can_move_to(target_pos_x, airborne):
-			voxel_position.x = target_pos_x.x
-			if not airborne:
-				_snap_to_ground()
-
-		var target_pos_z := voxel_position + Vector3(0.0, 0.0, move_delta.y)
-		if _can_move_to(target_pos_z, airborne):
-			voxel_position.z = target_pos_z.z
-			if not airborne:
-				_snap_to_ground()
+		_try_move_delta(Vector3(move_delta.x, 0.0, move_delta.y), airborne)
 
 		if not airborne and current_state == State.IDLE:
 			change_state(State.RUNNING)
@@ -313,6 +303,38 @@ func _sync_global_from_voxel() -> void:
 func is_colliding_at(pos: Vector3) -> bool:
 	_floor_probe.feet_height_hint = pos.y
 	return _floor_probe.is_blocked_at(pos, _player_height(), _player_radius())
+
+
+func _try_move_delta(move_delta: Vector3, airborne: bool) -> void:
+	var dx: float = move_delta.x
+	var dz: float = move_delta.z
+	if is_zero_approx(dx) and is_zero_approx(dz):
+		return
+	var axis_x := voxel_position + Vector3(dx, 0.0, 0.0)
+	var axis_z := voxel_position + Vector3(0.0, 0.0, dz)
+	var combined := voxel_position + Vector3(dx, 0.0, dz)
+	if not is_zero_approx(dx) and not is_zero_approx(dz):
+		if _can_move_to(axis_x, airborne) and _can_move_to(axis_z, airborne) and _can_move_to(combined, airborne):
+			voxel_position.x = combined.x
+			voxel_position.z = combined.z
+			if not airborne:
+				_snap_to_ground()
+		elif _can_move_to(axis_x, airborne):
+			voxel_position.x = axis_x.x
+			if not airborne:
+				_snap_to_ground()
+		elif _can_move_to(axis_z, airborne):
+			voxel_position.z = axis_z.z
+			if not airborne:
+				_snap_to_ground()
+	elif not is_zero_approx(dx) and _can_move_to(axis_x, airborne):
+		voxel_position.x = axis_x.x
+		if not airborne:
+			_snap_to_ground()
+	elif not is_zero_approx(dz) and _can_move_to(axis_z, airborne):
+		voxel_position.z = axis_z.z
+		if not airborne:
+			_snap_to_ground()
 
 
 func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:

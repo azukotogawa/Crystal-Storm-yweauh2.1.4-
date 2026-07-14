@@ -13,6 +13,10 @@ const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _ChunkData = preload("res://chunks/chunk_data.gd")
+
+## Cells within this many columns of a chunk edge rebuild ring=1 (ramp lips span neighbors).
+const REBUILD_EDGE_BAND := 2
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -66,6 +70,18 @@ func _bind_fluid_service() -> void:
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 	if cfg:
 		sim_config = cfg
+
+
+static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
+	var chunk_x := floori(float(wx) / float(_ChunkData.SIZE))
+	var chunk_z := floori(float(wz) / float(_ChunkData.SIZE))
+	var lx := wx - chunk_x * _ChunkData.SIZE
+	var lz := wz - chunk_z * _ChunkData.SIZE
+	if lx < REBUILD_EDGE_BAND or lx >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
+		return 1
+	if lz < REBUILD_EDGE_BAND or lz >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
+		return 1
+	return 0
 
 
 func _process(_delta: float) -> void:
@@ -375,7 +391,8 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 			if world and world.has_method("invalidate_column_cache"):
 				world.invalidate_column_cache(wx + dx, wz + dz)
 	if chunk_manager and chunk_manager.has_method("rebuild_region_at_world"):
-		chunk_manager.rebuild_region_at_world(float(wx), float(wz), 0)
+		var ring := rebuild_ring_for_cell(wx, wz)
+		chunk_manager.rebuild_region_at_world(float(wx), float(wz), ring)
 		if chunk_manager.has_method("flush_rebuild_pending"):
 			chunk_manager.flush_rebuild_pending()
 	elif chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):

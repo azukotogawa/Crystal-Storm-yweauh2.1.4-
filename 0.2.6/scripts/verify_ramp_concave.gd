@@ -25,16 +25,16 @@ func _run() -> void:
 
 	var ramp_src := (load("res://helpers/terrain_ramps.gd") as GDScript).source_code
 	var prim_src := (load("res://helpers/voxel_primitive_meshes.gd") as GDScript).source_code
-	if "PRIMITIVE_MESH_REV := 5" not in ramp_src:
-		push_error("terrain_ramps must reference primitive mesh rev 5")
+	if "PRIMITIVE_MESH_REV := 6" not in ramp_src:
+		push_error("terrain_ramps must reference primitive mesh rev 6")
 		failed = true
 	else:
-		print("OK primitive mesh rev 5")
-	if "MESH_REV := 11" not in prim_src:
-		push_error("voxel_primitive_meshes must use MESH_REV 11 (oriented concave wedges)")
+		print("OK primitive mesh rev 6")
+	if "MESH_REV := 12" not in prim_src:
+		push_error("voxel_primitive_meshes must use MESH_REV 12 (corner up-floor fill)")
 		failed = true
 	else:
-		print("OK voxel_primitive_meshes rev 11")
+		print("OK voxel_primitive_meshes rev 12")
 
 	var old_chance: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 100
@@ -64,7 +64,7 @@ func _run() -> void:
 
 	var diagonal := 0
 	var substrate := 0
-	var substrate_y := high_h - layer
+	var substrate_y := gap_h
 	for q in quads:
 		var fc := int(q.get("face_code", -1))
 		var qx := int(q.get("x", -1))
@@ -98,11 +98,25 @@ func _run() -> void:
 	else:
 		print("OK concave diagonal prism at arm height")
 
-	if substrate != 6:
+	if substrate < 6:
 		push_error("concave gap must emit six substrate faces underneath, got %d" % substrate)
 		failed = true
 	else:
-		print("OK concave substrate cube underneath")
+		print("OK concave substrate cube underneath at gap floor")
+
+	var interior_tops := 0
+	for q in quads:
+		if int(q.get("face_code", -1)) != FACE_TOP:
+			continue
+		if int(q.get("x", -1)) != gx or int(q.get("z", -1)) != gz:
+			continue
+		if is_equal_approx(float(q.get("y", -1)), gap_h):
+			interior_tops += 1
+	if interior_tops < 2:
+		push_error("concave gap needs textured interior floor tops at %.2f, got %d" % [gap_h, interior_tops])
+		failed = true
+	else:
+		print("OK concave interior floor tops=%d at gap y=%.2f" % [interior_tops, gap_h])
 
 	var geo_kind: int = data.get_geometry_kind(gx, gz)
 	if geo_kind != _VoxelGeometryKind.Kind.DIAGONAL_RAMP:

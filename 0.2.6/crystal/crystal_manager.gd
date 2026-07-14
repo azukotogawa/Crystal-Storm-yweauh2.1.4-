@@ -919,6 +919,7 @@ func _refresh_spawn_markers() -> void:
 					vis.apply_to_sprite3d(marker, tex, marker.modulate, marker.pixel_size)
 				else:
 					marker.texture = tex
+				marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		elif _marker_material:
 			var mat: StandardMaterial3D = _marker_material.duplicate()
 			marker.material_override = mat

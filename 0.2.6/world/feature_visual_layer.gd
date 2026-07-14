@@ -338,7 +338,12 @@ func _use_voxel_vegetation(wx: int, wz: int, plant_id: StringName = &"") -> bool
 	_resolve_registry()
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return false
-	return bool(_registry.get("vegetation_voxel_models_enabled"))
+	if not bool(_registry.get("vegetation_voxel_models_enabled")):
+		return false
+	var dist_cols: int = int(_registry.get("vegetation_billboard_distance_columns"))
+	if dist_cols <= 0:
+		return true
+	return _player_column_distance(wx, wz) <= float(dist_cols)
 
 
 func _player_column_distance(wx: int, wz: int) -> float:
@@ -351,13 +356,16 @@ func _player_column_distance(wx: int, wz: int) -> float:
 		var vp: Vector3 = player.get_voxel_position()
 		px = vp.x
 		pz = vp.z
+	elif player.get("voxel_position") is Vector3:
+		var vp: Vector3 = player.get("voxel_position")
+		px = vp.x
+		pz = vp.z
 	else:
-		px = player.global_position.x
-		pz = player.global_position.z
-	var ws = _WorldSettings.get_active()
-	var pcx: float = ws.world_to_column(px)
-	var pcz: float = ws.world_to_column(pz)
-	return Vector2(float(wx) + 0.5 - pcx, float(wz) + 0.5 - pcz).length()
+		var ws = _WorldSettings.get_active()
+		px = ws.world_to_column(player.global_position.x)
+		pz = ws.world_to_column(player.global_position.z)
+	# Player voxel_position is already in world column indices (fractional center = col + 0.5).
+	return Vector2(float(wx) + 0.5 - px, float(wz) + 0.5 - pz).length()
 
 
 func _sprite_height_offset_for_plant(plant_id: StringName, stage: int, tex: Texture2D = null) -> float:

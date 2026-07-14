@@ -144,8 +144,13 @@ func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.0))
 	var origin := _attack_origin(0.5)
-	var target_col := _ActionTargeting.target_column(player, range_v)
-	var forward := _ActionTargeting.attack_toward_column(player, range_v)
+	var atk_info: Dictionary = _ActionTargeting.resolve_action(
+		player, world, _chunk_manager(), range_v, false, &"attack"
+	)
+	var target_col: Vector3 = atk_info.get("column", Vector3.ZERO)
+	if target_col == Vector3.ZERO:
+		target_col = player.voxel_position + _ActionTargeting.attack_forward(player) * range_v * 0.5
+	var forward := _ActionTargeting.attack_toward_column(player, range_v, &"attack")
 	var hit_pos := Vector3(target_col.x, origin.y, target_col.z)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 
@@ -157,6 +162,19 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 		_combat_def,
 		melee_arc_degrees
 	)
+	if targets.is_empty():
+		var forward_cam := _ActionTargeting.attack_forward(player)
+		var cam_hits := _CombatHitResolver.query_melee(
+			self,
+			origin,
+			forward_cam,
+			range_v,
+			_combat_def,
+			melee_arc_degrees
+		)
+		if not cam_hits.is_empty():
+			forward = forward_cam
+			targets = cam_hits
 	for target in targets:
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:

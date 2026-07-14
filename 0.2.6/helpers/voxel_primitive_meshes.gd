@@ -8,7 +8,7 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const MESH_REV := 11
+const MESH_REV := 12
 
 static var _cache: Dictionary = {}
 static var _scale_key: float = -1.0
@@ -177,6 +177,16 @@ static func _corner_wn_faces(s: float) -> Array:
 			"kind": &"quad",
 			"verts": [Vector3(0, 0, s), Vector3(s, 0, s), Vector3(s, s, s), Vector3(0, s, s)],
 			"normal": Vector3(0, 0, 1),
+		},
+		{
+			"kind": &"tri",
+			"verts": [Vector3(0, s, 0), Vector3(s, s, 0), Vector3(0, s, s)],
+			"normal": Vector3.UP,
+		},
+		{
+			"kind": &"tri",
+			"verts": [Vector3(0, 0, 0), Vector3(s, 0, 0), Vector3(0, 0, s)],
+			"normal": Vector3.UP,
 		},
 		{
 			"kind": &"quad",

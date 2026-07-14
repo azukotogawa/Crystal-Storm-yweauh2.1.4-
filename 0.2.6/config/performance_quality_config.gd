@@ -293,13 +293,13 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.crystal_sim_skip_frames = 2
 			c.max_crystal_chunk_rebuilds_per_frame = 3
 			c.max_crystal_flow_cells = 220
-			c.max_crystal_new_cells_per_tick = 5
-			c.crystal_empty_cell_inflow_cap = 0.055
+			c.max_crystal_new_cells_per_tick = 6
+			c.crystal_empty_cell_inflow_cap = 0.07
 			c.crystal_spread_damping_start = 180
 			c.crystal_spread_damping_full = 750
 			c.crystal_spread_damping_min = 0.15
 			c.crystal_mesh_rebuilds_when_large = 1
-			c.crystal_mesh_depth_epsilon = 0.12
+			c.crystal_mesh_depth_epsilon = 0.16
 			c.max_absorption_cells_per_tick = 64
 			c.minimap_enabled = true
 			c.map_fullscreen_enabled = true

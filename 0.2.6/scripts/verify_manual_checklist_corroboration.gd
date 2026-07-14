@@ -156,6 +156,22 @@ func _run() -> void:
 		push_error("highlight modes wrong")
 		failed = true
 
+	if inv:
+		inv.set_slot(0, "wooden_sword", 1)
+		weapon.set_active_hotbar_index(0)
+	Input.action_press("build_place")
+	for _w in 4:
+		await process_frame
+	var sword_build_mode := _ActionTargeting._weapon_mode_from_player(player, false)
+	Input.action_release("build_place")
+	if sword_build_mode == &"build":
+		lines.append("PASS build modifier sword+build_place -> build")
+		print("OK build modifier sword+build_place")
+	else:
+		lines.append("FAIL build modifier sword+build_place mode=%s" % sword_build_mode)
+		push_error("build modifier with sword failed")
+		failed = true
+
 	# Build wall on a separate solid cell near the dig probe.
 	lines.append("")
 	lines.append("## Build — stone wall")
@@ -191,6 +207,88 @@ func _run() -> void:
 			build_delta, _TerrainEdits.get_build_tile(build_wx, build_wz), terrain_editor != null
 		])
 		push_error("build wall failed")
+		failed = true
+
+	lines.append("")
+	lines.append("## Collision — built wall (manual: collision is buggy)")
+	var floor_probe = player.get("_floor_probe")
+	if build_delta <= 0.01 or floor_probe == null:
+		lines.append("FAIL collision skip build_delta=%.2f probe=%s" % [build_delta, floor_probe != null])
+		push_error("collision corroboration skipped")
+		failed = true
+	else:
+		var one_layer: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			floor_probe, build_wx, build_wz, true, false
+		)
+		if one_layer.get("ok", false):
+			lines.append("PASS collision 1-layer raise=%.2f step=%s" % [
+				one_layer.get("raise", 0.0), one_layer.get("can_step", false)
+			])
+			print("OK collision 1-layer")
+		else:
+			lines.append("FAIL collision 1-layer %s" % one_layer.get("reason", "?"))
+			push_error("collision 1-layer failed")
+			failed = true
+		if terrain_editor and inv:
+			if inv.count_item("stone") < 2:
+				inv.add_item("stone", 4)
+			var stack_h: float = world.get_surface_height(float(build_wx), float(build_wz))
+			terrain_editor.try_build_wall(
+				Vector3(float(build_wx) + 0.5, stack_h, float(build_wz) + 0.5), inv, true
+			)
+			if chunk_manager.has_method("await_rebuild_idle"):
+				await chunk_manager.await_rebuild_idle()
+			for _w in 40:
+				await process_frame
+		var stacked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			floor_probe, build_wx, build_wz, false, true
+		)
+		if stacked.get("ok", false):
+			lines.append("PASS collision stacked blocks natural-feet entry")
+			print("OK collision stacked")
+		else:
+			lines.append("FAIL collision stacked %s" % stacked.get("reason", "?"))
+			push_error("collision stacked failed")
+			failed = true
+
+	lines.append("")
+	lines.append("## Movement — ramp step corners (manual: ramp feel)")
+	if floor_probe:
+		var step_audit: Dictionary = _SmokeProbeHelpers.audit_ramp_step_corner_walk(floor_probe)
+		if step_audit.get("ok", false):
+			lines.append("PASS step-corner walk feet=%.2f steps=%d" % [
+				step_audit.get("corner_feet", 0.0), step_audit.get("steps", 0)
+			])
+			print("OK step-corner walk")
+		else:
+			lines.append("FAIL step-corner %s" % step_audit.get("reason", "?"))
+			push_error("step-corner walk failed")
+			failed = true
+	else:
+		lines.append("FAIL step-corner no floor probe")
+		failed = true
+
+	lines.append("")
+	lines.append("## Crystal — frontier envelope (manual: checkerboard / settling)")
+	var crystal: CrystalManager = get_first_node_in_group("crystal_manager") as CrystalManager
+	if crystal:
+		var crystal_origin := Vector2i(-5, 5)
+		if crystal.has_method("pick_origin_spawn_cell"):
+			crystal_origin = crystal.pick_origin_spawn_cell()
+		for _w in 60:
+			await process_frame
+		var frontier: Dictionary = _SmokeProbeHelpers.audit_crystal_frontier_holes(crystal, crystal_origin)
+		if frontier.get("ok", false):
+			lines.append("PASS crystal frontier holes=%d filled=%d cap=%d" % [
+				frontier.get("holes", 0), frontier.get("filled", 0), frontier.get("hole_cap", 0)
+			])
+			print("OK crystal frontier holes=%d" % frontier.get("holes", 0))
+		else:
+			lines.append("FAIL crystal frontier %s" % frontier.get("reason", "?"))
+			push_error("crystal frontier failed")
+			failed = true
+	else:
+		lines.append("FAIL crystal manager missing")
 		failed = true
 
 	# Terrain atlas variety

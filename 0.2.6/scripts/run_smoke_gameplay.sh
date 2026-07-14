@@ -7,9 +7,12 @@ LOG="${SMOKE_LOG:-}"
 ARGS=(--headless --path "$ROOT" -s "$ROOT/scripts/smoke_gameplay.gd")
 export CRYSTALSTORM_PERF_PRESET=medium
 export CRYSTALSTORM_PROBE_ABRUPT_EXIT=1
-export CRYSTALSTORM_SCRATCH="${CRYSTALSTORM_SCRATCH:-/tmp/grok-goal-eb56502acfa8/implementer}"
+export CRYSTALSTORM_SCRATCH="${CRYSTALSTORM_SCRATCH:-/tmp/grok-goal-042522dd00ca/implementer}"
 mkdir -p "$CRYSTALSTORM_SCRATCH"
-export SMOKE_SESSION_SEC="${SMOKE_SESSION_SEC:-30}"
+export SMOKE_SESSION_SEC="${SMOKE_SESSION_SEC:-60}"
+if [[ -n "${SMOKE_SCENARIO:-}" ]]; then
+	export SMOKE_SCENARIO
+fi
 if [[ -n "${SMOKE_FORCE_FAIL:-}" ]]; then
 	export SMOKE_FORCE_FAIL
 fi

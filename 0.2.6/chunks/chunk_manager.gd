@@ -476,6 +476,11 @@ func _emit_cardinal_ramp_flank_faces(data: ChunkData, out_quads: Array) -> void:
 				)
 
 
+func _append_concave_interior_floor(out_quads: Array, x: int, z: int, cell_h: float, vox: int) -> void:
+	# Textured top at gap floor — isometric camera sees this under the diagonal prism opening.
+	_append_voxel_face(out_quads, float(x), cell_h, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
+
+
 func _append_full_cube_solid(out_quads: Array, x: int, z: int, y: float, vox: int) -> void:
 	var geo := _VoxelGeometryKind.Kind.FULL_CUBE
 	_append_voxel_face(out_quads, float(x), y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP, geo)
@@ -566,7 +571,9 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		var vox: int = entry["vox"]
 		var layer: float = _WorldSettings.get_active().layer_height()
 		data.set_concave_prism(x, z, leg_x, leg_z, arm_h)
-		_append_full_cube_solid(out_quads, x, z, arm_h - layer, vox)
+		var cell_h: float = data.get_surface_y(x, z)
+		_append_full_cube_solid(out_quads, x, z, cell_h, vox)
+		_append_concave_interior_floor(out_quads, x, z, cell_h, vox)
 		_append_ramp_quad(out_quads, x, z, arm_h, vox, data.get_ramp_entry(x, z))
 
 
@@ -1192,16 +1199,23 @@ func is_world_pos_loaded(world_pos: Vector3) -> bool:
 	return is_world_cell_loaded(floori(world_pos.x), floori(world_pos.z))
 
 
+func _rebuild_high_priority(key: Vector2i) -> bool:
+	var pc := get_player_chunk_coord()
+	var dist := maxi(absi(key.x - pc.x), absi(key.y - pc.y))
+	return dist <= 2
+
+
 func rebuild_chunk(key: Vector2i) -> void:
 	if _shutting_down:
 		return
 	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
+	var high_priority := _rebuild_high_priority(key)
 	if chunks.has(key):
-		_regenerate_chunk_mesh(key, true)
+		_regenerate_chunk_mesh(key, high_priority)
 		return
 	pending.erase(key)
 	_chunk_tasks.erase(key)
-	request_chunk(key, true)
+	request_chunk(key, high_priority)
 
 
 func rebuild_chunks():

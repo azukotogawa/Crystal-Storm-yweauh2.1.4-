@@ -8,6 +8,7 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -58,15 +59,19 @@ func ramp_entry_at(wx: float, wz: float) -> Dictionary:
 
 
 func _column_surface_height(wx: float, wz: float) -> float:
+	var ix := floori(wx)
+	var iz := floori(wz)
 	if chunk_manager and chunk_manager.has_method("get_chunk_data_at_world_pos"):
 		var data: ChunkData = chunk_manager.get_chunk_data_at_world_pos(Vector3(wx, 0.0, wz))
 		if data:
-			var ix := floori(wx)
-			var iz := floori(wz)
 			var lx := ix - data.position.x * _ChunkData.SIZE
 			var lz := iz - data.position.y * _ChunkData.SIZE
 			if lx >= 0 and lx < _ChunkData.SIZE and lz >= 0 and lz < _ChunkData.SIZE:
-				return data.get_surface_y(lx, lz)
+				var snap_h: float = data.get_surface_y(lx, lz)
+				# surface_map includes the worker snapshot delta; apply live dig/build on top.
+				var snap_delta: float = data.get_worker_height_delta(lx, lz)
+				var live_delta: float = _TerrainEdits.get_height_delta(ix, iz)
+				return snap_h + (live_delta - snap_delta)
 	if world:
 		return world.get_surface_height(wx, wz)
 	return 0.0
@@ -140,24 +145,40 @@ func is_blocked_at(
 			if cave_floor > 0.01 and pos.y < cave_floor - layer * 0.05:
 				return true
 
-	if world.has_method("get_solid"):
-		var head_y := pos.y + player_height
-		var pr := player_radius
-		var player_min := pos - Vector3(pr, 0.0, pr)
-		var player_max := pos + Vector3(pr, 0.0, pr)
-		var clearance: float = layer * 0.12
-		for x_world in range(floori(player_min.x), floori(player_max.x) + 1):
-			for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
-				var wx := float(x_world)
-				var wz := float(z_world)
-				var col_floor := walkable_height_at(wx, wz)
-				var min_block_y := col_floor + clearance
-				for check_y in [floori(head_y), floori(head_y) + 1]:
-					if float(check_y) < min_block_y:
-						continue
-					if world.get_solid(wx, float(check_y), wz):
-						return true
+	var head_y := pos.y + player_height
+	var pr := player_radius
+	var player_min := pos - Vector3(pr, 0.0, pr)
+	var player_max := pos + Vector3(pr, 0.0, pr)
+	var clearance: float = layer * 0.12
+	for x_world in range(floori(player_min.x), floori(player_max.x) + 1):
+		for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
+			var wx := float(x_world)
+			var wz := float(z_world)
+			var col_floor := walkable_height_at(wx, wz)
+			var min_block_y := col_floor + clearance
+			for check_y in [floori(head_y), floori(head_y) + 1]:
+				if float(check_y) < min_block_y:
+					continue
+				if _solid_blocks_head(wx, float(check_y), wz, col_floor):
+					return true
 
+	return false
+
+
+func _solid_blocks_head(wx: float, wy: float, wz: float, walk_floor: float) -> bool:
+	var layer: float = _ws().layer_height()
+	if wy < walk_floor + layer * 0.08:
+		return false
+	var entry := ramp_entry_at(wx, wz)
+	if not entry.is_empty() and TerrainRamps.is_landing_ramp_entry(entry):
+		var surf := _column_surface_height(wx, wz)
+		var ramp_h := TerrainRamps.surface_height_on_ramp(
+			wx, wz, surf, entry.get("dir", Vector2i.ZERO)
+		)
+		if wy < ramp_h + layer * 0.28:
+			return false
+	if world and world.has_method("get_solid"):
+		return world.get_solid(wx, wy, wz)
 	return false
 
 

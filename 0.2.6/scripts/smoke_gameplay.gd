@@ -14,6 +14,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _ScenarioPresets = preload("res://helpers/scenario_presets.gd")
 
 
 func _init() -> void:
@@ -91,6 +92,13 @@ func _run() -> void:
 	lines.append("## P0 — Runtime")
 	lines.append("- Bootstrap OK: player, chunk_manager, terrain_editor, crystal_manager ready.")
 
+	var scenario_id := OS.get_environment("SMOKE_SCENARIO").strip_edges()
+	if not scenario_id.is_empty():
+		var scenario_msg := _ScenarioPresets.apply(self, scenario_id)
+		lines.append("- **Scenario OK**: `%s` → %s" % [scenario_id, scenario_msg])
+		for _w in 30:
+			await process_frame
+
 	if _force_fail_mode() == "1":
 		lines.append("")
 		lines.append("## P0 — Forced fail (quit-path harness)")
@@ -116,24 +124,53 @@ func _run() -> void:
 			inv.set_slot(1, "stone_pick", 1)
 		if weapon.has_method("set_active_hotbar_index"):
 			weapon.set_active_hotbar_index(1)
-		var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor") as TerrainEditor
-		dig_wx = 3
-		dig_wz = 5
-		for offset in [Vector2i(3, 5), Vector2i(4, 5), Vector2i(3, 6), Vector2i(5, 5)]:
-			if _ActionTargeting._is_solid_column(world, chunk_manager, offset.x, offset.y):
-				dig_wx = offset.x
-				dig_wz = offset.y
+		var range_v: float = float(pick_def.get("range", 2.0))
+		var player_col := Vector2i(
+			floori(float(player.get("voxel_position").x)),
+			floori(float(player.get("voxel_position").z))
+		)
+		var solid_cells: Array[Vector2i] = []
+		for radius in range(1, 10):
+			for dx in range(-radius, radius + 1):
+				for dz in range(-radius, radius + 1):
+					if maxi(absi(dx), absi(dz)) != radius:
+						continue
+					var wx: int = player_col.x + dx
+					var wz: int = player_col.y + dz
+					if _ActionTargeting._is_solid_column(world, chunk_manager, wx, wz):
+						solid_cells.append(Vector2i(wx, wz))
+		var before_h: float = 0.0
+		var after_h: float = 0.0
+		var delta: float = 0.0
+		var mesh_sy: float = -1.0
+		for cell in solid_cells:
+			dig_wx = cell.x
+			dig_wz = cell.y
+			_SmokeProbeHelpers.position_player_for_forward_dig(
+				player, world, chunk_manager, dig_wx, dig_wz, range_v
+			)
+			for _w in 8:
+				await process_frame
+			var dig_info: Dictionary = _ActionTargeting.resolve_action(
+				player, world, chunk_manager, range_v, false, &"dig"
+			)
+			if not dig_info.get("valid", false) or dig_info.get("mode", &"") != &"dig":
+				continue
+			var dig_cell: Vector2i = dig_info.get("cell", Vector2i.ZERO)
+			dig_wx = dig_cell.x
+			dig_wz = dig_cell.y
+			before_h = world.get_surface_height(float(dig_wx), float(dig_wz))
+			weapon.set("_cooldown_timer", 0.0)
+			weapon.call("_try_dig")
+			if chunk_manager.has_method("await_rebuild_idle"):
+				await chunk_manager.await_rebuild_idle()
+			for _w in 40:
+				await process_frame
+			after_h = world.get_surface_height(float(dig_wx), float(dig_wz))
+			delta = _TerrainEdits.get_height_delta(dig_wx, dig_wz)
+			mesh_sy = _SmokeProbeHelpers.dig_mesh_surface_y(chunk_manager, dig_wx, dig_wz)
+			if delta < -0.01 and after_h < before_h - 0.01:
 				break
-		var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-		if terrain_editor:
-			terrain_editor.try_dig(Vector3(float(dig_wx) + 0.5, before_h, float(dig_wz) + 0.5))
-		if chunk_manager.has_method("await_rebuild_idle"):
-			await chunk_manager.await_rebuild_idle()
-		for _w in 40:
-			await process_frame
-		var after_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
-		var delta: float = _TerrainEdits.get_height_delta(dig_wx, dig_wz)
-		var mesh_sy: float = _SmokeProbeHelpers.dig_mesh_surface_y(chunk_manager, dig_wx, dig_wz)
 		var mesh_ok := mesh_sy >= 0.0 and mesh_sy < before_h - 0.01 and absf(mesh_sy - after_h) < 0.2
 		dug = delta < -0.01 and after_h < before_h - 0.01 and mesh_ok
 		if dug:
@@ -154,6 +191,79 @@ func _run() -> void:
 			failed = true
 	else:
 		lines.append("- **Dig FAIL**: WeaponController missing dig API")
+		failed = true
+
+	# --- Build wall (terrain editor production path) ---
+	lines.append("")
+	lines.append("## P0 — Build / stone wall")
+	var build_wx := dig_wx + 2
+	var build_wz := dig_wz + 2
+	var build_inv = player.get("inventory")
+	var build_ok := false
+	if terrain and build_inv:
+		if build_inv.count_item("stone") < 2:
+			build_inv.add_item("stone", 8)
+		build_inv.set_slot(0, "stone", 8)
+		var build_h: float = world.get_surface_height(float(build_wx), float(build_wz))
+		var build_target := Vector3(float(build_wx) + 0.5, build_h, float(build_wz) + 0.5)
+		if terrain.has_method("try_build_wall"):
+			build_ok = terrain.call("try_build_wall", build_target, build_inv, true)
+		if chunk_manager.has_method("await_rebuild_idle"):
+			await chunk_manager.await_rebuild_idle()
+		for _w in 40:
+			await process_frame
+		var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
+		build_ok = build_ok and build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0
+	if build_ok:
+		lines.append("- **Build OK**: stone wall at (%d,%d) delta=%.2f." % [
+			build_wx, build_wz, _TerrainEdits.get_height_delta(build_wx, build_wz)
+		])
+	else:
+		lines.append("- **Build FAIL**: wall at (%d,%d) editor=%s" % [build_wx, build_wz, terrain != null])
+		failed = true
+
+	lines.append("")
+	lines.append("## P0 — Built wall collision")
+	var build_floor_probe = player.get("_floor_probe") if player else null
+	if build_ok and build_floor_probe != null:
+		var one_layer: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			build_floor_probe, build_wx, build_wz, true, false
+		)
+		if one_layer.get("ok", false):
+			lines.append(
+				"- **Collision OK**: 1-layer raise=%.2f step at (%d,%d)."
+				% [one_layer.get("raise", 0.0), build_wx, build_wz]
+			)
+		else:
+			lines.append("- **Collision FAIL**: 1-layer %s" % one_layer.get("reason", "?"))
+			failed = true
+		if terrain and build_inv:
+			if build_inv.count_item("stone") < 2:
+				build_inv.add_item("stone", 4)
+			var stack_h: float = world.get_surface_height(float(build_wx), float(build_wz))
+			if terrain.has_method("try_build_wall"):
+				terrain.call(
+					"try_build_wall",
+					Vector3(float(build_wx) + 0.5, stack_h, float(build_wz) + 0.5),
+					build_inv,
+					true
+				)
+			if chunk_manager.has_method("await_rebuild_idle"):
+				await chunk_manager.await_rebuild_idle()
+			for _w in 40:
+				await process_frame
+		var stacked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			build_floor_probe, build_wx, build_wz, false, true
+		)
+		if stacked.get("ok", false):
+			lines.append("- **Collision OK**: stacked wall blocks at (%d,%d)." % [build_wx, build_wz])
+		else:
+			lines.append("- **Collision FAIL**: stacked %s" % stacked.get("reason", "?"))
+			failed = true
+	elif not build_ok:
+		lines.append("- **Collision SKIP**: build failed.")
+	else:
+		lines.append("- **Collision FAIL**: player floor probe missing.")
 		failed = true
 
 	# --- Entities: EntityManager._spawn_world_entity + registry refresh (production path) ---
@@ -205,35 +315,57 @@ func _run() -> void:
 		])
 		failed = true
 
-	# --- Melee damages spawned entity (production combat path) ---
+	# --- Melee damages spawned entity via forward arc (production combat path) ---
 	lines.append("")
-	lines.append("## P0 — Melee entity damage")
+	lines.append("## P0 — Melee entity damage (forward arc)")
 	var melee_entity_ok := false
+	var melee_result: Dictionary = {"reason": "no_entity"}
 	var spawned_entity: Node = null
 	for entity in get_nodes_in_group("world_entity"):
-		if is_instance_valid(entity) and entity.has_method("take_damage"):
+		if is_instance_valid(entity) and entity.has_method("take_damage") \
+				and entity.get("home_cell") == test_cell:
 			spawned_entity = entity
 			break
-	if spawned_entity and weapon and weapon.has_method("_do_melee_attack"):
-		var hp_before: float = float(spawned_entity.get("health"))
-		player.set("voxel_position", Vector3(float(test_cell.x) + 0.5, player.get("voxel_position").y, float(test_cell.y) + 0.5))
-		if player.has_method("_sync_global_from_voxel"):
-			player.call("_sync_global_from_voxel")
+	if spawned_entity == null:
+		for entity in get_nodes_in_group("world_entity"):
+			if is_instance_valid(entity) and entity.has_method("take_damage"):
+				spawned_entity = entity
+				break
+	var sword_def: Dictionary = _ItemTypes.get_def("wooden_sword")
+	var sword_range: float = float(sword_def.get("range", 2.0)) if sword_def else 2.0
+	if spawned_entity and weapon and sword_def:
 		var inv_melee = player.get("inventory")
 		if inv_melee:
 			inv_melee.set_slot(0, "wooden_sword", 1)
 		if weapon.has_method("set_active_hotbar_index"):
 			weapon.set_active_hotbar_index(0)
-		var sword_def: Dictionary = _ItemTypes.get_def("wooden_sword")
-		weapon.call("_do_melee_attack", "wooden_sword", sword_def)
+		_SmokeProbeHelpers.position_player_for_forward_dig(
+			player, world, chunk_manager, test_cell.x, test_cell.y, sword_range, &"attack"
+		)
+		_SmokeProbeHelpers.clear_mouse_offscreen(player)
+		for _w in 8:
+			await process_frame
+		melee_result = _SmokeProbeHelpers.try_forward_arc_melee_damage(
+			player, world, chunk_manager, weapon, spawned_entity, "wooden_sword", sword_def
+		)
 		for _w in 12:
 			await process_frame
-		var hp_after: float = float(spawned_entity.get("health"))
-		melee_entity_ok = hp_after < hp_before - 0.01
+		melee_entity_ok = bool(melee_result.get("ok", false))
 	if melee_entity_ok:
-		lines.append("- **Combat OK**: melee damaged spawned world_entity (HP reduced).")
+		lines.append(
+			"- **Combat OK**: forward-arc melee damaged world_entity HP %.1f→%.1f dist=%.1f pre_hits=%d."
+			% [
+				float(melee_result.get("hp_before", 0.0)),
+				float(melee_result.get("hp_after", 0.0)),
+				float(melee_result.get("dist_cells", 0.0)),
+				int(melee_result.get("pre_hits", 0)),
+			]
+		)
 	else:
-		lines.append("- **Combat FAIL**: melee did not reduce spawned entity health.")
+		lines.append(
+			"- **Combat FAIL**: forward-arc melee did not damage entity reason=%s dist=%.1f."
+			% [str(melee_result.get("reason", "unknown")), float(melee_result.get("dist_cells", 0.0))]
+		)
 		failed = true
 
 	# --- Vegetation ---
@@ -357,8 +489,8 @@ func _run() -> void:
 		player.set("voxel_position", Vector3(float(test_cell.x) + 0.5, player.get("voxel_position").y, float(test_cell.y) + 0.5))
 		if player.has_method("_sync_global_from_voxel"):
 			player.call("_sync_global_from_voxel")
-		var sword_def: Dictionary = _ItemTypes.get_def("wooden_sword")
-		weapon.call("_do_melee_attack", "wooden_sword", sword_def)
+		if sword_def:
+			weapon.call("_do_melee_attack", "wooden_sword", sword_def)
 		for _w in 20:
 			await process_frame
 		var hit_vfx := _SmokeProbeHelpers.combat_vfx_active(combat_vfx)
@@ -392,6 +524,34 @@ func _run() -> void:
 		else:
 			lines.append("- **Ramp FAIL**: floor probe returned non-positive feet height.")
 			failed = true
+	if probe != null:
+		var step_audit: Dictionary = _SmokeProbeHelpers.audit_ramp_step_corner_walk(probe)
+		if step_audit.get("ok", false):
+			lines.append(
+				"- **Ramp OK**: step-corner walk feet=%.2f steps=%d."
+				% [step_audit.get("corner_feet", 0.0), step_audit.get("steps", 0)]
+			)
+		else:
+			lines.append("- **Ramp FAIL**: step-corner %s" % step_audit.get("reason", "?"))
+			failed = true
+
+	# --- P1 Crystal frontier envelope ---
+	lines.append("")
+	lines.append("## P1 — Crystal frontier envelope")
+	var crystal_origin := Vector2i(-5, 5)
+	if crystal and crystal.has_method("pick_origin_spawn_cell"):
+		crystal_origin = crystal.pick_origin_spawn_cell()
+	for _w in 60:
+		await process_frame
+	var frontier: Dictionary = _SmokeProbeHelpers.audit_crystal_frontier_holes(crystal, crystal_origin)
+	if frontier.get("ok", false):
+		lines.append(
+			"- **Crystal frontier OK**: holes=%d filled=%d cap=%d (motion visuals human pending)."
+			% [frontier.get("holes", 0), frontier.get("filled", 0), frontier.get("hole_cap", 0)]
+		)
+	else:
+		lines.append("- **Crystal frontier FAIL**: %s" % frontier.get("reason", "?"))
+		failed = true
 
 	# --- P1 Crystal chunk edge ---
 	lines.append("")
@@ -421,8 +581,11 @@ func _run() -> void:
 	var session_end_ms := session_start_ms + int(session_sec * 1000.0)
 	var session_frames := 0
 	var session_digs := 0
+	var session_digs_ok := 0
+	var session_pending_dig: Dictionary = {}
 	var session_jumps := 0
 	var session_attacks := 0
+	var session_melee_ok := 1 if melee_entity_ok else 0
 	var session_entities_peak: int = sprite_stats.visible
 	var move_dirs: Array[String] = ["ui_right", "ui_up", "ui_left", "ui_down"]
 	var dir_idx := 0
@@ -445,19 +608,77 @@ func _run() -> void:
 			if weapon.has_method("set_active_hotbar_index"):
 				weapon.set_active_hotbar_index(1)
 			var pick: Dictionary = _ItemTypes.get_def("stone_pick")
-			weapon.call("_try_dig")
-			session_digs += 1
+			var dig_range: float = float(pick.get("range", 2.4))
+			var dig_info: Dictionary = _ActionTargeting.resolve_action(
+				player, world, chunk_manager, dig_range, false, &"dig"
+			)
+			if dig_info.get("valid", false) and dig_info.get("mode", &"") == &"dig":
+				var dig_cell: Vector2i = dig_info.get("cell", Vector2i.ZERO)
+				session_pending_dig = {
+					"wx": dig_cell.x,
+					"wz": dig_cell.y,
+					"before_h": world.get_surface_height(float(dig_cell.x), float(dig_cell.y)),
+				}
+				weapon.set("_cooldown_timer", 0.0)
+				weapon.call("_try_dig")
+				session_digs += 1
+		elif phase == 38 and not session_pending_dig.is_empty():
+			var pwx: int = int(session_pending_dig.get("wx", -1))
+			var pwz: int = int(session_pending_dig.get("wz", -1))
+			var pbefore: float = float(session_pending_dig.get("before_h", 0.0))
+			var pafter: float = world.get_surface_height(float(pwx), float(pwz))
+			var pdelta: float = _TerrainEdits.get_height_delta(pwx, pwz)
+			if pafter < pbefore - 0.01 and pdelta < -0.01:
+				session_digs_ok += 1
+			session_pending_dig = {}
 		if phase == 60:
 			Input.action_press("jump")
 		if phase == 62:
 			Input.action_release("jump")
 			session_jumps += 1
-		if phase == 120 and weapon and weapon.has_method("_do_melee_attack"):
+		if phase == 120 and weapon:
+			var melee_target: Node = spawned_entity if is_instance_valid(spawned_entity) else null
+			if melee_target == null:
+				for entity in get_nodes_in_group("world_entity"):
+					if is_instance_valid(entity) and entity.has_method("take_damage"):
+						melee_target = entity
+						break
+			if melee_target == null and session_melee_ok < 1 and entity_mgr \
+					and entity_mgr.has_method("_spawn_world_entity"):
+				var player_col := Vector2i(
+					floori(float(player.get("voxel_position").x)),
+					floori(float(player.get("voxel_position").z))
+				)
+				var spawn_cell := player_col + Vector2i(1, 0)
+				var session_brain = _EntityBrainRegistry.get_def(&"rabbit")
+				if session_brain:
+					entity_mgr.call(
+						"_spawn_world_entity",
+						spawn_cell.x, spawn_cell.y, session_brain, spawn_cell, Color(0.72, 0.58, 0.42)
+					)
+					for _w in 12:
+						await process_frame
+					for entity in get_nodes_in_group("world_entity"):
+						if is_instance_valid(entity) and entity.has_method("take_damage") \
+								and entity.get("home_cell") == spawn_cell:
+							melee_target = entity
+							break
+			if melee_target == null:
+				continue
 			if weapon.has_method("set_active_hotbar_index"):
 				weapon.set_active_hotbar_index(0)
 			var sword: Dictionary = _ItemTypes.get_def("wooden_sword")
-			weapon.call("_do_melee_attack", "wooden_sword", sword)
+			var atk_cell: Vector2i = melee_target.get("home_cell")
+			_SmokeProbeHelpers.position_player_for_forward_dig(
+				player, world, chunk_manager, atk_cell.x, atk_cell.y, sword_range, &"attack"
+			)
+			_SmokeProbeHelpers.clear_mouse_offscreen(player)
+			var arc_result: Dictionary = _SmokeProbeHelpers.try_forward_arc_melee_damage(
+				player, world, chunk_manager, weapon, melee_target, "wooden_sword", sword
+			)
 			session_attacks += 1
+			if arc_result.get("ok", false):
+				session_melee_ok += 1
 		if player.has_method("_sync_global_from_voxel"):
 			player.call("_sync_global_from_voxel")
 		var ent_now := _SmokeProbeHelpers.count_entity_sprites(self)
@@ -476,20 +697,25 @@ func _run() -> void:
 		and post_audit.ok
 		and session_entities_peak >= 1
 		and post_veg.textured >= 1
+		and session_digs_ok >= 1
+		and session_melee_ok >= 1
 	)
 	if session_ok:
 		lines.append(
-			"- **Session OK**: %.1fs / %.0fs target, %d frames, digs=%d jumps=%d attacks=%d; post-audit chunks=%d entities_peak=%d vegetation=%d."
+			"- **Session OK**: %.1fs / %.0fs target, %d frames, digs=%d ok=%d jumps=%d attacks=%d melee_ok=%d; post-audit chunks=%d entities_peak=%d vegetation=%d."
 			% [
-				elapsed_sec, session_sec, session_frames, session_digs, session_jumps, session_attacks,
+				elapsed_sec, session_sec, session_frames, session_digs, session_digs_ok,
+				session_jumps, session_attacks, session_melee_ok,
 				post_audit.total, session_entities_peak, post_veg.textured
 			]
 		)
 	else:
 		lines.append(
-			"- **Session FAIL**: elapsed=%.1fs target=%.0fs frames=%d audit_ok=%s entities_peak=%d veg=%d invalid=%d empty=%d."
+			"- **Session FAIL**: elapsed=%.1fs target=%.0fs frames=%d audit_ok=%s digs_ok=%d/%d melee_ok=%d/%d entities_peak=%d veg=%d invalid=%d empty=%d."
 			% [
 				elapsed_sec, session_sec, session_frames, post_audit.ok,
+				session_digs_ok, session_digs,
+				session_melee_ok, session_attacks,
 				session_entities_peak, post_veg.textured,
 				post_audit.invalid_views, post_audit.empty_mesh
 			]

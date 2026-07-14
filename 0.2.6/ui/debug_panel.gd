@@ -10,6 +10,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 var _update_counter := 0
 var _debug_update_every := 12
 var _panel_enabled := true
+var _overlay_visible := true
 var _expensive_queries := false
 
 func _enter_tree() -> void:
@@ -23,8 +24,27 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 	_debug_update_every = maxi(int(cfg.debug_update_every), 4)
 	if "debug_expensive_queries" in cfg:
 		_expensive_queries = bool(cfg.debug_expensive_queries)
-	visible = _panel_enabled
+	_apply_overlay_visibility()
 	set_process(_panel_enabled)
+
+
+func toggle_overlay() -> bool:
+	_overlay_visible = not _overlay_visible
+	_apply_overlay_visibility()
+	return _overlay_visible
+
+
+func is_overlay_visible() -> bool:
+	return _panel_enabled and _overlay_visible
+
+
+func set_overlay_visible(on: bool) -> void:
+	_overlay_visible = on
+	_apply_overlay_visibility()
+
+
+func _apply_overlay_visibility() -> void:
+	visible = _panel_enabled and _overlay_visible
 
 
 func _process(_delta: float) -> void:

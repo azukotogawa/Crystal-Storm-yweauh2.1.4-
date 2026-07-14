@@ -18,7 +18,7 @@ func _run() -> void:
 	await process_frame
 
 	var help := assistant.send_message("/help")
-	if "Slash commands" not in help:
+	if "Slash commands" not in help and "slash cheats" not in help:
 		push_error("slash /help failed")
 		failed = true
 	else:
@@ -53,15 +53,55 @@ func _run() -> void:
 		await process_frame
 		print("OK external response bridge")
 
+	var shift_t := InputEventKey.new()
+	shift_t.physical_keycode = KEY_T
+	shift_t.keycode = KEY_T
+	shift_t.shift_pressed = true
+	shift_t.pressed = true
+	if not shift_t.is_action_pressed("channel_water", true):
+		push_error("Shift+T should match channel_water exactly")
+		failed = true
+	else:
+		print("OK Shift+T matches channel_water")
+
+	var plain_t := InputEventKey.new()
+	plain_t.physical_keycode = KEY_T
+	plain_t.keycode = KEY_T
+	plain_t.pressed = true
+	if plain_t.is_action_pressed("channel_water", true):
+		push_error("plain T must not match channel_water (Shift+T only)")
+		failed = true
+	elif not plain_t.is_action_pressed("dev_chat_toggle", true):
+		push_error("plain T should match dev_chat_toggle exactly")
+		failed = true
+	else:
+		print("OK plain T matches dev_chat_toggle only")
+
 	var overlay := _DevChatOverlay.new()
 	root.add_child(overlay)
 	await process_frame
-	overlay.call("_open_chat")
-	if not overlay.visible:
-		push_error("dev chat overlay should open")
+	overlay._unhandled_input(shift_t)
+	await process_frame
+	if overlay.is_chat_open():
+		push_error("Shift+T must not open dev chat overlay")
+		failed = true
+	elif _GameplayInput.blocks_actions():
+		push_error("Shift+T must not block gameplay input via dev chat")
 		failed = true
 	else:
-		print("OK overlay opens")
+		print("OK Shift+T does not open dev chat")
+
+	overlay._unhandled_input(plain_t)
+	await process_frame
+	if not overlay.is_chat_open():
+		push_error("plain T should open dev chat overlay")
+		failed = true
+	else:
+		print("OK plain T opens dev chat")
+
+	if not overlay.visible:
+		push_error("dev chat overlay should be visible after plain T")
+		failed = true
 
 	if not _GameplayInput.blocks_actions():
 		push_error("dev chat open must block gameplay input")

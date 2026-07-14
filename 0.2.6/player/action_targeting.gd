@@ -208,6 +208,10 @@ static func _empty_raycast() -> Dictionary:
 
 
 static func _weapon_mode_from_player(player: Node3D, simulate_interact: bool) -> StringName:
+	var inv = player.get("inventory") if player else null
+	var has_stone: bool = (
+		inv != null and inv.has_method("count_item") and inv.count_item("stone") > 0
+	)
 	var weapon := player.get_node_or_null("WeaponController") if player else null
 	if weapon and weapon.has_method("get_active_item"):
 		var slot = weapon.get_active_item()
@@ -219,13 +223,21 @@ static func _weapon_mode_from_player(player: Node3D, simulate_interact: bool) ->
 				if category == _ItemTypes.Category.TOOL and kind == _ItemTypes.WeaponKind.DIG:
 					return &"dig"
 				if category == _ItemTypes.Category.WEAPON:
+					if has_stone and (
+						simulate_interact
+						or Input.is_action_pressed("build_place")
+						or Input.is_action_pressed("interact")
+					):
+						return &"build"
 					return &"attack" if kind == _ItemTypes.WeaponKind.MELEE else &"ranged"
 				if str(slot.id) == "stone" and int(slot.get("count", 0)) > 0:
 					return &"build"
-	if (simulate_interact or Input.is_action_pressed("interact")) and player:
-		var inv = player.get("inventory") if "inventory" in player else null
-		if inv and inv.has_method("count_item") and inv.count_item("stone") > 0:
-			return &"build"
+	if has_stone and (
+		simulate_interact
+		or Input.is_action_pressed("interact")
+		or Input.is_action_pressed("build_place")
+	):
+		return &"build"
 	return &"none"
 
 
@@ -552,7 +564,7 @@ static func _raycast_voxel_forward(
 			var face_pos := Vector3(ws.column_to_world(col_x), walk, ws.column_to_world(col_z))
 			if mode == &"dig":
 				face_normal = Vector3(0.0, 1.0, 0.0)
-				face_pos.y = walk - layer * 0.5
+				face_pos.y = walk
 			return {
 				"hit": true,
 				"cell": Vector2i(wx, wz),
@@ -607,13 +619,18 @@ static func warp_mouse_to_column(
 
 
 ## Flat XZ direction from player toward mouse/forward target column (melee swing facing).
-static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
+static func attack_toward_column(player: Node3D, range_v: float = 2.0, action_mode: StringName = &"attack") -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
-	var col := target_column(player, range_v)
-	var offset := Vector3(col.x - player.voxel_position.x, 0.0, col.z - player.voxel_position.z)
-	if offset.length_squared() > 0.0001:
-		return offset.normalized()
+	var cm: ChunkManager = null
+	if player.is_inside_tree():
+		cm = player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
+	var info := resolve_action(player, _player_world(player), cm, range_v, false, action_mode)
+	if info.get("valid", false):
+		var col: Vector3 = info.get("column", Vector3.ZERO)
+		var offset := Vector3(col.x - player.voxel_position.x, 0.0, col.z - player.voxel_position.z)
+		if offset.length_squared() > 0.0001:
+			return offset.normalized()
 	return attack_forward(player)
 
 
@@ -655,7 +672,12 @@ static func resolve_action(
 	var mode: StringName = _weapon_mode_from_player(player, simulate_interact)
 	if force_mode != &"" and force_mode != &"any":
 		mode = force_mode
-	var mouse_only: bool = force_mode == &"" or force_mode == &"any"
+	var mouse_only: bool = true
+	if force_mode != &"" and force_mode != &"any":
+		mouse_only = false
+	elif mode in [&"dig", &"build", &"attack", &"ranged"]:
+		# Tool actions: camera-forward raycast when mouse pick unavailable (headless / off-screen).
+		mouse_only = false
 	var hit := raycast_voxel(player, world, chunk_manager, range_v, mouse_only, mode)
 	if not hit.get("hit", false):
 		return {
@@ -677,18 +699,34 @@ static func resolve_action(
 	var entity_hit: bool = bool(hit.get("entity", false))
 	var face_normal: Vector3 = hit.get("face_normal", Vector3.UP)
 	var world_pos: Vector3 = hit.get("face_pos", hit.get("world_pos", Vector3.ZERO))
+	var ws = _WorldSettings.get_active()
 	if mode == &"build":
-		var ws = _WorldSettings.get_active()
 		var built_layers: int = maxi(0, int(round(_TerrainEdits.get_height_delta(wx, wz) / layer_h)))
+		# Top face of the next placement layer (not voxel center — avoids highlight buried in terrain).
 		world_pos = Vector3(
 			(ws.column_to_world(float(wx)) + ws.column_to_world(float(wx + 1))) * 0.5,
-			walk_top + layer_h * (float(built_layers) + 0.5),
+			walk_top + layer_h * float(built_layers + 1),
 			(ws.column_to_world(float(wz)) + ws.column_to_world(float(wz + 1))) * 0.5,
 		)
 		face_normal = Vector3.UP
-	elif mode == &"attack" and (entity_hit or not _is_solid_column(world, chunk_manager, wx, wz)):
-		world_pos.y = walk_top + layer_h * 0.35
+	elif mode == &"dig":
+		world_pos = Vector3(
+			(ws.column_to_world(float(wx)) + ws.column_to_world(float(wx + 1))) * 0.5,
+			walk_top,
+			(ws.column_to_world(float(wz)) + ws.column_to_world(float(wz + 1))) * 0.5,
+		)
 		face_normal = Vector3.UP
+	elif mode == &"attack":
+		if _is_solid_column(world, chunk_manager, wx, wz):
+			world_pos = Vector3(
+				(ws.column_to_world(float(wx)) + ws.column_to_world(float(wx + 1))) * 0.5,
+				walk_top,
+				(ws.column_to_world(float(wz)) + ws.column_to_world(float(wz + 1))) * 0.5,
+			)
+			face_normal = Vector3.UP
+		elif entity_hit or not _is_solid_column(world, chunk_manager, wx, wz):
+			world_pos.y = walk_top + layer_h * 0.35
+			face_normal = Vector3.UP
 	var valid := mode != &"none" and _is_action_valid(world, chunk_manager, wx, wz, mode, player, range_v)
 	if not valid:
 		mode = &"none"
