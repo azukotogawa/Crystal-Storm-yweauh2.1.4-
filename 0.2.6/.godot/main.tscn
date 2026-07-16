@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://b4d5cwxct0qu2"]
+
+[ext_resource type="Script" uid="uid://bysd6dgbhih1f" path="res://world/InfiniteNoiseWorld.gd" id="1_1bvp3"]
+[ext_resource type="Script" uid="uid://cwmhh7jh6kfp4" path="res://main.gd" id="1_lquwl"]
+[ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="2_lquwl"]
+[ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_272bh"]
+[ext_resource type="Texture2D" uid="uid://cdrbg6mcc34ay" path="res://assets/player/player.png" id="6_7mycd"]
+[ext_resource type="Script" uid="uid://cal8x0hpofgxq" path="res://ui/debug_panel.gd" id="7_272bh"]
+[ext_resource type="Shader" uid="uid://dmj05udg5poej" path="res://shaders/player_clip.gdshader" id="7_kek77"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_4c57u"]
+shader = ExtResource("7_kek77")
+shader_parameter/height_multiplier = 16.0
+
+[node name="Main" type="Node2D" unique_id=1583137948]
+script = ExtResource("1_lquwl")
+
+[node name="World" type="Node" parent="." unique_id=466978666]
+script = ExtResource("1_1bvp3")
+
+[node name="VoxelWorld" type="Node" parent="." unique_id=1242125298]
+script = ExtResource("2_lquwl")
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=1407757501]
+z_index = 10
+y_sort_enabled = true
+script = ExtResource("4_272bh")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=823000040]
+material = SubResource("ShaderMaterial_4c57u")
+texture = ExtResource("6_7mycd")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=1914780156]
+position = Vector2(0, 5555)
+ignore_rotation = false
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=811969268]
+
+[node name="DebugPanel" type="Control" parent="CanvasLayer" unique_id=2121095323]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("7_272bh")
+
+[node name="DebugLabel" type="Label" parent="CanvasLayer/DebugPanel" unique_id=686040605]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 23.0

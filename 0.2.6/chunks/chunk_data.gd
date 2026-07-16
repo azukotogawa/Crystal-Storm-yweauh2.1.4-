@@ -3,7 +3,6 @@ class_name ChunkData
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
-const _VoxelGeometryKind = preload("res://helpers/voxel_geometry_kind.gd")
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -19,8 +18,6 @@ var surface_map: Array = []  # [x][z] -> float
 var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for this chunk)
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
-## Per-cell surface geometry: VoxelGeometryKind.Kind (full cube / ramp / diagonal / corner / air).
-var geometry_map: Dictionary = {}
 
 # Snapshotted on main thread before worker generation (avoids TerrainEdits/FeatureRegistry races).
 var _worker_height_delta: Array = []
@@ -51,6 +48,21 @@ func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 	# Note: surface_map / tile_map are *not* auto-computed here anymore.
 	# They are computed in the bg worker (_generate_chunk) via _compute_column_maps(true)
 	# so that noise for new chunks doesn't block the main thread on request.
+
+
+## Reset a pooled ChunkData shell for a new stream load (main thread only).
+func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
+	position = coord
+	world = world_ref
+	surface_map.clear()
+	tile_map.clear()
+	ramp_map.clear()
+	_worker_height_delta.clear()
+	_worker_build_tile.clear()
+	_worker_feature_tile.clear()
+	_halo_surface.clear()
+	_has_worker_snapshot = false
+	_has_halo_surface = false
 
 ## Call on main thread immediately before dispatching chunk gen to WorkerThreadPool.
 func capture_worker_snapshot() -> void:
@@ -111,6 +123,89 @@ func get_halo_surface_y(lx: int, lz: int) -> float:
 	if ix < 0 or iz < 0 or ix >= _halo_surface.size() or iz >= _halo_surface[ix].size():
 		return -9999.0
 	return float(_halo_surface[ix][iz])
+
+
+func ensure_column_maps() -> void:
+	if surface_map.size() == SIZE and tile_map.size() == SIZE:
+		return
+	_compute_column_maps(true)
+
+
+func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
+	if world == null:
+		return
+	if not _has_worker_snapshot:
+		capture_worker_snapshot()
+		return
+	for cell_variant in local_cells:
+		var cell: Vector2i = cell_variant
+		var x: int = cell.x
+		var z: int = cell.y
+		if x < 0 or x >= SIZE or z < 0 or z >= SIZE:
+			continue
+		var wx := position.x * SIZE + x
+		var wz := position.y * SIZE + z
+		_worker_height_delta[x][z] = _TerrainEdits.get_height_delta(wx, wz)
+		_worker_build_tile[x][z] = _TerrainEdits.get_build_tile(wx, wz)
+		_worker_feature_tile[x][z] = _FeatureRegistry.get_tile_override(wx, wz)
+		_refresh_halo_for_local_cell(x, z)
+
+
+func update_dirty_column_maps(local_cells: Array) -> int:
+	if not world:
+		return 0
+	ensure_column_maps()
+	var examined := 0
+	var seen: Dictionary = {}
+	for cell_variant in local_cells:
+		var cell: Vector2i = cell_variant
+		if seen.has(cell):
+			continue
+		seen[cell] = true
+		var x: int = cell.x
+		var z: int = cell.y
+		if x < 0 or x >= SIZE or z < 0 or z >= SIZE:
+			continue
+		examined += 1
+		var wx := float(position.x * SIZE + x)
+		var wz := float(position.y * SIZE + z)
+		if _has_worker_snapshot:
+			surface_map[x][z] = world.get_surface_height_worker(
+				wx, wz, float(_worker_height_delta[x][z])
+			)
+			tile_map[x][z] = world.get_tile_type_worker(
+				wx, wz,
+				int(_worker_build_tile[x][z]),
+				int(_worker_feature_tile[x][z])
+			)
+		else:
+			surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
+			tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
+		_refresh_halo_for_local_cell(x, z)
+	return examined
+
+
+func _refresh_halo_for_local_cell(x: int, z: int) -> void:
+	if not _has_halo_surface or world == null:
+		return
+	if surface_map.size() > x and surface_map[x].size() > z:
+		_halo_surface[x + HALO][z + HALO] = float(surface_map[x][z])
+	for ox in [-1, 0, 1]:
+		for oz in [-1, 0, 1]:
+			if ox == 0 and oz == 0:
+				continue
+			var lx: int = x + ox
+			var lz: int = z + oz
+			if lx >= 0 and lx < SIZE and lz >= 0 and lz < SIZE:
+				continue
+			var ix: int = lx + HALO
+			var iz: int = lz + HALO
+			if ix < 0 or iz < 0 or ix >= _halo_surface.size() or iz >= _halo_surface[ix].size():
+				continue
+			var wx: int = position.x * SIZE + lx
+			var wz: int = position.y * SIZE + lz
+			var hdelta: float = _TerrainEdits.get_height_delta(wx, wz)
+			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
 
 
 func _compute_column_maps(use_uncached: bool = true):
@@ -176,38 +271,24 @@ func is_visible(x: int, y: int, z: int) -> bool:
 func set_visible(x: int, y: int, z: int, visible: bool):
 	set_visibility(x, y, z, visible)
 
-func _sync_geometry_from_ramp(cell: Vector2i) -> void:
-	var entry: Dictionary = ramp_map.get(cell, {})
-	geometry_map[cell] = _VoxelGeometryKind.from_ramp_entry(entry)
-
-
 func set_ramp_cardinal(x: int, z: int, dir: Vector2i) -> void:
-	var cell := Vector2i(x, z)
-	ramp_map[cell] = {"corner": false, "side": false, "approach": false, "dir": dir, "dir2": Vector2i.ZERO}
-	_sync_geometry_from_ramp(cell)
+	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": false, "dir": dir, "dir2": Vector2i.ZERO}
 
 
 func set_ramp_approach(x: int, z: int, climb_dir: Vector2i) -> void:
-	var cell := Vector2i(x, z)
-	ramp_map[cell] = {"corner": false, "side": false, "approach": true, "dir": climb_dir, "dir2": Vector2i.ZERO}
-	_sync_geometry_from_ramp(cell)
+	ramp_map[Vector2i(x, z)] = {"corner": false, "side": false, "approach": true, "dir": climb_dir, "dir2": Vector2i.ZERO}
 
 
 func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
-	var cell := Vector2i(x, z)
-	ramp_map[cell] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
-	_sync_geometry_from_ramp(cell)
+	ramp_map[Vector2i(x, z)] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
 
 
 func set_ramp_side(x: int, z: int, face_dir: Vector2i, climb_dir: Vector2i) -> void:
-	var cell := Vector2i(x, z)
-	ramp_map[cell] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
-	_sync_geometry_from_ramp(cell)
+	ramp_map[Vector2i(x, z)] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
 
 
 func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int, surface_h: float = 0.0) -> void:
-	var cell := Vector2i(x, z)
-	ramp_map[cell] = {
+	ramp_map[Vector2i(x, z)] = {
 		"concave": true,
 		"side": true,
 		"corner": false,
@@ -215,27 +296,6 @@ func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int, surface_h: float 
 		"dir2": Vector2i(0, leg_z),
 		"surface_h": surface_h,
 	}
-	_sync_geometry_from_ramp(cell)
-
-
-func set_geometry_kind(x: int, z: int, kind: int) -> void:
-	geometry_map[Vector2i(x, z)] = kind
-
-
-func get_geometry_kind(x: int, z: int) -> int:
-	return int(geometry_map.get(Vector2i(x, z), _VoxelGeometryKind.Kind.FULL_CUBE))
-
-
-func finalize_surface_geometry() -> void:
-	for x in SIZE:
-		for z in SIZE:
-			var cell := Vector2i(x, z)
-			if geometry_map.has(cell):
-				continue
-			if get_tile_type(x, z) == VoxelTypes.AIR:
-				geometry_map[cell] = _VoxelGeometryKind.Kind.AIR
-			else:
-				geometry_map[cell] = _VoxelGeometryKind.Kind.FULL_CUBE
 
 
 func has_ramp(x: int, z: int) -> bool:

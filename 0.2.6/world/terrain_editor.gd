@@ -15,15 +15,14 @@ const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
-## Cells within this many columns of a chunk edge rebuild ring=1 (ramp lips span neighbors).
 const REBUILD_EDGE_BAND := 2
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 
+var _channel_tick_accum: float = 0.0
 var _growth_manager: Node
-var _fluid_service: Node
 
 
 func _ready() -> void:
@@ -35,7 +34,6 @@ func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	call_deferred("_bind_config")
 	call_deferred("_bind_growth_manager")
-	call_deferred("_bind_fluid_service")
 	call_deferred("_try_bind_chunk_manager")
 
 
@@ -63,49 +61,30 @@ func _bind_growth_manager() -> void:
 	_growth_manager = get_tree().get_first_node_in_group("vegetation_growth_manager")
 
 
-func _bind_fluid_service() -> void:
-	_fluid_service = get_tree().get_first_node_in_group("voxel_fluid_service")
-
-
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 	if cfg:
 		sim_config = cfg
 
 
-static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
-	var chunk_x := floori(float(wx) / float(_ChunkData.SIZE))
-	var chunk_z := floori(float(wz) / float(_ChunkData.SIZE))
-	var lx := wx - chunk_x * _ChunkData.SIZE
-	var lz := wz - chunk_z * _ChunkData.SIZE
-	if lx < REBUILD_EDGE_BAND or lx >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
-		return 1
-	if lz < REBUILD_EDGE_BAND or lz >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
-		return 1
-	return 0
-
-
-func _process(_delta: float) -> void:
-	pass
+func _process(delta: float) -> void:
+	if world == null:
+		return
+	_channel_tick_accum += delta
+	if _channel_tick_accum >= 0.25:
+		_channel_tick_accum = 0.0
+		_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
 
 
 func get_dig_delay(world_pos: Vector3) -> float:
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
 	var dug_depth := maxf(0.0, -_TerrainEdits.get_height_delta(wx, wz))
-	var base_delay := 0.04 + dug_depth * 0.07 + dug_depth * dug_depth * 0.12
+	var base_delay := 0.1 + dug_depth * 0.18 + dug_depth * dug_depth * 0.35
 	var dig_speed := 1.0
 	var player := get_tree().get_first_node_in_group("player")
 	if player and player.has_method("get_stat"):
 		dig_speed = maxf(player.get_stat(_StatIds.DIG_SPEED), 0.1)
 	return base_delay / dig_speed
-
-
-func get_build_delay() -> float:
-	var build_speed := 1.0
-	var player := get_tree().get_first_node_in_group("player")
-	if player and player.has_method("get_stat"):
-		build_speed = maxf(player.get_stat(_StatIds.DIG_SPEED), 0.1)
-	return 0.10 / build_speed
 
 
 func get_channel_delay(world_pos: Vector3) -> float:
@@ -381,18 +360,25 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 	return false
 
 
+static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
+	var chunk_x := floori(float(wx) / float(_ChunkData.SIZE))
+	var chunk_z := floori(float(wz) / float(_ChunkData.SIZE))
+	var lx := wx - chunk_x * _ChunkData.SIZE
+	var lz := wz - chunk_z * _ChunkData.SIZE
+	if lx < REBUILD_EDGE_BAND or lx >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
+		return 1
+	if lz < REBUILD_EDGE_BAND or lz >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
+		return 1
+	return 0
+
+
 func _invalidate_and_rebuild(wx: int, wz: int) -> void:
-	if _fluid_service == null:
-		_bind_fluid_service()
-	if _fluid_service and _fluid_service.has_method("recompute_region_now"):
-		_fluid_service.recompute_region_now(wx, wz, 2, 8)
 	for dx in [-1, 0, 1]:
 		for dz in [-1, 0, 1]:
 			if world and world.has_method("invalidate_column_cache"):
 				world.invalidate_column_cache(wx + dx, wz + dz)
-	if chunk_manager and chunk_manager.has_method("rebuild_region_at_world"):
-		var ring := rebuild_ring_for_cell(wx, wz)
-		chunk_manager.rebuild_region_at_world(float(wx), float(wz), ring)
+	if chunk_manager and chunk_manager.has_method("invalidate_columns_at_world"):
+		chunk_manager.invalidate_columns_at_world(wx, wz)
 		if chunk_manager.has_method("flush_rebuild_pending"):
 			chunk_manager.flush_rebuild_pending()
 	elif chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):

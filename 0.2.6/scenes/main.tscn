@@ -10,7 +10,6 @@
 [ext_resource type="Script" uid="uid://gwmko0ktp10p" path="res://game/game_manager.gd" id="8_gmgr"]
 [ext_resource type="PackedScene" path="res://ui/game_overlay.tscn" id="8_overlay"]
 [ext_resource type="Script" uid="uid://c3ndc4ior2hrt" path="res://world/terrain_editor.gd" id="8_terrain"]
-[ext_resource type="Script" path="res://fluids/voxel_fluid_service.gd" id="8_vfluid"]
 [ext_resource type="Script" uid="uid://2jkrj3hkp7ds" path="res://crystal/crystal_manager.gd" id="9_crystal"]
 [ext_resource type="Script" uid="uid://bf6gf2w8cx7qg" path="res://world/world_features.gd" id="10_features"]
 [ext_resource type="Script" uid="uid://dt7b3rdbywun0" path="res://world/town_manager.gd" id="11_town"]
@@ -31,7 +30,6 @@
 [ext_resource type="Script" uid="uid://bwur1svbs5bg5" path="res://world/world_visuals.gd" id="22_wvis"]
 [ext_resource type="Script" path="res://systems/developer_assistant.gd" id="23_devasst"]
 [ext_resource type="Script" path="res://ui/dev_chat_overlay.gd" id="24_devchat"]
-[ext_resource type="Script" path="res://systems/dev_tools_coordinator.gd" id="25_devtools"]
 
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
@@ -111,17 +109,11 @@ script = ExtResource("8_gmgr")
 [node name="TerrainEditor" type="Node" parent="." unique_id=792751418]
 script = ExtResource("8_terrain")
 
-[node name="VoxelFluidService" type="Node" parent="." unique_id=792751419]
-script = ExtResource("8_vfluid")
-
 [node name="SaveGameService" type="Node" parent="." unique_id=65740121]
 script = ExtResource("16_save")
 
 [node name="DeveloperAssistant" type="Node" parent="."]
 script = ExtResource("23_devasst")
-
-[node name="DevToolsCoordinator" type="Node" parent="."]
-script = ExtResource("25_devtools")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1762940976]
 environment = SubResource("Environment_tipki")

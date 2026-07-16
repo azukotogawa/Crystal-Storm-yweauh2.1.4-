@@ -1,0 +1,15 @@
+MeshInstance3D
+Node3D
+Camera3D
+Camera2D
+Sprite3D
+WorldEnvironment
+DirectionalLight3D
+MultiMeshInstance3D
+CharacterBody3D
+CanvasGroup
+MultiMeshInstance2D
+Node2D
+ColorRect
+SubViewport
+TileMapLayer

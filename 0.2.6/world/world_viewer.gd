@@ -352,8 +352,7 @@ func _thread_sample_color(sw: InfiniteNoiseWorld, wx: float, wz: float, mode: Vi
 			var river_mask_dict: Dictionary = sw.get_river_mask(wx, wz) if sw.has_method("get_river_mask") else {"active": false}
 			var river = sw._compute_river_carve(wx, wz, h) if sw.has_method("_compute_river_carve") else {"carve": 0.0}
 			
-			var min_carve: float = sw.world_config.river_min_carve_for_tile if sw.world_config else 0.55
-			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(min_carve, 4.0)
+			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(sw.RIVER_MIN_CARVE_FOR_TILE if "RIVER_MIN_CARVE_FOR_TILE" in sw else 0.48, 4.0)
 			
 			if is_river_tile:
 				return Color(0.05, 0.75, 1.0)
@@ -766,8 +765,7 @@ func _sample_design_color(wx: float, wz: float) -> Color:
 			var river_mask_dict: Dictionary = world.get_river_mask(wx, wz) if world.has_method("get_river_mask") else {"active": false}
 			var river = world._compute_river_carve(wx, wz, h) if world.has_method("_compute_river_carve") else {"carve": 0.0}
 			
-			var min_carve: float = world.world_config.river_min_carve_for_tile if world.world_config else 0.55
-			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(min_carve, 4.0)
+			var is_river_tile = river_mask_dict.get("active", false) and river.get("carve", 0.0) > max(world.RIVER_MIN_CARVE_FOR_TILE, 4.0)
 			
 			if is_river_tile:
 				return Color(0.05, 0.75, 1.0)

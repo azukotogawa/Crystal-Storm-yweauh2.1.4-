@@ -93,7 +93,7 @@ func _build_ui() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _is_plain_dev_chat_toggle(event):
+	if event.is_action_pressed("dev_chat_toggle"):
 		if _open:
 			# T is a normal typing key while chat is open — only Esc closes.
 			get_viewport().set_input_as_handled()
@@ -103,16 +103,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _open and event.is_action_pressed("ui_cancel"):
 		_close_chat()
 		get_viewport().set_input_as_handled()
-
-
-func _is_plain_dev_chat_toggle(event: InputEvent) -> bool:
-	if not event.is_action_pressed("dev_chat_toggle", true):
-		return false
-	if event is InputEventKey:
-		var key := event as InputEventKey
-		if key.shift_pressed or key.ctrl_pressed or key.alt_pressed or key.meta_pressed:
-			return false
-	return true
 
 
 func _toggle_chat() -> void:

@@ -204,14 +204,7 @@ func _bind_scene() -> void:
 
 
 func get_combat_center() -> Vector3:
-	var center := global_position
-	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
-		var h := _VoxelPropBuilder.model_height(_voxel_prop)
-		if h > 0.01:
-			center.y += h * 0.42
-	elif _mesh and is_instance_valid(_mesh) and _mesh.visible:
-		center.y += _mesh_radius * 1.2
-	return center
+	return global_position
 
 
 func get_combat_radius() -> float:

@@ -23,6 +23,13 @@ var render_distance: int = 2
 var max_chunks_per_frame: int = 1
 @export_range(1, 12, 1)
 var max_inflight_chunks: int = 4
+## Main-thread budget for stream alloc/unload/worker-start per frame (microseconds).
+@export_range(500, 8000, 100)
+var streaming_budget_us: int = 2500
+@export_range(1, 4, 1)
+var max_stream_starts_per_frame: int = 1
+@export_range(1, 6, 1)
+var max_stream_unloads_per_frame: int = 2
 
 @export_group("World Generation")
 @export var caves_enabled: bool = true
@@ -48,10 +55,10 @@ var max_crystal_flow_cells: int = 0
 var max_absorption_cells_per_tick: int = 64
 ## Hard cap on brand-new crystal cells created per sim tick (frontier flood control).
 @export_range(0, 256, 1)
-var max_crystal_new_cells_per_tick: int = 8
+var max_crystal_new_cells_per_tick: int = 24
 ## Max depth inflow into an empty cell per tick (gradual spread).
 @export_range(0.02, 0.5, 0.01)
-var crystal_empty_cell_inflow_cap: float = 0.055
+var crystal_empty_cell_inflow_cap: float = 0.10
 ## Cell count where spread pressure begins to dampen.
 @export_range(100, 8000, 50)
 var crystal_spread_damping_start: int = 600
@@ -162,6 +169,9 @@ static func apply_safe_mode() -> PerformanceQualityConfig:
 	c.render_distance = 1
 	c.max_chunks_per_frame = 1
 	c.max_inflight_chunks = 2
+	c.streaming_budget_us = 1800
+	c.max_stream_starts_per_frame = 1
+	c.max_stream_unloads_per_frame = 1
 	c.caves_enabled = false
 	c.mesh_caves = false
 	c.crystal_sim_enabled = false
@@ -225,6 +235,9 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.render_distance = 1
 			c.max_chunks_per_frame = 1
 			c.max_inflight_chunks = 2
+			c.streaming_budget_us = 2000
+			c.max_stream_starts_per_frame = 1
+			c.max_stream_unloads_per_frame = 2
 			c.caves_enabled = false
 			c.mesh_caves = false
 			c.crystal_sim_enabled = true
@@ -283,23 +296,26 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.prebuild_chunk_buffers = true
 			c.render_distance = 2
 			c.max_chunks_per_frame = 1
-			c.max_inflight_chunks = 4
+			c.max_inflight_chunks = 2
+			c.streaming_budget_us = 3000
+			c.max_stream_starts_per_frame = 1
+			c.max_stream_unloads_per_frame = 1
 			c.caves_enabled = true
 			c.mesh_caves = false
 			c.crystal_sim_enabled = true
-			c.crystal_sim_hz = 3.0
+			c.crystal_sim_hz = 4.0
 			c.use_fast_terrain_for_crystal = true
 			c.flow_substeps = 1
-			c.crystal_sim_skip_frames = 2
+			c.crystal_sim_skip_frames = 1
 			c.max_crystal_chunk_rebuilds_per_frame = 3
-			c.max_crystal_flow_cells = 220
-			c.max_crystal_new_cells_per_tick = 6
-			c.crystal_empty_cell_inflow_cap = 0.07
-			c.crystal_spread_damping_start = 180
-			c.crystal_spread_damping_full = 750
-			c.crystal_spread_damping_min = 0.15
+			c.max_crystal_flow_cells = 280
+			c.max_crystal_new_cells_per_tick = 14
+			c.crystal_empty_cell_inflow_cap = 0.14
+			c.crystal_spread_damping_start = 320
+			c.crystal_spread_damping_full = 1100
+			c.crystal_spread_damping_min = 0.26
 			c.crystal_mesh_rebuilds_when_large = 1
-			c.crystal_mesh_depth_epsilon = 0.16
+			c.crystal_mesh_depth_epsilon = 0.12
 			c.max_absorption_cells_per_tick = 64
 			c.minimap_enabled = true
 			c.map_fullscreen_enabled = true
@@ -343,6 +359,9 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.render_distance = 3
 			c.max_chunks_per_frame = 2
 			c.max_inflight_chunks = 6
+			c.streaming_budget_us = 3500
+			c.max_stream_starts_per_frame = 2
+			c.max_stream_unloads_per_frame = 3
 			c.caves_enabled = true
 			c.mesh_caves = false
 			c.crystal_sim_enabled = true
@@ -352,11 +371,11 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.crystal_sim_skip_frames = 0
 			c.max_crystal_chunk_rebuilds_per_frame = 3
 			c.max_crystal_flow_cells = 500
-			c.max_crystal_new_cells_per_tick = 9
-			c.crystal_empty_cell_inflow_cap = 0.06
-			c.crystal_spread_damping_start = 280
-			c.crystal_spread_damping_full = 1400
-			c.crystal_spread_damping_min = 0.22
+			c.max_crystal_new_cells_per_tick = 20
+			c.crystal_empty_cell_inflow_cap = 0.10
+			c.crystal_spread_damping_start = 500
+			c.crystal_spread_damping_full = 2200
+			c.crystal_spread_damping_min = 0.38
 			c.crystal_mesh_rebuilds_when_large = 2
 			c.crystal_mesh_depth_epsilon = 0.18
 			c.max_absorption_cells_per_tick = 128

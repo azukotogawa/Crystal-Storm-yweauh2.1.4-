@@ -6,8 +6,6 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const BUILD_PREVIEW_RANGE: float = 2.8
-
 var player: Player
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -53,16 +51,7 @@ func _process(_delta: float) -> void:
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	var range_v := _active_range()
-	var build_preview: bool = (
-		Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
-	)
-	var info: Dictionary
-	if build_preview:
-		info = _ActionTargeting.resolve_action(
-			player, world, chunk_manager, BUILD_PREVIEW_RANGE, false, &"build"
-		)
-	else:
-		info = _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
+	var info := _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
 	var mode: StringName = info.get("mode", &"none")
 	if mode not in [&"dig", &"build", &"attack"] or not info.get("valid", false):
 		_mesh.visible = false
@@ -71,22 +60,8 @@ func _process(_delta: float) -> void:
 	var ws = _WorldSettings.get_active()
 	var layer: float = ws.layer_height()
 	var scale: float = ws.voxel_scale
-	var face_normal: Vector3 = info.get("face_normal", Vector3.UP)
-	if face_normal.length_squared() < 0.01:
-		face_normal = Vector3.UP
-	else:
-		face_normal = face_normal.normalized()
-	var thin: float = maxf(scale * 0.006, 0.004)
-	var pad: float = scale * 1.02
-	var height: float = layer * 1.02
-	if absf(face_normal.x) > 0.5:
-		_mesh.scale = Vector3(thin, height, pad)
-	elif absf(face_normal.y) > 0.5:
-		_mesh.scale = Vector3(pad, thin, pad)
-	else:
-		_mesh.scale = Vector3(pad, height, thin)
-	var face_pos: Vector3 = info.get("world_pos", Vector3.ZERO)
-	_mesh.global_position = face_pos + face_normal * (thin * 0.5 + scale * 0.002)
+	_mesh.scale = Vector3(scale * 1.02, layer * 1.04, scale * 1.02)
+	_mesh.global_position = info.get("world_pos", Vector3.ZERO)
 	match mode:
 		&"dig":
 			_mat.albedo_color = Color(0.95, 0.55, 0.15, 0.42)
@@ -101,8 +76,6 @@ func _process(_delta: float) -> void:
 
 
 func _active_range() -> float:
-	if Input.is_action_pressed("build_place") or Input.is_action_pressed("interact"):
-		return BUILD_PREVIEW_RANGE
 	var weapon := player.get_node_or_null("WeaponController")
 	if weapon == null or not weapon.has_method("get_active_item"):
 		return 2.0
@@ -112,6 +85,4 @@ func _active_range() -> float:
 	var def := _ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
 		return 2.0
-	if str(slot.id) == "stone":
-		return BUILD_PREVIEW_RANGE
-	return float(def.get("range", 2.8))
+	return float(def.get("range", 2.0))

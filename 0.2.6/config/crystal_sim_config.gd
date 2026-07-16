@@ -9,15 +9,12 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var max_depth: float = 12.0
 @export var min_flow_diff: float = 0.05
 ## Pressure equalization rate — higher feels more fluid/pool-like.
-@export var pressure_flow_rate: float = 0.20
-@export var max_flow_per_cell: float = 0.28
-@export var max_outflow_ratio: float = 0.12
+@export var pressure_flow_rate: float = 1.1
+@export var max_flow_per_cell: float = 1.6
+@export var max_outflow_ratio: float = 0.42
 @export var cliff_height: float = 1.05
-@export var flow_substeps: int = 1
-## Gentle lateral bleed fills checkerboard gaps between pressure fronts.
-@export var lateral_spread_bias: float = 0.12
-@export var uphill_flow_penalty: float = 0.06
-@export var downhill_flow_bonus: float = 0.30
+@export var flow_substeps: int = 2
+@export var lateral_spread_bias: float = 0.07
 
 @export_group("Water & Rivers")
 ## Crystal can build OVER water but spreads into/out of rivers very slowly.
@@ -39,10 +36,10 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var denial_stack_diminish: float = 0.6
 
 @export_group("Emitters")
-@export var origin_emit_rate: float = 0.42
-@export var ruin_emit_rate: float = 0.55
-@export var artifact_emit_rate: float = 0.38
-@export var initial_spawn_depth: float = 2.0
+@export var origin_emit_rate: float = 1.6
+@export var ruin_emit_rate: float = 1.1
+@export var artifact_emit_rate: float = 0.7
+@export var initial_spawn_depth: float = 2.5
 @export var ruin_spawn_count: int = 2
 @export var artifact_spawn_count: int = 1
 @export var ruin_min_distance: float = 72.0

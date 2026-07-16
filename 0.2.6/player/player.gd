@@ -41,8 +41,7 @@ var current_state := State.IDLE
 var landing_timer: float = 0.0
 
 var is_input_locked: bool = false
-## World yaw (degrees) locked when movement starts — matches camera orbit + isometric bias.
-var locked_move_yaw_deg: float = 45.0
+var locked_rotation: int = 0
 
 var camera: Camera3D
 var world_ready := false
@@ -210,10 +209,7 @@ func _physics_process(delta: float) -> void:
 
 	if input_dir != Vector2.ZERO:
 		if not is_input_locked:
-			if camera and camera.has_method("get_move_yaw_deg"):
-				locked_move_yaw_deg = camera.get_move_yaw_deg()
-			else:
-				locked_move_yaw_deg = 45.0
+			locked_rotation = camera.orbit_rotation if camera else 0
 			is_input_locked = true
 	else:
 		is_input_locked = false
@@ -223,10 +219,20 @@ func _physics_process(delta: float) -> void:
 
 	var airborne := current_state in [State.JUMPING, State.FALLING]
 	if input_dir != Vector2.ZERO:
-		var move_vec := rotate_input_to_world(input_dir, locked_move_yaw_deg)
+		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta := move_vec * speed * delta
 
-		_try_move_delta(Vector3(move_delta.x, 0.0, move_delta.y), airborne)
+		var target_pos_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
+		if _can_move_to(target_pos_x, airborne):
+			voxel_position.x = target_pos_x.x
+			if not airborne:
+				_snap_to_ground()
+
+		var target_pos_z := voxel_position + Vector3(0.0, 0.0, move_delta.y)
+		if _can_move_to(target_pos_z, airborne):
+			voxel_position.z = target_pos_z.z
+			if not airborne:
+				_snap_to_ground()
 
 		if not airborne and current_state == State.IDLE:
 			change_state(State.RUNNING)
@@ -281,8 +287,9 @@ func _slope_speed_multiplier() -> float:
 	return clampf(1.0 - (excess - slope_limit) / layer, 0.35, 1.0)
 
 
-func rotate_input_to_world(input: Vector2, yaw_deg: float) -> Vector2:
-	var rad := deg_to_rad(yaw_deg)
+func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
+	var angle := rot * 90.0 + 45.0
+	var rad := deg_to_rad(angle)
 	var ca := cos(rad)
 	var sa := sin(rad)
 	return Vector2(
@@ -303,38 +310,6 @@ func _sync_global_from_voxel() -> void:
 func is_colliding_at(pos: Vector3) -> bool:
 	_floor_probe.feet_height_hint = pos.y
 	return _floor_probe.is_blocked_at(pos, _player_height(), _player_radius())
-
-
-func _try_move_delta(move_delta: Vector3, airborne: bool) -> void:
-	var dx: float = move_delta.x
-	var dz: float = move_delta.z
-	if is_zero_approx(dx) and is_zero_approx(dz):
-		return
-	var axis_x := voxel_position + Vector3(dx, 0.0, 0.0)
-	var axis_z := voxel_position + Vector3(0.0, 0.0, dz)
-	var combined := voxel_position + Vector3(dx, 0.0, dz)
-	if not is_zero_approx(dx) and not is_zero_approx(dz):
-		if _can_move_to(axis_x, airborne) and _can_move_to(axis_z, airborne) and _can_move_to(combined, airborne):
-			voxel_position.x = combined.x
-			voxel_position.z = combined.z
-			if not airborne:
-				_snap_to_ground()
-		elif _can_move_to(axis_x, airborne):
-			voxel_position.x = axis_x.x
-			if not airborne:
-				_snap_to_ground()
-		elif _can_move_to(axis_z, airborne):
-			voxel_position.z = axis_z.z
-			if not airborne:
-				_snap_to_ground()
-	elif not is_zero_approx(dx) and _can_move_to(axis_x, airborne):
-		voxel_position.x = axis_x.x
-		if not airborne:
-			_snap_to_ground()
-	elif not is_zero_approx(dz) and _can_move_to(axis_z, airborne):
-		voxel_position.z = axis_z.z
-		if not airborne:
-			_snap_to_ground()
 
 
 func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:

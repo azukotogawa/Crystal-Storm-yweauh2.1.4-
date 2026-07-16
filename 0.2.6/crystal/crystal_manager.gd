@@ -54,8 +54,7 @@ var _dirty_chunks: Dictionary = {}
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
 var _rng: RandomNumberGenerator
-var _crystal_material: ShaderMaterial
-var _crystal_pulse_phase: float = 0.0
+var _crystal_material: StandardMaterial3D
 var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
@@ -133,9 +132,6 @@ func _bootstrap_when_ready() -> void:
 	_rebuild_cell_index()
 	_bind_chunk_stream()
 	_initialized = true
-	var perf_svc = get_tree().get_first_node_in_group("performance_service")
-	if perf_svc and perf_svc.get("quality"):
-		apply_performance_config(perf_svc.quality)
 
 
 func configure_evolution() -> void:
@@ -232,20 +228,15 @@ func get_fluid_sim() -> _CrystalFluidSim:
 
 
 func _setup_materials() -> void:
-	var shader := load("res://shaders/crystal_procedural.gdshader") as Shader
-	_crystal_material = ShaderMaterial.new()
-	_crystal_material.shader = shader
-	var crystal_tex: Texture2D = null
-	var tex_gen = get_node_or_null("/root/CrystalTextureGenerator")
-	if tex_gen:
-		crystal_tex = tex_gen.generate_texture(tex_gen.Category.CRYSTAL, &"amethyst", 128)
-	if crystal_tex:
-		_crystal_material.set_shader_parameter("albedo_tex", crystal_tex)
-	_crystal_material.set_shader_parameter("glow_color", Color(0.62, 0.22, 1.0, 1.0))
-	_crystal_material.set_shader_parameter("glow_strength", 1.15)
-	_crystal_material.set_shader_parameter("iridescence", 0.42)
-	_crystal_material.set_shader_parameter("roughness", 0.14)
-	_crystal_material.set_shader_parameter("metallic", 0.35)
+	_crystal_material = StandardMaterial3D.new()
+	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_crystal_material.albedo_color = Color(0.58, 0.22, 0.95, 0.78)
+	_crystal_material.emission_enabled = true
+	_crystal_material.emission = Color(0.38, 0.12, 0.78)
+	_crystal_material.emission_energy_multiplier = 1.35
+	_crystal_material.roughness = 0.18
+	_crystal_material.metallic = 0.25
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -509,11 +500,6 @@ func apply_performance_config(cfg) -> void:
 func _process(delta: float) -> void:
 	if not _initialized:
 		return
-
-	if _crystal_material:
-		_crystal_pulse_phase += delta
-		var pulse := 0.82 + 0.18 * sin(_crystal_pulse_phase * 2.4)
-		_crystal_material.set_shader_parameter("glow_strength", 1.05 * pulse)
 
 	if expansion_enabled:
 		_sim_accum += delta
@@ -919,7 +905,6 @@ func _refresh_spawn_markers() -> void:
 					vis.apply_to_sprite3d(marker, tex, marker.modulate, marker.pixel_size)
 				else:
 					marker.texture = tex
-				marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		elif _marker_material:
 			var mat: StandardMaterial3D = _marker_material.duplicate()
 			marker.material_override = mat
