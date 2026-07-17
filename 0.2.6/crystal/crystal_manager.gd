@@ -1,12 +1,16 @@
 class_name CrystalManager
 extends Node3D
 
+const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
-const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _CrystalEvolution = preload("res://crystal/crystal_evolution.gd")
+const _CrystalSimulation = preload("res://crystal/crystal_simulation.gd")
+const _CrystalPresentation = preload("res://crystal/crystal_presentation.gd")
+const _CrystalSimSnapshot = preload("res://crystal/crystal_sim_snapshot.gd")
+const _CrystalSimEvents = preload("res://crystal/crystal_sim_events.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _PlantableRegistry = preload("res://world/plantable_registry.gd")
 const _PlantableDef = preload("res://config/plantable_def.gd")
@@ -15,6 +19,8 @@ const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _SpawnPointController = preload("res://crystal/spawn_point_controller.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
+const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 
 
 signal fluid_changed(world_pos: Vector2i)
@@ -42,15 +48,17 @@ var strength_tier: int = 0
 var total_volume: float = 0.0
 var covered_cells: int = 0
 
+## Fluid sim (compat): owned by CrystalSimulation; exposed for existing callers.
 var _sim: _CrystalFluidSim
 var _terrain_query: _CrystalTerrainQuery
-var _absorption: Dictionary = {}
+## Simulation / presentation split (CrystalGameplayFacade = this class).
+var _simulation: _CrystalSimulation
+var _presentation: _CrystalPresentation
+var _absorption: Dictionary = {}  # mirrored from simulation for save export
 var _ruin_absorption: Dictionary = {}
 var _absorbed_ruin_centers: Dictionary = {}
 var evolution: _CrystalEvolution
 var _spawn_points: Array[CrystalSpawnPoint] = []
-var _chunk_layers: Dictionary = {}
-var _dirty_chunks: Dictionary = {}
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
 var _rng: RandomNumberGenerator
@@ -66,7 +74,6 @@ var _perf_crystal_skip_frames: int = 0
 var _perf_sim_hz: float = 20.0
 var _sim_accum: float = 0.0
 var _stats_dirty: bool = true
-var _cells_by_chunk: Dictionary = {}
 var _sim_tick_id: int = 0
 var _perf_mesh_budget_us: int = 2500
 var _absorption_scan_offset: int = 0
@@ -76,9 +83,10 @@ var _perf_spread_damping_full: int = 3000
 var _perf_mesh_rebuilds_when_large: int = 1
 var _perf_mesh_depth_epsilon: float = 0.20
 var _last_crystal_new_cells: int = 0
-var _patch_dirty_by_chunk: Dictionary = {}
-var _chunk_needs_full_rebuild: Dictionary = {}
 var _sim_loaded_chunks_only: bool = true
+var _last_player_chunk: Vector2i = Vector2i(-99999, -99999)
+## Diagnostics: last tick event count (no extra rebuilds checks).
+var _last_sim_event_count: int = 0
 
 
 func _enter_tree() -> void:
@@ -138,10 +146,48 @@ func configure_evolution() -> void:
 	if evolution == null:
 		return
 	var table: Array = []
-	var cfg_svc = get_tree().get_first_node_in_group("config_service")
+	var cfg_svc = get_tree().get_first_node_in_group("config_service") if is_inside_tree() else null
 	if cfg_svc and cfg_svc.game_config and cfg_svc.game_config.absorption_unlocks.size() > 0:
 		table = cfg_svc.game_config.absorption_unlocks
 	evolution.configure(table)
+	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
+	if not evolution.is_unlocked(&"crystal_mite"):
+		evolution.unlocked_enemies.append(&"crystal_mite")
+	if evolution.has_signal("enemy_unlocked") and not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
+		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
+
+
+## Map absorption enemy unlocks → starter relics for progression feedback.
+static func relic_for_enemy_unlock(enemy_id: StringName) -> StringName:
+	match enemy_id:
+		&"crystal_mite":
+			return &"mason_glove"
+		&"thornling":
+			return &"flow_anchor"
+		&"farm_bomber":
+			return &"crystal_ward"
+		_:
+			return &""
+
+
+func _on_enemy_unlocked_grant_relic(enemy_id: StringName) -> void:
+	_grant_relic_for_unlock(enemy_id)
+
+
+func _grant_relic_for_unlock(enemy_id: StringName) -> StringName:
+	var relic_id: StringName = relic_for_enemy_unlock(enemy_id)
+	if relic_id == &"":
+		return &""
+	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if player == null:
+		return &""
+	var relic_mgr = player.get_node_or_null("RelicManager")
+	if relic_mgr == null:
+		relic_mgr = get_tree().get_first_node_in_group("relic_manager") if is_inside_tree() else null
+	if relic_mgr and relic_mgr.has_method("equip"):
+		if relic_mgr.equip(relic_id):
+			return relic_id
+	return &""
 
 
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:
@@ -155,8 +201,12 @@ func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 	player_contact_defeat_enabled = cfg.player_contact_defeat_enabled
 	player_defeat_depth = cfg.player_defeat_depth
 	player_defeat_min_tier = cfg.player_defeat_min_tier
+	if _simulation:
+		_simulation.set_config(cfg)
 	if _sim:
 		_sim.config = cfg
+	if _presentation:
+		_presentation.sim_config = cfg
 	if _terrain_query:
 		_terrain_query.apply_sim_config(cfg)
 	var terrain_editor = get_tree().get_first_node_in_group("terrain_editor")
@@ -171,60 +221,71 @@ func _init_sim() -> void:
 	_terrain_query = _CrystalTerrainQuery.new()
 	_terrain_query.world = world
 	_terrain_query.chunk_manager = chunk_manager
-	_sim = _CrystalFluidSim.new(sim_config, _terrain_query)
+	_simulation = _CrystalSimulation.new(sim_config, _terrain_query)
+	_sim = _simulation.fluid
 	_sim.is_cell_active = Callable(self, "_is_cell_sim_active")
-	if not _sim.depth_changed.is_connected(_on_sim_depth_changed):
-		_sim.depth_changed.connect(_on_sim_depth_changed)
-	if not _sim.depth_cleared.is_connected(_on_sim_depth_cleared):
-		_sim.depth_cleared.connect(_on_sim_depth_cleared)
+	# Presentation: mesh scheduling only; receives events from simulation.
+	_presentation = _CrystalPresentation.new()
+	_presentation.fluid = _sim
+	_presentation.sim_config = sim_config
+	_presentation.layer_root = _layer_root
+	_presentation.crystal_material = _crystal_material
+	_presentation.chunk_size = ChunkData.SIZE
+	_presentation.crystal_floor_at = Callable(self, "_crystal_floor_at")
+	_presentation.is_chunk_render_active = Callable(self, "_is_chunk_render_active")
+	_presentation.player_chunk_coord = Callable(self, "_player_chunk_coord")
+	_presentation.make_layer = Callable(self, "_make_chunk_layer")
+	_presentation.max_rebuilds_per_frame = _perf_max_rebuilds_per_frame
+	_presentation.mesh_budget_us = _perf_mesh_budget_us
+	_presentation.spread_damping_start = _perf_spread_damping_start
+	_presentation.spread_damping_full = _perf_spread_damping_full
+	_presentation.mesh_rebuilds_when_large = _perf_mesh_rebuilds_when_large
+
+
+func _make_chunk_layer(coord: Vector2i) -> CrystalChunkLayer:
+	var layer := CrystalChunkLayer.new()
+	layer.name = "CrystalChunk_%d_%d" % [coord.x, coord.y]
+	_layer_root.add_child(layer)
+	layer.setup(coord, _crystal_material)
+	return layer
 
 
 func _on_sim_depth_changed(pos: Vector2i) -> void:
-	_index_crystal_cell(pos)
-	_mark_chunk_dirty(pos)
+	# Compat path for direct fluid signals (if any); prefer event batch from simulation.
+	if _presentation:
+		_presentation.apply_events([
+			_CrystalSimEvents.depth_changed(pos),
+			_CrystalSimEvents.mesh_dirty([pos]),
+		])
 	_stats_dirty = true
 	fluid_changed.emit(pos)
 
 
 func _on_sim_depth_cleared(pos: Vector2i) -> void:
-	_unindex_crystal_cell(pos)
-	_mark_chunk_dirty(pos)
+	if _presentation:
+		_presentation.apply_events([
+			_CrystalSimEvents.depth_cleared(pos),
+			_CrystalSimEvents.mesh_dirty([pos]),
+		])
 	_stats_dirty = true
 	fluid_changed.emit(pos)
 
 
-func _index_crystal_cell(pos: Vector2i) -> void:
-	if _sim == null or not _sim.depth.has(pos):
-		_unindex_crystal_cell(pos)
-		return
-	var coord := _chunk_coord_for(pos)
-	if not _cells_by_chunk.has(coord):
-		_cells_by_chunk[coord] = []
-	var bucket: Array = _cells_by_chunk[coord]
-	if pos not in bucket:
-		bucket.append(pos)
-
-
-func _unindex_crystal_cell(pos: Vector2i) -> void:
-	var coord := _chunk_coord_for(pos)
-	if not _cells_by_chunk.has(coord):
-		return
-	var bucket: Array = _cells_by_chunk[coord]
-	bucket.erase(pos)
-	if bucket.is_empty():
-		_cells_by_chunk.erase(coord)
-
-
 func _rebuild_cell_index() -> void:
-	_cells_by_chunk.clear()
-	if _sim == null:
-		return
-	for pos_variant in _sim.depth.keys():
-		_index_crystal_cell(pos_variant)
+	if _presentation:
+		_presentation.rebuild_cell_index()
 
 
 func get_fluid_sim() -> _CrystalFluidSim:
 	return _sim
+
+
+func get_simulation():
+	return _simulation
+
+
+func get_presentation():
+	return _presentation
 
 
 func _setup_materials() -> void:
@@ -495,6 +556,12 @@ func apply_performance_config(cfg) -> void:
 		_absorption_cells_per_tick = maxi(int(cfg.max_absorption_cells_per_tick), 8)
 	if "crystal_sim_loaded_chunks_only" in cfg:
 		_sim_loaded_chunks_only = bool(cfg.crystal_sim_loaded_chunks_only)
+	if _presentation:
+		_presentation.max_rebuilds_per_frame = _perf_max_rebuilds_per_frame
+		_presentation.mesh_budget_us = _perf_mesh_budget_us
+		_presentation.spread_damping_start = _perf_spread_damping_start
+		_presentation.spread_damping_full = _perf_spread_damping_full
+		_presentation.mesh_rebuilds_when_large = _perf_mesh_rebuilds_when_large
 
 
 func _process(delta: float) -> void:
@@ -509,15 +576,54 @@ func _process(delta: float) -> void:
 			_tick_crystal_sim(step_dt)
 			_sim_accum -= step_dt
 			sim_steps += 1
-		_tick_absorption(delta)
-		_tick_animal_absorption(delta)
-		_tick_ruin_absorption(delta)
+		# Absorption is advanced inside CrystalSimulation.tick via snapshot; side effects applied from events.
 		_tick_power(delta)
 		_check_player_contact()
 
 	_sync_spawn_marker_visibility()
-	if expansion_enabled or not _dirty_chunks.is_empty():
+	if _presentation:
+		_last_player_chunk = _presentation.refresh_lod_if_player_moved(_last_player_chunk)
+	if expansion_enabled or (_presentation and _presentation.dirty_chunk_count() > 0):
 		_flush_dirty_chunks()
+
+
+func _build_sim_snapshot(delta: float):
+	var snap = _CrystalSimSnapshot.new()
+	snap.tick_id = _sim_tick_id
+	snap.delta = delta
+	snap.flow_substeps = maxi(sim_config.flow_substeps if sim_config else flow_substeps, 1)
+	snap.global_flow_mult = _relic_flow_mult()
+	snap.emit_weaken_mult = _spawn_ctrl.emit_weaken_mult if _spawn_ctrl else 1.0
+	snap.spawn_emitters = _spawn_points
+	snap.sim_loaded_chunks_only = _sim_loaded_chunks_only
+	snap.chunk_size = ChunkData.SIZE
+	snap.terrain = _terrain_query
+	snap.absorption_scan_cells = _absorption_cells_per_tick
+	snap.absorption_scan_offset = _absorption_scan_offset
+	if sim_config:
+		snap.grass_absorb_rate = sim_config.grass_absorb_rate
+		snap.bush_absorb_rate = sim_config.bush_absorb_rate
+		snap.tree_absorb_rate = sim_config.tree_absorb_rate
+		snap.farmland_absorb_rate = sim_config.farmland_absorb_rate
+		snap.min_depth = sim_config.min_depth
+	snap.ruin_centers = _FeatureRegistry.get_ruin_centers()
+	snap.feature_at = Callable(self, "_feature_at_for_snapshot")
+	snap.tile_at = Callable(self, "_tile_at")
+	# Loaded chunk set from ChunkManager (façade gathers; sim never touches the tree).
+	snap.loaded_chunks = {}
+	if chunk_manager and "chunks" in chunk_manager:
+		for coord in chunk_manager.chunks.keys():
+			snap.loaded_chunks[coord] = true
+	# Spatial query (optional read-only discovery handle).
+	if is_inside_tree():
+		var sq = get_tree().get_first_node_in_group("spatial_query_service")
+		if sq:
+			snap.spatial_query = sq
+	return snap
+
+
+func _feature_at_for_snapshot(wx: int, wz: int) -> Dictionary:
+	return _FeatureRegistry.get_feature(wx, wz)
 
 
 func _tick_crystal_sim(delta: float) -> void:
@@ -528,31 +634,73 @@ func _tick_crystal_sim(delta: float) -> void:
 		delta *= float(_perf_crystal_skip_frames + 1)
 
 	_sim_tick_id += 1
-	if _terrain_query:
-		_terrain_query.begin_sim_tick(_sim_tick_id)
-
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("crystal_sim")
-	if _sim:
-		_sim.global_flow_mult = _relic_flow_mult()
-		_sim.tick_emitters(_spawn_points, delta, _spawn_ctrl.emit_weaken_mult)
-		var sub_delta := delta / float(max(sim_config.flow_substeps, 1))
-		for _i in sim_config.flow_substeps:
-			var changed: Array = _sim.tick_flow(sub_delta)
-			_apply_batched_flow_changes(changed)
-		_last_crystal_new_cells = _sim.last_new_cells
-		covered_cells = _sim.cell_count()
+	if _simulation:
+		var snap = _build_sim_snapshot(delta)
+		var events: Array = _simulation.tick(snap)
+		_last_sim_event_count = events.size()
+		_dispatch_sim_events(events)
+		_last_crystal_new_cells = _simulation.last_new_cells
+		covered_cells = _sim.cell_count() if _sim else 0
+		_absorption_scan_offset += _absorption_cells_per_tick
+		# Mirror absorption maps for save export
+		_absorption = _simulation.absorption
+		_ruin_absorption = _simulation.ruin_absorption
+		_absorbed_ruin_centers = _simulation.absorbed_ruin_centers
 		if profiler and profiler.has_method("set_gauge"):
 			profiler.set_gauge("crystal_cells", float(covered_cells))
 			profiler.set_gauge("crystal_new_cells", float(_last_crystal_new_cells))
-			profiler.set_gauge("crystal_changed_cells", float(_sim.last_mesh_dirty_cells))
+			profiler.set_gauge("crystal_changed_cells", float(_simulation.last_mesh_dirty_count))
 	if profiler and profiler.has_method("end"):
 		profiler.end("crystal_sim")
 
 
+func _dispatch_sim_events(events: Array) -> void:
+	if _presentation:
+		_presentation.apply_events(events)
+	for ev_v in events:
+		if not ev_v is Dictionary:
+			continue
+		var ev: Dictionary = ev_v
+		var kind: int = int(ev.get("kind", 0))
+		match kind:
+			_CrystalSimEvents.Kind.DEPTH_CHANGED, _CrystalSimEvents.Kind.DEPTH_CLEARED:
+				_stats_dirty = true
+				fluid_changed.emit(ev.pos)
+			_CrystalSimEvents.Kind.FLOW_BATCH:
+				# Batched flow does not emit per-cell fluid_changed (matches pre-split behavior).
+				_stats_dirty = true
+			_CrystalSimEvents.Kind.STATS:
+				total_volume = float(ev.get("volume", total_volume))
+				covered_cells = int(ev.get("cells", covered_cells))
+				_stats_dirty = false
+			_CrystalSimEvents.Kind.POWER_DELTA:
+				_add_power(float(ev.get("amount", 0.0)))
+			_CrystalSimEvents.Kind.ABSORPTION_READY:
+				_complete_absorption(ev.pos)
+			_CrystalSimEvents.Kind.RUIN_ABSORPTION_READY:
+				_apply_ruin_absorption_side_effects(ev.center)
+			_:
+				pass
+
+
+func _apply_ruin_absorption_side_effects(center: Vector2i) -> void:
+	_add_power(18.0)
+	if evolution:
+		var unlock: Dictionary = evolution.record_absorption(&"ruin")
+		if unlock.has("bonus_power"):
+			_add_power(float(unlock.bonus_power))
+	absorption_completed.emit(&"ruin", center)
+	_clear_ruin_at(center)
+
+
 func _set_depth(pos: Vector2i, depth: float, spawn_id: int = -1) -> void:
-	if _sim:
+	if _simulation:
+		var events: Array = _simulation.set_depth(pos, depth, spawn_id, true)
+		_dispatch_sim_events(events)
+	elif _sim:
 		_sim.set_depth(pos, depth, spawn_id)
 
 
@@ -647,27 +795,19 @@ func _is_chunk_render_active(coord: Vector2i) -> bool:
 
 
 func _mark_chunk_dirty(pos: Vector2i) -> void:
-	var coord := _chunk_coord_for(pos)
-	if not _is_chunk_render_active(coord):
-		return
-	_dirty_chunks[coord] = true
+	if _presentation:
+		_presentation.apply_events([_CrystalSimEvents.mesh_dirty([pos])])
 
 
 func _on_chunk_loaded(coord: Vector2i, _data: ChunkData) -> void:
-	if _cells_by_chunk.has(coord):
-		_dirty_chunks[coord] = true
+	if _presentation:
+		_presentation.on_chunk_loaded(coord)
 	_sync_spawn_marker_visibility()
 
 
 func _on_chunk_unloaded(coord: Vector2i) -> void:
-	if _chunk_layers.has(coord):
-		var layer = _chunk_layers[coord]
-		if is_instance_valid(layer):
-			layer.queue_free()
-		_chunk_layers.erase(coord)
-	_dirty_chunks.erase(coord)
-	_patch_dirty_by_chunk.erase(coord)
-	_chunk_needs_full_rebuild.erase(coord)
+	if _presentation:
+		_presentation.on_chunk_unloaded(coord)
 	_sync_spawn_marker_visibility()
 
 
@@ -679,182 +819,36 @@ func _sync_spawn_marker_visibility() -> void:
 		marker.visible = spawn.active
 
 
-func _apply_batched_flow_changes(changed: Array) -> void:
-	if changed.is_empty():
-		return
-	_stats_dirty = true
-	var mesh_dirty: Array = _sim.get_last_mesh_dirty() if _sim else []
-	if mesh_dirty.is_empty():
-		for pos_variant in changed:
-			var pos: Vector2i = pos_variant
-			if _sim and _sim.depth.has(pos):
-				_index_crystal_cell(pos)
-			else:
-				_unindex_crystal_cell(pos)
-		return
-
-	for pos_variant in changed:
-		var pos: Vector2i = pos_variant
-		if _sim and _sim.depth.has(pos):
-			_index_crystal_cell(pos)
-		else:
-			_unindex_crystal_cell(pos)
-
-	for pos_variant in mesh_dirty:
-		var pos: Vector2i = pos_variant
-		var coord := _chunk_coord_for(pos)
-		if not _is_chunk_render_active(coord):
-			continue
-		if not _sim or not _sim.depth.has(pos):
-			_chunk_needs_full_rebuild[coord] = true
-			_dirty_chunks[coord] = true
-			continue
-		var layer = _chunk_layers.get(coord)
-		if layer == null or not layer.has_cell(pos):
-			_chunk_needs_full_rebuild[coord] = true
-			_dirty_chunks[coord] = true
-			continue
-		if _chunk_needs_full_rebuild.has(coord):
-			_dirty_chunks[coord] = true
-			continue
-		if not _patch_dirty_by_chunk.has(coord):
-			_patch_dirty_by_chunk[coord] = []
-		var bucket: Array = _patch_dirty_by_chunk[coord]
-		if pos not in bucket:
-			bucket.append(pos)
-		_dirty_chunks[coord] = true
+const _PLAYER_CHUNK_MISSING := Vector2i(-99999, -99999)
 
 
 func _player_chunk_coord() -> Vector2i:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
-		return Vector2i.ZERO
-	var col: Vector3 = (
-		player.get_voxel_position() if player.has_method("get_voxel_position")
-		else player.global_position
-	)
+		return _PLAYER_CHUNK_MISSING
+	if player.has_method("get_voxel_position"):
+		var col: Vector3 = player.get_voxel_position()
+		return Vector2i(
+			floori(col.x / float(ChunkData.SIZE)),
+			floori(col.z / float(ChunkData.SIZE))
+		)
+	var ws = _WorldSettings.get_active()
 	return Vector2i(
-		floori(col.x / float(ChunkData.SIZE)),
-		floori(col.y / float(ChunkData.SIZE))
+		floori(ws.world_to_column(player.global_position.x) / float(ChunkData.SIZE)),
+		floori(ws.world_to_column(player.global_position.z) / float(ChunkData.SIZE))
 	)
-
-
-func _chunk_manhattan_dist(a: Vector2i, b: Vector2i) -> int:
-	return absi(a.x - b.x) + absi(a.y - b.y)
-
-
-func _effective_mesh_rebuild_budget() -> int:
-	var budget: int = _perf_max_rebuilds_per_frame
-	var cells: int = _sim.cell_count() if _sim else covered_cells
-	if cells >= _perf_spread_damping_full:
-		return mini(budget, _perf_mesh_rebuilds_when_large)
-	if cells >= maxi(_perf_spread_damping_start - 120, 200):
-		return maxi(1, mini(budget, _perf_mesh_rebuilds_when_large))
-	if cells >= _perf_spread_damping_start:
-		return maxi(1, mini(budget, int(ceil(float(budget) * 0.5))))
-	return budget
 
 
 func _flush_dirty_chunks() -> void:
-	if _dirty_chunks.is_empty():
+	if _presentation == null:
 		return
+	_presentation.max_rebuilds_per_frame = _perf_max_rebuilds_per_frame
+	_presentation.mesh_budget_us = _perf_mesh_budget_us
+	_presentation.spread_damping_start = _perf_spread_damping_start
+	_presentation.spread_damping_full = _perf_spread_damping_full
+	_presentation.mesh_rebuilds_when_large = _perf_mesh_rebuilds_when_large
 	var profiler = get_node_or_null("/root/PerfProfiler")
-	if profiler and profiler.has_method("begin"):
-		profiler.begin("crystal_mesh")
-	var t0 := Time.get_ticks_usec()
-	var rebuilt := 0
-	var keys: Array = _dirty_chunks.keys()
-	var player_chunk := _player_chunk_coord()
-	if player_chunk != Vector2i.ZERO:
-		keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-			return _chunk_manhattan_dist(a, player_chunk) < _chunk_manhattan_dist(b, player_chunk)
-		)
-	var rebuild_budget: int = _effective_mesh_rebuild_budget()
-	for coord_variant in keys:
-		var coord: Vector2i = coord_variant
-		if not _is_chunk_render_active(coord):
-			_dirty_chunks.erase(coord)
-			continue
-		if _chunk_needs_full_rebuild.has(coord):
-			_rebuild_chunk_layer(coord)
-			_chunk_needs_full_rebuild.erase(coord)
-			_patch_dirty_by_chunk.erase(coord)
-		else:
-			_patch_chunk_layer(coord)
-			_patch_dirty_by_chunk.erase(coord)
-		_dirty_chunks.erase(coord)
-		rebuilt += 1
-		if rebuilt >= rebuild_budget:
-			break
-		if Time.get_ticks_usec() - t0 >= _perf_mesh_budget_us:
-			break
-	if profiler and profiler.has_method("end"):
-		profiler.end("crystal_mesh")
-
-
-func _rebuild_chunk_layer(coord: Vector2i) -> void:
-	if not _is_chunk_render_active(coord):
-		return
-	var cells: Array = []
-	var min_x := coord.x * ChunkData.SIZE
-	var min_z := coord.y * ChunkData.SIZE
-	var max_x := min_x + ChunkData.SIZE
-	var max_z := min_z + ChunkData.SIZE
-
-	var positions: Array = _cells_by_chunk.get(coord, [])
-	for pos_variant in positions:
-		var pos: Vector2i = pos_variant
-		if not _sim.depth.has(pos):
-			continue
-		var depth: float = float(_sim.depth[pos])
-		if depth < sim_config.min_depth:
-			continue
-		cells.append(CrystalCell.new(
-			pos,
-			_crystal_floor_at(pos),
-			depth,
-			int(_sim.spawn_id_by_cell.get(pos, -1))
-		))
-
-	var layer: CrystalChunkLayer
-	if _chunk_layers.has(coord):
-		layer = _chunk_layers[coord]
-	else:
-		layer = CrystalChunkLayer.new()
-		layer.name = "CrystalChunk_%d_%d" % [coord.x, coord.y]
-		_layer_root.add_child(layer)
-		layer.setup(coord, _crystal_material)
-		_chunk_layers[coord] = layer
-
-	layer.rebuild(cells)
-
-
-func _patch_chunk_layer(coord: Vector2i) -> void:
-	var positions: Array = _patch_dirty_by_chunk.get(coord, [])
-	if positions.is_empty():
-		_rebuild_chunk_layer(coord)
-		return
-	if not _chunk_layers.has(coord):
-		_rebuild_chunk_layer(coord)
-		return
-
-	var cells: Array = []
-	var needs_full := false
-	for pos_variant in positions:
-		var pos: Vector2i = pos_variant
-		if not _sim.depth.has(pos):
-			needs_full = true
-			break
-		cells.append(CrystalCell.new(
-			pos,
-			_crystal_floor_at(pos),
-			float(_sim.depth[pos]),
-			int(_sim.spawn_id_by_cell.get(pos, -1))
-		))
-
-	var layer: CrystalChunkLayer = _chunk_layers[coord]
-	if needs_full or not layer.patch_cells(cells):
-		_rebuild_chunk_layer(coord)
+	_presentation.flush(profiler)
 
 
 func refresh_spawn_marker_textures() -> void:
@@ -1172,6 +1166,7 @@ func _complete_absorption(pos: Vector2i) -> void:
 		var unlock: Dictionary = evolution.record_absorption(source_id)
 		if unlock.has("bonus_power"):
 			_add_power(float(unlock.bonus_power))
+		# enemy_unlocked signal grants relic via _on_enemy_unlocked_grant_relic
 	absorption_completed.emit(source_id, pos)
 	if world and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(pos.x, pos.y)
@@ -1267,7 +1262,9 @@ func get_coverage_ratio() -> float:
 
 func export_state() -> Dictionary:
 	var depth_rows: Array = []
-	if _sim:
+	if _simulation:
+		depth_rows = _simulation.export_depth_rows()
+	elif _sim:
 		for pos_variant in _sim.depth.keys():
 			var pos: Vector2i = pos_variant
 			depth_rows.append([
@@ -1277,9 +1274,10 @@ func export_state() -> Dictionary:
 			])
 	var spawn_rows: Array = _spawn_ctrl.export_spawn_rows()
 	var absorption_rows: Array = []
-	for pos_variant in _absorption.keys():
+	var abs_map: Dictionary = _simulation.absorption if _simulation else _absorption
+	for pos_variant in abs_map.keys():
 		var pos: Vector2i = pos_variant
-		absorption_rows.append([pos.x, pos.y, float(_absorption[pos])])
+		absorption_rows.append([pos.x, pos.y, float(abs_map[pos])])
 	var evo_data := evolution.get_summary() if evolution else {}
 	return {
 		"power": power,
@@ -1305,17 +1303,30 @@ func import_state(data: Dictionary) -> void:
 		"last_destroyed_label": data.get("last_destroyed_label", _spawn_ctrl.last_destroyed_label),
 	})
 
-	_sim.clear()
-	_absorption.clear()
-	for row in data.get("depth", []):
-		if row is Array and row.size() >= 3:
-			var pos := Vector2i(int(row[0]), int(row[1]))
-			var spawn_id: int = int(row[3]) if row.size() >= 4 else -1
-			_sim.set_depth(pos, float(row[2]), spawn_id)
+	if _simulation:
+		_simulation.clear()
+		_simulation.import_depth_rows(data.get("depth", []))
+		_sim = _simulation.fluid
+		if _presentation:
+			_presentation.fluid = _sim
+	else:
+		_sim.clear()
+		for row in data.get("depth", []):
+			if row is Array and row.size() >= 3:
+				var pos := Vector2i(int(row[0]), int(row[1]))
+				var spawn_id: int = int(row[3]) if row.size() >= 4 else -1
+				_sim.set_depth(pos, float(row[2]), spawn_id)
 
+	_absorption.clear()
+	if _simulation:
+		_simulation.absorption.clear()
 	for row in data.get("absorption_progress", []):
 		if row is Array and row.size() >= 3:
-			_absorption[Vector2i(int(row[0]), int(row[1]))] = float(row[2])
+			var p := Vector2i(int(row[0]), int(row[1]))
+			var v := float(row[2])
+			_absorption[p] = v
+			if _simulation:
+				_simulation.absorption[p] = v
 
 	if evolution:
 		var evo: Dictionary = data.get("evolution", {})
@@ -1326,41 +1337,48 @@ func import_state(data: Dictionary) -> void:
 		for entry in evo.get("unlocked_enemies", []):
 			evolution.unlocked_enemies.append(StringName(str(entry)))
 
-	_spawn_points.clear()
-	_SpawnPointRegistry.ensure_builtins()
-	for row in data.get("spawns", []):
-		if not row is Dictionary:
-			continue
-		var def_id: StringName = StringName(str(row.get("def_id", "")))
-		var def: _SpawnPointDef = _SpawnPointRegistry.get_def(def_id) if def_id != &"" else null
-		var spawn: CrystalSpawnPoint
-		if def:
-			spawn = CrystalSpawnPoint.from_def(
-				int(row.get("id", 0)),
-				Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
-				def
-			)
-		else:
-			spawn = CrystalSpawnPoint.new(
-				int(row.get("id", 0)),
-				Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
-				int(row.get("kind", CrystalTypes.SpawnKind.RUIN)),
-				float(row.get("max_health", 100.0)),
-				bool(row.get("is_boss", false))
-			)
-			spawn.display_name = str(row.get("display_name", spawn.display_name))
-			spawn.emit_rate = float(row.get("emit_rate", spawn.emit_rate))
-			spawn.weaken_factor = float(row.get("weaken_factor", spawn.weaken_factor))
+	# Only replace spawn points when the save explicitly carries a spawns list.
+	# Missing key must not wipe live win targets (empty {} import used to clear all).
+	if data.has("spawns"):
+		_spawn_points.clear()
+		_SpawnPointRegistry.ensure_builtins()
+		for row in data.get("spawns", []):
+			if not row is Dictionary:
+				continue
+			var def_id: StringName = StringName(str(row.get("def_id", "")))
+			var def: _SpawnPointDef = _SpawnPointRegistry.get_def(def_id) if def_id != &"" else null
+			var spawn: CrystalSpawnPoint
+			if def:
+				spawn = CrystalSpawnPoint.from_def(
+					int(row.get("id", 0)),
+					Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
+					def
+				)
+			else:
+				spawn = CrystalSpawnPoint.new(
+					int(row.get("id", 0)),
+					Vector2i(int(row.get("x", 0)), int(row.get("z", 0))),
+					int(row.get("kind", CrystalTypes.SpawnKind.RUIN)),
+					float(row.get("max_health", 100.0)),
+					bool(row.get("is_boss", false))
+				)
+				spawn.display_name = str(row.get("display_name", spawn.display_name))
+				spawn.emit_rate = float(row.get("emit_rate", spawn.emit_rate))
+				spawn.weaken_factor = float(row.get("weaken_factor", spawn.weaken_factor))
 			spawn.power_drain = float(row.get("power_drain", spawn.power_drain))
-		spawn.health = float(row.get("health", spawn.max_health))
-		spawn.active = bool(row.get("active", true))
-		spawn.max_health = float(row.get("max_health", spawn.max_health))
-		_spawn_points.append(spawn)
-		_next_spawn_id = maxi(_next_spawn_id, spawn.id + 1)
+			spawn.health = float(row.get("health", spawn.max_health))
+			spawn.active = bool(row.get("active", true))
+			spawn.max_health = float(row.get("max_health", spawn.max_health))
+			_spawn_points.append(spawn)
+			_next_spawn_id = maxi(_next_spawn_id, spawn.id + 1)
 
 	_sync_spawn_controller()
 	_recalc_stats()
-	_rebuild_cell_index()
+	if _presentation:
+		_presentation.fluid = _sim
+		_presentation.mark_all_indexed_dirty()
+	else:
+		_rebuild_cell_index()
 	refresh_spawn_marker_textures()
 	_flush_dirty_chunks()
 	_log_spawn_status("restored")

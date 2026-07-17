@@ -116,6 +116,9 @@ func try_dig(world_pos: Vector3) -> bool:
 		return false
 	if not _TerrainEdits.dig(wx, wz, 1):
 		return false
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("inc_frame"):
+		profiler.inc_frame("terrain_edits")
 	var inv = null
 	var player := get_tree().get_first_node_in_group("player")
 	if player and "inventory" in player:

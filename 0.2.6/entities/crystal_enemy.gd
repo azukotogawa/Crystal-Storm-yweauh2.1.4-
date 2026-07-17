@@ -42,6 +42,8 @@ func _ready() -> void:
 	add_to_group("crystal_enemy")
 	_bind_scene()
 	_hook_visual_registry()
+	# Spatial registration is deferred to setup()/sync_spatial_index() so the
+	# spawner can set global_position before the index samples it.
 
 
 func setup(
@@ -79,6 +81,8 @@ func setup(
 		_setup_visual(Color(0.72, 0.2, 0.95))
 
 	health = max_health
+	# Caller (spawner/import) must set global_position before setup; index now.
+	sync_spatial_index()
 
 
 func refresh_visual() -> void:
@@ -213,6 +217,28 @@ func get_combat_radius() -> float:
 	return maxf(_mesh_radius * 1.2, 0.35)
 
 
+## Register or refresh spatial index at the current world position.
+## Call after global_position is final (spawner/import order: add_child → pos → setup).
+func sync_spatial_index() -> void:
+	if not is_inside_tree():
+		return
+	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+	if svc == null:
+		return
+	if svc.has_method("register_combatant"):
+		svc.register_combatant(self)
+	if svc.has_method("notify_moved"):
+		svc.notify_moved(self)
+
+
+func _notify_spatial_moved() -> void:
+	if not is_inside_tree():
+		return
+	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+	if svc and svc.has_method("notify_moved"):
+		svc.notify_moved(self)
+
+
 func get_combat_defense() -> float:
 	return spawn_def.defense if spawn_def else 0.0
 
@@ -268,6 +294,7 @@ func _physics_process(delta: float) -> void:
 		_chunk_manager,
 		_crystal
 	)
+	_notify_spatial_moved()
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)

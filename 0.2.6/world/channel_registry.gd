@@ -1,23 +1,27 @@
 class_name ChannelRegistry
 extends RefCounted
+## Compatibility façade over WorldState channel overlay storage.
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _WorldState = preload("res://world/world_state.gd")
 
 ## Player-dug water channels: per-cell water level and preferred flow direction.
 
-static var _channels: Dictionary = {}  # Vector2i -> { water_level: float, flow_dir: Vector2i }
+
+static func _ws():
+	return _WorldState.get_active()
 
 
 static func reset() -> void:
-	_channels.clear()
+	_ws().reset_channels()
 
 
 static func is_channel(wx: int, wz: int) -> bool:
-	return _channels.has(Vector2i(wx, wz))
+	return _ws().channels.has(Vector2i(wx, wz))
 
 
 static func get_channel(wx: int, wz: int) -> Dictionary:
-	return _channels.get(Vector2i(wx, wz), {})
+	return _ws().channels.get(Vector2i(wx, wz), {})
 
 
 static func get_water_level(wx: int, wz: int) -> float:
@@ -36,20 +40,24 @@ static func register_channel(
 	flow_dir: Vector2i,
 	water_level: float = 0.5
 ) -> void:
-	_channels[Vector2i(wx, wz)] = {
+	var ws = _ws()
+	ws.channels[Vector2i(wx, wz)] = {
 		"water_level": clampf(water_level, 0.05, 1.0),
 		"flow_dir": _normalize_cardinal(flow_dir),
 	}
+	ws.bump(_WorldState.DOMAIN_CHANNEL)
 
 
 static func set_water_level(wx: int, wz: int, level: float) -> float:
+	var ws = _ws()
 	var key := Vector2i(wx, wz)
-	if not _channels.has(key):
+	if not ws.channels.has(key):
 		return 0.0
-	var entry: Dictionary = _channels[key]
+	var entry: Dictionary = ws.channels[key]
 	var clamped := clampf(level, 0.05, 1.0)
 	entry["water_level"] = clamped
-	_channels[key] = entry
+	ws.channels[key] = entry
+	ws.bump(_WorldState.DOMAIN_CHANNEL)
 	return clamped
 
 
@@ -61,20 +69,24 @@ static func adjust_water_level(wx: int, wz: int, delta: float) -> float:
 
 
 static func set_flow_dir(wx: int, wz: int, flow_dir: Vector2i) -> void:
+	var ws = _ws()
 	var key := Vector2i(wx, wz)
-	if not _channels.has(key):
+	if not ws.channels.has(key):
 		return
-	var entry: Dictionary = _channels[key]
+	var entry: Dictionary = ws.channels[key]
 	entry["flow_dir"] = _normalize_cardinal(flow_dir)
-	_channels[key] = entry
+	ws.channels[key] = entry
+	ws.bump(_WorldState.DOMAIN_CHANNEL)
 
 
 static func all_positions() -> Array:
-	return _channels.keys()
+	return _ws().channels.keys()
 
 
 static func unregister_channel(wx: int, wz: int) -> void:
-	_channels.erase(Vector2i(wx, wz))
+	var ws = _ws()
+	ws.channels.erase(Vector2i(wx, wz))
+	ws.bump(_WorldState.DOMAIN_CHANNEL)
 
 
 static func tick_equilibrium(
@@ -82,7 +94,8 @@ static func tick_equilibrium(
 	sim_config,
 	delta: float
 ) -> void:
-	if _channels.is_empty() or world == null or sim_config == null:
+	var ws = _ws()
+	if ws.channels.is_empty() or world == null or sim_config == null:
 		return
 
 	var rate: float = float(sim_config.channel_equilibrate_rate) * delta
@@ -90,9 +103,9 @@ static func tick_equilibrium(
 		return
 
 	var pending: Dictionary = {}
-	for key_variant in _channels.keys():
+	for key_variant in ws.channels.keys():
 		var key: Vector2i = key_variant
-		var entry: Dictionary = _channels[key]
+		var entry: Dictionary = ws.channels[key]
 		var level: float = float(entry.get("water_level", 0.5))
 		var flow_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)
 		var my_h: float = _surface_height(world, key.x, key.y)
@@ -124,19 +137,29 @@ static func tick_equilibrium(
 			pending[key] = float(pending.get(key, 0.0)) - transfer
 			pending[neighbor] = float(pending.get(neighbor, 0.0)) + transfer * 0.85
 
+	if pending.is_empty():
+		return
+
+	ws.begin_batch()
 	for key_variant in pending.keys():
 		var key: Vector2i = key_variant
-		if not _channels.has(key):
+		if not ws.channels.has(key):
 			if float(pending[key]) > 0.0:
-				register_channel(key.x, key.y, Vector2i.ZERO, float(pending[key]))
+				ws.channels[key] = {
+					"water_level": clampf(float(pending[key]), 0.05, 1.0),
+					"flow_dir": Vector2i.ZERO,
+				}
+				ws.bump(_WorldState.DOMAIN_CHANNEL)
 			continue
-		var entry: Dictionary = _channels[key]
+		var entry: Dictionary = ws.channels[key]
 		entry["water_level"] = clampf(
 			float(entry.get("water_level", 0.5)) + float(pending[key]),
 			0.05,
 			1.0
 		)
-		_channels[key] = entry
+		ws.channels[key] = entry
+		ws.bump(_WorldState.DOMAIN_CHANNEL)
+	ws.end_batch()
 
 
 static func compute_downhill_dir(world, wx: int, wz: int) -> Vector2i:
@@ -179,10 +202,11 @@ static func _normalize_cardinal(dir: Vector2i) -> Vector2i:
 
 static func to_dict() -> Dictionary:
 	const _Codec = preload("res://systems/save_codec.gd")
+	var ws = _ws()
 	var encoded := {}
-	for key_variant in _channels.keys():
+	for key_variant in ws.channels.keys():
 		var key: Vector2i = key_variant
-		var entry: Dictionary = _channels[key]
+		var entry: Dictionary = ws.channels[key]
 		var flow_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)
 		encoded[_Codec.vec2i_key(key)] = {
 			"water_level": float(entry.get("water_level", 0.5)),
@@ -193,11 +217,18 @@ static func to_dict() -> Dictionary:
 
 static func load_from_dict(data: Dictionary) -> void:
 	const _Codec = preload("res://systems/save_codec.gd")
-	reset()
+	var ws = _ws()
+	ws.begin_batch()
+	ws.channels.clear()
 	var channels: Dictionary = data.get("channels", {})
 	for key in channels.keys():
 		var entry: Dictionary = channels[key]
 		var flow_arr: Array = entry.get("flow_dir", [0, 0])
 		var flow_dir := Vector2i(int(flow_arr[0]), int(flow_arr[1]))
 		var cell := _Codec.vec2i_from_key(str(key))
-		register_channel(cell.x, cell.y, flow_dir, float(entry.get("water_level", 0.5)))
+		ws.channels[cell] = {
+			"water_level": clampf(float(entry.get("water_level", 0.5)), 0.05, 1.0),
+			"flow_dir": _normalize_cardinal(flow_dir),
+		}
+		ws.bump(_WorldState.DOMAIN_CHANNEL)
+	ws.end_batch()

@@ -3,6 +3,9 @@ extends RefCounted
 
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
+
+
 
 const FACE_RAMP := 7
 const FACE_RAMP_CORNER := 8
@@ -10,7 +13,15 @@ const FACE_RAMP_SIDE := 9
 const STRIDE := 16
 
 
-static func build_mesh_payload(data: ChunkData, quads: Array) -> Dictionary:
+static func build_mesh_payload(
+	data: ChunkData,
+	quads: Array,
+	use_surface_mesh: bool = false,
+	prior_surface_cache: Dictionary = {},
+	incremental: bool = false,
+	keep_quads: Array = [],
+	patch_quads: Array = []
+) -> Dictionary:
 	var terrain_quads: Array = []
 	var ramp_quads: Array = []
 	var corner_quads: Array = []
@@ -27,10 +38,10 @@ static func build_mesh_payload(data: ChunkData, quads: Array) -> Dictionary:
 		else:
 			terrain_quads.append(q)
 
-	return {
+	var payload := {
 		"quads": quads,
 		"count": quads.size(),
-		"terrain_buffer": _build_box_buffer(data, terrain_quads),
+		"terrain_buffer": PackedFloat32Array(),
 		"terrain_count": terrain_quads.size(),
 		"ramp_buffer": _build_ramp_buffer(data, ramp_quads, "cardinal"),
 		"ramp_count": ramp_quads.size(),
@@ -39,6 +50,23 @@ static func build_mesh_payload(data: ChunkData, quads: Array) -> Dictionary:
 		"diagonal_buffer": _build_ramp_buffer(data, diagonal_quads, "diagonal"),
 		"diagonal_count": diagonal_quads.size(),
 	}
+	payload["representation"] = "surface_mesh" if use_surface_mesh else "multimesh_legacy"
+	if use_surface_mesh and incremental and not prior_surface_cache.is_empty():
+		payload["terrain_buffer"] = PackedFloat32Array()
+		var cache: Dictionary = prior_surface_cache
+		if _TerrainSurfaceCache.incremental_patch_needed(prior_surface_cache, patch_quads, keep_quads):
+			cache = _TerrainSurfaceCache.patch_region(
+				prior_surface_cache, data, patch_quads, keep_quads
+			)
+		# Defer ArrayMesh build to main-thread surface upload drain.
+		_TerrainSurfaceCache.attach_to_payload(cache, payload, false)
+	elif use_surface_mesh:
+		payload["terrain_buffer"] = PackedFloat32Array()
+		var cache_full := _TerrainSurfaceCache.build_from_quads(data, terrain_quads)
+		_TerrainSurfaceCache.attach_to_payload(cache_full, payload, true)
+	else:
+		payload["terrain_buffer"] = _build_box_buffer(data, terrain_quads)
+	return payload
 
 
 static func _build_box_buffer(data: ChunkData, quads: Array) -> PackedFloat32Array:

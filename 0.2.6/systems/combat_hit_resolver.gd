@@ -2,6 +2,8 @@ class_name CombatHitResolver
 extends RefCounted
 
 const _CombatDef = preload("res://config/combat_def.gd")
+const _SpatialQueryLayer = preload("res://systems/spatial_query_layer.gd")
+const _SpatialQueryService = preload("res://systems/spatial_query_service.gd")
 
 class HitCandidate:
 	var node: Node
@@ -27,34 +29,33 @@ static func query_melee(
 		return []
 
 	var candidates: Array[HitCandidate] = []
-	for group_name in ["world_entity", "crystal_enemy"]:
-		for node in scene_root.get_tree().get_nodes_in_group(group_name):
-			if not is_instance_valid(node):
-				continue
-			if node.has_method("is_combat_alive") and not node.is_combat_alive():
-				continue
-			var center := _combat_center(node)
-			if absf(center.y - origin.y) > cfg.melee_vertical_tolerance:
-				continue
-			var to_target := Vector3(center.x - origin.x, 0.0, center.z - origin.z)
-			var dist := to_target.length()
-			var hit_radius := _combat_radius(node)
-			var effective_dist := dist - hit_radius
-			if effective_dist > range_v or effective_dist < -hit_radius:
-				continue
-			if to_target.length_squared() < 0.0001:
-				to_target = fwd_xz
-			var dir_xz := to_target.normalized()
-			var alignment := fwd_xz.dot(dir_xz)
-			if alignment < cos(half_arc):
-				continue
-			var cand := HitCandidate.new()
-			cand.node = node
-			cand.center = center
-			cand.radius = hit_radius
-			cand.distance = effective_dist
-			cand.alignment = alignment
-			candidates.append(cand)
+	for node in _combat_nodes(scene_root, origin, range_v + 2.0):
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("is_combat_alive") and not node.is_combat_alive():
+			continue
+		var center := _combat_center(node)
+		if absf(center.y - origin.y) > cfg.melee_vertical_tolerance:
+			continue
+		var to_target := Vector3(center.x - origin.x, 0.0, center.z - origin.z)
+		var dist := to_target.length()
+		var hit_radius := _combat_radius(node)
+		var effective_dist := dist - hit_radius
+		if effective_dist > range_v or effective_dist < -hit_radius:
+			continue
+		if to_target.length_squared() < 0.0001:
+			to_target = fwd_xz
+		var dir_xz := to_target.normalized()
+		var alignment := fwd_xz.dot(dir_xz)
+		if alignment < cos(half_arc):
+			continue
+		var cand := HitCandidate.new()
+		cand.node = node
+		cand.center = center
+		cand.radius = hit_radius
+		cand.distance = effective_dist
+		cand.alignment = alignment
+		candidates.append(cand)
 
 	candidates.sort_custom(func(a: HitCandidate, b: HitCandidate) -> bool:
 		if absf(a.distance - b.distance) > 0.05:
@@ -85,27 +86,26 @@ static func query_ranged(
 
 	var best: Node = null
 	var best_t := INF
-	for group_name in ["world_entity", "crystal_enemy"]:
-		for node in scene_root.get_tree().get_nodes_in_group(group_name):
-			if not is_instance_valid(node):
-				continue
-			if node.has_method("is_combat_alive") and not node.is_combat_alive():
-				continue
-			var center := _combat_center(node)
-			var hit_radius: float = cfg.ranged_hit_radius + _combat_radius(node) * 0.5
-			var to_center := center - origin
-			var t := to_center.dot(fwd)
-			if t < 0.0 or t > range_v:
-				continue
-			var closest := origin + fwd * t
-			var miss := Vector2(center.x - closest.x, center.z - closest.z).length()
-			if miss > hit_radius:
-				continue
-			if absf(center.y - closest.y) > cfg.ranged_vertical_tolerance:
-				continue
-			if t < best_t:
-				best_t = t
-				best = node
+	for node in _combat_nodes(scene_root, origin, range_v + 2.0):
+		if not is_instance_valid(node):
+			continue
+		if node.has_method("is_combat_alive") and not node.is_combat_alive():
+			continue
+		var center := _combat_center(node)
+		var hit_radius: float = cfg.ranged_hit_radius + _combat_radius(node) * 0.5
+		var to_center := center - origin
+		var t := to_center.dot(fwd)
+		if t < 0.0 or t > range_v:
+			continue
+		var closest := origin + fwd * t
+		var miss := Vector2(center.x - closest.x, center.z - closest.z).length()
+		if miss > hit_radius:
+			continue
+		if absf(center.y - closest.y) > cfg.ranged_vertical_tolerance:
+			continue
+		if t < best_t:
+			best_t = t
+			best = node
 	return best
 
 
@@ -124,6 +124,32 @@ static func apply_damage(
 	if target.has_method("take_damage"):
 		target.take_damage(final, source_id)
 	return final
+
+
+## Discover combatants via Spatial Query Layer when available; group scan is legacy fallback only.
+static func _combat_nodes(scene_root: Node, origin: Vector3, search_radius: float) -> Array:
+	var svc = _SpatialQueryService.get_active()
+	if svc == null and scene_root and scene_root.is_inside_tree():
+		svc = scene_root.get_tree().get_first_node_in_group("spatial_query_service")
+	if svc and svc.layer and svc.has_method("query_combat_candidates"):
+		var combat_n: int = svc.layer.count_category(_SpatialQueryLayer.CAT_ENTITY) \
+			+ svc.layer.count_category(_SpatialQueryLayer.CAT_AI)
+		if combat_n > 0:
+			var hits: Array = svc.query_combat_candidates(origin, search_radius)
+			var nodes: Array = []
+			for h in hits:
+				var p = h.get("payload")
+				if p is Node and is_instance_valid(p):
+					nodes.append(p)
+			return nodes
+	# Legacy fallback when layer has no combatants indexed (tests without SpatialQueryService).
+	var out: Array = []
+	if scene_root == null or not scene_root.is_inside_tree():
+		return out
+	for group_name in ["world_entity", "crystal_enemy"]:
+		for node in scene_root.get_tree().get_nodes_in_group(group_name):
+			out.append(node)
+	return out
 
 
 static func _combat_center(node: Node) -> Vector3:

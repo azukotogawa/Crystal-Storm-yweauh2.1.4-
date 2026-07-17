@@ -3,6 +3,8 @@
 [ext_resource type="Script" uid="uid://bysd6dgbhih1f" path="res://world/InfiniteNoiseWorld.gd" id="1_1bvp3"]
 [ext_resource type="Script" uid="uid://cwmhh7jh6kfp4" path="res://main.gd" id="1_2f3dj"]
 [ext_resource type="Script" uid="uid://5wlspcxmshqg" path="res://systems/config_service.gd" id="1_cfg"]
+[ext_resource type="Script" path="res://systems/composition_root.gd" id="1_compose"]
+[ext_resource type="Script" path="res://systems/spatial_query_service.gd" id="1_spatial"]
 [ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="2_lquwl"]
 [ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_272bh"]
 [ext_resource type="Script" uid="uid://cal8x0hpofgxq" path="res://ui/debug_panel.gd" id="7_272bh"]
@@ -41,6 +43,12 @@ tonemap_exposure = 0.72
 
 [node name="Game" type="Node3D" unique_id=238200303]
 script = ExtResource("1_2f3dj")
+
+[node name="CompositionRoot" type="Node" parent="."]
+script = ExtResource("1_compose")
+
+[node name="SpatialQueryService" type="Node" parent="."]
+script = ExtResource("1_spatial")
 
 [node name="ConfigService" type="Node" parent="." unique_id=368487200]
 script = ExtResource("1_cfg")

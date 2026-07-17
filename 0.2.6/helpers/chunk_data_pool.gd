@@ -20,10 +20,15 @@ static func reset_stats() -> void:
 static func acquire(coord: Vector2i, world: InfiniteNoiseWorld) -> ChunkData:
 	if _pool.is_empty():
 		_alloc_new_count += 1
-		return ChunkData.new(coord, world)
+		var fresh: ChunkData = ChunkData.new(coord, world)
+		if fresh.is_macro_terrain_enabled():
+			fresh.prewarm_macro_storage()
+		return fresh
 	_alloc_reuse_count += 1
 	var data: ChunkData = _pool.pop_back()
 	data.prepare_for_reuse(coord, world)
+	if data.is_macro_terrain_enabled():
+		data.prewarm_macro_storage()
 	return data
 
 

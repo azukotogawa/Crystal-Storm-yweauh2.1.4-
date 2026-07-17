@@ -18,6 +18,8 @@ signal run_state_changed(new_state: RunState)
 
 var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
+## Last terminal loss reason for UI / verifies (empty while playing or after win).
+var last_loss_reason: String = ""
 
 var _player: Node3D
 var _crystal: CrystalManager
@@ -128,9 +130,10 @@ func _on_player_died() -> void:
 
 
 func _set_won() -> void:
-	if run_state == RunState.WON:
+	if run_state == RunState.WON or run_state == RunState.LOST:
 		return
 	run_state = RunState.WON
+	last_loss_reason = ""
 	if _crystal:
 		_crystal.expansion_enabled = false
 	run_state_changed.emit(run_state)
@@ -148,9 +151,10 @@ func _player_column_xz() -> Vector2:
 
 
 func _set_lost(reason: String = "") -> void:
-	if run_state == RunState.LOST:
+	if run_state == RunState.LOST or run_state == RunState.WON:
 		return
 	run_state = RunState.LOST
+	last_loss_reason = reason
 	if _crystal:
 		_crystal.expansion_enabled = false
 	run_state_changed.emit(run_state)

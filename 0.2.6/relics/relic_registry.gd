@@ -30,8 +30,23 @@ static func get_def(id: StringName) -> _RelicDef:
 static func ensure_builtins() -> void:
 	if not _defs.is_empty():
 		return
+	register(_make_crystal_ward())
 	register(_make_flow_anchor())
 	register(_make_mason_glove())
+
+
+## Vertical-slice starter: slows crystal fluid flow (measurable via get_crystal_flow_mult).
+static func _make_crystal_ward() -> _RelicDef:
+	var d := _RelicDef.new()
+	d.id = &"crystal_ward"
+	d.display_name = "Crystal Ward"
+	d.description = "Dampens crystal pressure — nearby growth and flow slow noticeably."
+	d.rarity = _RelicDef.Rarity.UNCOMMON
+	d.crystal_flow_mult = 0.72
+	d.stat_modifiers = [
+		_StatModifier.flat(_StatIds.CRYSTAL_RESISTANCE, 0.12, &"crystal_ward"),
+	]
+	return d
 
 
 static func _make_flow_anchor() -> _RelicDef:
@@ -40,6 +55,7 @@ static func _make_flow_anchor() -> _RelicDef:
 	d.display_name = "Flow Anchor"
 	d.description = "Walls you place resist crystal spread more effectively."
 	d.rarity = _RelicDef.Rarity.UNCOMMON
+	d.crystal_flow_mult = 0.88
 	d.stat_modifiers = [
 		_StatModifier.mult(_StatIds.BUILD_FLOW_BLOCK, 1.25, &"flow_anchor"),
 	]

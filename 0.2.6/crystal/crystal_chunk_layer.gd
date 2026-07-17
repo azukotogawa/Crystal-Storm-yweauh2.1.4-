@@ -2,11 +2,15 @@ class_name CrystalChunkLayer
 extends Node3D
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 
 var chunk_coord: Vector2i = Vector2i.ZERO
+var lod_tier: int = _CrystalClusterMesh.LOD_FULL
 var _mm_instance: MultiMeshInstance3D
 var _material: StandardMaterial3D
 var _pos_to_index: Dictionary = {}
+var _mesh_lod_cached: int = -1
+var _legacy_mesh_cached: bool = false
 static var _shared_box_mesh: BoxMesh
 
 
@@ -25,7 +29,8 @@ func setup(coord: Vector2i, material: StandardMaterial3D) -> void:
 	)
 
 
-func rebuild(cells: Array) -> void:
+func rebuild(cells: Array, p_lod_tier: int = _CrystalClusterMesh.LOD_FULL) -> void:
+	lod_tier = p_lod_tier
 	if _mm_instance == null:
 		_mm_instance = MultiMeshInstance3D.new()
 		_mm_instance.name = "CrystalFluid"
@@ -36,11 +41,9 @@ func rebuild(cells: Array) -> void:
 		mm = MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = false
-		if _shared_box_mesh == null:
-			_shared_box_mesh = BoxMesh.new()
-			_shared_box_mesh.size = Vector3.ONE
-		mm.mesh = _shared_box_mesh
 		_mm_instance.multimesh = mm
+
+	_ensure_mesh_for_mode(mm)
 
 	if _material:
 		_mm_instance.material_override = _material
@@ -83,25 +86,48 @@ func patch_cells(cells: Array) -> bool:
 	return patched > 0
 
 
+func uses_procedural_mesh() -> bool:
+	return not _CrystalClusterMesh.use_legacy_renderer()
+
+
+func _ensure_mesh_for_mode(mm: MultiMesh) -> void:
+	var legacy := _CrystalClusterMesh.use_legacy_renderer()
+	if legacy == _legacy_mesh_cached and (legacy or _mesh_lod_cached == lod_tier):
+		return
+	_legacy_mesh_cached = legacy
+	_mesh_lod_cached = lod_tier
+	if legacy:
+		if _shared_box_mesh == null:
+			_shared_box_mesh = BoxMesh.new()
+			_shared_box_mesh.size = Vector3.ONE
+		mm.mesh = _shared_box_mesh
+	else:
+		mm.mesh = _CrystalClusterMesh.get_mesh_for_lod(lod_tier)
+
+
 func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 	var ws = _WorldSettings.get_active()
 	var voxel_s: float = ws.voxel_scale
 	var depth := maxf(cell.depth, 0.12)
 	var layer_h: float = ws.layer_height()
 	var visual_depth := maxf(depth, layer_h * 0.55)
-	var footprint := voxel_s * 1.02
-	var scale_y := visual_depth
-	# terrain_y is walkable top (feet level); crystal grows upward from there.
-	var center_y := cell.terrain_y + visual_depth * 0.5
 	var chunk_origin_x: float = ws.column_to_world(float(chunk_coord.x * ChunkData.SIZE))
 	var chunk_origin_z: float = ws.column_to_world(float(chunk_coord.y * ChunkData.SIZE))
 	var local_x: float = ws.column_to_world(float(cell.world_pos.x) + 0.5) - chunk_origin_x
 	var local_z: float = ws.column_to_world(float(cell.world_pos.y) + 0.5) - chunk_origin_z
-	var basis := Basis.IDENTITY.scaled(Vector3(footprint, scale_y, footprint))
-	mm.set_instance_transform(
-		idx,
-		Transform3D(
-			basis,
-			Vector3(local_x, center_y, local_z)
-		)
-	)
+
+	var basis: Basis
+	if _CrystalClusterMesh.use_legacy_renderer():
+		var footprint := voxel_s * 1.02
+		var center_y := cell.terrain_y + visual_depth * 0.5
+		basis = Basis.IDENTITY.scaled(Vector3(footprint, visual_depth, footprint))
+		mm.set_instance_transform(idx, Transform3D(basis, Vector3(local_x, center_y, local_z)))
+		return
+
+	var natural_h := _CrystalClusterMesh.natural_height()
+	var footprint := 1.02
+	var scale_y := visual_depth / natural_h
+	var rot_y := _CrystalClusterMesh.growth_rotation_y(cell.neighbor_mask)
+	var center_y := cell.terrain_y + visual_depth * 0.5
+	basis = Basis.from_euler(Vector3(0.0, rot_y, 0.0)).scaled(Vector3(footprint, scale_y, footprint))
+	mm.set_instance_transform(idx, Transform3D(basis, Vector3(local_x, center_y, local_z)))

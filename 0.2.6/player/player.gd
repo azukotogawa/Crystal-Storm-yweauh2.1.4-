@@ -96,6 +96,9 @@ func _ready():
 	relic_manager = _RelicManager.new()
 	relic_manager.name = "RelicManager"
 	add_child(relic_manager)
+	# Vertical-slice starter relic: measurable crystal flow dampening.
+	if relic_manager.has_method("equip"):
+		relic_manager.equip(&"crystal_ward")
 
 	inventory = _Inventory.new()
 	_give_starting_loadout()

@@ -5,8 +5,11 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 const _TopographicalMapConfig = preload("res://config/topographical_map_config.gd")
 const _WorldGenConfig = preload("res://config/world_gen_config.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
+const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd")
 
 var quality: _PerformanceQualityConfig = _PerformanceQualityConfig.create_default()
+## Last effective quality after folding platform/debug policy (composition path).
+var effective_quality: _PerformanceQualityConfig = null
 var _safe_mode: bool = false
 var _applied: bool = false
 
@@ -45,23 +48,88 @@ func ensure_ready() -> void:
 		await get_tree().process_frame
 
 
-func reapply_to_chunk_manager(cm: ChunkManager) -> void:
-	if cm == null or quality == null:
+func reapply_to_chunk_manager(cm: ChunkManager, resolved: Dictionary = {}) -> void:
+	if cm == null:
+		return
+	var cfg = _effective_for(resolved)
+	if cfg == null:
 		return
 	if cm.has_method("apply_performance_config"):
-		cm.apply_performance_config(quality)
+		cm.apply_performance_config(cfg)
 	elif "RENDER_DISTANCE" in cm:
-		cm.RENDER_DISTANCE = quality.render_distance
-		cm.MAX_CHUNKS_PER_FRAME = quality.max_chunks_per_frame
-		cm.MAX_INFLIGHT_CHUNKS = quality.max_inflight_chunks
+		cm.RENDER_DISTANCE = cfg.render_distance
+		cm.MAX_CHUNKS_PER_FRAME = cfg.max_chunks_per_frame
+		cm.MAX_INFLIGHT_CHUNKS = cfg.max_inflight_chunks
 		if "MESH_CAVES" in cm:
-			cm.MESH_CAVES = quality.mesh_caves
+			cm.MESH_CAVES = cfg.mesh_caves
+
+
+func _effective_for(resolved: Dictionary = {}):
+	if not resolved.is_empty():
+		var policy: Dictionary = resolved.get("policy", {})
+		effective_quality = _RuntimeConfigResolver.fold_policy_into_quality(quality, policy)
+		return effective_quality
+	if effective_quality != null:
+		return effective_quality
+	return quality
+
+
+## Composition-root path: apply *resolved* policy via registry peers (no group search).
+## `resolved` is EffectiveRuntimePolicy from RuntimeConfigResolver — debug/platform knobs win.
+func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
+	if registry == null or quality == null:
+		return
+	var policy: Dictionary = resolved.get("policy", {})
+	var eff = _RuntimeConfigResolver.fold_policy_into_quality(quality, policy)
+	effective_quality = eff
+	var chunk_mgr = registry.resolve(&"chunk_manager") if registry.has_method("resolve") else null
+	if chunk_mgr:
+		reapply_to_chunk_manager(chunk_mgr, resolved)
+	var world = registry.resolve(&"world") if registry.has_method("resolve") else null
+	if world and world.has_method("set_caves_enabled"):
+		world.set_caves_enabled(bool(eff.caves_enabled))
+	# Do NOT mutate authored world_gen.caves_enabled — quality is policy-only.
+	var crystal = registry.resolve(&"crystal_manager") if registry.has_method("resolve") else null
+	if crystal:
+		if crystal.has_method("apply_performance_config"):
+			crystal.apply_performance_config(eff)
+		if crystal.has_method("refresh_spawn_marker_textures"):
+			crystal.call_deferred("refresh_spawn_marker_textures")
+	var visual_registry = registry.resolve(&"game_visual_registry") if registry.has_method("resolve") else null
+	if visual_registry:
+		if visual_registry.has_method("apply_performance_config"):
+			visual_registry.apply_performance_config(eff)
+		if visual_registry.has_method("preload_game_bundle"):
+			visual_registry.preload_game_bundle()
+	var combat_vfx = registry.resolve(&"combat_visual_feedback") if registry.has_method("resolve") else null
+	if combat_vfx and combat_vfx.has_method("apply_performance_config"):
+		combat_vfx.apply_performance_config(eff)
+	var entity_mgr = registry.resolve(&"entity_manager") if registry.has_method("resolve") else null
+	if entity_mgr and entity_mgr.has_method("apply_performance_config"):
+		entity_mgr.apply_performance_config(eff)
+	_EntityNavigation.use_lightweight_nav = bool(eff.use_lightweight_entity_nav)
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler:
+		profiler.enabled = bool(eff.perf_profiler_enabled)
+	_applied = true
+	print("[Perf] Applied effective policy dist=%d caves=%s flow_cap=%d upload_budget=%dus (registry)" % [
+		eff.render_distance,
+		"on" if eff.caves_enabled else "off",
+		eff.max_crystal_flow_cells,
+		eff.chunk_upload_budget_us,
+	])
 
 
 func refresh_world_visuals() -> void:
 	if not is_inside_tree():
 		return
-	var visual_registry = get_tree().get_first_node_in_group("game_visual_registry")
+	var root = get_tree().get_first_node_in_group("composition_root")
+	var registry = root.registry if root and "registry" in root else null
+	var visual_registry = null
+	if registry and registry.has_method("resolve"):
+		visual_registry = registry.resolve(&"game_visual_registry")
+	if visual_registry == null:
+		visual_registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if visual_registry:
 		if visual_registry.has_method("apply_performance_config"):
 			visual_registry.apply_performance_config(quality)
@@ -75,10 +143,18 @@ func refresh_world_visuals() -> void:
 			feature_visuals.apply_performance_config(quality)
 		elif feature_visuals.has_method("repopulate_all"):
 			feature_visuals.repopulate_all()
-	var crystal = get_tree().get_first_node_in_group("crystal_manager")
+	var crystal = null
+	if registry and registry.has_method("resolve"):
+		crystal = registry.resolve(&"crystal_manager")
+	if crystal == null:
+		crystal = get_tree().get_first_node_in_group("crystal_manager")
 	if crystal and crystal.has_method("refresh_spawn_marker_textures"):
 		crystal.refresh_spawn_marker_textures()
-	var combat_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	var combat_vfx = null
+	if registry and registry.has_method("resolve"):
+		combat_vfx = registry.resolve(&"combat_visual_feedback")
+	if combat_vfx == null:
+		combat_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if combat_vfx and combat_vfx.has_method("apply_performance_config"):
 		combat_vfx.apply_performance_config(quality)
 
@@ -133,9 +209,8 @@ func _apply_to_scene() -> void:
 	if world:
 		if world.has_method("set_caves_enabled"):
 			world.set_caves_enabled(quality.caves_enabled)
-		var cfg_svc = get_tree().get_first_node_in_group("config_service")
-		if cfg_svc and cfg_svc.world_gen is _WorldGenConfig:
-			cfg_svc.world_gen.caves_enabled = quality.caves_enabled
+		# Authored WorldGenConfig is not mutated by quality (composition policy).
+		# Runtime cave enablement is applied only via world.set_caves_enabled / EffectiveRuntimePolicy.
 
 	var crystal = get_tree().get_first_node_in_group("crystal_manager")
 	if crystal:

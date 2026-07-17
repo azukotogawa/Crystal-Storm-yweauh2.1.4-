@@ -215,7 +215,10 @@ static func _pending_key(coord: Vector2i, token: int) -> String:
 
 static func _count_triangles_from_payload(payload: Dictionary) -> int:
 	var total := 0
-	total += int(payload.get("terrain_count", 0)) * 12
+	if str(payload.get("representation", "")) == "surface_mesh":
+		total += int(payload.get("surface_triangle_count", payload.get("terrain_count", 0) * 2))
+	else:
+		total += int(payload.get("terrain_count", 0)) * 12
 	total += int(payload.get("ramp_count", 0)) * 4
 	total += int(payload.get("corner_count", 0)) * 4
 	total += int(payload.get("diagonal_count", 0)) * 6

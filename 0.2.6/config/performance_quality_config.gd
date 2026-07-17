@@ -16,6 +16,8 @@ var chunk_upload_budget_us: int = 3500
 var main_thread_budget_us: int = 8000
 
 @export_group("Chunk Streaming")
+## Consolidate terrain box faces into one ArrayMesh per chunk (vs per-quad MultiMesh boxes).
+@export var terrain_surface_mesh: bool = true
 @export var prebuild_chunk_buffers: bool = true
 @export_range(1, 8, 1)
 var render_distance: int = 2
@@ -166,6 +168,7 @@ static func apply_safe_mode() -> PerformanceQualityConfig:
 	c.chunk_upload_budget_us = 2500
 	c.main_thread_budget_us = 6000
 	c.prebuild_chunk_buffers = true
+	c.terrain_surface_mesh = true
 	c.render_distance = 1
 	c.max_chunks_per_frame = 1
 	c.max_inflight_chunks = 2
@@ -232,6 +235,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.chunk_upload_budget_us = 2500
 			c.main_thread_budget_us = 6500
 			c.prebuild_chunk_buffers = true
+			c.terrain_surface_mesh = true
 			c.render_distance = 1
 			c.max_chunks_per_frame = 1
 			c.max_inflight_chunks = 2
@@ -294,6 +298,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.chunk_upload_budget_us = 3500
 			c.main_thread_budget_us = 8000
 			c.prebuild_chunk_buffers = true
+			c.terrain_surface_mesh = true
 			c.render_distance = 2
 			c.max_chunks_per_frame = 1
 			c.max_inflight_chunks = 2
@@ -356,6 +361,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.chunk_upload_budget_us = 5000
 			c.main_thread_budget_us = 10000
 			c.prebuild_chunk_buffers = true
+			c.terrain_surface_mesh = true
 			c.render_distance = 3
 			c.max_chunks_per_frame = 2
 			c.max_inflight_chunks = 6

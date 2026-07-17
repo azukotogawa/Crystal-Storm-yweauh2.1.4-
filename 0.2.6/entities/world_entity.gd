@@ -234,6 +234,10 @@ func is_combat_alive() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	var _physics_scope: RefCounted = null
+	if profiler and profiler.has_method("scope"):
+		_physics_scope = profiler.scope("entity_physics")
 	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
 	if entity_mgr and int(entity_mgr.get("physics_skip_frames")) > 0:
 		if Engine.get_physics_frames() % (int(entity_mgr.physics_skip_frames) + 1) != 0:
@@ -276,7 +280,7 @@ func _physics_process(delta: float) -> void:
 		_chunk_manager,
 		_crystal
 	)
-	var profiler = get_node_or_null("/root/PerfProfiler")
+	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
@@ -341,6 +345,14 @@ func _reset_hit_tint() -> void:
 			(_sprite.material_override as StandardMaterial3D).albedo_color = _base_tint
 	elif _mesh and _mesh.material_override is StandardMaterial3D:
 		(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
+
+
+func _notify_spatial_moved() -> void:
+	if not is_inside_tree():
+		return
+	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+	if svc and svc.has_method("notify_moved"):
+		svc.notify_moved(self)
 
 
 func _die() -> void:

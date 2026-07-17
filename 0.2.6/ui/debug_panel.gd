@@ -36,6 +36,8 @@ func _process(_delta: float) -> void:
 		return
 
 	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("sample_scene_stats"):
+		profiler.sample_scene_stats(get_tree())
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("debug_panel")
 
@@ -315,7 +317,7 @@ Hotbar: %s
 Veg: %d voxel / %d bill | Ent: %d voxel / %d spr
 Perf: %s
 Save: %s
-FPS: %d""" % [
+	FPS: %d%s""" % [
 		seed_val,
 		map_temp,
 		game_phase, player_health,
@@ -345,11 +347,27 @@ FPS: %d""" % [
 		veg_voxel, veg_billboard, entity_voxel, entity_sprite,
 		perf_hint,
 		save_hint,
-		Engine.get_frames_per_second()
+		Engine.get_frames_per_second(),
+		_runtime_perf_block(profiler),
 	]
 
 	if profiler and profiler.has_method("end"):
 		profiler.end("debug_panel")
+
+
+func is_overlay_visible() -> bool:
+	return visible
+
+
+func set_overlay_visible(show_overlay: bool) -> void:
+	visible = show_overlay
+	set_process(show_overlay and _panel_enabled)
+
+
+func _runtime_perf_block(profiler: Node) -> String:
+	if profiler == null or not profiler.has_method("format_runtime_report"):
+		return ""
+	return "\n\n--- PERF ---\n%s" % profiler.format_runtime_report()
 
 
 func _nearest_combat_target_summary(player_col: Vector3) -> String:

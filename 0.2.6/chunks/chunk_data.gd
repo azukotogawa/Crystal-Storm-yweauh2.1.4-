@@ -3,6 +3,9 @@ class_name ChunkData
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _WorldState = preload("res://world/world_state.gd")
+const _MacroLayerGrid = preload("res://helpers/macro_layer_grid.gd")
+const _MicroLayerGrid = preload("res://helpers/micro_layer_grid.gd")
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -12,18 +15,37 @@ var world: InfiniteNoiseWorld = null
 # get_voxel / is_visible / etc. now derive from the 2D maps (see overrides below).
 # Legacy full-3D code paths (the old greedy) are bypassed anyway.
 
-# Precomputed surface heights + tile IDs for this chunk's 16x16 columns.
-# Computed in bg worker for perf. Used everywhere for meshing, collision, etc.
+## Macro terrain authority (v2). Legacy maps are synced views for mesh/verify scripts.
+var macro_grid = null
+## Sparse localized micro refinement overlay (optional per column).
+var micro_grid = null
+var last_micro_examined: int = 0
+
+# Compatibility façade — lazy-synced from macro_grid when legacy readers need it.
 var surface_map: Array = []  # [x][z] -> float
-var tile_map: Array = []       # [x][z] -> int  (precomputed on main thread for this chunk)
+var tile_map: Array = []       # [x][z] -> int
+var _legacy_maps_dirty: bool = false
+var _macro_enabled: bool = true
+var _macro_surface_bound: bool = false
+var _macro_ramp_flags_dirty: bool = false
+var _maps_resident: bool = false
+static var s_macro_enabled_from_env: bool = true
+static var s_micro_enabled_from_env: bool = true
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
 
-# Snapshotted on main thread before worker generation (avoids TerrainEdits/FeatureRegistry races).
+# Snapshotted on main thread before worker generation (avoids live WorldState races).
 var _worker_height_delta: Array = []
 var _worker_build_tile: Array = []
 var _worker_feature_tile: Array = []
+## Halo-region height deltas (world units), same dim as _halo_surface — worker-safe.
+var _worker_halo_height_delta: Array = []
 var _has_worker_snapshot: bool = false
+## Mesh-input revision stamp captured with the frozen overlay arrays.
+var overlay_mesh_stamp: Dictionary = {}
+## Job-local micro skip set for one mesh stage (owned by the single in-flight worker for this data).
+## Never shared across ChunkManager concurrent jobs — each job uses its own ChunkData.
+var _mesh_job_micro_skip: Dictionary = {}
 ## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
 var _has_halo_surface: bool = false
@@ -37,7 +59,9 @@ const HEIGHT := 48
 func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 	position = coord
 	world = world_ref
-	
+	_macro_enabled = s_macro_enabled_from_env
+	_macro_ramp_flags_dirty = false
+
 	# For one-voxel-thick heightfield terrain we only need the 2D surface maps.
 	# Removed the full 3D voxels/visibility arrays and their heavy nested alloc+init
 	# (was ~40k entries per chunk, ran on main thread in every ChunkData.new).
@@ -54,18 +78,50 @@ func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	position = coord
 	world = world_ref
+	if macro_grid:
+		macro_grid.prepare_for_reuse()
+	if micro_grid:
+		micro_grid.prepare_for_reuse()
 	surface_map.clear()
 	tile_map.clear()
 	ramp_map.clear()
 	_worker_height_delta.clear()
 	_worker_build_tile.clear()
 	_worker_feature_tile.clear()
+	_worker_halo_height_delta.clear()
 	_halo_surface.clear()
 	_has_worker_snapshot = false
+	overlay_mesh_stamp = {}
+	_mesh_job_micro_skip.clear()
 	_has_halo_surface = false
+	_legacy_maps_dirty = false
+	_macro_enabled = s_macro_enabled_from_env
+	_macro_surface_bound = false
+	_macro_ramp_flags_dirty = false
+	_maps_resident = false
+	last_micro_examined = 0
+
+## Rebind zero-copy surface view after snapshot restore (outside timers).
+func touch_macro_view_pointers() -> void:
+	if macro_grid == null:
+		return
+	_ensure_surface_map_storage()
+	macro_grid.bind_surface_arrays(surface_map, tile_map)
+
+
+## Pre-allocate macro surface bind outside timed hot paths (extended metadata stays lazy).
+func prewarm_macro_storage() -> void:
+	if not _macro_enabled:
+		return
+	touch_macro_view_pointers()
+	_bind_macro_surface_if_needed()
 
 ## Call on main thread immediately before dispatching chunk gen to WorkerThreadPool.
+## Copies mesh-input overlays from WorldState into frozen per-chunk arrays.
 func capture_worker_snapshot() -> void:
+	var ws = _WorldState.get_active()
+	overlay_mesh_stamp = ws.capture_mesh_overlay_stamp()
+	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	_worker_height_delta.resize(SIZE)
 	_worker_build_tile.resize(SIZE)
 	_worker_feature_tile.resize(SIZE)
@@ -79,30 +135,49 @@ func capture_worker_snapshot() -> void:
 		for z in SIZE:
 			var wx := position.x * SIZE + x
 			var wz := position.y * SIZE + z
-			_worker_height_delta[x][z] = _TerrainEdits.get_height_delta(wx, wz)
-			_worker_build_tile[x][z] = _TerrainEdits.get_build_tile(wx, wz)
-			_worker_feature_tile[x][z] = _FeatureRegistry.get_tile_override(wx, wz)
+			var key := Vector2i(wx, wz)
+			# Read authority storage once; convert height layers → world units for workers.
+			_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
+			_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
+			_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
 	_has_worker_snapshot = true
 	_capture_halo_surface()
+
+
+func is_overlay_mesh_stamp_current() -> bool:
+	return _WorldState.get_active().is_mesh_stamp_current(overlay_mesh_stamp)
+
+
+func has_worker_overlay_snapshot() -> bool:
+	return _has_worker_snapshot
 
 
 func _capture_halo_surface() -> void:
 	if world == null:
 		return
 	var dim := SIZE + HALO * 2
+	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
+	var ws = _WorldState.get_active()
 	_halo_surface.resize(dim)
+	_worker_halo_height_delta.resize(dim)
 	for ix in dim:
 		_halo_surface[ix] = []
 		_halo_surface[ix].resize(dim)
+		_worker_halo_height_delta[ix] = []
+		_worker_halo_height_delta[ix].resize(dim)
 		for iz in dim:
 			var lx := ix - HALO
 			var lz := iz - HALO
 			if lx >= 0 and lx < SIZE and lz >= 0 and lz < SIZE:
 				_halo_surface[ix][iz] = -9999.0
+				_worker_halo_height_delta[ix][iz] = 0.0
 				continue
 			var wx := position.x * SIZE + lx
 			var wz := position.y * SIZE + lz
-			var hdelta: float = _TerrainEdits.get_height_delta(wx, wz)
+			var key := Vector2i(wx, wz)
+			# Main-thread capture only: freeze height delta for later worker refresh.
+			var hdelta: float = float(int(ws.height_delta.get(key, 0))) * layer_h
+			_worker_halo_height_delta[ix][iz] = hdelta
 			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
 	_has_halo_surface = true
 
@@ -110,9 +185,14 @@ func _capture_halo_surface() -> void:
 func _refresh_halo_interior_from_maps() -> void:
 	if not _has_halo_surface:
 		return
+	if _maps_resident:
+		for x in SIZE:
+			for z in SIZE:
+				_halo_surface[x + HALO][z + HALO] = surface_map[x][z]
+		return
 	for x in SIZE:
 		for z in SIZE:
-			_halo_surface[x + HALO][z + HALO] = float(surface_map[x][z])
+			_halo_surface[x + HALO][z + HALO] = get_surface_y(x, z)
 
 
 func get_halo_surface_y(lx: int, lz: int) -> float:
@@ -126,9 +206,118 @@ func get_halo_surface_y(lx: int, lz: int) -> float:
 
 
 func ensure_column_maps() -> void:
+	if _maps_resident:
+		return
 	if surface_map.size() == SIZE and tile_map.size() == SIZE:
+		_maps_resident = true
 		return
 	_compute_column_maps(true)
+
+
+static func macro_terrain_enabled() -> bool:
+	return _MacroLayerGrid.enabled()
+
+
+static func micro_terrain_enabled() -> bool:
+	return _MicroLayerGrid.enabled()
+
+
+static func configure_macro_terrain_from_env() -> void:
+	s_macro_enabled_from_env = _MacroLayerGrid.enabled()
+
+
+static func configure_micro_terrain_from_env() -> void:
+	s_micro_enabled_from_env = _MicroLayerGrid.enabled()
+
+
+## Benchmark-only: flip macro mode without OS env churn between paired samples.
+static func set_macro_enabled_for_benchmark(on: bool) -> void:
+	s_macro_enabled_from_env = on
+
+
+static func set_micro_enabled_for_benchmark(on: bool) -> void:
+	s_micro_enabled_from_env = on
+
+
+func is_macro_terrain_enabled() -> bool:
+	return _macro_enabled
+
+
+func is_micro_terrain_enabled() -> bool:
+	return s_micro_enabled_from_env
+
+
+func sync_macro_mode_from_env() -> void:
+	_macro_enabled = s_macro_enabled_from_env
+
+
+func _micro_grid():
+	if micro_grid == null and is_micro_terrain_enabled():
+		micro_grid = _MicroLayerGrid.acquire()
+	return micro_grid
+
+
+func _micro_active() -> bool:
+	return is_micro_terrain_enabled() and micro_grid != null
+
+
+func has_micro_brick(lx: int, lz: int) -> bool:
+	return _micro_active() and micro_grid.has_brick(lx, lz)
+
+
+func derive_micro_from_terrain_edits() -> void:
+	if not is_micro_terrain_enabled():
+		return
+	var grid = _micro_grid()
+	grid.derive_from_terrain_edits(self)
+
+
+## Benchmark layout: resident macro_grid stays bound; only _macro_enabled toggles between paired runs.
+func sync_macro_benchmark_layout() -> void:
+	sync_macro_mode_from_env()
+	if not _macro_enabled:
+		return
+	if macro_grid == null:
+		prewarm_macro_storage()
+	elif not _macro_surface_bound:
+		touch_macro_view_pointers()
+		_bind_macro_surface_if_needed()
+
+
+func _macro_grid() -> MacroLayerGrid:
+	if macro_grid == null and _macro_enabled:
+		macro_grid = _MacroLayerGrid.acquire()
+	return macro_grid
+
+
+func _macro_active() -> bool:
+	return _macro_enabled and macro_grid != null
+
+
+func mark_macro_ramp_flags_dirty() -> void:
+	_macro_ramp_flags_dirty = true
+
+
+## Batch macro metadata after column populate or mesh emit. ramp_map is source of truth.
+func finalize_macro_metadata(sync_ramps: bool = false) -> void:
+	if not _macro_enabled:
+		return
+	var grid := _macro_grid()
+	grid.ensure_extended_storage()
+	if sync_ramps:
+		grid.sync_ramp_flags_from(ramp_map)
+		_macro_ramp_flags_dirty = false
+
+
+func ensure_macro_ramp_flags_synced() -> void:
+	if not _macro_enabled:
+		return
+	finalize_macro_metadata(true)
+
+
+func sync_macro_ramp_flags() -> void:
+	mark_macro_ramp_flags_dirty()
+	ensure_macro_ramp_flags_synced()
 
 
 func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
@@ -137,6 +326,9 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 	if not _has_worker_snapshot:
 		capture_worker_snapshot()
 		return
+	var ws = _WorldState.get_active()
+	overlay_mesh_stamp = ws.capture_mesh_overlay_stamp()
+	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	for cell_variant in local_cells:
 		var cell: Vector2i = cell_variant
 		var x: int = cell.x
@@ -145,9 +337,12 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 			continue
 		var wx := position.x * SIZE + x
 		var wz := position.y * SIZE + z
-		_worker_height_delta[x][z] = _TerrainEdits.get_height_delta(wx, wz)
-		_worker_build_tile[x][z] = _TerrainEdits.get_build_tile(wx, wz)
-		_worker_feature_tile[x][z] = _FeatureRegistry.get_tile_override(wx, wz)
+		var key := Vector2i(wx, wz)
+		_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
+		_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
+		_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
+		# Refresh frozen halo height-delta ring for dirty edge columns (main thread).
+		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
 
 
@@ -155,6 +350,7 @@ func update_dirty_column_maps(local_cells: Array) -> int:
 	if not world:
 		return 0
 	ensure_column_maps()
+	_ensure_surface_map_storage()
 	var examined := 0
 	var seen: Dictionary = {}
 	for cell_variant in local_cells:
@@ -181,15 +377,51 @@ func update_dirty_column_maps(local_cells: Array) -> int:
 		else:
 			surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
 			tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
-		_refresh_halo_for_local_cell(x, z)
+		if _has_halo_surface:
+			_halo_surface[x + HALO][z + HALO] = surface_map[x][z]
+	for cell_variant in local_cells:
+		var cell: Vector2i = cell_variant
+		var x: int = cell.x
+		var z: int = cell.y
+		if x == 0 or z == 0 or x == SIZE - 1 or z == SIZE - 1:
+			_refresh_halo_border_for_local_cell(x, z)
+	if is_micro_terrain_enabled():
+		var micro = _micro_grid()
+		last_micro_examined = micro.update_dirty_columns(self, local_cells, true)
 	return examined
 
 
 func _refresh_halo_for_local_cell(x: int, z: int) -> void:
 	if not _has_halo_surface or world == null:
 		return
-	if surface_map.size() > x and surface_map[x].size() > z:
-		_halo_surface[x + HALO][z + HALO] = float(surface_map[x][z])
+	if _maps_resident:
+		_halo_surface[x + HALO][z + HALO] = surface_map[x][z]
+	_refresh_halo_border_for_local_cell(x, z)
+
+
+## Main-thread only: refresh frozen halo height-delta cells around a local column.
+func _refresh_worker_halo_deltas_around(x: int, z: int, ws, layer_h: float) -> void:
+	if not _has_halo_surface or _worker_halo_height_delta.is_empty():
+		return
+	for ox in [-1, 0, 1]:
+		for oz in [-1, 0, 1]:
+			var lx: int = x + ox
+			var lz: int = z + oz
+			if lx >= 0 and lx < SIZE and lz >= 0 and lz < SIZE:
+				continue
+			var ix: int = lx + HALO
+			var iz: int = lz + HALO
+			if ix < 0 or iz < 0 or ix >= _worker_halo_height_delta.size() \
+					or iz >= _worker_halo_height_delta[ix].size():
+				continue
+			var wx: int = position.x * SIZE + lx
+			var wz: int = position.y * SIZE + lz
+			_worker_halo_height_delta[ix][iz] = float(int(ws.height_delta.get(Vector2i(wx, wz), 0))) * layer_h
+
+
+func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
+	if not _has_halo_surface or world == null:
+		return
 	for ox in [-1, 0, 1]:
 		for oz in [-1, 0, 1]:
 			if ox == 0 and oz == 0:
@@ -204,40 +436,45 @@ func _refresh_halo_for_local_cell(x: int, z: int) -> void:
 				continue
 			var wx: int = position.x * SIZE + lx
 			var wz: int = position.y * SIZE + lz
-			var hdelta: float = _TerrainEdits.get_height_delta(wx, wz)
+			var hdelta: float = 0.0
+			if _has_worker_snapshot and ix < _worker_halo_height_delta.size() \
+					and iz < _worker_halo_height_delta[ix].size():
+				# Worker / post-capture path: never re-read live WorldState.
+				hdelta = float(_worker_halo_height_delta[ix][iz])
+			else:
+				# Main-thread pre-snapshot path only.
+				var key := Vector2i(wx, wz)
+				var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
+				hdelta = float(int(_WorldState.get_active().height_delta.get(key, 0))) * layer_h
 			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
 
 
 func _compute_column_maps(use_uncached: bool = true):
-	if not world:
+	# Local capture avoids mid-loop use of a field cleared by another thread/path.
+	var w = world
+	if w == null:
 		return
 
-	surface_map.resize(SIZE)
-	tile_map.resize(SIZE)
+	_ensure_surface_map_storage()
 	for x in SIZE:
-		surface_map[x] = []
-		tile_map[x] = []
-		surface_map[x].resize(SIZE)
-		tile_map[x].resize(SIZE)
 		for z in SIZE:
 			var wx := float(position.x * SIZE + x)
 			var wz := float(position.y * SIZE + z)
-
 			if use_uncached and _has_worker_snapshot:
-				surface_map[x][z] = world.get_surface_height_worker(
+				surface_map[x][z] = w.get_surface_height_worker(
 					wx, wz, float(_worker_height_delta[x][z])
 				)
-				tile_map[x][z] = world.get_tile_type_worker(
+				tile_map[x][z] = w.get_tile_type_worker(
 					wx, wz,
 					int(_worker_build_tile[x][z]),
 					int(_worker_feature_tile[x][z])
 				)
 			elif use_uncached:
-				surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
-				tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
+				surface_map[x][z] = w.get_surface_height_uncached(wx, wz)
+				tile_map[x][z] = w.get_tile_type_uncached(wx, wz)
 			else:
-				surface_map[x][z] = world.get_surface_height(wx, wz)
-				tile_map[x][z] = world.get_tile_type(wx, wz)
+				surface_map[x][z] = w.get_surface_height(wx, wz)
+				tile_map[x][z] = w.get_tile_type(wx, wz)
 	if _has_halo_surface:
 		_refresh_halo_interior_from_maps()
 
@@ -248,15 +485,15 @@ func set_voxel(x: int, y: int, z: int, value: int):
 
 func get_voxel(x: int, y: int, z: int) -> int:
 	# Synthesize from heightfield maps: only the surface y has the tile, everything else is AIR.
-	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and surface_map:
-		var sy: float = float(surface_map[x][z])
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and _has_resident_column_maps():
+		var sy: float = get_surface_y(x, z)
 		if absf(float(y) - sy) < _surface_match_epsilon():
 			return get_tile_type(x, z)
 	return VoxelTypes.AIR
 
 func get_visibility(x: int, y: int, z: int) -> bool:
-	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and surface_map:
-		var sy: float = float(surface_map[x][z])
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and _has_resident_column_maps():
+		var sy: float = get_surface_y(x, z)
 		if absf(float(y) - sy) < _surface_match_epsilon():
 			return get_tile_type(x, z) != VoxelTypes.AIR
 	return false
@@ -337,9 +574,121 @@ func get_worker_build_tile(lx: int, lz: int) -> int:
 	return int(_worker_build_tile[lx][lz])
 
 
+func _ensure_surface_map_storage() -> void:
+	if surface_map.size() == SIZE and tile_map.size() == SIZE:
+		var ready := true
+		for x in SIZE:
+			if surface_map[x] == null or surface_map[x].size() != SIZE \
+					or tile_map[x] == null or tile_map[x].size() != SIZE:
+				ready = false
+				break
+		if ready:
+			_maps_resident = true
+			return
+	surface_map.resize(SIZE)
+	tile_map.resize(SIZE)
+	for x in SIZE:
+		if surface_map[x] == null or not (surface_map[x] is Array):
+			surface_map[x] = []
+		if tile_map[x] == null or not (tile_map[x] is Array):
+			tile_map[x] = []
+		surface_map[x].resize(SIZE)
+		tile_map[x].resize(SIZE)
+	_maps_resident = true
+
+
+func _bind_macro_surface_if_needed() -> void:
+	if not _macro_enabled or _macro_surface_bound:
+		return
+	var grid: MacroLayerGrid = macro_grid if macro_grid != null else _macro_grid()
+	if grid.is_surface_bound_to(surface_map, tile_map):
+		grid.mark_ready()
+		_macro_surface_bound = true
+		return
+	grid.bind_surface_arrays(surface_map, tile_map)
+	grid.mark_ready()
+	_macro_surface_bound = true
+
+
+func maps_materialized() -> bool:
+	return _maps_resident
+
+
+func _has_resident_column_maps() -> bool:
+	if _maps_resident:
+		return true
+	if surface_map.size() != SIZE or tile_map.size() != SIZE:
+		return false
+	for x in SIZE:
+		if surface_map[x] == null or surface_map[x].size() != SIZE:
+			return false
+		if tile_map[x] == null or tile_map[x].size() != SIZE:
+			return false
+	_maps_resident = true
+	return true
+
+
+## Materialize legacy façade arrays from macro authority (verify/save readers only).
+func ensure_legacy_maps_synced() -> void:
+	if not _macro_enabled:
+		return
+	_bind_macro_surface_if_needed()
+	if not macro_grid.is_ready():
+		return
+	ensure_macro_ramp_flags_synced()
+	if not _legacy_maps_dirty:
+		return
+	macro_grid.sync_to_legacy_maps(surface_map, tile_map)
+	_legacy_maps_dirty = false
+
+
+func sync_legacy_cells(local_cells: Array) -> void:
+	if not _macro_active() or not macro_grid.is_ready():
+		return
+	macro_grid.sync_cells_to_legacy_maps(surface_map, tile_map, local_cells)
+
+
+## Test/verify helper: patch one column on macro authority and legacy façade together.
+func patch_local_column(lx: int, lz: int, surface_y: float, surface_tile: int) -> void:
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return
+	if _macro_active() and macro_grid.is_ready():
+		_ensure_surface_map_storage()
+		macro_grid.bind_surface_arrays(surface_map, tile_map)
+		var stratum: int = macro_grid.get_stratum_layers(lx, lz)
+		var flags: int = macro_grid.get_flags(lx, lz)
+		macro_grid.set_column(lx, lz, surface_y, surface_tile, stratum, flags)
+		_legacy_maps_dirty = false
+		if _has_halo_surface:
+			_halo_surface[lx + HALO][lz + HALO] = surface_y
+		return
+	if surface_map.size() != SIZE or tile_map.size() != SIZE:
+		surface_map.resize(SIZE)
+		tile_map.resize(SIZE)
+		for x in SIZE:
+			if surface_map[x] == null or not (surface_map[x] is Array):
+				surface_map[x] = []
+			if tile_map[x] == null or not (tile_map[x] is Array):
+				tile_map[x] = []
+			surface_map[x].resize(SIZE)
+			tile_map[x].resize(SIZE)
+	surface_map[lx][lz] = surface_y
+	tile_map[lx][lz] = surface_tile
+	if _has_halo_surface:
+		_halo_surface[lx + HALO][lz + HALO] = surface_y
+
+
 func get_surface_y(x: int, z: int) -> float:
-	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and surface_map:
-		return float(surface_map[x][z])
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE:
+		if _micro_active() and micro_grid.has_brick(x, z):
+			return micro_grid.get_surface_y(x, z)
+		if _maps_resident:
+			return float(surface_map[x][z])
+		if _has_resident_column_maps():
+			return float(surface_map[x][z])
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE:
+		if _macro_active() and macro_grid.is_ready():
+			return macro_grid.get_surface_y(x, z)
 	if not world:
 		return 0.0
 	var wx = position.x * SIZE + x
@@ -347,8 +696,16 @@ func get_surface_y(x: int, z: int) -> float:
 	return world.get_surface_height_uncached(float(wx), float(wz))
 
 func get_tile_type(x: int, z: int) -> int:
-	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and tile_map and tile_map[x] and tile_map[x][z] != null:
-		return tile_map[x][z]
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE:
+		if _micro_active() and micro_grid.has_brick(x, z):
+			return micro_grid.get_surface_tile(x, z)
+		if _maps_resident:
+			return int(tile_map[x][z])
+		if _has_resident_column_maps():
+			return int(tile_map[x][z])
+	if x >= 0 and x < SIZE and z >= 0 and z < SIZE:
+		if _macro_active() and macro_grid.is_ready():
+			return macro_grid.get_surface_tile(x, z)
 	if not world:
 		return VoxelTypes.AIR
 	var wx = position.x * SIZE + x

@@ -48,7 +48,22 @@ static func _player_world(player: Node3D) -> InfiniteNoiseWorld:
 
 
 static func _column_in_range(player: Node3D, wx: int, wz: int, range_v: float) -> bool:
-	var player_xz := Vector2(player.voxel_position.x, player.voxel_position.z)
+	if player == null:
+		return false
+	var px: float
+	var pz: float
+	if player.has_method("get_voxel_position"):
+		var v: Vector3 = player.get_voxel_position()
+		px = v.x
+		pz = v.z
+	elif "voxel_position" in player:
+		px = float(player.voxel_position.x)
+		pz = float(player.voxel_position.z)
+	else:
+		var ws = _WorldSettings.get_active()
+		px = ws.world_to_column(player.global_position.x)
+		pz = ws.world_to_column(player.global_position.z)
+	var player_xz := Vector2(px, pz)
 	var target_xz := Vector2(float(wx) + 0.5, float(wz) + 0.5)
 	return target_xz.distance_to(player_xz) <= range_v + 0.01
 
@@ -147,6 +162,29 @@ static func _entity_column_near(player: Node3D, wx: int, wz: int, range_v: float
 		return false
 	var ws = _WorldSettings.get_active()
 	var col := Vector2(float(wx) + 0.5, float(wz) + 0.5)
+	# Spatial index stores world-space positions (voxel_scale); probe must match.
+	var probe := Vector3(
+		ws.column_to_world(float(wx) + 0.5),
+		0.0,
+		ws.column_to_world(float(wz) + 0.5)
+	)
+	var world_radius: float = 1.5 * ws.voxel_scale
+	var svc = player.get_tree().get_first_node_in_group("spatial_query_service")
+	if svc and svc.has_method("query_combat_candidates"):
+		var hits: Array = svc.query_combat_candidates(probe, world_radius)
+		for h in hits:
+			var node = h.get("payload")
+			if not is_instance_valid(node):
+				continue
+			if node.has_method("is_combat_alive") and not node.is_combat_alive():
+				continue
+			var pos: Vector3 = node.global_position if "global_position" in node else h.pos
+			var ecx: float = ws.world_to_column(pos.x)
+			var ecz: float = ws.world_to_column(pos.z)
+			if Vector2(ecx, ecz).distance_to(col) <= 0.85:
+				if _column_in_range(player, wx, wz, range_v):
+					return true
+		# Do not early-return empty: fall through to group scan if index is cold.
 	for group_name in ["world_entity", "crystal_enemy"]:
 		for node in player.get_tree().get_nodes_in_group(group_name):
 			if not is_instance_valid(node):

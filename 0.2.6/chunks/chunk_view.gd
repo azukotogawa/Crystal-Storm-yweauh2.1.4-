@@ -6,6 +6,9 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _CHUNK_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkView.tres")
+const _SURFACE_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkSurfaceMesh.tres")
+const _ChunkSurfaceMeshBuilder = preload("res://helpers/chunk_surface_mesh_builder.gd")
+const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
 const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
 
 @export var chunk_material: ShaderMaterial
@@ -21,8 +24,10 @@ const FACE_RAMP_SIDE := 9
 static var _shared_box_mesh: BoxMesh
 static var _shared_ramp_material: ShaderMaterial
 static var _shared_chunk_material: ShaderMaterial
+static var _shared_surface_material: ShaderMaterial
 static var _last_upload_us: int = 0
 static var _pending_buffer_uploads: Array = []
+static var _pending_surface_uploads: Array = []
 
 
 func _ready() -> void:
@@ -74,15 +79,24 @@ func emit_quads():
 	_last_upload_us = 0
 	if layer_container == null:
 		return
+	var keep_surface := _uses_surface_mesh()
 	for child in layer_container.get_children():
-		if is_instance_valid(child):
-			layer_container.remove_child(child)
-			child.queue_free()
+		if not is_instance_valid(child):
+			continue
+		if keep_surface and child.name == "terrain_surface_mesh":
+			continue
+		layer_container.remove_child(child)
+		child.queue_free()
 
 	if mesh_data.get("count", 0) == 0:
 		return
 
 	var upload_t0 := Time.get_ticks_usec()
+	if keep_surface:
+		_emit_surface_mesh()
+		_emit_ramp_multimeshes_from_payload()
+		_last_upload_us = Time.get_ticks_usec() - upload_t0
+		return
 	if mesh_data.has("terrain_buffer"):
 		_upload_prebuilt_buffers()
 		_last_upload_us = Time.get_ticks_usec() - upload_t0
@@ -118,9 +132,87 @@ static func consume_last_upload_ms() -> float:
 	return ms
 
 
+func _uses_surface_mesh() -> bool:
+	return str(mesh_data.get("representation", "")) == "surface_mesh"
+
+
+func _ensure_surface_material() -> ShaderMaterial:
+	if _shared_surface_material == null:
+		_shared_surface_material = _SURFACE_MATERIAL_RES.duplicate() as ShaderMaterial
+	_bind_chunk_atlas(_shared_surface_material)
+	return _shared_surface_material
+
+
+func _clear_multimesh_children() -> void:
+	if layer_container == null:
+		return
+	for child in layer_container.get_children():
+		if child is MultiMeshInstance3D and is_instance_valid(child):
+			layer_container.remove_child(child)
+			child.queue_free()
+
+
+func _emit_surface_mesh() -> void:
+	var mesh_instance := layer_container.get_node_or_null("terrain_surface_mesh") as MeshInstance3D
+	if mesh_instance == null:
+		mesh_instance = MeshInstance3D.new()
+		mesh_instance.name = "terrain_surface_mesh"
+		layer_container.add_child(mesh_instance)
+	mesh_instance.material_override = _ensure_surface_material()
+
+	var prebuilt_mesh: ArrayMesh = mesh_data.get("surface_mesh_resource") as ArrayMesh
+	if prebuilt_mesh != null:
+		mesh_instance.mesh = prebuilt_mesh
+		return
+
+	var cache: Dictionary = mesh_data.get("surface_cache", {})
+	if not cache.is_empty():
+		enqueue_surface_mesh_upload(mesh_instance, cache)
+		return
+
+	if mesh_data.has("surface_vertices"):
+		enqueue_surface_mesh_upload(mesh_instance, {
+			"vertices": mesh_data.get("surface_vertices", PackedVector3Array()),
+			"normals": mesh_data.get("surface_normals", PackedVector3Array()),
+			"uvs": mesh_data.get("surface_uvs", PackedVector2Array()),
+			"colors": mesh_data.get("surface_colors", PackedColorArray()),
+			"indices": mesh_data.get("surface_indices", PackedInt32Array()),
+			"triangle_count": int(mesh_data.get("surface_triangle_count", 0)),
+		})
+
+
+func _emit_ramp_multimeshes_from_payload() -> void:
+	var ramp_count: int = int(mesh_data.get("ramp_count", 0))
+	if ramp_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("ramp_buffer", PackedFloat32Array()),
+			ramp_count,
+			"cardinal_mm_instance",
+			"cardinal"
+		)
+	var corner_count: int = int(mesh_data.get("corner_count", 0))
+	if corner_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("corner_buffer", PackedFloat32Array()),
+			corner_count,
+			"corner_mm_instance",
+			"corner"
+		)
+	var diagonal_count: int = int(mesh_data.get("diagonal_count", 0))
+	if diagonal_count > 0:
+		_assign_buffer_multimesh(
+			mesh_data.get("diagonal_buffer", PackedFloat32Array()),
+			diagonal_count,
+			"diagonal_mm_instance",
+			"diagonal"
+		)
+
+
 func _upload_prebuilt_buffers() -> void:
+	if _uses_surface_mesh():
+		_emit_surface_mesh()
 	var terrain_count: int = int(mesh_data.get("terrain_count", 0))
-	if terrain_count > 0:
+	if terrain_count > 0 and not _uses_surface_mesh():
 		_assign_buffer_multimesh(
 			mesh_data.get("terrain_buffer", PackedFloat32Array()),
 			terrain_count,
@@ -204,6 +296,45 @@ static func enqueue_buffer_upload(mm: MultiMesh, buffer: PackedFloat32Array) -> 
 	_pending_buffer_uploads.append({"mm": mm, "buffer": buffer})
 
 
+static func enqueue_surface_mesh_upload(mesh_instance: MeshInstance3D, built: Dictionary) -> void:
+	if mesh_instance == null:
+		return
+	if built.has("terrain_buffer") or built.get("materialized", false) == false:
+		if int(built.get("terrain_count", 0)) <= 0 and int(built.get("triangle_count", 0)) <= 0:
+			return
+		_pending_surface_uploads.append({"mesh_instance": mesh_instance, "cache": built})
+		return
+	if int(built.get("triangle_count", 0)) <= 0:
+		return
+	_pending_surface_uploads.append({"mesh_instance": mesh_instance, "built": built})
+
+
+static func drain_pending_surface_uploads(max_count: int, budget_us: int) -> int:
+	var applied := 0
+	var t0 := Time.get_ticks_usec()
+	while _pending_surface_uploads.size() > 0 and applied < maxi(max_count, 1):
+		if Time.get_ticks_usec() - t0 >= maxi(budget_us, 500):
+			break
+		var item: Dictionary = _pending_surface_uploads.pop_front()
+		var mesh_instance: MeshInstance3D = item.get("mesh_instance") as MeshInstance3D
+		if mesh_instance != null and is_instance_valid(mesh_instance):
+			var mesh: ArrayMesh = mesh_instance.mesh as ArrayMesh
+			if mesh == null:
+				mesh = ArrayMesh.new()
+				mesh_instance.mesh = mesh
+			elif mesh.get_surface_count() > 0:
+				mesh.clear_surfaces()
+			if item.has("cache"):
+				_ChunkSurfaceMeshBuilder.build_array_mesh_into(
+					_TerrainSurfaceCache.to_arrays(item.get("cache", {})),
+					mesh
+				)
+			else:
+				_ChunkSurfaceMeshBuilder.build_array_mesh_into(item.get("built", {}), mesh)
+		applied += 1
+	return applied
+
+
 static func drain_pending_buffer_uploads(max_count: int, budget_us: int) -> int:
 	var applied := 0
 	var t0 := Time.get_ticks_usec()
@@ -221,10 +352,15 @@ static func drain_pending_buffer_uploads(max_count: int, budget_us: int) -> int:
 
 static func clear_pending_buffer_uploads() -> void:
 	_pending_buffer_uploads.clear()
+	_pending_surface_uploads.clear()
 
 
 static func pending_buffer_upload_count() -> int:
 	return _pending_buffer_uploads.size()
+
+
+static func pending_surface_upload_count() -> int:
+	return _pending_surface_uploads.size()
 
 
 func _emit_box_multimesh(quads: Array) -> void:

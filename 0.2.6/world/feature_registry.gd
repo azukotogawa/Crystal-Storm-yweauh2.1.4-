@@ -1,88 +1,110 @@
 class_name FeatureRegistry
 extends RefCounted
+## Compatibility façade over WorldState feature overlay storage.
+## Plant denial caches remain derived local state rebuilt from the authority.
 
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _PlantableRegistry = preload("res://world/plantable_registry.gd")
 const _PlantableDef = preload("res://config/plantable_def.gd")
+const _WorldState = preload("res://world/world_state.gd")
 
 const CHUNK_CELLS := 16
 
 # Central overlay registry for towns, vegetation, and entity spawn points.
 # Terrain managers write here; chunk generation and entity systems read from here.
 
-static var _tile_overrides: Dictionary = {}       # Vector2i -> int (VoxelTypes id)
-static var _feature_cells: Dictionary = {}        # Vector2i -> { kind, data }
-static var _towns: Array[Dictionary] = []
-static var _entity_spawns: Array[Dictionary] = []
-
+## Derived caches (not authority storage).
 static var _plant_keys: Array = []
 static var _plant_keys_dirty: bool = true
 static var _plant_denial_cache: Array = []
 static var _plant_denial_cache_dirty: bool = true
-static var _denial_spatial: Dictionary = {}        # Vector2i chunk -> Array[denial entry]
+static var _denial_spatial: Dictionary = {}  # Vector2i chunk -> Array[denial entry]
 static var _denial_spatial_dirty: bool = true
 
 
-static func reset() -> void:
-	_tile_overrides.clear()
-	_feature_cells.clear()
-	_towns.clear()
-	_entity_spawns.clear()
-	_plant_keys.clear()
+static func _ws():
+	return _WorldState.get_active()
+
+
+static func _invalidate_derived() -> void:
 	_plant_keys_dirty = true
-	_plant_denial_cache.clear()
 	_plant_denial_cache_dirty = true
-	_denial_spatial.clear()
 	_denial_spatial_dirty = true
 
 
+## Call after WorldState.replace_active / restore so derived caches cannot leak across sessions.
+static func on_session_changed() -> void:
+	_plant_keys.clear()
+	_plant_denial_cache.clear()
+	_denial_spatial.clear()
+	_invalidate_derived()
+
+
+static func reset() -> void:
+	_ws().reset_features()
+	_plant_keys.clear()
+	_plant_denial_cache.clear()
+	_denial_spatial.clear()
+	_invalidate_derived()
+
+
 static func set_tile_override(wx: int, wz: int, voxel_id: int) -> void:
-	_tile_overrides[Vector2i(wx, wz)] = voxel_id
+	var ws = _ws()
+	ws.tile_overrides[Vector2i(wx, wz)] = voxel_id
+	ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 
 
 static func clear_tile_override(wx: int, wz: int) -> void:
-	_tile_overrides.erase(Vector2i(wx, wz))
+	var ws = _ws()
+	ws.tile_overrides.erase(Vector2i(wx, wz))
+	ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 
 
 static func clear_feature(wx: int, wz: int) -> void:
+	var ws = _ws()
 	var key := Vector2i(wx, wz)
-	if _feature_cells.has(key) and _feature_cells[key].has("plant_id"):
+	if ws.feature_cells.has(key) and ws.feature_cells[key].has("plant_id"):
 		_mark_plant_removed(key)
-	_feature_cells.erase(key)
+	ws.feature_cells.erase(key)
+	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
 static func get_tile_override(wx: int, wz: int) -> int:
-	return int(_tile_overrides.get(Vector2i(wx, wz), -1))
+	return int(_ws().tile_overrides.get(Vector2i(wx, wz), -1))
 
 
 static func register_feature(wx: int, wz: int, kind: int, data: Dictionary = {}) -> void:
+	var ws = _ws()
 	var key := Vector2i(wx, wz)
-	var had_plant: bool = _feature_cells.has(key) and _feature_cells[key].has("plant_id")
+	var had_plant: bool = ws.feature_cells.has(key) and ws.feature_cells[key].has("plant_id")
 	var entry := data.duplicate()
 	entry["kind"] = kind
-	var old_stage := int(_feature_cells.get(key, {}).get("growth_stage", -1)) if had_plant else -1
-	_feature_cells[key] = entry
+	var old_stage := int(ws.feature_cells.get(key, {}).get("growth_stage", -1)) if had_plant else -1
+	ws.feature_cells[key] = entry
 	if entry.has("plant_id"):
 		_plant_keys_dirty = true
 		_maybe_invalidate_denial(entry, old_stage)
+	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
 ## In-place growth update — avoids duplicate() + denial rebuild every progress tick.
 static func set_plant_growth_state(wx: int, wz: int, stage: int, progress: float) -> void:
+	var ws = _ws()
 	var key := Vector2i(wx, wz)
-	if not _feature_cells.has(key):
+	if not ws.feature_cells.has(key):
 		return
-	var feat: Dictionary = _feature_cells[key]
+	var feat: Dictionary = ws.feature_cells[key]
 	if not feat.has("plant_id"):
 		return
 	var old_stage := int(feat.get("growth_stage", 0))
 	feat["growth_stage"] = stage
 	feat["growth_progress"] = progress
 	_maybe_invalidate_denial(feat, old_stage)
+	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
 static func get_feature(wx: int, wz: int) -> Dictionary:
-	return _feature_cells.get(Vector2i(wx, wz), {})
+	return _ws().feature_cells.get(Vector2i(wx, wz), {})
 
 
 static func get_plant_positions() -> Array:
@@ -97,9 +119,10 @@ static func get_plant_keys() -> Array:
 
 static func _rebuild_plant_keys() -> void:
 	_plant_keys.clear()
-	for key_variant in _feature_cells.keys():
+	var cells: Dictionary = _ws().feature_cells
+	for key_variant in cells.keys():
 		var key: Vector2i = key_variant
-		if _feature_cells[key].has("plant_id"):
+		if cells[key].has("plant_id"):
 			_plant_keys.append(key)
 	_plant_keys_dirty = false
 
@@ -163,9 +186,10 @@ static func _chunk_coord(v: int) -> int:
 static func _rebuild_plant_denial_cache() -> void:
 	_plant_denial_cache.clear()
 	_denial_spatial.clear()
-	for key_variant in _feature_cells.keys():
+	var cells: Dictionary = _ws().feature_cells
+	for key_variant in cells.keys():
 		var key: Vector2i = key_variant
-		var feat: Dictionary = _feature_cells[key]
+		var feat: Dictionary = cells[key]
 		if not feat.has("plant_id"):
 			continue
 		var def = _PlantableRegistry.get_def(StringName(str(feat.plant_id))) as _PlantableDef
@@ -193,27 +217,34 @@ static func _rebuild_plant_denial_cache() -> void:
 
 
 static func register_town(center: Vector2i, radius: int, town_name: String) -> void:
+	var ws = _ws()
 	var town := {
 		"center": center,
 		"radius": radius,
 		"name": town_name,
 	}
-	_towns.append(town)
+	ws.towns.append(town)
+	ws.begin_batch()
 	for dx in range(-radius, radius + 1):
 		for dz in range(-radius, radius + 1):
 			if Vector2(dx, dz).length() > float(radius):
 				continue
 			register_feature(center.x + dx, center.y + dz, _WorldFeatureTypes.FeatureKind.TOWN, town)
+	ws.end_batch()
 
 
 static func get_towns() -> Array[Dictionary]:
-	return _towns
+	var out: Array[Dictionary] = []
+	for t in _ws().towns:
+		out.append(t)
+	return out
 
 
 static func get_ruin_centers() -> Array[Vector2i]:
 	var found: Dictionary = {}
-	for key in _feature_cells.keys():
-		var feat: Dictionary = _feature_cells[key]
+	var cells: Dictionary = _ws().feature_cells
+	for key in cells.keys():
+		var feat: Dictionary = cells[key]
 		if int(feat.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.RUIN:
 			continue
 		var center: Vector2i = _coerce_vec2i(feat.get("center", key), key)
@@ -225,29 +256,34 @@ static func get_ruin_centers() -> Array[Vector2i]:
 
 
 static func register_entity_spawn(wx: int, wz: int, kind: int, animal_kind: int = -1) -> void:
+	var ws = _ws()
 	var entry := {
 		"world_pos": Vector2i(wx, wz),
 		"kind": kind,
 		"animal_kind": animal_kind,
 	}
-	_entity_spawns.append(entry)
+	ws.entity_spawns.append(entry)
 	register_feature(wx, wz, kind, entry)
 
 
 static func get_entity_spawns() -> Array[Dictionary]:
-	return _entity_spawns
+	var out: Array[Dictionary] = []
+	for s in _ws().entity_spawns:
+		out.append(s)
+	return out
 
 
 static func to_dict() -> Dictionary:
 	const _Codec = preload("res://systems/save_codec.gd")
+	var ws = _ws()
 	var tiles := {}
-	for key_variant in _tile_overrides.keys():
+	for key_variant in ws.tile_overrides.keys():
 		var key: Vector2i = key_variant
-		tiles[_Codec.vec2i_key(key)] = int(_tile_overrides[key])
+		tiles[_Codec.vec2i_key(key)] = int(ws.tile_overrides[key])
 	var features := {}
-	for key_variant in _feature_cells.keys():
+	for key_variant in ws.feature_cells.keys():
 		var key: Vector2i = key_variant
-		features[_Codec.vec2i_key(key)] = _Codec.sanitize_feature_value(_feature_cells[key])
+		features[_Codec.vec2i_key(key)] = _Codec.sanitize_feature_value(ws.feature_cells[key])
 	return {
 		"tile_overrides": tiles,
 		"feature_cells": features,
@@ -256,20 +292,25 @@ static func to_dict() -> Dictionary:
 
 static func apply_save_overlay(data: Dictionary) -> void:
 	const _Codec = preload("res://systems/save_codec.gd")
+	var ws = _ws()
+	ws.begin_batch()
 	var tiles: Dictionary = data.get("tile_overrides", {})
 	for key in tiles.keys():
 		var cell := _Codec.vec2i_from_key(str(key))
-		set_tile_override(cell.x, cell.y, int(tiles[key]))
+		ws.tile_overrides[cell] = int(tiles[key])
+		ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 	var features: Dictionary = data.get("feature_cells", {})
 	for key in features.keys():
 		var cell := _Codec.vec2i_from_key(str(key))
 		var restored: Dictionary = _Codec.restore_feature_value(features[key])
 		var kind: int = int(restored.get("kind", _WorldFeatureTypes.FeatureKind.NONE))
 		restored.erase("kind")
-		register_feature(cell.x, cell.y, kind, restored)
-	_plant_keys_dirty = true
-	_plant_denial_cache_dirty = true
-	_denial_spatial_dirty = true
+		var entry := restored.duplicate()
+		entry["kind"] = kind
+		ws.feature_cells[cell] = entry
+		ws.bump(_WorldState.DOMAIN_FEATURE)
+	ws.end_batch()
+	_invalidate_derived()
 
 
 static func _coerce_vec2i(value, fallback: Vector2i) -> Vector2i:
@@ -288,8 +329,13 @@ static func get_spawns_in_chunk(chunk_coord: Vector2i, chunk_size: int = 16) -> 
 	var max_x := min_x + chunk_size
 	var max_z := min_z + chunk_size
 	var found: Array[Dictionary] = []
-	for spawn in _entity_spawns:
-		var pos: Vector2i = spawn.world_pos
+	for spawn_variant in _ws().entity_spawns:
+		if not spawn_variant is Dictionary:
+			continue
+		var spawn: Dictionary = spawn_variant
+		# Coerce world_pos after JSON load (may still be Array if codec path skipped).
+		var pos: Vector2i = _coerce_vec2i(spawn.get("world_pos", Vector2i.ZERO), Vector2i.ZERO)
+		spawn["world_pos"] = pos
 		if pos.x >= min_x and pos.x < max_x and pos.y >= min_z and pos.y < max_z:
 			found.append(spawn)
 	return found

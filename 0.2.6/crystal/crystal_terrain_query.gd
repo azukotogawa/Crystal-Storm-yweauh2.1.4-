@@ -36,6 +36,7 @@ func begin_sim_tick(tick_id: int) -> void:
 
 
 func get_terrain_height(pos: Vector2i) -> float:
+	_inc_profiler_frame("terrain_queries")
 	if _height_cache.has(pos):
 		return _height_cache[pos]
 	var h: float
@@ -56,6 +57,7 @@ func get_terrain_height(pos: Vector2i) -> float:
 
 
 func get_tile(pos: Vector2i) -> int:
+	_inc_profiler_frame("terrain_queries")
 	if world == null:
 		return VoxelTypes.AIR
 	if _tile_cache.has(pos):
@@ -140,3 +142,12 @@ func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
 
 func _denial_mult_at(pos: Vector2i) -> float:
 	return _FeatureRegistry.get_denial_mult_at(pos.x, pos.y, sim_config.denial_stack_diminish)
+
+
+func _inc_profiler_frame(counter: String) -> void:
+	var tree := Engine.get_main_loop()
+	if tree == null or not (tree is SceneTree):
+		return
+	var profiler: Node = (tree as SceneTree).root.get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("inc_frame"):
+		profiler.inc_frame(counter)

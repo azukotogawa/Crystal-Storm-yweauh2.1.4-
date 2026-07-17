@@ -3,12 +3,15 @@ extends Node3D
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkMeshBufferBuilder = preload("res://chunks/chunk_mesh_buffer_builder.gd")
+const _ChunkPipeline = preload("res://chunks/chunk_pipeline.gd")
 const _ChunkRebuildTelemetry = preload("res://systems/chunk_rebuild_telemetry.gd")
 const _ChunkStreamingTelemetry = preload("res://systems/chunk_streaming_telemetry.gd")
 const _ChunkDataPool = preload("res://helpers/chunk_data_pool.gd")
 const _ChunkStreamLifecycle = preload("res://helpers/chunk_stream_lifecycle.gd")
 const _ChunkStreamScheduler = preload("res://helpers/chunk_stream_scheduler.gd")
 const _TerrainDirtyScope = preload("res://helpers/terrain_dirty_scope.gd")
+const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
+const _MicroTerrainMeshCompositor = preload("res://helpers/micro_terrain_mesh_compositor.gd")
 
 signal chunk_ready(coord: Vector2i, data: ChunkData)
 signal chunk_unloaded(coord: Vector2i)
@@ -24,6 +27,8 @@ var _chunk_tasks := {}  # coord -> WorkerThreadPool task id for async gen
 var _chunk_gen_tokens := {}  # coord -> monotonic token; stale worker results are dropped
 var _mesh_completion_queue: Array = []
 var _shutting_down: bool = false
+## When true, streaming and stream-driven loads are frozen (transactional save load).
+var stream_paused: bool = false
 
 # Optimization: only update when player moves to new chunk
 var _last_chunk_key: Vector2i = Vector2i(-99999, -99999)
@@ -42,6 +47,7 @@ var ramp_placement_chance: int = 28
 var ramp_max_surface_height: float = 88.0
 var ramp_mountain_cutoff_height: float = 72.0
 var prebuild_chunk_buffers: bool = true
+var terrain_surface_mesh: bool = true
 var chunk_upload_budget_us: int = 3500
 var streaming_budget_us: int = 2500
 var max_stream_starts_per_frame: int = 1
@@ -57,6 +63,12 @@ var _patch_pending: Dictionary = {}  # coord -> { "local": Array, "full": bool }
 var _last_patch_scope: Dictionary = {}
 var _telemetry_trigger: String = "stream"
 var _telemetry_meta: Dictionary = {}
+## When false, micro-flagged cells are meshed (micro column patch path only).
+var _mesh_defer_micro_columns: bool = true
+## Shared worker scratch removed: greedy visit grids and micro-skip sets are job-local
+## (ChunkPipeline.alloc_greedy_visited / ChunkData._mesh_job_micro_skip).
+## Process-frame rebuild flush (avoids call_deferred self-requeue flooding the message queue).
+var _rebuild_flush_needed: bool = false
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
@@ -197,6 +209,9 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 		tele_meta["is_regen"] = chunks.has(coord)
 		tele_meta["chunk_data_alloc_path"] = alloc_path
 		_ChunkRebuildTelemetry.record_enqueue(coord, token, _telemetry_trigger, tele_meta)
+	var _gen_profiler = get_node_or_null("/root/PerfProfiler")
+	if _gen_profiler and _gen_profiler.has_method("inc_rate"):
+		_gen_profiler.inc_rate("chunks_generated", 1)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.begin_lifecycle(coord, token, _telemetry_trigger, {
 			"alloc_path": alloc_path,
@@ -209,7 +224,7 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 
 	var task_id := WorkerThreadPool.add_task(
 		Callable(self, "_chunk_mesh_task").bind(
-			coord, data, token, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), []
+			coord, data, token, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), [], {}
 		),
 		high_priority
 	)
@@ -239,13 +254,12 @@ func _enqueue_chunk_mesh_work(
 		return
 	if pending.has(coord) or _chunk_tasks.has(coord):
 		_merge_patch_pending(coord, dirty_local, full_rebuild)
-		if is_inside_tree() and not has_meta("_rebuild_flush_scheduled"):
-			set_meta("_rebuild_flush_scheduled", true)
-			call_deferred("_flush_rebuild_pending")
+		_schedule_rebuild_flush()
 		return
 
 	var data: ChunkData = null
 	var keep_quads: Array = []
+	var prior_surface_cache: Dictionary = {}
 	var patch_rect := Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE)
 	var is_regen := chunks.has(coord)
 
@@ -271,6 +285,10 @@ func _enqueue_chunk_mesh_work(
 				var q: Dictionary = q_variant
 				if not _quad_intersects_rect(q, patch_rect):
 					keep_quads.append(q)
+			if terrain_surface_mesh:
+				prior_surface_cache = _TerrainSurfaceCache.duplicate_cache(
+					_TerrainSurfaceCache.cache_from_payload(view.mesh_data)
+				)
 
 	pending[coord] = true
 	var token: int = int(_chunk_gen_tokens.get(coord, 0)) + 1
@@ -287,6 +305,15 @@ func _enqueue_chunk_mesh_work(
 		tele_meta["mesh_patch_size"] = _TerrainDirtyScope.patch_cells_area(patch_rect)
 		tele_meta["chunk_data_alloc_path"] = "ChunkData.new" if force_new_data or not is_regen else "reuse"
 		_ChunkRebuildTelemetry.record_enqueue(coord, token, _telemetry_trigger, tele_meta)
+	var _mesh_profiler = get_node_or_null("/root/PerfProfiler")
+	if _mesh_profiler:
+		if _mesh_profiler.has_method("inc_rate"):
+			if is_regen:
+				_mesh_profiler.inc_rate("chunks_rebuilt", 1)
+			else:
+				_mesh_profiler.inc_rate("chunks_generated", 1)
+		if _mesh_profiler.has_method("set_gauge"):
+			_mesh_profiler.set_gauge("dirty_regions", float(dirty_local.size()))
 	if _ChunkStreamingTelemetry.is_enabled():
 		var alloc_path := "ChunkData.new" if force_new_data or not is_regen else "reuse"
 		_ChunkStreamingTelemetry.begin_lifecycle(coord, token, _telemetry_trigger, {
@@ -301,7 +328,7 @@ func _enqueue_chunk_mesh_work(
 
 	var task_id := WorkerThreadPool.add_task(
 		Callable(self, "_chunk_mesh_task").bind(
-			coord, data, token, full_rebuild, dirty_local, patch_rect, keep_quads
+			coord, data, token, full_rebuild, dirty_local, patch_rect, keep_quads, prior_surface_cache
 		),
 		high_priority
 	)
@@ -314,16 +341,35 @@ func _enqueue_chunk_mesh_work(
 		})
 
 
+func _surface_y_at(data: ChunkData, x: int, z: int) -> float:
+	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
+		return float(data.surface_map[x][z])
+	return data.get_surface_y(x, z)
+
+
+func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
+	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
+		return int(data.tile_map[x][z])
+	return data.get_tile_type(x, z)
+
+
 func _build_mesh(data: ChunkData) -> Dictionary:
 	return _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
 
 
 func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false) -> Dictionary:
+	if not data._maps_resident:
+		data.ensure_column_maps()
 	var out_quads := []
 	var x0 := rect.position.x
 	var z0 := rect.position.y
 	var x1 := rect.position.x + rect.size.x
 	var z1 := rect.position.y + rect.size.y
+
+	# Job-local micro skip on this ChunkData (exclusive to the in-flight worker for this data).
+	data._mesh_job_micro_skip = {}
+	if _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
+		data._mesh_job_micro_skip = _MicroTerrainMeshCompositor.build_skip_set(data, rect)
 
 	if not full_chunk:
 		_clear_ramp_map_in_rect(data, rect)
@@ -349,6 +395,10 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads, x0, z0, x1, z1)
 	if MESH_CAVES and full_chunk:
 		_emit_cave_faces(data, out_quads)
+	var micro_skip: Dictionary = data._mesh_job_micro_skip
+	data._mesh_job_micro_skip = {}
+	if not micro_skip.is_empty():
+		_MicroTerrainMeshCompositor.compose(data, rect, out_quads, self, micro_skip)
 
 	return {
 		"quads": out_quads,
@@ -356,9 +406,42 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	}
 
 func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int) -> bool:
+	if data != null and not data._mesh_job_micro_skip.is_empty() \
+			and data._mesh_job_micro_skip.has(Vector2i(x, z)):
+		return true
 	if data.has_ramp(x, z):
 		return true
 	return _is_ramp_approach_from_landing(data, x, z)
+
+
+func _build_micro_mesh_region(data: ChunkData, rect: Rect2i) -> Dictionary:
+	var out_quads: Array = []
+	var skip_set: Dictionary = _MicroTerrainMeshCompositor.build_skip_set(data, rect)
+	var cells_meshed: int = _MicroTerrainMeshCompositor.compose(data, rect, out_quads, self, skip_set)
+	return {"quads": out_quads, "count": out_quads.size(), "cells_meshed": cells_meshed}
+
+
+func _emit_single_surface_top_quad(data: ChunkData, out_quads: Array, x: int, z: int) -> void:
+	if _skips_greedy_surface_cell(data, x, z):
+		return
+	var sy: float = _surface_y_at(data, x, z)
+	if sy >= float(ChunkData.HEIGHT):
+		return
+	var vox: int = _tile_type_at(data, x, z)
+	if vox == VoxelTypes.AIR:
+		return
+	out_quads.append({
+		"x": x,
+		"y": sy,
+		"z": z,
+		"dim_x": 1.0,
+		"dim_y": 1.0,
+		"dim_z": 1.0,
+		"uv_w": 1.0,
+		"uv_h": 1.0,
+		"type": vox,
+		"face_code": FACE_TOP,
+	})
 
 
 func _is_ramp_approach_from_landing(data: ChunkData, x: int, z: int) -> bool:
@@ -396,18 +479,18 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 			for z in range(ChunkData.SIZE):
 				if visited[x][z] or _skips_greedy_surface_cell(data, x, z):
 					continue
-				var sy: float = data.get_surface_y(x, z)
+				var sy: float = _surface_y_at(data, x, z)
 				if sy >= float(ChunkData.HEIGHT):
 					continue
-				var vox := data.get_tile_type(x, z)
+				var vox := _tile_type_at(data, x, z)
 				if vox == VoxelTypes.AIR:
 					continue
 
 				var dx := 1
 				while x + dx < ChunkData.SIZE and not visited[x + dx][z] \
 						and not _skips_greedy_surface_cell(data, x + dx, z) \
-						and is_equal_approx(data.get_surface_y(x + dx, z), sy) \
-						and data.get_tile_type(x + dx, z) == vox:
+						and is_equal_approx(_surface_y_at(data, x + dx, z), sy) \
+						and _tile_type_at(data, x + dx, z) == vox:
 					dx += 1
 
 				var dz := 1
@@ -417,8 +500,8 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 						var cx := x + xx
 						var cz := z + dz
 						if visited[cx][cz] or _skips_greedy_surface_cell(data, cx, cz) \
-								or not is_equal_approx(data.get_surface_y(cx, cz), sy) \
-								or data.get_tile_type(cx, cz) != vox:
+								or not is_equal_approx(_surface_y_at(data, cx, cz), sy) \
+								or _tile_type_at(data, cx, cz) != vox:
 							can = false
 							break
 					if not can:
@@ -490,6 +573,8 @@ func apply_performance_config(cfg) -> void:
 	MESH_CAVES = bool(cfg.mesh_caves)
 	if "prebuild_chunk_buffers" in cfg:
 		prebuild_chunk_buffers = bool(cfg.prebuild_chunk_buffers)
+	if "terrain_surface_mesh" in cfg:
+		terrain_surface_mesh = bool(cfg.terrain_surface_mesh)
 	if "chunk_upload_budget_us" in cfg:
 		chunk_upload_budget_us = maxi(int(cfg.chunk_upload_budget_us), 500)
 	if "streaming_budget_us" in cfg:
@@ -556,7 +641,7 @@ func _step_in_dirs(data: ChunkData, x: int, z: int, cell_h: float, world_x: int,
 
 
 func _pick_corner_dirs(data: ChunkData, x: int, z: int, planned: Dictionary) -> Array:
-	var low_h: float = data.get_surface_y(x, z)
+	var low_h: float = _surface_y_at(data, x, z)
 	var world_x: int = data.position.x * ChunkData.SIZE + x
 	var world_z: int = data.position.y * ChunkData.SIZE + z
 	var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
@@ -608,16 +693,16 @@ func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int,
 
 func _is_concave_corner_cell(data: ChunkData, x: int, z: int, fill_h: float) -> bool:
 	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
-		if data.get_tile_type(x, z) == VoxelTypes.AIR:
+		if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 			return true
-		return not is_equal_approx(data.get_surface_y(x, z), fill_h)
+		return not is_equal_approx(_surface_y_at(data, x, z), fill_h)
 	var sh: float = _sample_height(data, x, z)
 	return sh < 0.0 or not is_equal_approx(sh, fill_h)
 
 
-func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
+func _sample_tile_type(data: ChunkData, x: int, z: int) -> int:
 	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
-		return data.get_tile_type(x, z)
+		return _tile_type_at(data, x, z)
 	# Worker path: never touch live world/registries for halo neighbors.
 	return VoxelTypes.AIR
 
@@ -685,9 +770,9 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		var h: float = entry["h"]
 		var vox: int = entry["vox"]
 		data.set_concave_prism(x, z, leg_x, leg_z, h)
-		var gap_h: float = data.get_surface_y(x, z)
+		var gap_h: float = _surface_y_at(data, x, z)
 		var layer: float = _WorldSettings.get_active().layer_height()
-		var gap_tile: int = data.get_tile_type(x, z)
+		var gap_tile: int = _tile_type_at(data, x, z)
 		if gap_tile == VoxelTypes.AIR:
 			gap_tile = vox
 		_append_voxel_face(out_quads, float(x), gap_h + layer, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, gap_tile, FACE_TOP)
@@ -728,9 +813,9 @@ func _find_corner_low_cells(data: ChunkData) -> Dictionary:
 	var result: Dictionary = {}
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
-			if _has_player_build_at(data, x, z) or data.get_tile_type(x, z) == VoxelTypes.AIR:
+			if _has_player_build_at(data, x, z) or _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var low_h: float = data.get_surface_y(x, z)
+			var low_h: float = _surface_y_at(data, x, z)
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
 			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
@@ -755,9 +840,9 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 				continue
 			if _has_player_build_at(data, x, z):
 				continue
-			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var cell_h: float = data.get_surface_y(x, z)
+			var cell_h: float = _surface_y_at(data, x, z)
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
 			var step_ins: Array = _step_in_dirs(data, x, z, cell_h, world_x, world_z)
@@ -771,8 +856,8 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 				continue
 			if _has_player_build_at(data, x, z):
 				continue
-			var low_h: float = data.get_surface_y(x, z)
-			var vox := data.get_tile_type(x, z)
+			var low_h: float = _surface_y_at(data, x, z)
+			var vox := _tile_type_at(data, x, z)
 			if vox == VoxelTypes.AIR:
 				continue
 
@@ -801,8 +886,8 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			var cell := Vector2i(x, z)
 			if concave_cells.has(cell) or _has_player_build_at(data, x, z):
 				continue
-			var low_h: float = data.get_surface_y(x, z)
-			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+			var low_h: float = _surface_y_at(data, x, z)
+			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
 			var corner_dirs: Array = corner_low_cells.get(cell, _pick_corner_dirs(data, x, z, planned))
 			if corner_dirs.size() != 2:
@@ -811,7 +896,7 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 				continue
 			var d_a: Vector2i = corner_dirs[0]
 			var d_b: Vector2i = corner_dirs[1]
-			var vox_corner: int = data.get_tile_type(x, z)
+			var vox_corner: int = _tile_type_at(data, x, z)
 			data.set_ramp_corner(x, z, d_a, d_b)
 			_append_ramp_quad(out_quads, x, z, low_h, vox_corner, {
 				"dir": d_a,
@@ -866,9 +951,9 @@ func _emit_ramps_in_rect(
 	var corner_low_cells: Dictionary = {}
 	for x in range(rect.position.x, rect.position.x + rect.size.x):
 		for z in range(rect.position.y, rect.position.y + rect.size.y):
-			if _has_player_build_at(data, x, z) or data.get_tile_type(x, z) == VoxelTypes.AIR:
+			if _has_player_build_at(data, x, z) or _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var low_h: float = data.get_surface_y(x, z)
+			var low_h: float = _surface_y_at(data, x, z)
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
 			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
@@ -885,9 +970,9 @@ func _emit_ramps_in_rect(
 				continue
 			if _has_player_build_at(data, x, z):
 				continue
-			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var cell_h: float = data.get_surface_y(x, z)
+			var cell_h: float = _surface_y_at(data, x, z)
 			var world_x: int = data.position.x * ChunkData.SIZE + x
 			var world_z: int = data.position.y * ChunkData.SIZE + z
 			var step_ins: Array = _step_in_dirs(data, x, z, cell_h, world_x, world_z)
@@ -899,8 +984,8 @@ func _emit_ramps_in_rect(
 			var cell := Vector2i(x, z)
 			if concave_cells.has(cell) or _has_player_build_at(data, x, z):
 				continue
-			var low_h: float = data.get_surface_y(x, z)
-			var vox := data.get_tile_type(x, z)
+			var low_h: float = _surface_y_at(data, x, z)
+			var vox := _tile_type_at(data, x, z)
 			if vox == VoxelTypes.AIR or not planned.has(cell):
 				continue
 			var corner_dirs: Array = _pick_corner_dirs(data, x, z, planned)
@@ -922,8 +1007,8 @@ func _emit_ramps_in_rect(
 			var cell := Vector2i(x, z)
 			if concave_cells.has(cell) or _has_player_build_at(data, x, z):
 				continue
-			var low_h: float = data.get_surface_y(x, z)
-			if data.get_tile_type(x, z) == VoxelTypes.AIR:
+			var low_h: float = _surface_y_at(data, x, z)
+			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
 			var corner_dirs: Array = corner_low_cells.get(cell, _pick_corner_dirs(data, x, z, planned))
 			if corner_dirs.size() != 2:
@@ -932,7 +1017,7 @@ func _emit_ramps_in_rect(
 				continue
 			var d_a: Vector2i = corner_dirs[0]
 			var d_b: Vector2i = corner_dirs[1]
-			var vox_corner: int = data.get_tile_type(x, z)
+			var vox_corner: int = _tile_type_at(data, x, z)
 			data.set_ramp_corner(x, z, d_a, d_b)
 			_append_ramp_quad(out_quads, x, z, low_h, vox_corner, {
 				"dir": d_a,
@@ -960,12 +1045,12 @@ func _emit_dug_strata_region(
 			var delta: float = data.get_worker_height_delta(x, z)
 			if delta >= -layer * 0.15:
 				continue
-			var cur_h: float = data.get_surface_y(x, z)
+			var cur_h: float = _surface_y_at(data, x, z)
 			var wx: int = data.position.x * ChunkData.SIZE + x
 			var wz: int = data.position.y * ChunkData.SIZE + z
 			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
 			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
-			var top_tile: int = data.get_tile_type(x, z)
+			var top_tile: int = _tile_type_at(data, x, z)
 			if top_tile == VoxelTypes.AIR:
 				continue
 			for step in range(1, depth_layers + 1):
@@ -1009,14 +1094,14 @@ func _emit_build_strata_region(
 			var delta: float = data.get_worker_height_delta(x, z)
 			if delta <= layer * 0.15:
 				continue
-			var cur_h: float = data.get_surface_y(x, z)
+			var cur_h: float = _surface_y_at(data, x, z)
 			var wx: int = data.position.x * ChunkData.SIZE + x
 			var wz: int = data.position.y * ChunkData.SIZE + z
 			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
 			var layers_built: int = maxi(1, int(round(delta / layer)))
 			var tile: int = data.get_worker_build_tile(x, z)
 			if tile < 0:
-				tile = data.get_tile_type(x, z)
+				tile = _tile_type_at(data, x, z)
 			if tile == VoxelTypes.AIR:
 				continue
 			for step in range(1, layers_built):
@@ -1041,30 +1126,28 @@ func _greedy_mesh_plane_region(
 	z1: int
 ) -> void:
 	if normal_dir.y != 0:
-		var visited := []
-		visited.resize(ChunkData.SIZE)
-		for i in ChunkData.SIZE:
-			visited[i] = []
-			visited[i].resize(ChunkData.SIZE)
-			for j in ChunkData.SIZE:
-				visited[i][j] = false
+		if normal_dir.y > 0 and x1 - x0 == 1 and z1 - z0 == 1:
+			_emit_single_surface_top_quad(data, out_quads, x0, z0)
+			return
+		# Job-local visit grid — never reuse manager-owned shared scratch across workers.
+		var visited: Array = _ChunkPipeline.alloc_greedy_visited(ChunkData.SIZE)
 
 		for x in range(x0, x1):
 			for z in range(z0, z1):
 				if visited[x][z] or _skips_greedy_surface_cell(data, x, z):
 					continue
-				var sy: float = data.get_surface_y(x, z)
+				var sy: float = _surface_y_at(data, x, z)
 				if sy >= float(ChunkData.HEIGHT):
 					continue
-				var vox := data.get_tile_type(x, z)
+				var vox := _tile_type_at(data, x, z)
 				if vox == VoxelTypes.AIR:
 					continue
 
 				var dx := 1
 				while x + dx < x1 and not visited[x + dx][z] \
 						and not _skips_greedy_surface_cell(data, x + dx, z) \
-						and is_equal_approx(data.get_surface_y(x + dx, z), sy) \
-						and data.get_tile_type(x + dx, z) == vox:
+						and is_equal_approx(_surface_y_at(data, x + dx, z), sy) \
+						and _tile_type_at(data, x + dx, z) == vox:
 					dx += 1
 
 				var dz := 1
@@ -1074,8 +1157,8 @@ func _greedy_mesh_plane_region(
 						var cx := x + xx
 						var cz := z + dz
 						if visited[cx][cz] or _skips_greedy_surface_cell(data, cx, cz) \
-								or not is_equal_approx(data.get_surface_y(cx, cz), sy) \
-								or data.get_tile_type(cx, cz) != vox:
+								or not is_equal_approx(_surface_y_at(data, cx, cz), sy) \
+								or _tile_type_at(data, cx, cz) != vox:
 							can = false
 							break
 					if not can:
@@ -1128,8 +1211,8 @@ func _emit_surface_side_walls_region(
 				var curr_h: float = 0.0
 				var curr_t = 0
 				if z < z1 and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = data.get_surface_y(x, z)
-					curr_t = data.get_tile_type(x, z)
+					curr_h = _surface_y_at(data, x, z)
+					curr_t = _tile_type_at(data, x, z)
 					var nx = x + dx
 					var nz = z
 					var neighbor_h: float = _sample_height(data, nx, nz)
@@ -1169,8 +1252,8 @@ func _emit_surface_side_walls_region(
 				var curr_h: float = 0.0
 				var curr_t = 0
 				if x < x1 and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = data.get_surface_y(x, z)
-					curr_t = data.get_tile_type(x, z)
+					curr_h = _surface_y_at(data, x, z)
+					curr_t = _tile_type_at(data, x, z)
 					var nx = x
 					var nz = z + dz
 					var neighbor_h: float = _sample_height(data, nx, nz)
@@ -1208,7 +1291,7 @@ func _clear_ramp_approach_block(data: ChunkData, landing_x: int, landing_z: int,
 	var az: int = landing_z + toward_low.y
 	if ax < 0 or ax >= ChunkData.SIZE or az < 0 or az >= ChunkData.SIZE:
 		return
-	if data.get_tile_type(ax, az) == VoxelTypes.AIR:
+	if _tile_type_at(data, ax, az) == VoxelTypes.AIR:
 		return
 	if data.has_ramp(ax, az):
 		return
@@ -1239,14 +1322,14 @@ func _emit_build_strata(data: ChunkData, out_quads: Array) -> void:
 			var delta: float = data.get_worker_height_delta(x, z)
 			if delta <= layer * 0.15:
 				continue
-			var cur_h: float = data.get_surface_y(x, z)
+			var cur_h: float = _surface_y_at(data, x, z)
 			var wx: int = data.position.x * ChunkData.SIZE + x
 			var wz: int = data.position.y * ChunkData.SIZE + z
 			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
 			var layers_built: int = maxi(1, int(round(delta / layer)))
 			var tile: int = data.get_worker_build_tile(x, z)
 			if tile < 0:
-				tile = data.get_tile_type(x, z)
+				tile = _tile_type_at(data, x, z)
 			if tile == VoxelTypes.AIR:
 				continue
 			for step in range(1, layers_built):
@@ -1273,12 +1356,12 @@ func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
 			var delta: float = data.get_worker_height_delta(x, z)
 			if delta >= -layer * 0.15:
 				continue
-			var cur_h: float = data.get_surface_y(x, z)
+			var cur_h: float = _surface_y_at(data, x, z)
 			var wx: int = data.position.x * ChunkData.SIZE + x
 			var wz: int = data.position.y * ChunkData.SIZE + z
 			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
 			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
-			var top_tile: int = data.get_tile_type(x, z)
+			var top_tile: int = _tile_type_at(data, x, z)
 			if top_tile == VoxelTypes.AIR:
 				continue
 			for step in range(1, depth_layers + 1):
@@ -1334,6 +1417,8 @@ func _append_voxel_face(
 
 
 func _process(_delta):
+	if _rebuild_flush_needed:
+		_flush_rebuild_pending()
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	var frame_us := 0
 	var worker_us := 0
@@ -1370,6 +1455,8 @@ func _drain_stream_pipeline() -> void:
 	if _shutting_down:
 		_stream_load_pending.clear()
 		_stream_unload_pending.clear()
+		return
+	if stream_paused:
 		return
 	var budget_us := maxi(streaming_budget_us, 500)
 	var t0 := Time.get_ticks_usec()
@@ -1475,17 +1562,36 @@ func _drain_deferred_mesh_buffers() -> void:
 	if _shutting_down:
 		ChunkView.clear_pending_buffer_uploads()
 		return
-	if ChunkView.pending_buffer_upload_count() <= 0:
+	if (
+		ChunkView.pending_surface_upload_count() <= 0
+		and ChunkView.pending_buffer_upload_count() <= 0
+	):
 		return
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("chunk_upload")
-	ChunkView.drain_pending_buffer_uploads(1, chunk_upload_budget_us)
+	var budget_us := chunk_upload_budget_us
+	var t0 := Time.get_ticks_usec()
+	if ChunkView.pending_surface_upload_count() > 0:
+		ChunkView.drain_pending_surface_uploads(1, budget_us)
+	var remaining_us := maxi(budget_us - (Time.get_ticks_usec() - t0), 500)
+	if ChunkView.pending_buffer_upload_count() > 0:
+		ChunkView.drain_pending_buffer_uploads(1, remaining_us)
 	if profiler and profiler.has_method("end"):
 		profiler.end("chunk_upload")
 
 
+func set_stream_paused(paused: bool) -> void:
+	stream_paused = paused
+
+
+func is_stream_paused() -> bool:
+	return stream_paused
+
+
 func update_stream(cx: int, cz: int) -> void:
+	if stream_paused or _shutting_down:
+		return
 	var player_chunk := Vector2i(cx, cz)
 	_update_player_velocity_hint(player_chunk)
 	var camera_hint := _camera_forward_chunk_hint()
@@ -1556,7 +1662,7 @@ func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
 	if halo_h > -9000.0:
 		return halo_h
 	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
-		return data.get_surface_y(lx, lz)
+		return _surface_y_at(data, lx, lz)
 	# Worker path: rely on halo snapshot only (see capture_worker_snapshot).
 	return 0.0
 
@@ -1588,8 +1694,8 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var curr_h: float = 0.0
 				var curr_t = 0
 				if z < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = data.get_surface_y(x, z)
-					curr_t = data.get_tile_type(x, z)
+					curr_h = _surface_y_at(data, x, z)
+					curr_t = _tile_type_at(data, x, z)
 					var nx = x + dx
 					var nz = z
 					var neighbor_h: float = _sample_height(data, nx, nz)
@@ -1629,8 +1735,8 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var curr_h: float = 0.0
 				var curr_t = 0
 				if x < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = data.get_surface_y(x, z)
-					curr_t = data.get_tile_type(x, z)
+					curr_h = _surface_y_at(data, x, z)
+					curr_t = _tile_type_at(data, x, z)
 					var nx = x
 					var nz = z + dz
 					var neighbor_h: float = _sample_height(data, nx, nz)
@@ -1665,6 +1771,7 @@ func _generate_chunk(data: ChunkData) -> void:
 	if data == null or not data._has_worker_snapshot or data.world == null:
 		return
 	data._compute_column_maps(true)
+	data.derive_micro_from_terrain_edits()
 					
 func _emit_cave_faces(data: ChunkData, out_quads: Array) -> void:
 	if data.world == null:
@@ -1673,7 +1780,7 @@ func _emit_cave_faces(data: ChunkData, out_quads: Array) -> void:
 		for lz in range(ChunkData.SIZE):
 			var wx: float = float(data.position.x * ChunkData.SIZE + lx)
 			var wz: float = float(data.position.y * ChunkData.SIZE + lz)
-			var surf: float = data.get_surface_y(lx, lz)
+			var surf: float = _surface_y_at(data, lx, lz)
 			var y_min: int = maxi(0, int(surf) - CAVE_MESH_DEPTH)
 			var y_max: int = int(surf) - 1
 			if y_max < y_min:
@@ -1863,10 +1970,7 @@ func _push_mesh_completion(item: Dictionary) -> void:
 func _schedule_patch_flush_if_needed() -> void:
 	if _patch_pending.is_empty() or not is_inside_tree():
 		return
-	if has_meta("_rebuild_flush_scheduled"):
-		return
-	set_meta("_rebuild_flush_scheduled", true)
-	call_deferred("_flush_rebuild_pending")
+	_schedule_rebuild_flush()
 
 
 func _record_apply_telemetry(coord: Vector2i, token: int, apply_t0: int, mesh_nodes_recreated: bool) -> void:
@@ -1893,66 +1997,61 @@ func _chunk_mesh_task(
 	full_rebuild: bool,
 	dirty_local: Array,
 	patch_rect: Rect2i,
-	keep_quads: Array
+	keep_quads: Array,
+	prior_surface_cache: Dictionary = {}
 ) -> void:
 	if data == null or not data._has_worker_snapshot:
+		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token, {})
+		return
+	# Rebind world if cleared (e.g. prior job edge cases) before worker stages.
+	if data.world == null and world != null:
+		data.world = world
+	if data.world == null:
 		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token, {})
 		return
 	if _ChunkRebuildTelemetry.is_enabled():
 		_ChunkRebuildTelemetry.record_worker_start(coord, token)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.transition(coord, token, _ChunkStreamingTelemetry.STATE_WORKER_ACTIVE)
-	var t0 := Time.get_ticks_usec()
-	var examined := 0
-	if full_rebuild:
-		_generate_chunk(data)
-		examined = ChunkData.SIZE * ChunkData.SIZE
-	else:
-		examined = data.update_dirty_column_maps(dirty_local)
-	var column_us := Time.get_ticks_usec() - t0
+
+	# Explicit pipeline stages (column → mesh → buffer); no manager shared scratch.
+	var job: Dictionary = _ChunkPipeline.run_worker_job(
+		self,
+		data,
+		full_rebuild,
+		dirty_local,
+		patch_rect,
+		keep_quads,
+		prior_surface_cache,
+		prebuild_chunk_buffers,
+		terrain_surface_mesh
+	)
+	if not bool(job.get("ok", false)):
+		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token, {})
+		return
+
+	var examined: int = int(job.get("examined", 0))
+	var column_us: int = int(job.get("column_us", 0))
+	var build_mesh_us: int = int(job.get("build_mesh_us", 0))
+	var mesh_us: int = int(job.get("mesh_us", 0))
+	var buffer_us: int = int(job.get("buffer_us", 0))
+	var payload: Dictionary = job.get("payload", {})
+	var merged_quads: Array = job.get("merged_quads", [])
+
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.transition(coord, token, _ChunkStreamingTelemetry.STATE_HEIGHT_GENERATED, {
 			"column_map_time_ms": float(column_us) / 1000.0,
 			"full_rebuild": full_rebuild,
 		})
-	var t_mesh := Time.get_ticks_usec()
-	var patch_result := (
-		_build_mesh(data)
-		if full_rebuild
-		else _build_mesh_region(data, patch_rect, false)
-	)
-	var patch_quads: Array = patch_result.get("quads", [])
-	var merged_quads: Array = keep_quads.duplicate(true)
-	merged_quads.append_array(patch_quads)
-	var quads := {
-		"quads": merged_quads,
-		"count": merged_quads.size(),
-	}
-	var build_mesh_us := Time.get_ticks_usec() - t_mesh
-	var mesh_us := column_us + build_mesh_us
-	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.transition(coord, token, _ChunkStreamingTelemetry.STATE_MESH_GENERATED, {
 			"mesh_generation_time_ms": float(mesh_us) / 1000.0,
 			"build_mesh_time_ms": float(build_mesh_us) / 1000.0,
 		})
-	var buffer_us := 0
-	var duplicate_us := 0
-	var quads_before_dup: Array = quads.get("quads", [])
-	var t_dup := Time.get_ticks_usec()
-	var payload: Dictionary = quads.duplicate(true)
-	duplicate_us = Time.get_ticks_usec() - t_dup
-	var payload_quads: Array = payload.get("quads", [])
-	var payload_duplicated: bool = not is_same(payload_quads, quads_before_dup)
-	var buffer_allocated := false
-	if prebuild_chunk_buffers:
-		var t_buf := Time.get_ticks_usec()
-		payload = _ChunkMeshBufferBuilder.build_mesh_payload(data, quads.get("quads", []))
-		buffer_us = Time.get_ticks_usec() - t_buf
-		buffer_allocated = payload.has("terrain_buffer")
+
 	var worker_telemetry: Dictionary = {}
 	if _ChunkRebuildTelemetry.is_enabled():
 		var geo: Dictionary = _ChunkRebuildTelemetry.collect_geometry_stats(
-			data, quads.get("quads", []), payload, examined
+			data, merged_quads, payload, examined
 		)
 		worker_telemetry = {
 			"voxels_examined": geo.get("voxels_examined", examined),
@@ -1962,21 +2061,34 @@ func _chunk_mesh_task(
 			"greedy_merge_ratio": geo.get("greedy_merge_ratio", 0.0),
 			"triangles_generated": geo.get("triangles_generated", 0),
 			"mesh_generation_time_ms": float(mesh_us) / 1000.0,
-			"serialization_time_ms": float(duplicate_us + buffer_us) / 1000.0,
+			"serialization_time_ms": float(int(job.get("duplicate_us", 0)) + buffer_us) / 1000.0,
 			"column_map_time_ms": float(column_us) / 1000.0,
 			"build_mesh_time_ms": float(build_mesh_us) / 1000.0,
-			"payload_duplicated": payload_duplicated,
-			"buffer_allocated": buffer_allocated,
+			"payload_duplicated": bool(job.get("payload_duplicated", false)),
+			"buffer_allocated": bool(job.get("buffer_allocated", false)),
 			"prebuilt_buffers": prebuild_chunk_buffers,
 			"incremental": not full_rebuild,
 			"dirty_columns": dirty_local.size(),
 			"rebuilt_columns": examined,
 			"mesh_patch_size": _TerrainDirtyScope.patch_cells_area(patch_rect),
+			"pipeline_stages": job.get("stages", []),
 		}
-	data.world = null
+	# Do not null data.world here: regen reuses view.chunk_data and concurrent main-thread
+	# rebuild enqueue can race a still-running or just-finished worker if world is cleared early.
+	# Pool release (ChunkDataPool.release) still clears world when the shell is recycled.
 	call_deferred(
 		"_on_chunk_task_complete", coord, data, payload, mesh_us, buffer_us, token, worker_telemetry
 	)
+
+
+## True when a completed mesh job must not be applied (token or WorldState mesh stamp).
+func is_mesh_job_stale(coord: Vector2i, data: ChunkData, token: int) -> bool:
+	if token < 0 or int(_chunk_gen_tokens.get(coord, -1)) != token:
+		return true
+	if data != null and data.has_method("is_overlay_mesh_stamp_current") \
+			and not data.is_overlay_mesh_stamp_current():
+		return true
+	return false
 
 
 func _on_chunk_task_complete(
@@ -1989,9 +2101,19 @@ func _on_chunk_task_complete(
 	worker_telemetry: Dictionary = {}
 ) -> void:
 	_chunk_tasks.erase(coord)
-	if _shutting_down or token < 0 or int(_chunk_gen_tokens.get(coord, -1)) != token:
+	if _shutting_down or is_mesh_job_stale(coord, data, token):
+		var stamp_stale := (
+			data != null
+			and token >= 0
+			and int(_chunk_gen_tokens.get(coord, -1)) == token
+			and data.has_method("is_overlay_mesh_stamp_current")
+			and not data.is_overlay_mesh_stamp_current()
+		)
 		if data != null and _telemetry_trigger in ["stream", "movement"]:
 			_ChunkDataPool.release(data)
+		if stamp_stale and not _shutting_down:
+			pending.erase(coord)
+			call_deferred("rebuild_chunk", coord)
 		return
 	if data == null:
 		pending.erase(coord)
@@ -2084,11 +2206,7 @@ func invalidate_columns_at_world(wx: int, wz: int) -> void:
 		var local_cells: Array = by_chunk[coord]
 		var full := _TerrainDirtyScope.should_full_rebuild(local_cells)
 		_merge_patch_pending(coord, local_cells, full)
-	if not is_inside_tree():
-		return
-	if not has_meta("_rebuild_flush_scheduled"):
-		set_meta("_rebuild_flush_scheduled", true)
-		call_deferred("_flush_rebuild_pending")
+	_schedule_rebuild_flush()
 
 
 func rebuild_region_at_world(wx: float, wz: float, _ring: int = 1) -> void:
@@ -2123,7 +2241,16 @@ func flush_rebuild_pending() -> void:
 	_flush_rebuild_pending()
 
 
+## Coalesce rebuild flushes onto the next _process tick (not call_deferred self-requeue).
+func _schedule_rebuild_flush() -> void:
+	if not is_inside_tree() or _shutting_down:
+		return
+	_rebuild_flush_needed = true
+	set_meta("_rebuild_flush_scheduled", true)
+
+
 func _flush_rebuild_pending() -> void:
+	_rebuild_flush_needed = false
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")
 	if not _rebuild_pending.is_empty():
@@ -2131,28 +2258,34 @@ func _flush_rebuild_pending() -> void:
 		_rebuild_pending.clear()
 		for key_variant in legacy_keys:
 			rebuild_chunk(key_variant)
-	if _patch_pending.is_empty():
-		return
-	var pending_copy: Dictionary = _patch_pending.duplicate(true)
-	_patch_pending.clear()
-	for coord_variant in pending_copy.keys():
-		var coord: Vector2i = coord_variant
-		var entry: Dictionary = pending_copy.get(coord, {})
-		if entry.is_empty():
-			continue
-		var local_cells: Array = entry.get("local", [])
-		var full: bool = bool(entry.get("full", false))
-		if not chunks.has(coord):
-			continue
-		_enqueue_chunk_mesh_work(coord, full, local_cells, _rebuild_high_priority(coord), false)
+	if not _patch_pending.is_empty():
+		var pending_copy: Dictionary = _patch_pending.duplicate(true)
+		_patch_pending.clear()
+		for coord_variant in pending_copy.keys():
+			var coord: Vector2i = coord_variant
+			var entry: Dictionary = pending_copy.get(coord, {})
+			if entry.is_empty():
+				continue
+			var local_cells: Array = entry.get("local", [])
+			var full: bool = bool(entry.get("full", false))
+			if not chunks.has(coord):
+				continue
+			# Busy workers merge into _patch_pending; next process frame will retry once.
+			_enqueue_chunk_mesh_work(coord, full, local_cells, _rebuild_high_priority(coord), false)
+	# One next-frame retry if work remains blocked on inflight jobs (not same-queue reentry).
+	if not _patch_pending.is_empty() or not _rebuild_pending.is_empty():
+		_schedule_rebuild_flush()
 
 
 func await_rebuild_idle(max_frames: int = 2400) -> void:
 	var frames := 0
 	while (
-		has_meta("_rebuild_flush_scheduled")
+		_rebuild_flush_needed
+		or has_meta("_rebuild_flush_scheduled")
 		or not _rebuild_pending.is_empty()
 		or not _patch_pending.is_empty()
+		or not _chunk_tasks.is_empty()
+		or not pending.is_empty()
 	) and frames < max_frames:
 		await get_tree().process_frame
 		frames += 1
@@ -2168,6 +2301,10 @@ func world_to_chunk_coord(wx: int, wz: int) -> Vector2i:
 
 func world_to_chunk_coord_v3(world_pos: Vector3) -> Vector2i:
 	return world_to_chunk_coord(floori(world_pos.x), floori(world_pos.z))
+
+
+func get_chunk_count() -> int:
+	return chunks.size()
 
 
 func get_player_chunk_coord() -> Vector2i:

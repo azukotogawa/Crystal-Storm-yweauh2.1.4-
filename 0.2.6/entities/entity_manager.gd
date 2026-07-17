@@ -317,6 +317,7 @@ func _spawn_from_save(data: Dictionary) -> void:
 	entity.setup(brain_cfg, cell, world, chunk_manager, crystal_manager, defend, tint)
 	if data.has("health"):
 		entity.health = float(data.health)
+	# Final save position after setup defaults; emit spawn so Spatial Query indexes correctly.
 	entity.global_position = Vector3(
 		float(data.get("x", float(cell.x) + 0.5)),
 		float(data.get("y", 1.0)),
@@ -324,6 +325,7 @@ func _spawn_from_save(data: Dictionary) -> void:
 	)
 	_entities.append(entity)
 	_spawned_cells[cell] = true
+	entity_spawned.emit(entity)
 
 
 func get_active_entity_count() -> int:
