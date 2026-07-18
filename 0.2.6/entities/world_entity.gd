@@ -235,12 +235,13 @@ func is_combat_alive() -> bool:
 
 func _physics_process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
-	var _physics_scope: RefCounted = null
-	if profiler and profiler.has_method("scope"):
-		_physics_scope = profiler.scope("entity_physics")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("entity_physics")
 	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
 	if entity_mgr and int(entity_mgr.get("physics_skip_frames")) > 0:
 		if Engine.get_physics_frames() % (int(entity_mgr.physics_skip_frames) + 1) != 0:
+			if profiler and profiler.has_method("end"):
+				profiler.end("entity_physics")
 			return
 
 	if _hit_flash_timer > 0.0:
@@ -249,12 +250,16 @@ func _physics_process(delta: float) -> void:
 			_reset_hit_tint()
 
 	if _dead or brain == null or config == null:
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
 		return
 	_bind_scene()
 
 	var self_cell := _EntityNavigation.column_pos(global_position)
 	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
 		if not _chunk_manager.is_world_cell_loaded(self_cell.x, self_cell.y):
+			if profiler and profiler.has_method("end"):
+				profiler.end("entity_physics")
 			return
 	var player_cell := self_cell
 	if _player:
@@ -293,6 +298,8 @@ func _physics_process(delta: float) -> void:
 			if _player.has_method("take_damage"):
 				_player.take_damage(config.contact_damage)
 			attacked_player.emit(config.contact_damage)
+	if profiler and profiler.has_method("end"):
+		profiler.end("entity_physics")
 
 
 func export_save_state() -> Dictionary:

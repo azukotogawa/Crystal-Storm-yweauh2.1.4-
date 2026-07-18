@@ -36,10 +36,10 @@ func _process(_delta: float) -> void:
 		return
 
 	var profiler = get_node_or_null("/root/PerfProfiler")
-	if profiler and profiler.has_method("sample_scene_stats"):
-		profiler.sample_scene_stats(get_tree())
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("debug_panel")
+	if profiler and profiler.has_method("sample_scene_stats"):
+		profiler.sample_scene_stats(get_tree())
 
 	var seed_val := "???"
 	var chunks_count := 0

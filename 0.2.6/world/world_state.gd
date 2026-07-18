@@ -38,8 +38,14 @@ var build_tile: Dictionary = {}  # Vector2i -> int (VoxelTypes id)
 ## FeatureRegistry storage
 var tile_overrides: Dictionary = {}  # Vector2i -> int
 var feature_cells: Dictionary = {}  # Vector2i -> Dictionary
+## World-seed stamps (towns/ruins/roads) — immutable content for mesh-plan pristine checks.
+## Not player digs/builds/crystal; does not itself force plan rebuild.
+var seeded_tile_keys: Dictionary = {}  # Vector2i -> true
 var towns: Array = []
 var entity_spawns: Array = []
+## Session tombstones: baked static vegetation/features removed by dig/absorb/harvest.
+## Prevents re-applying baked plants when a chunk becomes resident again.
+var feature_cleared: Dictionary = {}  # Vector2i -> true
 
 ## ChannelRegistry storage
 var channels: Dictionary = {}  # Vector2i -> { water_level, flow_dir }
@@ -213,7 +219,9 @@ func reset_terrain() -> void:
 
 func reset_features() -> void:
 	tile_overrides.clear()
+	seeded_tile_keys.clear()
 	feature_cells.clear()
+	feature_cleared.clear()
 	towns.clear()
 	entity_spawns.clear()
 	bump(DOMAIN_FEATURE | DOMAIN_FEATURE_TILE)
@@ -229,7 +237,9 @@ func reset_all_overlays() -> void:
 	height_delta.clear()
 	build_tile.clear()
 	tile_overrides.clear()
+	seeded_tile_keys.clear()
 	feature_cells.clear()
+	feature_cleared.clear()
 	towns.clear()
 	entity_spawns.clear()
 	channels.clear()

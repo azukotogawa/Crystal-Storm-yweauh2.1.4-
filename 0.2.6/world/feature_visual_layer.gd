@@ -18,11 +18,16 @@ var _vegetation_root: Node3D
 var _buildings_root: Node3D
 var _nodes_by_chunk: Dictionary = {}
 var _nodes_by_cell: Dictionary = {}
+## Stream hitch isolation: populate billboards off the chunk_ready hot path.
+## FIFO of Vector2i; _pending_set de-dupes and supports unload cancel.
+var _pending_populate: Array = []
+var _pending_set: Dictionary = {}
 
 
 func _ready() -> void:
 	add_to_group("feature_visual_layer")
 	_PlantableRegistry.ensure_builtins()
+	set_process(true)
 	call_deferred("_bind")
 
 
@@ -109,11 +114,54 @@ func apply_performance_config(cfg) -> void:
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return
-	_populate_chunk(coord)
+	# Do not build vegetation/building nodes inside ChunkManager apply (measured
+	# ~9ms of _on_chunk_ready after setup was only ~0.75ms). Queue for budgeted drain.
+	if _pending_set.has(coord):
+		return
+	_pending_set[coord] = true
+	_pending_populate.append(coord)
 
 
 func _on_chunk_unloaded(coord: Vector2i) -> void:
+	if _pending_set.has(coord):
+		_pending_set.erase(coord)
+		# Leave stale entries in FIFO; drain skips if not in set / not resident.
 	_clear_chunk(coord)
+
+
+func _process(_delta: float) -> void:
+	if _pending_populate.is_empty():
+		return
+	if _registry == null or not _registry.feature_billboards_enabled:
+		_pending_populate.clear()
+		_pending_set.clear()
+		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("feature_visual_populate")
+	var fbs = get_node_or_null("/root/FrameBudgetScheduler")
+	var drain := func(token = null) -> void:
+		while not _pending_populate.is_empty():
+			if token != null and not token.can_continue():
+				break
+			var coord: Vector2i = _pending_populate.pop_front()
+			if not _pending_set.has(coord):
+				continue
+			_pending_set.erase(coord)
+			if chunk_manager != null and chunk_manager.chunks.has(coord):
+				_populate_chunk(coord)
+			if token != null:
+				token.spend_unit()
+			else:
+				break  # legacy: one chunk per frame
+	if fbs and fbs.has_method("run_budgeted"):
+		fbs.run_budgeted(&"entity_spawn", drain)
+		if fbs.has_method("report_queue_depth"):
+			fbs.report_queue_depth(&"entity_spawn", _pending_populate.size(), 0)
+	else:
+		drain.call(null)
+	if profiler and profiler.has_method("end"):
+		profiler.end("feature_visual_populate")
 
 
 func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: int) -> void:

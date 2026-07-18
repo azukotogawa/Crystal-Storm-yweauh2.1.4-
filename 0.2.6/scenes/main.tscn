@@ -32,6 +32,7 @@
 [ext_resource type="Script" uid="uid://bwur1svbs5bg5" path="res://world/world_visuals.gd" id="22_wvis"]
 [ext_resource type="Script" path="res://systems/developer_assistant.gd" id="23_devasst"]
 [ext_resource type="Script" path="res://ui/dev_chat_overlay.gd" id="24_devchat"]
+[ext_resource type="Script" path="res://world/living_world_director.gd" id="25_lwd"]
 
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
@@ -104,6 +105,9 @@ script = ExtResource("13_ruin")
 
 [node name="EntityManager" type="Node" parent="WorldFeatures" unique_id=1748043786]
 script = ExtResource("13_entity")
+
+[node name="LivingWorldDirector" type="Node" parent="WorldFeatures"]
+script = ExtResource("25_lwd")
 
 [node name="CrystalManager" type="Node3D" parent="." unique_id=320320819]
 script = ExtResource("9_crystal")

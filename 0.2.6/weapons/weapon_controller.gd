@@ -56,10 +56,15 @@ func _bind_terrain_editor() -> void:
 
 
 func _process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("weapon_controller")
 	if _cooldown_timer > 0.0:
 		_cooldown_timer = maxf(_cooldown_timer - delta, 0.0)
 
 	if _GameplayInput.blocks_actions():
+		if profiler and profiler.has_method("end"):
+			profiler.end("weapon_controller")
 		return
 
 	if Input.is_action_just_pressed("attack"):
@@ -76,6 +81,8 @@ func _process(delta: float) -> void:
 			_active_hotbar_index = i
 			if inventory:
 				inventory.hotbar_changed.emit(i)
+	if profiler and profiler.has_method("end"):
+		profiler.end("weapon_controller")
 
 
 const HOTBAR_INPUTS := [

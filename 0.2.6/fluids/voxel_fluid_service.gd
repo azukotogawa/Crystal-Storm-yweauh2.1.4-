@@ -73,6 +73,9 @@ func recompute_region_now(wx: int, wz: int, radius: int = 1, steps: int = 6) -> 
 func _process(delta: float) -> void:
 	if _water_engine == null:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("voxel_fluid")
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	if world == null:
@@ -82,12 +85,19 @@ func _process(delta: float) -> void:
 		_terrain_query.chunk_manager = chunk_manager
 	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
 	if fluid_def == null:
+		if profiler and profiler.has_method("end"):
+			profiler.end("voxel_fluid")
 		return
 	_tick_accum += delta
 	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz, 1.0)
 	while _tick_accum >= step_dt:
+		var t0 := Time.get_ticks_usec()
 		_tick_water(step_dt)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("VoxelFluidService::_tick_water", Time.get_ticks_usec() - t0)
 		_tick_accum -= step_dt
+	if profiler and profiler.has_method("end"):
+		profiler.end("voxel_fluid")
 
 
 func _tick_water(delta: float) -> void:

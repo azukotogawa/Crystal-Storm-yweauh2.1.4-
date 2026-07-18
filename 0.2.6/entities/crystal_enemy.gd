@@ -256,6 +256,9 @@ func _target_column_pos() -> Vector3:
 
 
 func _physics_process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("entity_physics")
 	if _hit_flash_timer > 0.0:
 		_hit_flash_timer = maxf(_hit_flash_timer - delta, 0.0)
 		if _hit_flash_timer <= 0.0:
@@ -266,9 +269,13 @@ func _physics_process(delta: float) -> void:
 
 	_age += delta
 	if _age >= lifetime:
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
 		queue_free()
 		return
 	if _target == null or not is_instance_valid(_target) or brain == null:
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
 		return
 
 	var self_cell := _EntityNavigation.column_pos(global_position)
@@ -278,6 +285,8 @@ func _physics_process(delta: float) -> void:
 	var target_pos := _target_column_pos()
 	if brain.should_detonate(global_position, target_pos):
 		_detonate()
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
 		return
 
 	var crystal_sim = _crystal.get_fluid_sim() if _crystal and _crystal.has_method("get_fluid_sim") else null
@@ -295,7 +304,6 @@ func _physics_process(delta: float) -> void:
 		_crystal
 	)
 	_notify_spatial_moved()
-	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
@@ -304,6 +312,8 @@ func _physics_process(delta: float) -> void:
 			if _target.has_method("take_damage"):
 				_target.take_damage(contact_damage)
 			attacked_player.emit(contact_damage)
+	if profiler and profiler.has_method("end"):
+		profiler.end("entity_physics")
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:

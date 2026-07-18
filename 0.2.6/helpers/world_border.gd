@@ -5,6 +5,9 @@ extends RefCounted
 # -X / +X edges = ocean borders
 # -Z / +Z edges = mountain borders
 # Corners blend both (diagonal transition)
+#
+# Production world size: PLAYABLE_HALF 1024 cells → 128×128 chunks at CELLS=16
+# (see WorldBakeService.full_world_chunk_bounds / production_chunk_side).
 
 const PLAYABLE_HALF_X := 1024
 const PLAYABLE_HALF_Z := 1024

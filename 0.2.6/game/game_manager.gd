@@ -60,11 +60,16 @@ func _bind() -> void:
 func _process(delta: float) -> void:
 	if run_state != RunState.PLAYING:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("game_manager")
 	_update_phase()
 	_check_crystal_overrun()
 	_check_towns_lost()
 	if _player and _crystal:
 		_apply_crystal_damage(delta)
+	if profiler and profiler.has_method("end"):
+		profiler.end("game_manager")
 
 
 func _update_phase() -> void:

@@ -7,6 +7,8 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
 
+signal enemy_spawned(enemy_id: StringName, world_pos: Vector2i)
+
 @export var spawn_interval: float = 8.0
 @export var max_active: int = 24
 ## Prefer near-frontier spawns so early-run crystal rings (~few columns) can host mites.
@@ -14,13 +16,17 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 @export var spawn_near_player_max: float = 36.0
 @export var require_crystal_depth: float = 0.2
 @export var assault_spawn_mult: float = 1.6
+## First seconds of a run: no mites so the player can orient (maze tools, dig).
+@export var spawn_grace_sec: float = 28.0
 
 var _timer: float = 0.0
+var _grace_elapsed: float = 0.0
 var _active: Array[Node3D] = []
 var _crystal: CrystalManager
 var _player: Node3D
 var _world: InfiniteNoiseWorld
 var _game_manager: GameManager
+var _first_spawn_announced: bool = false
 
 
 func _ready() -> void:
@@ -41,13 +47,27 @@ func _bind() -> void:
 
 
 func _process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("enemy_spawner")
 	_prune_active()
 	if _crystal == null or _player == null:
+		if profiler and profiler.has_method("end"):
+			profiler.end("enemy_spawner")
+		return
+	_grace_elapsed += delta
+	if _grace_elapsed < spawn_grace_sec:
+		if profiler and profiler.has_method("end"):
+			profiler.end("enemy_spawner")
 		return
 	var evolution = _crystal.get_evolution() if _crystal.has_method("get_evolution") else null
 	if evolution == null or evolution.unlocked_enemies.is_empty():
+		if profiler and profiler.has_method("end"):
+			profiler.end("enemy_spawner")
 		return
 	if _active.size() >= max_active:
+		if profiler and profiler.has_method("end"):
+			profiler.end("enemy_spawner")
 		return
 
 	var interval := spawn_interval
@@ -57,6 +77,8 @@ func _process(delta: float) -> void:
 
 	_timer += delta
 	if _timer < interval:
+		if profiler and profiler.has_method("end"):
+			profiler.end("enemy_spawner")
 		return
 	_timer = 0.0
 
@@ -66,6 +88,8 @@ func _process(delta: float) -> void:
 		# Column-space distance (depth map is keyed by column, not world units).
 		var near_col := _nearest_crystal_column_distance(col)
 		if near_col > spawn_near_player_max:
+			if profiler and profiler.has_method("end"):
+				profiler.end("enemy_spawner")
 			return
 
 	var tier: int = _crystal.strength_tier if "strength_tier" in _crystal else 0
@@ -73,9 +97,14 @@ func _process(delta: float) -> void:
 	if enemy_id == &"":
 		enemy_id = evolution.unlocked_enemies[0]
 	_spawn_enemy(enemy_id)
+	if profiler and profiler.has_method("end"):
+		profiler.end("enemy_spawner")
 
 
 func _on_enemy_unlocked(enemy_id: StringName) -> void:
+	# Don't dump a death burst during early orientation grace.
+	if _grace_elapsed < spawn_grace_sec:
+		return
 	var def = _EnemySpawnRegistry.get_def(enemy_id)
 	var burst := 1
 	if _crystal and _crystal.has_method("get_evolution"):
@@ -110,6 +139,35 @@ func spawn_enemy_now(enemy_id: StringName = &"") -> bool:
 	return _active.size() > before
 
 
+## Content path: place a guardian at a world column (ruin expedition, etc.).
+func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vector2i = Vector2i.ZERO) -> bool:
+	_bind()
+	if _player == null:
+		return false
+	if enemy_id == &"":
+		enemy_id = &"crystal_mite"
+	var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
+	if spawn_def == null:
+		return false
+	if _active.size() >= max_active:
+		return false
+	var spawn_pos := _world_pos_for_column(wx, wz)
+	if spawn_pos == Vector3.ZERO:
+		return false
+	var enemy: _CrystalEnemy = _CrystalEnemy.new()
+	var patrol_cell := patrol if patrol != Vector2i.ZERO else Vector2i(wx, wz)
+	var parent := _enemy_parent()
+	parent.add_child(enemy)
+	enemy.global_position = spawn_pos
+	enemy.setup(enemy_id, _player, spawn_def, patrol_cell)
+	if enemy.has_method("sync_spatial_index"):
+		enemy.sync_spatial_index()
+	_active.append(enemy)
+	enemy_spawned.emit(enemy_id, Vector2i(wx, wz))
+	_first_spawn_announced = true
+	return true
+
+
 func _spawn_enemy(enemy_id: StringName) -> void:
 	var spawn_pos := _pick_spawn_pos()
 	if spawn_pos == Vector3.ZERO:
@@ -133,6 +191,13 @@ func _spawn_enemy(enemy_id: StringName) -> void:
 	if enemy.has_method("sync_spatial_index"):
 		enemy.sync_spatial_index()
 	_active.append(enemy)
+	var ws = _WorldSettings.get_active()
+	var col := Vector2i(
+		floori(ws.world_to_column(spawn_pos.x)),
+		floori(ws.world_to_column(spawn_pos.z))
+	)
+	enemy_spawned.emit(enemy_id, col)
+	_first_spawn_announced = true
 
 
 func _pick_spawn_pos() -> Vector3:

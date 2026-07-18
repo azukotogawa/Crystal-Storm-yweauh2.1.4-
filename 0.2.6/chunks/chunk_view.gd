@@ -16,6 +16,8 @@ const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
 
 var chunk_data: ChunkData
 var mesh_data: Dictionary
+## Names of LayerContainer children touched by the current emit_quads; others are freed after.
+var _emit_used_names: Dictionary = {}
 
 const FACE_RAMP := 7
 const FACE_RAMP_CORNER := 8
@@ -67,39 +69,52 @@ func setup(data: ChunkData, mesh_data: Dictionary):
 
 
 func _exit_tree() -> void:
+	# Drop any pending uploads that still point at this view's GPU objects.
+	cancel_pending_uploads_for_view(self)
+	# IMPORTANT: Do NOT remove_child/queue_free LayerContainer children here.
+	# On window close / SceneTree quit, Godot frees the subtree once.
+	# queue_free of those Multimesh nodes here was a proven double-free
+	# (glibc: "double free or corruption (!prev)").
+	# Only detach MultiMesh Resource refs so RID ownership is single-path.
 	if layer_container and is_instance_valid(layer_container):
 		for child in layer_container.get_children():
-			if is_instance_valid(child):
-				layer_container.remove_child(child)
-				child.queue_free()
+			if not is_instance_valid(child):
+				continue
+			if child is MultiMeshInstance3D:
+				var mmi := child as MultiMeshInstance3D
+				mmi.multimesh = null
+			elif child is MeshInstance3D:
+				var mi := child as MeshInstance3D
+				mi.mesh = null
 
 
 func emit_quads():
 	_ensure_chunk_material()
 	_last_upload_us = 0
+	_emit_used_names.clear()
 	if layer_container == null:
 		return
+	var apply_t0 := Time.get_ticks_usec()
 	var keep_surface := _uses_surface_mesh()
-	for child in layer_container.get_children():
-		if not is_instance_valid(child):
-			continue
-		if keep_surface and child.name == "terrain_surface_mesh":
-			continue
-		layer_container.remove_child(child)
-		child.queue_free()
 
 	if mesh_data.get("count", 0) == 0:
+		_free_unused_layer_children()
+		_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
 		return
 
 	var upload_t0 := Time.get_ticks_usec()
 	if keep_surface:
 		_emit_surface_mesh()
 		_emit_ramp_multimeshes_from_payload()
+		_free_unused_layer_children()
 		_last_upload_us = Time.get_ticks_usec() - upload_t0
+		_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
 		return
 	if mesh_data.has("terrain_buffer"):
 		_upload_prebuilt_buffers()
+		_free_unused_layer_children()
 		_last_upload_us = Time.get_ticks_usec() - upload_t0
+		_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
 		return
 
 	var quads: Array = mesh_data["quads"]
@@ -123,13 +138,45 @@ func emit_quads():
 	_emit_ramp_multimesh(ramp_quads, "cardinal")
 	_emit_ramp_multimesh(corner_quads, "corner")
 	_emit_ramp_multimesh(diagonal_quads, "diagonal")
+	_free_unused_layer_children()
 	_last_upload_us = Time.get_ticks_usec() - upload_t0
+	_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
+
+
+## Free LayerContainer children not reused this emit (avoid free+recreate of MultiMesh nodes).
+func _free_unused_layer_children() -> void:
+	if layer_container == null:
+		return
+	var t_clear := Time.get_ticks_usec()
+	var profiler_clear = _perf_profiler()
+	if profiler_clear and profiler_clear.has_method("begin"):
+		profiler_clear.begin("chunk_multimesh_free")
+	for child in layer_container.get_children():
+		if not is_instance_valid(child):
+			continue
+		if _emit_used_names.has(str(child.name)):
+			continue
+		layer_container.remove_child(child)
+		child.free()
+	if profiler_clear and profiler_clear.has_method("end"):
+		profiler_clear.end("chunk_multimesh_free")
+	_mesh_phase_record("apply_clear_children", Time.get_ticks_usec() - t_clear)
+
+
+static func _mesh_phase_record(phase: String, us: int) -> void:
+	var _MPP = load("res://systems/mesh_phase_profiler.gd")
+	if _MPP and _MPP.is_enabled():
+		_MPP.record(phase, us)
 
 
 static func consume_last_upload_ms() -> float:
 	var ms := float(_last_upload_us) / 1000.0
 	_last_upload_us = 0
 	return ms
+
+
+static func peek_last_upload_us() -> int:
+	return _last_upload_us
 
 
 func _uses_surface_mesh() -> bool:
@@ -146,23 +193,45 @@ func _ensure_surface_material() -> ShaderMaterial:
 func _clear_multimesh_children() -> void:
 	if layer_container == null:
 		return
+	var profiler = _perf_profiler()
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_multimesh_free")
 	for child in layer_container.get_children():
 		if child is MultiMeshInstance3D and is_instance_valid(child):
 			layer_container.remove_child(child)
-			child.queue_free()
+			child.free()
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_multimesh_free")
+
+
+## Safe while not yet inside the tree (setup/emit paths).
+func _perf_profiler() -> Node:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
+	return tree.root.get_node_or_null("/root/PerfProfiler")
 
 
 func _emit_surface_mesh() -> void:
+	var t_obj := Time.get_ticks_usec()
+	_emit_used_names["terrain_surface_mesh"] = true
 	var mesh_instance := layer_container.get_node_or_null("terrain_surface_mesh") as MeshInstance3D
 	if mesh_instance == null:
 		mesh_instance = MeshInstance3D.new()
 		mesh_instance.name = "terrain_surface_mesh"
+		var t_tree := Time.get_ticks_usec()
 		layer_container.add_child(mesh_instance)
+		_mesh_phase_record("scenetree_insert", Time.get_ticks_usec() - t_tree)
+	_mesh_phase_record("mesh_object_create", Time.get_ticks_usec() - t_obj)
+	var t_mat := Time.get_ticks_usec()
 	mesh_instance.material_override = _ensure_surface_material()
+	_mesh_phase_record("material_assign", Time.get_ticks_usec() - t_mat)
 
 	var prebuilt_mesh: ArrayMesh = mesh_data.get("surface_mesh_resource") as ArrayMesh
 	if prebuilt_mesh != null:
+		var tu := Time.get_ticks_usec()
 		mesh_instance.mesh = prebuilt_mesh
+		_mesh_phase_record("gpu_upload", Time.get_ticks_usec() - tu)
 		return
 
 	var cache: Dictionary = mesh_data.get("surface_cache", {})
@@ -253,31 +322,51 @@ func _assign_buffer_multimesh(
 ) -> void:
 	if count <= 0 or buffer.is_empty():
 		return
+	_emit_used_names[node_name] = true
 
-	var mm_instance := MultiMeshInstance3D.new()
-	mm_instance.name = node_name
-	if mesh_kind != "box":
-		mm_instance.sorting_offset = 1.0
-	layer_container.add_child(mm_instance)
+	var t_obj := Time.get_ticks_usec()
+	# Reuse MultiMeshInstance3D + MultiMesh by name (rebuild/stream re-apply).
+	var mm_instance := layer_container.get_node_or_null(node_name) as MultiMeshInstance3D
+	var created := false
+	if mm_instance == null:
+		mm_instance = MultiMeshInstance3D.new()
+		mm_instance.name = node_name
+		if mesh_kind != "box":
+			mm_instance.sorting_offset = 1.0
+		var t_tree := Time.get_ticks_usec()
+		layer_container.add_child(mm_instance)
+		_mesh_phase_record("scenetree_insert", Time.get_ticks_usec() - t_tree)
+		created = true
 
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_custom_data = true
-	match mesh_kind:
-		"diagonal":
-			mm.mesh = _TerrainRamps.get_concave_corner_prism_mesh()
-		"corner":
-			mm.mesh = _TerrainRamps.get_corner_step_mesh()
-		"cardinal":
-			mm.mesh = _TerrainRamps.get_wedge_mesh()
-		_:
-			if _shared_box_mesh == null:
-				_shared_box_mesh = BoxMesh.new()
-				_shared_box_mesh.size = Vector3.ONE
-			mm.mesh = _shared_box_mesh
-	mm.instance_count = count
-	mm_instance.multimesh = mm
+	var mm: MultiMesh = mm_instance.multimesh
+	if mm == null:
+		mm = MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		match mesh_kind:
+			"diagonal":
+				mm.mesh = _TerrainRamps.get_concave_corner_prism_mesh()
+			"corner":
+				mm.mesh = _TerrainRamps.get_corner_step_mesh()
+			"cardinal":
+				mm.mesh = _TerrainRamps.get_wedge_mesh()
+			_:
+				if _shared_box_mesh == null:
+					_shared_box_mesh = BoxMesh.new()
+					_shared_box_mesh.size = Vector3.ONE
+				mm.mesh = _shared_box_mesh
+		mm_instance.multimesh = mm
+		created = true
+	# Resize only when count changes (avoids GPU buffer realloc every apply).
+	if mm.instance_count != count:
+		mm.instance_count = count
+	_mesh_phase_record("mesh_object_create", Time.get_ticks_usec() - t_obj)
+	if created:
+		var SPP_mm = load("res://systems/stream_phase_profiler.gd")
+		if SPP_mm and SPP_mm.is_enabled() and chunk_data != null:
+			SPP_mm.record("multimesh_creation", Time.get_ticks_usec() - t_obj, chunk_data.position)
 
+	var t_mat := Time.get_ticks_usec()
 	if chunk_material:
 		if mesh_kind == "box":
 			mm_instance.material_override = chunk_material
@@ -286,8 +375,11 @@ func _assign_buffer_multimesh(
 				_shared_ramp_material = chunk_material.duplicate()
 				_bind_chunk_atlas(_shared_ramp_material)
 			mm_instance.material_override = _shared_ramp_material
+	_mesh_phase_record("material_assign", Time.get_ticks_usec() - t_mat)
 
+	var t_pop := Time.get_ticks_usec()
 	enqueue_buffer_upload(mm, buffer)
+	_mesh_phase_record("multimesh_populate", Time.get_ticks_usec() - t_pop)
 
 
 static func enqueue_buffer_upload(mm: MultiMesh, buffer: PackedFloat32Array) -> void:
@@ -309,15 +401,56 @@ static func enqueue_surface_mesh_upload(mesh_instance: MeshInstance3D, built: Di
 	_pending_surface_uploads.append({"mesh_instance": mesh_instance, "built": built})
 
 
+## Drop pending uploads that reference MultiMesh / MeshInstance under a view about to free.
+## Prevents heap corruption when stream-unload races the main-thread upload drain.
+static func cancel_pending_uploads_for_view(view: Node) -> void:
+	if view == null:
+		return
+	var drop_mm: Dictionary = {}
+	var drop_mi: Dictionary = {}
+	_collect_upload_targets(view, drop_mm, drop_mi)
+	if drop_mm.is_empty() and drop_mi.is_empty():
+		return
+	var kept_b: Array = []
+	for item_v in _pending_buffer_uploads:
+		var item: Dictionary = item_v
+		var mm: MultiMesh = item.get("mm") as MultiMesh
+		if mm != null and drop_mm.has(mm):
+			continue
+		kept_b.append(item)
+	_pending_buffer_uploads = kept_b
+	var kept_s: Array = []
+	for item_s in _pending_surface_uploads:
+		var isurf: Dictionary = item_s
+		var mi: MeshInstance3D = isurf.get("mesh_instance") as MeshInstance3D
+		if mi != null and drop_mi.has(mi):
+			continue
+		kept_s.append(isurf)
+	_pending_surface_uploads = kept_s
+
+
+static func _collect_upload_targets(node: Node, drop_mm: Dictionary, drop_mi: Dictionary) -> void:
+	if node is MultiMeshInstance3D:
+		var mmi := node as MultiMeshInstance3D
+		if mmi.multimesh != null:
+			drop_mm[mmi.multimesh] = true
+	if node is MeshInstance3D:
+		drop_mi[node] = true
+	for c in node.get_children():
+		_collect_upload_targets(c, drop_mm, drop_mi)
+
+
 static func drain_pending_surface_uploads(max_count: int, budget_us: int) -> int:
 	var applied := 0
 	var t0 := Time.get_ticks_usec()
+	var upload_acc := 0
 	while _pending_surface_uploads.size() > 0 and applied < maxi(max_count, 1):
 		if Time.get_ticks_usec() - t0 >= maxi(budget_us, 500):
 			break
 		var item: Dictionary = _pending_surface_uploads.pop_front()
 		var mesh_instance: MeshInstance3D = item.get("mesh_instance") as MeshInstance3D
 		if mesh_instance != null and is_instance_valid(mesh_instance):
+			var tu := Time.get_ticks_usec()
 			var mesh: ArrayMesh = mesh_instance.mesh as ArrayMesh
 			if mesh == null:
 				mesh = ArrayMesh.new()
@@ -331,22 +464,47 @@ static func drain_pending_surface_uploads(max_count: int, budget_us: int) -> int
 				)
 			else:
 				_ChunkSurfaceMeshBuilder.build_array_mesh_into(item.get("built", {}), mesh)
+			var du := Time.get_ticks_usec() - tu
+			upload_acc += du
+			var SPP = load("res://systems/stream_phase_profiler.gd")
+			if SPP and SPP.is_enabled():
+				SPP.record("rendering_server_surface_upload", du)
 		applied += 1
+	if upload_acc > 0:
+		_mesh_phase_record("gpu_upload", upload_acc)
 	return applied
 
 
 static func drain_pending_buffer_uploads(max_count: int, budget_us: int) -> int:
 	var applied := 0
 	var t0 := Time.get_ticks_usec()
+	var upload_acc := 0
 	while _pending_buffer_uploads.size() > 0 and applied < maxi(max_count, 1):
 		if Time.get_ticks_usec() - t0 >= maxi(budget_us, 500):
 			break
 		var item: Dictionary = _pending_buffer_uploads.pop_front()
 		var mm: MultiMesh = item.get("mm") as MultiMesh
 		var buffer: PackedFloat32Array = item.get("buffer", PackedFloat32Array())
-		if mm != null and is_instance_valid(mm):
+		# MultiMesh is RefCounted — skip if already freed (refcount 0 / invalid).
+		if mm != null and is_instance_valid(mm) and buffer.size() > 0:
+			var tu := Time.get_ticks_usec()
 			mm.buffer = buffer
+			var du := Time.get_ticks_usec() - tu
+			upload_acc += du
+			var SPP = load("res://systems/stream_phase_profiler.gd")
+			if SPP and SPP.is_enabled():
+				SPP.record("rendering_server_buffer_set", du)
+			# Hitch instrumentation (PerfProfiler frame counters).
+			var pp = Engine.get_main_loop()
+			if pp is SceneTree:
+				var prof = (pp as SceneTree).root.get_node_or_null("/root/PerfProfiler")
+				if prof and prof.has_method("inc_frame"):
+					prof.inc_frame("multimesh_buffer_sets", 1)
+					prof.inc_frame("multimesh_instances_uploaded", int(mm.instance_count))
+					prof.inc_frame("buffers_recreated", 1)
 		applied += 1
+	if upload_acc > 0:
+		_mesh_phase_record("gpu_upload", upload_acc)
 	return applied
 
 
@@ -366,22 +524,27 @@ static func pending_surface_upload_count() -> int:
 func _emit_box_multimesh(quads: Array) -> void:
 	if quads.is_empty():
 		return
+	_emit_used_names["mm_instance"] = true
+	var mm_instance := layer_container.get_node_or_null("mm_instance") as MultiMeshInstance3D
+	if mm_instance == null:
+		mm_instance = MultiMeshInstance3D.new()
+		mm_instance.name = "mm_instance"
+		layer_container.add_child(mm_instance)
 
-	var mm_instance := MultiMeshInstance3D.new()
-	mm_instance.name = "mm_instance"
-	layer_container.add_child(mm_instance)
-
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_custom_data = true
+	var mm: MultiMesh = mm_instance.multimesh
+	if mm == null:
+		mm = MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		if _shared_box_mesh == null:
+			_shared_box_mesh = BoxMesh.new()
+			_shared_box_mesh.size = Vector3.ONE
+		mm.mesh = _shared_box_mesh
+		mm_instance.multimesh = mm
 	var ws = _WorldSettings.get_active()
 	var voxel_s: float = ws.voxel_scale
-	if _shared_box_mesh == null:
-		_shared_box_mesh = BoxMesh.new()
-		_shared_box_mesh.size = Vector3.ONE
-	mm.mesh = _shared_box_mesh
-	mm.instance_count = quads.size()
-	mm_instance.multimesh = mm
+	if mm.instance_count != quads.size():
+		mm.instance_count = quads.size()
 
 	if chunk_material:
 		mm_instance.material_override = chunk_material

@@ -22,6 +22,9 @@ var _town_states: Dictionary = {}  # Vector2i center -> TownState
 var _town_health: Dictionary = {}
 var _crystal: CrystalManager
 var _entity_manager: EntityManager
+## Accumulated delta per town for budgeted ticks (frame-rate independent damage).
+var _town_delta_accum: Dictionary = {}  # Vector2i -> float
+var _town_tick_cursor: int = 0
 
 
 func _enter_tree() -> void:
@@ -44,8 +47,48 @@ func _bind() -> void:
 func _process(delta: float) -> void:
 	if _crystal == null:
 		return
-	for town in _FeatureRegistry.get_towns():
-		_tick_town(town, delta)
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("town_defense")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("TownDefenseManager::_process")
+	var towns: Array = _FeatureRegistry.get_towns()
+	# Accumulate dt for every town so damage is frame-rate independent when budgeted.
+	for town in towns:
+		var c: Vector2i = town.get("center", Vector2i.ZERO)
+		_town_delta_accum[c] = float(_town_delta_accum.get(c, 0.0)) + delta
+	var sched = get_node_or_null("/root/FrameBudgetScheduler")
+	if sched and sched.has_method("report_queue_depth"):
+		sched.report_queue_depth(&"town_defense", towns.size(), 0)
+	if sched and sched.has_method("run_budgeted") and not towns.is_empty():
+		sched.run_budgeted(&"town_defense", func(token):
+			var n: int = towns.size()
+			var guard := 0
+			while token.can_continue() and n > 0 and guard < n:
+				if _town_tick_cursor >= n:
+					_town_tick_cursor = 0
+				var town2: Dictionary = towns[_town_tick_cursor]
+				_town_tick_cursor += 1
+				guard += 1
+				var center: Vector2i = town2.get("center", Vector2i.ZERO)
+				var dt: float = float(_town_delta_accum.get(center, 0.0))
+				if dt <= 0.0:
+					token.spend_unit()
+					continue
+				_town_delta_accum[center] = 0.0
+				_tick_town(town2, dt)
+				token.spend_unit()
+		)
+	else:
+		for town3 in towns:
+			var c3: Vector2i = town3.get("center", Vector2i.ZERO)
+			var dt3: float = float(_town_delta_accum.get(c3, delta))
+			_town_delta_accum[c3] = 0.0
+			_tick_town(town3, dt3)
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("TownDefenseManager::_process")
+	if profiler and profiler.has_method("end"):
+		profiler.end("town_defense")
 
 
 func get_town_state(center: Vector2i) -> int:
@@ -68,8 +111,42 @@ func get_status_summary() -> Array:
 			"center": center,
 			"state": _town_states.get(center, TownState.SAFE),
 			"health": _town_health.get(center, town_health_max),
+			"radius": int(town.get("radius", 12)),
 		})
 	return out
+
+
+func get_town_health(center: Vector2i) -> float:
+	return float(_town_health.get(center, town_health_max))
+
+
+## Player rally / content path: restore town morale health (not crystal depth).
+func restore_health(center: Vector2i, amount: float) -> float:
+	if amount <= 0.0:
+		return 0.0
+	if int(_town_states.get(center, TownState.SAFE)) == TownState.FALLEN:
+		return 0.0
+	var before: float = float(_town_health.get(center, town_health_max))
+	var after: float = minf(town_health_max, before + amount)
+	_town_health[center] = after
+	return after - before
+
+
+## Production content / harness: put a town under pressure without rewriting crystal sim.
+func force_threat_state(center: Vector2i, state: int, health: float = -1.0) -> void:
+	var town_name := "Settlement"
+	for town in _FeatureRegistry.get_towns():
+		if town.get("center", Vector2i.ZERO) == center:
+			town_name = str(town.get("name", town_name))
+			break
+	var prev: int = int(_town_states.get(center, TownState.SAFE))
+	_town_states[center] = state
+	if health >= 0.0:
+		_town_health[center] = clampf(health, 0.0, town_health_max)
+	elif not _town_health.has(center):
+		_town_health[center] = town_health_max
+	if state != prev:
+		town_state_changed.emit(town_name, state, center)
 
 
 func _tick_town(town: Dictionary, delta: float) -> void:

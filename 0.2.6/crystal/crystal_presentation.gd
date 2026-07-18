@@ -158,6 +158,8 @@ func flush(profiler = null) -> int:
 		return 0
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("crystal_mesh")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("CrystalPresentation::flush")
 	var t0 := Time.get_ticks_usec()
 	var rebuilt := 0
 	var keys: Array = _dirty_chunks.keys()
@@ -174,21 +176,28 @@ func flush(profiler = null) -> int:
 		if not _chunk_active(coord):
 			_dirty_chunks.erase(coord)
 			continue
+		var layer_t0 := Time.get_ticks_usec()
 		if _chunk_needs_full_rebuild.has(coord):
 			_rebuild_chunk_layer(coord)
 			_chunk_needs_full_rebuild.erase(coord)
 			_patch_dirty_by_chunk.erase(coord)
 			rebuild_count += 1
+			if profiler and profiler.has_method("record_func"):
+				profiler.record_func("CrystalPresentation::_rebuild_chunk_layer", Time.get_ticks_usec() - layer_t0)
 		else:
 			_patch_chunk_layer(coord)
 			_patch_dirty_by_chunk.erase(coord)
 			patch_count += 1
+			if profiler and profiler.has_method("record_func"):
+				profiler.record_func("CrystalPresentation::_patch_chunk_layer", Time.get_ticks_usec() - layer_t0)
 		_dirty_chunks.erase(coord)
 		rebuilt += 1
 		if rebuilt >= budget:
 			break
 		if Time.get_ticks_usec() - t0 >= mesh_budget_us:
 			break
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("CrystalPresentation::flush")
 	if profiler and profiler.has_method("end"):
 		profiler.end("crystal_mesh")
 	last_flush_rebuilds = rebuilt

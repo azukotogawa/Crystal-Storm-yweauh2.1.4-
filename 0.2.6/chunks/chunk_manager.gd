@@ -18,7 +18,8 @@ signal chunk_unloaded(coord: Vector2i)
 
 @export var RENDER_DISTANCE : int = 3
 @export var MESH_CAVES : bool = false
-@export var MAX_CHUNKS_PER_FRAME : int = 2
+## Main-thread applies per frame (legacy path when FrameBudgetScheduler absent).
+@export var MAX_CHUNKS_PER_FRAME : int = 1
 @export var MAX_INFLIGHT_CHUNKS : int = 6
 
 var chunks: Dictionary[Vector2i, ChunkView] = {}
@@ -69,6 +70,15 @@ var _mesh_defer_micro_columns: bool = true
 ## (ChunkPipeline.alloc_greedy_visited / ChunkData._mesh_job_micro_skip).
 ## Process-frame rebuild flush (avoids call_deferred self-requeue flooding the message queue).
 var _rebuild_flush_needed: bool = false
+## Amortized stream ordering: full re-sort only when pending mutates (not every frame).
+var _stream_load_order_dirty: bool = true
+var _stream_unload_order_dirty: bool = true
+var _stream_load_sorted: Array = []  # cached sort_load_candidates rows
+## Mesh completion queue: re-sort once per drain, not on every worker push.
+var _mesh_completion_order_dirty: bool = true
+## Cached autoload refs (avoid get_node every _process / drain).
+var _profiler_node: Node = null
+var _fbs_node: Node = null
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
@@ -88,6 +98,8 @@ const CAVE_MESH_DEPTH := 32
 func _ready():
 	add_to_group("chunk_manager")
 	TerrainRamps.invalidate_mesh_cache()
+	_profiler_node = get_node_or_null("/root/PerfProfiler")
+	_fbs_node = get_node_or_null("/root/FrameBudgetScheduler")
 
 	player = get_tree().get_first_node_in_group("player")
 	world = get_tree().get_first_node_in_group("world")
@@ -97,12 +109,123 @@ func _ready():
 	if world == null:                                                           
 		print("WARNING: World node (group 'world') not found in _ready!")
 
+	# Prefer immutable baked base for streaming when present (no pipeline redesign).
+	_bootstrap_world_bake()
+	_bootstrap_mesh_plan_cache()
+
 	# Request initial chunks...
 	if player and world:
 		var col := _player_column_pos()
 		var cx = floori(col.x / float(ChunkData.SIZE))
 		var cz = floori(col.y / float(ChunkData.SIZE))
 		update_stream(cx, cz)
+
+
+func _WorldBakeService_is_outside(coord: Vector2i) -> bool:
+	var wb = load("res://world/world_bake_service.gd")
+	if wb == null or not wb.has_method("is_chunk_outside_finite_world"):
+		return false
+	return bool(wb.is_chunk_outside_finite_world(coord))
+
+
+func _bootstrap_world_bake() -> void:
+	if world == null:
+		return
+	var _SP = load("res://systems/startup_profiler.gd")
+	if _SP and _SP.is_enabled():
+		_SP.begin("load_bake_index")
+	var wb_script = load("res://world/world_bake_service.gd")
+	if wb_script == null:
+		if _SP and _SP.is_enabled():
+			_SP.end("load_bake_index")
+		return
+	var bake = wb_script.ensure_active() if wb_script.has_method("ensure_active") else null
+	if bake == null:
+		if _SP and _SP.is_enabled():
+			_SP.end("load_bake_index")
+		return
+	# Pass self as mesh host so world bake co-emits / backfills MeshPlanCache.
+	var result: Dictionary = bake.bootstrap_for_world(world, false, self)
+	if _SP and _SP.is_enabled():
+		_SP.end("load_bake_index")
+		var mp0: Dictionary = result.get("mesh_plan", {})
+		_SP.mark("load_mesh_plan_cache", int(mp0.get("bake_ms", 0)) * 1000)
+	if bool(result.get("ok", false)):
+		var mode := str(result.get("mode", ""))
+		# bootstrap_for_world already prints Valid bake found / rebuilding lines.
+		if mode == "baked":
+			print(
+				"[WorldBake] Rebuild complete bake_ms=%s bytes=%s chunks=%s"
+				% [
+					str(result.get("bake_ms", 0)),
+					str(result.get("bytes", 0)),
+					str(result.get("chunks", "")),
+				]
+			)
+		elif mode == "disabled" or mode == "miss":
+			print("[WorldBake] mode=%s seed=%s" % [mode, str(result.get("seed", ""))])
+		var mp: Dictionary = result.get("mesh_plan", {})
+		if not mp.is_empty():
+			var mpm := str(mp.get("mode", ""))
+			# valid / streamed / loaded = no repair; repaired / baked = wrote plans this launch.
+			if mpm != "valid" and mpm != "streamed" and mpm != "loaded":
+				print(
+					"[MeshPlanCache] mode=%s chunks=%s bytes=%s bake_ms=%s"
+					% [
+						mpm,
+						str(mp.get("chunks", "")),
+						str(mp.get("bytes", 0)),
+						str(mp.get("bake_ms", 0)),
+					]
+				)
+
+
+func _bootstrap_mesh_plan_cache() -> void:
+	if world == null:
+		return
+	# Plans are normally ensured inside WorldBakeService.bootstrap_for_world(host=self).
+	# Never silently rebuild plans at startup — only load if present.
+	var mp_script = load("res://world/mesh_plan_cache.gd")
+	if mp_script == null:
+		return
+	var cache = mp_script.get_active()
+	if cache != null and bool(cache.valid):
+		if bool(cache.streamed_from_bake) or cache.plan_count() > 0:
+			return
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake != null and bool(bake.valid) and bool(bake.streamed):
+		# Streamed packages already embed plans; bind façade without baking.
+		if bake.has_method("ensure_mesh_plans"):
+			bake.ensure_mesh_plans(self, world)
+		return
+	cache = mp_script.ensure_active() if mp_script.has_method("ensure_active") else null
+	if cache == null:
+		return
+	# Load-only fallback (no bake-on-new unless explicitly forced by env).
+	var seed: int = int(world.world_seed) if "world_seed" in world else 0
+	var r: int = int(bake.radius) if bake != null and "radius" in bake else 2
+	if cache.has_method("load_plans") and cache.load_plans(seed, r):
+		mp_script.set_active(cache)
+		print("[MeshPlanCache] mode=loaded chunks=%s bytes=%s bake_ms=0" % [
+			str(cache.plan_count()), str(cache.last_bytes)
+		])
+		return
+	# Explicit env only: rebuild monolith plans (dev/migration).
+	var raw := OS.get_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW").strip_edges().to_lower()
+	if raw == "1" or raw == "true" or raw == "on":
+		var result: Dictionary = cache.bootstrap_for_world(self, world, r, true)
+		if bool(result.get("ok", false)):
+			print(
+				"[MeshPlanCache] mode=%s chunks=%s bytes=%s bake_ms=%s (explicit rebuild)"
+				% [
+					str(result.get("mode", "")),
+					str(result.get("chunks", "")),
+					str(result.get("bytes", 0)),
+					str(result.get("bake_ms", 0)),
+				]
+			)
+	else:
+		print("[MeshPlanCache] mode=miss (no streamed plans / no monolith; not rebuilding)")
 
 func shutdown_workers() -> void:
 	if _shutting_down:
@@ -115,69 +238,216 @@ func shutdown_workers() -> void:
 	_chunk_tasks.clear()
 	for tid in tasks:
 		if tid is int:
+			# Required: every WorkerThreadPool task id must be waited exactly once
+			# or engine shutdown corrupts heap (SIGSEGV mutex=0x1c0 / free invalid).
 			WorkerThreadPool.wait_for_task_completion(tid)
 
 
-## Headless harness: drop chunk views before SceneTree quit to avoid teardown abort(134).
+## Join a finished (or finishing) pool task and drop its tracking entry.
+## Godot requires wait_for_task_completion for each add_task id; erasing without
+## wait left handles for engine teardown to free twice / UAF.
+func _reap_chunk_task(coord: Vector2i) -> void:
+	if not _chunk_tasks.has(coord):
+		return
+	var tid = _chunk_tasks[coord]
+	_chunk_tasks.erase(coord)
+	if tid is int:
+		# Main-thread join can block until the worker finishes — attribute only.
+		var profiler = get_node_or_null("/root/PerfProfiler")
+		if profiler and profiler.has_method("begin"):
+			profiler.begin("chunk_worker_wait")
+		if profiler and profiler.has_method("begin_func"):
+			profiler.begin_func("ChunkManager::_reap_chunk_task")
+		WorkerThreadPool.wait_for_task_completion(tid)
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_reap_chunk_task")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_worker_wait")
+
+
+## Explicit teardown while the tree is still alive (composition.shutdown / harness).
+## Safe to remove_child + free views here. Must NOT be used from _exit_tree (double free).
 func release_all_chunks_for_teardown() -> void:
+	if has_meta("_teardown_released"):
+		return
+	set_meta("_teardown_released", true)
+	_shutdown_trace("release_all begin views=%d is_inside_tree=%s" % [
+		chunks.size(), str(is_inside_tree())
+	])
 	shutdown_workers()
+	# Must clear uploads before freeing views (ownership: pending Multimesh refs).
 	ChunkView.clear_pending_buffer_uploads()
 	_mesh_completion_queue.clear()
 	_stream_load_pending.clear()
 	_stream_unload_pending.clear()
 	_lifecycle_by_coord.clear()
-	_ChunkDataPool.clear()
 	for coord in _chunk_gen_tokens.keys():
 		_chunk_gen_tokens[coord] = int(_chunk_gen_tokens.get(coord, 0)) + 1000
 	var keys := chunks.keys()
+	var bake = load("res://world/world_bake_service.gd").get_active()
 	for key in keys:
 		var view: ChunkView = chunks[key]
 		if is_instance_valid(view):
+			ChunkView.cancel_pending_uploads_for_view(view)
 			var data_to_pool: ChunkData = view.chunk_data
 			view.chunk_data = null
 			view.mesh_data = {}
+			# Explicit teardown: do not pool — free views we own while tree is live.
 			if data_to_pool != null:
-				_ChunkDataPool.release(data_to_pool)
+				data_to_pool.set_meta("_pooled", true)
+				data_to_pool.set_meta("_pooled_released", true)
+				data_to_pool.world = null
 			if view.get_parent() == self:
 				remove_child(view)
+			_shutdown_trace("queue_free view %s id=%d" % [str(key), view.get_instance_id()])
 			view.queue_free()
+		if bake != null and bake.has_method("release_chunk"):
+			bake.release_chunk(key)
 	chunks.clear()
 	pending.clear()
 	_rebuild_pending.clear()
 	_patch_pending.clear()
+	_ChunkDataPool.clear()
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")
+	_shutdown_trace("release_all end")
 
 
+## Called when SceneTree is already destroying this node (window close / quit).
+## Children will be freed by the engine — DO NOT queue_free ChunkViews here
+## (that is the double-free root cause: parent frees children twice).
 func _exit_tree() -> void:
-	release_all_chunks_for_teardown()
+	_shutdown_trace("_exit_tree begin already_released=%s children=%d chunks=%d" % [
+		str(has_meta("_teardown_released")),
+		get_child_count(),
+		chunks.size(),
+	])
+	if has_meta("_teardown_released"):
+		# Explicit teardown already ran; only ensure workers stopped.
+		shutdown_workers()
+		ChunkView.clear_pending_buffer_uploads()
+		_shutdown_trace("_exit_tree skip free (already released)")
+		return
+	set_meta("_teardown_released", true)
+	shutdown_workers()
+	ChunkView.clear_pending_buffer_uploads()
+	_mesh_completion_queue.clear()
+	_stream_load_pending.clear()
+	_stream_unload_pending.clear()
+	# Detach ownership only — SceneTree frees ChunkView children.
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	for key in chunks.keys():
+		var view: ChunkView = chunks[key]
+		if is_instance_valid(view):
+			ChunkView.cancel_pending_uploads_for_view(view)
+			var data: ChunkData = view.chunk_data
+			view.chunk_data = null
+			view.mesh_data = {}
+			if data != null:
+				data.set_meta("_pooled", true)
+				data.set_meta("_pooled_released", true)
+				data.world = null
+			# Null MultiMesh refs so RID teardown is single-owner.
+			if view.has_method("_exit_tree"):
+				pass
+			if view.get_node_or_null("LayerContainer"):
+				for child in view.get_node("LayerContainer").get_children():
+					if child is MultiMeshInstance3D:
+						(child as MultiMeshInstance3D).multimesh = null
+		if bake != null and bake.has_method("release_chunk"):
+			bake.release_chunk(key)
+	chunks.clear()
+	pending.clear()
+	_rebuild_pending.clear()
+	_patch_pending.clear()
+	_ChunkDataPool.clear()
+	_shutdown_trace("_exit_tree end (children left for SceneTree free)")
+
+
+func _shutdown_trace(msg: String) -> void:
+	if OS.get_environment("CRYSTALSTORM_SHUTDOWN_TRACE") == "1":
+		print("[SHUTDOWN_TRACE] ChunkManager %s" % msg)
 
 
 func _unload_chunk_view(key: Vector2i) -> void:
 	if not chunks.has(key):
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_unload")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::_unload_chunk_view")
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.record_unload(key, "start", {"active_chunks": chunks.size()})
 	_set_lifecycle_state(key, _ChunkStreamLifecycle.UNLOADING)
 	var view: ChunkView = chunks[key]
 	chunks.erase(key)
 	if is_instance_valid(view):
+		# Drop pending GPU uploads that still reference this view's MultiMeshes.
+		ChunkView.cancel_pending_uploads_for_view(view)
 		var data_to_pool: ChunkData = view.chunk_data
 		view.chunk_data = null
 		view.mesh_data = {}
-		if data_to_pool != null:
-			# Connect before remove_child — removal fires tree_exited synchronously.
+		if data_to_pool != null and not data_to_pool.has_meta("_pooled"):
+			# Mark before free path so tree_exited / teardown cannot double-pool.
+			data_to_pool.set_meta("_pooled", true)
 			view.tree_exited.connect(
 				Callable(self, "_pool_chunk_data_after_view_free").bind(data_to_pool),
 				CONNECT_ONE_SHOT
 			)
 		if view.get_parent() == self:
+			if profiler and profiler.has_method("begin"):
+				profiler.begin("chunk_scenetree_remove")
 			remove_child(view)
-		view.queue_free()
+			if profiler and profiler.has_method("end"):
+				profiler.end("chunk_scenetree_remove")
+		# Profiled deferred free (same MQ phase as queue_free) so node deletion
+		# cost is a named leaf instead of opaque MessageQueue residual.
+		call_deferred("_profiled_free_chunk_view", view)
+	# Release bake package only when no remaining resident/pending chunk needs it
+	# as a mesh-halo neighbor (chebyshev ≤ 1). Premature release forces cold
+	# ensure+deserialize on the next stream start's capture_worker_snapshot (~11ms).
+	_maybe_release_bake_package(key)
 	_set_lifecycle_state(key, _ChunkStreamLifecycle.UNLOADED)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.record_unload(key, "complete", {"active_chunks": chunks.size()})
 	chunk_unloaded.emit(key)
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::_unload_chunk_view")
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_unload")
+
+
+## Drop streamed package RAM when no loaded/pending chunk still needs it for halo mesh.
+func _maybe_release_bake_package(key: Vector2i) -> void:
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake == null or not bake.has_method("release_chunk"):
+		return
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dz == 0:
+				continue
+			var n := Vector2i(key.x + dx, key.y + dz)
+			if chunks.has(n) or pending.has(n) or _chunk_tasks.has(n) or _stream_load_pending.has(n):
+				return
+	bake.release_chunk(key)
+
+
+## Measurement-only: destroy a detached ChunkView during MessageQueue flush.
+## Replaces queue_free so free cost is attributed (same frame deferred phase).
+func _profiled_free_chunk_view(view: Node) -> void:
+	if view == null or not is_instance_valid(view):
+		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_node_free")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::_profiled_free_chunk_view")
+	view.free()
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::_profiled_free_chunk_view")
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_node_free")
 
 func request_chunk(coord: Vector2i, high_priority: bool = false) -> void:
 	if _is_chunk_resident(coord):
@@ -188,6 +458,25 @@ func request_chunk(coord: Vector2i, high_priority: bool = false) -> void:
 func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> void:
 	if pending.has(coord) or _chunk_tasks.has(coord):
 		return
+	var SPP = load("res://systems/stream_phase_profiler.gd")
+	if SPP and SPP.is_enabled():
+		SPP.begin_chunk(coord)
+	# Prefetch streamed bake package + halo neighbors on main thread so
+	# capture_worker_snapshot stays on the hot (resident) path (~4ms vs ~11ms cold).
+	var bake_pre = load("res://world/world_bake_service.gd").get_active()
+	if bake_pre != null and bake_pre.valid:
+		if bake_pre.has_method("coord_in_package") and bake_pre.coord_in_package(coord):
+			if bake_pre.has_method("ensure_chunk_resident"):
+				bake_pre.ensure_chunk_resident(coord)
+			# Neighbor packages: data only (surfaces for halo); no vegetation reinstall.
+			if bake_pre.has_method("ensure_package_data_resident"):
+				for dz in range(-1, 2):
+					for dx in range(-1, 2):
+						if dx == 0 and dz == 0:
+							continue
+						var n := Vector2i(coord.x + dx, coord.y + dz)
+						if bake_pre.coord_in_package(n):
+							bake_pre.ensure_package_data_resident(n)
 	if world == null:
 		return
 
@@ -196,12 +485,18 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 	_chunk_gen_tokens[coord] = token
 
 	var pool_stats_before: Dictionary = _ChunkDataPool.get_stats()
+	var t_alloc := Time.get_ticks_usec()
 	var data := _ChunkDataPool.acquire(coord, world)
 	if data == null:
 		pending.erase(coord)
 		return
 	var alloc_path := "pool_reuse" if int(pool_stats_before.get("alloc_reuse", 0)) < int(_ChunkDataPool.get_stats().get("alloc_reuse", 0)) else "ChunkData.new"
+	if SPP and SPP.is_enabled():
+		SPP.record("chunk_data_alloc", Time.get_ticks_usec() - t_alloc, coord)
+	var t_snap := Time.get_ticks_usec()
 	data.capture_worker_snapshot()
+	if SPP and SPP.is_enabled():
+		SPP.record("worker_snapshot_capture", Time.get_ticks_usec() - t_snap, coord)
 	_set_lifecycle_state(coord, _ChunkStreamLifecycle.ALLOCATED)
 
 	if _ChunkRebuildTelemetry.is_enabled():
@@ -1046,9 +1341,7 @@ func _emit_dug_strata_region(
 			if delta >= -layer * 0.15:
 				continue
 			var cur_h: float = _surface_y_at(data, x, z)
-			var wx: int = data.position.x * ChunkData.SIZE + x
-			var wz: int = data.position.y * ChunkData.SIZE + z
-			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var natural_h: float = _natural_surface_y(data, x, z)
 			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
 			var top_tile: int = _tile_type_at(data, x, z)
 			if top_tile == VoxelTypes.AIR:
@@ -1074,6 +1367,16 @@ func _emit_dug_strata_region(
 				})
 
 
+func _natural_surface_y(data: ChunkData, x: int, z: int) -> float:
+	if data != null and data.has_method("get_natural_surface_y"):
+		return float(data.get_natural_surface_y(x, z))
+	if data == null or data.world == null:
+		return 0.0
+	var wx: int = data.position.x * ChunkData.SIZE + x
+	var wz: int = data.position.y * ChunkData.SIZE + z
+	return data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+
+
 func _emit_build_strata_region(
 	data: ChunkData,
 	out_quads: Array,
@@ -1095,9 +1398,7 @@ func _emit_build_strata_region(
 			if delta <= layer * 0.15:
 				continue
 			var cur_h: float = _surface_y_at(data, x, z)
-			var wx: int = data.position.x * ChunkData.SIZE + x
-			var wz: int = data.position.y * ChunkData.SIZE + z
-			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var natural_h: float = _natural_surface_y(data, x, z)
 			var layers_built: int = maxi(1, int(round(delta / layer)))
 			var tile: int = data.get_worker_build_tile(x, z)
 			if tile < 0:
@@ -1323,9 +1624,7 @@ func _emit_build_strata(data: ChunkData, out_quads: Array) -> void:
 			if delta <= layer * 0.15:
 				continue
 			var cur_h: float = _surface_y_at(data, x, z)
-			var wx: int = data.position.x * ChunkData.SIZE + x
-			var wz: int = data.position.y * ChunkData.SIZE + z
-			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var natural_h: float = _natural_surface_y(data, x, z)
 			var layers_built: int = maxi(1, int(round(delta / layer)))
 			var tile: int = data.get_worker_build_tile(x, z)
 			if tile < 0:
@@ -1357,9 +1656,7 @@ func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
 			if delta >= -layer * 0.15:
 				continue
 			var cur_h: float = _surface_y_at(data, x, z)
-			var wx: int = data.position.x * ChunkData.SIZE + x
-			var wz: int = data.position.y * ChunkData.SIZE + z
-			var natural_h: float = data.world.get_surface_height_worker(float(wx), float(wz), 0.0)
+			var natural_h: float = _natural_surface_y(data, x, z)
 			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
 			var top_tile: int = _tile_type_at(data, x, z)
 			if top_tile == VoxelTypes.AIR:
@@ -1417,9 +1714,17 @@ func _append_voxel_face(
 
 
 func _process(_delta):
+	if _profiler_node == null or not is_instance_valid(_profiler_node):
+		_profiler_node = get_node_or_null("/root/PerfProfiler")
+	if _fbs_node == null or not is_instance_valid(_fbs_node):
+		_fbs_node = get_node_or_null("/root/FrameBudgetScheduler")
+	var profiler = _profiler_node
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_manager")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::_process")
 	if _rebuild_flush_needed:
 		_flush_rebuild_pending()
-	var profiler = get_node_or_null("/root/PerfProfiler")
 	var frame_us := 0
 	var worker_us := 0
 	var upload_us := 0
@@ -1428,9 +1733,35 @@ func _process(_delta):
 		frame_us = int(float(snap.get("frame_ms", 0.0)) * 1000.0)
 		worker_us = int(float(snap.get("worker_ms", 0.0)) * 1000.0)
 		upload_us = int(float(snap.get("sections", {}).get("chunk_upload", {}).get("last_ms", 0.0)) * 1000.0)
+	# Permanent runtime gauges (profiler only — no gameplay change).
+	if profiler and profiler.has_method("set_gauge"):
+		profiler.set_gauge("stream_queue_depth", float(_stream_load_pending.size()))
+		profiler.set_gauge("mesh_queue_depth", float(_mesh_completion_queue.size()))
+		profiler.set_gauge("chunk_tasks_inflight", float(_chunk_tasks.size()))
+		profiler.set_gauge("chunks_visible", float(chunks.size()))
+		profiler.set_gauge("workers_active", 1.0 if _chunk_tasks.size() > 0 else 0.0)
+		var pool_stats: Dictionary = _ChunkDataPool.get_stats() if _ChunkDataPool else {}
+		profiler.set_gauge("chunk_pool_free", float(pool_stats.get("free", 0)))
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("stream_schedule")
 	_drain_stream_pipeline()
+	if profiler and profiler.has_method("end"):
+		profiler.end("stream_schedule")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_apply")
 	_drain_mesh_queue()
 	_drain_deferred_mesh_buffers()
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_apply")
+	# Report chunk queues to FrameBudgetScheduler (unit caps already enforced in drains).
+	var fbs = _fbs_node
+	if fbs and fbs.has_method("report_queue_depth"):
+		fbs.report_queue_depth(&"chunk_apply", _mesh_completion_queue.size(), 0)
+		fbs.report_queue_depth(
+			&"chunk_upload",
+			ChunkView.pending_buffer_upload_count() + ChunkView.pending_surface_upload_count(),
+			0
+		)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.sample_frame(self, frame_us, worker_us, upload_us)
 		_ChunkStreamingTelemetry.record_budget_sample(
@@ -1439,6 +1770,10 @@ func _process(_delta):
 		)
 
 	if player == null or world == null:
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_process")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_manager")
 		return
 
 	var col := _player_column_pos()
@@ -1448,13 +1783,29 @@ func _process(_delta):
 
 	if not "_last_chunk_key" in self or _last_chunk_key != current_key:
 		_last_chunk_key = current_key
+		if profiler and profiler.has_method("begin_func"):
+			profiler.begin_func("ChunkManager::update_stream")
+		if profiler and profiler.has_method("begin"):
+			profiler.begin("stream_update")
 		update_stream(cx, cz)
+		if profiler and profiler.has_method("end"):
+			profiler.end("stream_update")
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::update_stream")
+
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::_process")
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_manager")
 
 
 func _drain_stream_pipeline() -> void:
 	if _shutting_down:
 		_stream_load_pending.clear()
 		_stream_unload_pending.clear()
+		_stream_load_sorted.clear()
+		_stream_load_order_dirty = true
+		_stream_unload_order_dirty = true
 		return
 	if stream_paused:
 		return
@@ -1463,7 +1814,10 @@ func _drain_stream_pipeline() -> void:
 	var starts := 0
 	var unloads := 0
 
-	_sort_stream_unload_pending()
+	# Sort unload only when the list was mutated (not every idle frame).
+	if _stream_unload_order_dirty and not _stream_unload_pending.is_empty():
+		_sort_stream_unload_pending()
+		_stream_unload_order_dirty = false
 	while _stream_unload_pending.size() > 0 and unloads < max_stream_unloads_per_frame:
 		if Time.get_ticks_usec() - t0 >= budget_us:
 			break
@@ -1476,51 +1830,55 @@ func _drain_stream_pipeline() -> void:
 	if ChunkView.pending_buffer_upload_count() > 4:
 		_stream_budget_used_us = Time.get_ticks_usec() - t0
 		return
-	if unloads > 0:
-		# Keep player-adjacent ring loading while unloads drain (one chebyshev<=1 start).
-		for entry in _ChunkStreamScheduler.sort_load_candidates(_stream_load_pending):
-			if starts >= 1:
-				break
-			if inflight >= MAX_INFLIGHT_CHUNKS:
-				break
-			if Time.get_ticks_usec() - t0 >= budget_us:
-				break
-			var coord: Vector2i = entry.get("coord", Vector2i.ZERO)
-			if _is_chunk_resident(coord):
-				_stream_load_pending.erase(coord)
-				continue
-			var player_chunk := _player_chunk_coord()
-			var chebyshev := maxi(
-				absi(coord.x - player_chunk.x),
-				absi(coord.y - player_chunk.y)
-			)
-			if chebyshev > 1:
-				break
-			_stream_load_pending.erase(coord)
-			_enqueue_chunk_generation(coord, true)
-			starts += 1
-			inflight += 1
+	var can_start := (
+		inflight < MAX_INFLIGHT_CHUNKS
+		and not _stream_load_pending.is_empty()
+		and Time.get_ticks_usec() - t0 < budget_us
+	)
+	if not can_start:
 		_stream_budget_used_us = Time.get_ticks_usec() - t0
 		return
-	for entry in _ChunkStreamScheduler.sort_load_candidates(_stream_load_pending):
-		if starts >= max_stream_starts_per_frame:
-			break
-		if inflight >= MAX_INFLIGHT_CHUNKS:
-			break
+
+	# Hot path: at most one (or few) starts → O(n) best-pick, no full sort.
+	# Same priority_score ordering as sort_load_candidates (deterministic ties).
+	var starts_cap: int = 1 if unloads > 0 else maxi(max_stream_starts_per_frame, 1)
+	var player_chunk_once := _player_chunk_coord()
+	while starts < starts_cap and inflight < MAX_INFLIGHT_CHUNKS:
 		if Time.get_ticks_usec() - t0 >= budget_us:
 			break
-		var coord: Vector2i = entry.get("coord", Vector2i.ZERO)
+		if _stream_load_pending.is_empty():
+			break
+		var best: Dictionary = _ChunkStreamScheduler.pick_best_load_candidate(_stream_load_pending)
+		if best.is_empty():
+			break
+		var coord: Vector2i = best.get("coord", Vector2i.ZERO)
+		if not _stream_load_pending.has(coord):
+			break
 		if _is_chunk_resident(coord):
 			_stream_load_pending.erase(coord)
+			_stream_load_order_dirty = true
 			continue
+		if unloads > 0:
+			# While unloads drain, only start player-adjacent ring.
+			var chebyshev := maxi(
+				absi(coord.x - player_chunk_once.x),
+				absi(coord.y - player_chunk_once.y)
+			)
+			if chebyshev > 1:
+				# Best overall is far; scan for best with chebyshev<=1 without full sort.
+				var near_best := _pick_best_near_load(player_chunk_once, 1)
+				if near_best.is_empty():
+					break
+				coord = near_best.get("coord", Vector2i.ZERO)
+				best = near_best
 		_stream_load_pending.erase(coord)
-		var urgent: bool = bool(entry.get("urgent", false))
-		var player_chunk := _player_chunk_coord()
-		var chebyshev := maxi(
-			absi(coord.x - player_chunk.x),
-			absi(coord.y - player_chunk.y)
+		_stream_load_order_dirty = true
+		var urgent: bool = bool(best.get("urgent", false))
+		var cheb2 := maxi(
+			absi(coord.x - player_chunk_once.x),
+			absi(coord.y - player_chunk_once.y)
 		)
-		var high_priority: bool = urgent or chebyshev <= 1
+		var high_priority: bool = urgent or cheb2 <= 1 or unloads > 0
 		_enqueue_chunk_generation(coord, high_priority)
 		starts += 1
 		inflight += 1
@@ -1528,34 +1886,85 @@ func _drain_stream_pipeline() -> void:
 	_stream_budget_used_us = Time.get_ticks_usec() - t0
 
 
+## O(n) scan for highest-score pending load within chebyshev radius.
+func _pick_best_near_load(player_chunk: Vector2i, max_chebyshev: int) -> Dictionary:
+	var best_coord := Vector2i.ZERO
+	var best_score := -1.0e30
+	var best_urgent := false
+	var have := false
+	for coord_variant in _stream_load_pending.keys():
+		var coord: Vector2i = coord_variant
+		var cheb := maxi(absi(coord.x - player_chunk.x), absi(coord.y - player_chunk.y))
+		if cheb > max_chebyshev:
+			continue
+		var entry: Dictionary = _stream_load_pending[coord]
+		var score: float = float(entry.get("score", 0.0))
+		if not have or score > best_score or (
+			is_equal_approx(score, best_score) and str(coord) < str(best_coord)
+		):
+			have = true
+			best_coord = coord
+			best_score = score
+			best_urgent = bool(entry.get("urgent", false))
+	if not have:
+		return {}
+	return {"coord": best_coord, "score": best_score, "urgent": best_urgent}
+
+
 func _drain_mesh_queue() -> void:
 	if _shutting_down:
 		_mesh_completion_queue.clear()
+		_mesh_completion_order_dirty = true
 		return
-	var count_budget := maxi(MAX_CHUNKS_PER_FRAME, 1)
-	var time_budget_us := maxi(chunk_upload_budget_us, 500)
-	var t0 := Time.get_ticks_usec()
-	var profiler = get_node_or_null("/root/PerfProfiler")
-	while _mesh_completion_queue.size() > 0 and count_budget > 0:
-		if Time.get_ticks_usec() - t0 >= time_budget_us:
-			break
-		var item: Dictionary = _mesh_completion_queue.pop_front()
-		var item_coord: Vector2i = item.get("coord", Vector2i.ZERO)
-		var item_token: int = int(item.get("token", -1))
-		if _ChunkStreamingTelemetry.is_enabled() and item_token >= 0:
-			_ChunkStreamingTelemetry.transition(
-				item_coord,
-				item_token,
-				_ChunkStreamingTelemetry.STATE_UPLOADING,
-				{"mesh_queue_depth": _mesh_completion_queue.size()}
-			)
-		var apply_t0 := Time.get_ticks_usec()
-		if profiler and profiler.has_method("begin"):
-			profiler.begin("chunk_upload")
-		_on_chunk_ready(item["data"], item["mesh"], item_token, apply_t0)
-		if profiler and profiler.has_method("end"):
-			profiler.end("chunk_upload")
-		count_budget -= 1
+	# Sort once per drain pass when workers have appended (not on every push).
+	if _mesh_completion_order_dirty and _mesh_completion_queue.size() > 1:
+		_sort_mesh_completion_queue()
+		_mesh_completion_order_dirty = false
+	var fbs = _fbs_node if _fbs_node != null else get_node_or_null("/root/FrameBudgetScheduler")
+	var profiler = _profiler_node if _profiler_node != null else get_node_or_null("/root/PerfProfiler")
+	var drain := func(token = null) -> void:
+		while _mesh_completion_queue.size() > 0:
+			if token != null and not token.can_continue():
+				break
+			var item: Dictionary = _mesh_completion_queue.pop_front()
+			var item_coord: Vector2i = item.get("coord", Vector2i.ZERO)
+			var item_token: int = int(item.get("token", -1))
+			if _ChunkStreamingTelemetry.is_enabled() and item_token >= 0:
+				_ChunkStreamingTelemetry.transition(
+					item_coord,
+					item_token,
+					_ChunkStreamingTelemetry.STATE_UPLOADING,
+					{"mesh_queue_depth": _mesh_completion_queue.size()}
+				)
+			var apply_t0 := Time.get_ticks_usec()
+			if profiler and profiler.has_method("begin"):
+				profiler.begin("chunk_upload")
+			_on_chunk_ready(item["data"], item["mesh"], item_token, apply_t0)
+			if profiler and profiler.has_method("end"):
+				profiler.end("chunk_upload")
+			if token != null:
+				token.spend_unit()
+			else:
+				break  # legacy single-step handled below
+	if fbs and fbs.has_method("run_budgeted"):
+		fbs.run_budgeted(&"chunk_apply", drain)
+	else:
+		# Legacy: hard count + wall budget.
+		var count_budget := maxi(MAX_CHUNKS_PER_FRAME, 1)
+		var time_budget_us := maxi(chunk_upload_budget_us, 500)
+		var t0 := Time.get_ticks_usec()
+		while _mesh_completion_queue.size() > 0 and count_budget > 0:
+			if Time.get_ticks_usec() - t0 >= time_budget_us:
+				break
+			var item2: Dictionary = _mesh_completion_queue.pop_front()
+			var c2: Vector2i = item2.get("coord", Vector2i.ZERO)
+			var tok2: int = int(item2.get("token", -1))
+			if profiler and profiler.has_method("begin"):
+				profiler.begin("chunk_upload")
+			_on_chunk_ready(item2["data"], item2["mesh"], tok2, Time.get_ticks_usec())
+			if profiler and profiler.has_method("end"):
+				profiler.end("chunk_upload")
+			count_budget -= 1
 
 
 func _drain_deferred_mesh_buffers() -> void:
@@ -1597,10 +2006,15 @@ func update_stream(cx: int, cz: int) -> void:
 	var camera_hint := _camera_forward_chunk_hint()
 	var needed := {}
 	var queued_count := 0
+	var load_mutated := false
+	var unload_mutated := false
 
 	for z in range(cz - RENDER_DISTANCE, cz + RENDER_DISTANCE + 2):
 		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 2):
 			var key: Vector2i = Vector2i(x, z)
+			# Finite world: do not stream/generate infinite terrain outside playable bounds.
+			if _WorldBakeService_is_outside(key):
+				continue
 			needed[key] = true
 			if not _is_chunk_resident(key):
 				var score := _ChunkStreamScheduler.priority_score(
@@ -1608,7 +2022,10 @@ func update_stream(cx: int, cz: int) -> void:
 				)
 				var prev: Dictionary = _stream_load_pending.get(key, {})
 				var urgent: bool = bool(prev.get("urgent", false))
+				var prev_score: float = float(prev.get("score", -1.0e30))
 				_stream_load_pending[key] = {"score": score, "urgent": urgent}
+				if not prev.has("score") or not is_equal_approx(prev_score, score):
+					load_mutated = true
 				if not prev.has("score"):
 					_set_lifecycle_state(key, _ChunkStreamLifecycle.REQUESTED)
 					queued_count += 1
@@ -1619,15 +2036,23 @@ func update_stream(cx: int, cz: int) -> void:
 			if key not in _stream_unload_pending:
 				_stream_unload_pending.append(key)
 				unload_queued += 1
-			_stream_load_pending.erase(key)
+				unload_mutated = true
+			if _stream_load_pending.erase(key):
+				load_mutated = true
 
 	for key in _stream_load_pending.keys():
 		if not needed.has(key):
 			_stream_load_pending.erase(key)
+			load_mutated = true
 
 	for key in pending.keys():
 		if not needed.has(key):
 			pending.erase(key)
+
+	if load_mutated:
+		_stream_load_order_dirty = true
+	if unload_mutated:
+		_stream_unload_order_dirty = true
 
 	var inflight := _chunk_tasks.size() + _mesh_completion_queue.size()
 	if _ChunkStreamingTelemetry.is_enabled():
@@ -1770,6 +2195,12 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 func _generate_chunk(data: ChunkData) -> void:
 	if data == null or not data._has_worker_snapshot or data.world == null:
 		return
+	var bake = null
+	var wb = load("res://world/world_bake_service.gd")
+	if wb != null and wb.has_method("get_active"):
+		bake = wb.get_active()
+	if bake != null and bake.has_method("note_generate_chunk_call"):
+		bake.note_generate_chunk_call()
 	data._compute_column_maps(true)
 	data.derive_micro_from_terrain_edits()
 					
@@ -1838,12 +2269,29 @@ func _on_chunk_ready(
 	token: int = -1,
 	apply_t0: int = 0
 ) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::_on_chunk_ready")
+	# Hitch measurement: which chunks applied this frame (no gameplay effect).
+	if profiler and data != null:
+		if profiler.has_method("inc_frame"):
+			profiler.inc_frame("chunks_streamed_applied", 1)
+		if profiler.has_method("set_gauge"):
+			profiler.set_gauge("last_streamed_cx", float(data.position.x))
+			profiler.set_gauge("last_streamed_cz", float(data.position.y))
+			profiler.set_gauge("last_streamed_frame", float(Engine.get_process_frames()))
 	if not is_inside_tree() or _shutting_down:
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_ready")
 		return
 	if data == null or not pending.has(data.position):
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_ready")
 		return
 	pending.erase(data.position)
 	if not packed_quad_data.has("count") or packed_quad_data.get("count", 0) == 0:
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_ready")
 		return
 	var apply_started := apply_t0 if apply_t0 > 0 else Time.get_ticks_usec()
 	var mesh_nodes_recreated := false
@@ -1851,7 +2299,14 @@ func _on_chunk_ready(
 		var existing: ChunkView = chunks[data.position] as ChunkView
 		if existing and is_instance_valid(existing):
 			mesh_nodes_recreated = true
+			var setup_t0 := Time.get_ticks_usec()
+			if profiler and profiler.has_method("begin_func"):
+				profiler.begin_func("ChunkView::setup")
 			existing.setup(data, packed_quad_data)
+			if profiler and profiler.has_method("end_func"):
+				profiler.end_func("ChunkView::setup")
+			if profiler and profiler.has_method("record_us"):
+				profiler.record_us("chunk_view_setup", Time.get_ticks_usec() - setup_t0)
 			_record_apply_telemetry(data.position, token, apply_started, mesh_nodes_recreated)
 			if _ChunkStreamingTelemetry.is_enabled() and token >= 0:
 				_ChunkStreamingTelemetry.transition(
@@ -1863,15 +2318,51 @@ func _on_chunk_ready(
 				_ChunkStreamingTelemetry.transition(data.position, token, _ChunkStreamingTelemetry.STATE_ACTIVE)
 				_ChunkStreamingTelemetry.finalize_lifecycle(data.position, token)
 			_set_lifecycle_state(data.position, _ChunkStreamLifecycle.ACTIVE)
+			var sig_t0 := Time.get_ticks_usec()
 			chunk_ready.emit(data.position, data)
+			if profiler and profiler.has_method("record_us"):
+				profiler.record_us("chunk_ready_signal", Time.get_ticks_usec() - sig_t0)
 			_schedule_patch_flush_if_needed()
+			if profiler and profiler.has_method("end_func"):
+				profiler.end_func("ChunkManager::_on_chunk_ready")
 			return
 	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()
 	if view == null:
 		push_warning("ChunkManager: failed to instantiate ChunkView for %s" % str(data.position))
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_ready")
 		return
+	var setup_t1 := Time.get_ticks_usec()
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkView::setup")
 	view.setup(data, packed_quad_data)
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkView::setup")
+	if profiler and profiler.has_method("record_us"):
+		profiler.record_us("chunk_view_setup", Time.get_ticks_usec() - setup_t1)
+	var SPP = load("res://systems/stream_phase_profiler.gd")
+	var upload_us_for_profile: int = int(ChunkView.peek_last_upload_us())
+	if SPP and SPP.is_enabled():
+		SPP.record("mesh_upload", upload_us_for_profile, data.position)
+		# No per-chunk physics bodies — player uses voxel probe collision.
+		SPP.record("collision_creation", 0, data.position)
+		SPP.record("physics_registration", 0, data.position)
+	var tree_t0 := Time.get_ticks_usec()
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::add_child_view")
 	add_child(view)
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::add_child_view")
+	if profiler and profiler.has_method("record_us"):
+		profiler.record_us("chunk_scenetree_insert", Time.get_ticks_usec() - tree_t0)
+	if SPP and SPP.is_enabled():
+		SPP.record("scenetree_insert_view", Time.get_ticks_usec() - tree_t0, data.position)
+		# Profile-only GPU sync cost (does not run when stream phase profiler off).
+		var t_sync := Time.get_ticks_usec()
+		RenderingServer.force_sync()
+		SPP.record("gpu_synchronization", Time.get_ticks_usec() - t_sync, data.position)
+		SPP.record("main_thread_apply", Time.get_ticks_usec() - apply_started, data.position)
+		SPP.end_chunk(data.position)
 	chunks[data.position] = view
 	_record_apply_telemetry(data.position, token, apply_started, mesh_nodes_recreated)
 	if _ChunkStreamingTelemetry.is_enabled() and token >= 0:
@@ -1886,11 +2377,18 @@ func _on_chunk_ready(
 	_set_lifecycle_state(data.position, _ChunkStreamLifecycle.ACTIVE)
 	chunk_ready.emit(data.position, data)
 	_schedule_patch_flush_if_needed()
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::_on_chunk_ready")
 
 
 func _pool_chunk_data_after_view_free(data: ChunkData) -> void:
-	if data != null and not _shutting_down:
-		_ChunkDataPool.release(data)
+	if data == null or _shutting_down:
+		return
+	# Already marked in unload path; still guard against double release.
+	if data.has_meta("_pooled_released"):
+		return
+	data.set_meta("_pooled_released", true)
+	_ChunkDataPool.release(data)
 
 
 func _is_chunk_resident(coord: Vector2i) -> bool:
@@ -1905,6 +2403,7 @@ func _queue_stream_load(coord: Vector2i, urgent: bool = false) -> void:
 	if urgent:
 		score += 100000.0
 	_stream_load_pending[coord] = {"score": score, "urgent": urgent}
+	_stream_load_order_dirty = true
 	_set_lifecycle_state(coord, _ChunkStreamLifecycle.REQUESTED)
 
 
@@ -1943,26 +2442,28 @@ func _sort_stream_unload_pending() -> void:
 		return
 	var player_chunk := _player_chunk_coord()
 	var camera_hint := _camera_forward_chunk_hint()
-	_stream_unload_pending.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
-		var sa := _ChunkStreamScheduler.priority_score(a, player_chunk, Vector2i.ZERO, camera_hint)
-		var sb := _ChunkStreamScheduler.priority_score(b, player_chunk, Vector2i.ZERO, camera_hint)
-		return sa < sb
+	_ChunkStreamScheduler.sort_unload_candidates(
+		_stream_unload_pending, player_chunk, camera_hint
 	)
 
 
 func _push_mesh_completion(item: Dictionary) -> void:
 	_mesh_completion_queue.append(item)
+	# Defer sort to drain time (once per frame) instead of O(M log M) per worker push.
+	_mesh_completion_order_dirty = true
+
+
+func _sort_mesh_completion_queue() -> void:
+	if _mesh_completion_queue.size() <= 1:
+		return
 	var player_chunk := _player_chunk_coord()
 	var camera_hint := _camera_forward_chunk_hint()
+	var vel := _player_chunk_velocity
 	_mesh_completion_queue.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var ca: Vector2i = a.get("coord", Vector2i.ZERO)
 		var cb: Vector2i = b.get("coord", Vector2i.ZERO)
-		var sa := _ChunkStreamScheduler.priority_score(
-			ca, player_chunk, _player_chunk_velocity, camera_hint
-		)
-		var sb := _ChunkStreamScheduler.priority_score(
-			cb, player_chunk, _player_chunk_velocity, camera_hint
-		)
+		var sa := _ChunkStreamScheduler.priority_score(ca, player_chunk, vel, camera_hint)
+		var sb := _ChunkStreamScheduler.priority_score(cb, player_chunk, vel, camera_hint)
 		return sa > sb
 	)
 
@@ -2048,22 +2549,28 @@ func _chunk_mesh_task(
 			"build_mesh_time_ms": float(build_mesh_us) / 1000.0,
 		})
 
-	var worker_telemetry: Dictionary = {}
+	# Always carry stage timings for permanent PerfProfiler (even when env telemetry is off).
+	var worker_telemetry: Dictionary = {
+		"column_us": column_us,
+		"mesh_us": mesh_us,
+		"buffer_us": buffer_us,
+		"build_mesh_us": build_mesh_us,
+		"mesh_generation_time_ms": float(mesh_us) / 1000.0,
+		"column_map_time_ms": float(column_us) / 1000.0,
+		"build_mesh_time_ms": float(build_mesh_us) / 1000.0,
+	}
 	if _ChunkRebuildTelemetry.is_enabled():
 		var geo: Dictionary = _ChunkRebuildTelemetry.collect_geometry_stats(
 			data, merged_quads, payload, examined
 		)
-		worker_telemetry = {
+		worker_telemetry.merge({
 			"voxels_examined": geo.get("voxels_examined", examined),
 			"quads_emitted": geo.get("quads_emitted", 0),
 			"ramps_emitted": geo.get("ramps_emitted", 0),
 			"concave_pieces_emitted": geo.get("concave_pieces_emitted", 0),
 			"greedy_merge_ratio": geo.get("greedy_merge_ratio", 0.0),
 			"triangles_generated": geo.get("triangles_generated", 0),
-			"mesh_generation_time_ms": float(mesh_us) / 1000.0,
 			"serialization_time_ms": float(int(job.get("duplicate_us", 0)) + buffer_us) / 1000.0,
-			"column_map_time_ms": float(column_us) / 1000.0,
-			"build_mesh_time_ms": float(build_mesh_us) / 1000.0,
 			"payload_duplicated": bool(job.get("payload_duplicated", false)),
 			"buffer_allocated": bool(job.get("buffer_allocated", false)),
 			"prebuilt_buffers": prebuild_chunk_buffers,
@@ -2072,7 +2579,7 @@ func _chunk_mesh_task(
 			"rebuilt_columns": examined,
 			"mesh_patch_size": _TerrainDirtyScope.patch_cells_area(patch_rect),
 			"pipeline_stages": job.get("stages", []),
-		}
+		}, true)
 	# Do not null data.world here: regen reuses view.chunk_data and concurrent main-thread
 	# rebuild enqueue can race a still-running or just-finished worker if world is cleared early.
 	# Pool release (ChunkDataPool.release) still clears world when the shell is recycled.
@@ -2100,7 +2607,14 @@ func _on_chunk_task_complete(
 	token: int = -1,
 	worker_telemetry: Dictionary = {}
 ) -> void:
-	_chunk_tasks.erase(coord)
+	# Deferred MQ entry. Leaf-attribute only.
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_task_complete")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("ChunkManager::_on_chunk_task_complete")
+	# Reap pool task id first (wait_for_task_completion). Must not only erase.
+	_reap_chunk_task(coord)
 	if _shutting_down or is_mesh_job_stale(coord, data, token):
 		var stamp_stale := (
 			data != null
@@ -2114,23 +2628,46 @@ func _on_chunk_task_complete(
 		if stamp_stale and not _shutting_down:
 			pending.erase(coord)
 			call_deferred("rebuild_chunk", coord)
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_task_complete")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_task_complete")
 		return
 	if data == null:
 		pending.erase(coord)
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_task_complete")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_task_complete")
 		return
-	var profiler = get_node_or_null("/root/PerfProfiler")
-	if mesh_us > 0 and profiler and profiler.has_method("record_us"):
-		profiler.record_us("chunk_mesh", mesh_us)
-		if profiler.has_method("record_worker_us"):
-			profiler.record_worker_us(mesh_us)
-	if buffer_us > 0 and profiler and profiler.has_method("record_us"):
-		profiler.record_us("chunk_buffer", buffer_us)
-		if profiler.has_method("record_worker_us"):
-			profiler.record_worker_us(buffer_us)
+	var column_us: int = int(worker_telemetry.get("column_us", 0))
+	# Worker-stage attribution only (must not count as main-thread tracked).
+	if profiler and profiler.has_method("record_worker_stage"):
+		if column_us > 0:
+			profiler.record_worker_stage("chunk_column", column_us)
+		if mesh_us > 0:
+			profiler.record_worker_stage("chunk_mesh", mesh_us)
+		if buffer_us > 0:
+			profiler.record_worker_stage("chunk_buffer", buffer_us)
+	elif profiler and profiler.has_method("record_us"):
+		if column_us > 0:
+			profiler.record_us("chunk_column", column_us)
+		if mesh_us > 0:
+			profiler.record_us("chunk_mesh", mesh_us)
+		if buffer_us > 0:
+			profiler.record_us("chunk_buffer", buffer_us)
+	if profiler and profiler.has_method("note_worker_job_ms"):
+		var job_ms: float = float(column_us + mesh_us + buffer_us) / 1000.0
+		if job_ms > 0.0:
+			profiler.note_worker_job_ms(job_ms)
 	if not is_inside_tree() or not pending.has(coord):
 		if _telemetry_trigger in ["stream", "movement"]:
 			_ChunkDataPool.release(data)
 		pending.erase(coord)
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_task_complete")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_task_complete")
 		return
 	if data.world == null and world != null:
 		data.world = world
@@ -2142,6 +2679,10 @@ func _on_chunk_task_complete(
 			"mesh_queue_depth": _mesh_completion_queue.size(),
 		})
 		_set_lifecycle_state(coord, _ChunkStreamLifecycle.QUEUED_FOR_UPLOAD)
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("ChunkManager::_on_chunk_task_complete")
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_task_complete")
 
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 	var entry := get_ramp_entry_at_world(wx, wz)
@@ -2330,13 +2871,20 @@ func is_world_pos_loaded(world_pos: Vector3) -> bool:
 func rebuild_chunk(key: Vector2i) -> void:
 	if _shutting_down:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_rebuild")
 	_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
 	if chunks.has(key):
 		_regenerate_chunk_mesh(key, true)
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_rebuild")
 		return
 	pending.erase(key)
-	_chunk_tasks.erase(key)
+	_reap_chunk_task(key)
 	request_chunk(key, true)
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_rebuild")
 
 
 func rebuild_chunks():

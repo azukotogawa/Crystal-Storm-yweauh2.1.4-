@@ -6,6 +6,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _MacroLayerGrid = preload("res://helpers/macro_layer_grid.gd")
 const _MicroLayerGrid = preload("res://helpers/micro_layer_grid.gd")
+const _WorldBakeService = preload("res://world/world_bake_service.gd")
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -38,6 +39,8 @@ var ramp_map: Dictionary = {}
 var _worker_height_delta: Array = []
 var _worker_build_tile: Array = []
 var _worker_feature_tile: Array = []
+## True when feature tile comes from baked static vegetation (still pristine for mesh plans).
+var _worker_feature_baked: Array = []
 ## Halo-region height deltas (world units), same dim as _halo_surface — worker-safe.
 var _worker_halo_height_delta: Array = []
 var _has_worker_snapshot: bool = false
@@ -48,7 +51,13 @@ var overlay_mesh_stamp: Dictionary = {}
 var _mesh_job_micro_skip: Dictionary = {}
 ## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
+## Natural (pre-overlay) halo heights — baked base when available; used to recompose on dirty.
+var _halo_base_surface: Array = []
 var _has_halo_surface: bool = false
+## Immutable baked base columns (pre-WorldState). Set by WorldBakeService apply.
+var _baked_base_surface: Array = []
+var _baked_base_tile: Array = []
+var _has_baked_base: bool = false
 
 const SIZE := 16
 const HALO := 1
@@ -88,12 +97,17 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_worker_height_delta.clear()
 	_worker_build_tile.clear()
 	_worker_feature_tile.clear()
+	_worker_feature_baked.clear()
 	_worker_halo_height_delta.clear()
 	_halo_surface.clear()
+	_halo_base_surface.clear()
 	_has_worker_snapshot = false
 	overlay_mesh_stamp = {}
 	_mesh_job_micro_skip.clear()
 	_has_halo_surface = false
+	_baked_base_surface.clear()
+	_baked_base_tile.clear()
+	_has_baked_base = false
 	_legacy_maps_dirty = false
 	_macro_enabled = s_macro_enabled_from_env
 	_macro_surface_bound = false
@@ -122,26 +136,63 @@ func capture_worker_snapshot() -> void:
 	var ws = _WorldState.get_active()
 	overlay_mesh_stamp = ws.capture_mesh_overlay_stamp()
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
+	_ensure_worker_overlay_storage()
+	# Fast path: no overlay maps → zero-fill without Dictionary lookups (common on pristine bake walk).
+	var overlays_empty: bool = (
+		ws.height_delta.is_empty()
+		and ws.build_tile.is_empty()
+		and ws.tile_overrides.is_empty()
+		and ws.feature_cells.is_empty()
+		and (not ("seeded_tile_keys" in ws) or ws.seeded_tile_keys.is_empty())
+	)
+	if overlays_empty:
+		for x in SIZE:
+			for z in SIZE:
+				_worker_height_delta[x][z] = 0.0
+				_worker_build_tile[x][z] = -1
+				_worker_feature_tile[x][z] = -1
+				_worker_feature_baked[x][z] = false
+	else:
+		for x in SIZE:
+			for z in SIZE:
+				var wx := position.x * SIZE + x
+				var wz := position.y * SIZE + z
+				var key := Vector2i(wx, wz)
+				# Read authority storage once; convert height layers → world units for workers.
+				_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
+				_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
+				_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
+				# Baked vegetation + world-seeded stamps (towns/roads) are pristine for mesh plans.
+				var feat_entry: Dictionary = ws.feature_cells.get(key, {})
+				var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
+					if "seeded_tile_keys" in ws else false
+				_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+	_has_worker_snapshot = true
+	_capture_halo_surface()
+
+
+func _ensure_worker_overlay_storage() -> void:
+	var need_alloc := (
+		_worker_height_delta.size() != SIZE
+		or _worker_build_tile.size() != SIZE
+		or _worker_feature_tile.size() != SIZE
+		or _worker_feature_baked.size() != SIZE
+	)
+	if not need_alloc and _worker_height_delta[0] is Array and _worker_height_delta[0].size() == SIZE:
+		return
 	_worker_height_delta.resize(SIZE)
 	_worker_build_tile.resize(SIZE)
 	_worker_feature_tile.resize(SIZE)
+	_worker_feature_baked.resize(SIZE)
 	for x in SIZE:
 		_worker_height_delta[x] = []
 		_worker_build_tile[x] = []
 		_worker_feature_tile[x] = []
+		_worker_feature_baked[x] = []
 		_worker_height_delta[x].resize(SIZE)
 		_worker_build_tile[x].resize(SIZE)
 		_worker_feature_tile[x].resize(SIZE)
-		for z in SIZE:
-			var wx := position.x * SIZE + x
-			var wz := position.y * SIZE + z
-			var key := Vector2i(wx, wz)
-			# Read authority storage once; convert height layers → world units for workers.
-			_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
-			_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
-			_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
-	_has_worker_snapshot = true
-	_capture_halo_surface()
+		_worker_feature_baked[x].resize(SIZE)
 
 
 func is_overlay_mesh_stamp_current() -> bool:
@@ -158,11 +209,15 @@ func _capture_halo_surface() -> void:
 	var dim := SIZE + HALO * 2
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	var ws = _WorldState.get_active()
+	var bake = _WorldBakeService.get_active()
 	_halo_surface.resize(dim)
+	_halo_base_surface.resize(dim)
 	_worker_halo_height_delta.resize(dim)
 	for ix in dim:
 		_halo_surface[ix] = []
 		_halo_surface[ix].resize(dim)
+		_halo_base_surface[ix] = []
+		_halo_base_surface[ix].resize(dim)
 		_worker_halo_height_delta[ix] = []
 		_worker_halo_height_delta[ix].resize(dim)
 		for iz in dim:
@@ -170,6 +225,7 @@ func _capture_halo_surface() -> void:
 			var lz := iz - HALO
 			if lx >= 0 and lx < SIZE and lz >= 0 and lz < SIZE:
 				_halo_surface[ix][iz] = -9999.0
+				_halo_base_surface[ix][iz] = -9999.0
 				_worker_halo_height_delta[ix][iz] = 0.0
 				continue
 			var wx := position.x * SIZE + lx
@@ -178,8 +234,94 @@ func _capture_halo_surface() -> void:
 			# Main-thread capture only: freeze height delta for later worker refresh.
 			var hdelta: float = float(int(ws.height_delta.get(key, 0))) * layer_h
 			_worker_halo_height_delta[ix][iz] = hdelta
-			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
+			var resolved: Dictionary = _resolve_halo_natural_height(wx, wz, bake)
+			if bool(resolved.get("deferred", false)):
+				_halo_base_surface[ix][iz] = -9999.0
+				_halo_surface[ix][iz] = -9999.0
+				continue
+			var base_h: float = float(resolved.get("base", 0.0))
+			_halo_base_surface[ix][iz] = base_h
+			_halo_surface[ix][iz] = _WorldBakeService.compose_surface_height(base_h, hdelta)
 	_has_halo_surface = true
+
+
+## Main-thread: natural (pre-overlay) height for a halo world cell.
+## Covered bake cells use package data only; missing packages defer (no noise).
+func _resolve_halo_natural_height(wx: int, wz: int, bake) -> Dictionary:
+	if bake != null and bake.valid and bake.has_method("covers_world_cell") \
+			and bool(bake.covers_world_cell(wx, wz)):
+		var sample: Dictionary = bake.sample_world_base(wx, wz)
+		if sample.is_empty():
+			if bake.has_method("note_halo_deferred"):
+				bake.note_halo_deferred()
+			return {"deferred": true}
+		if bake.has_method("note_halo_bake_hit"):
+			bake.note_halo_bake_hit()
+		return {"base": float(sample.get("surface", 0.0)), "deferred": false}
+	# Outside package bounds, or no valid bake: legacy noise (allowed for out-of-bounds).
+	var h: float = world.get_surface_height_worker(float(wx), float(wz), 0.0)
+	return {"base": h, "deferred": false}
+
+
+func store_baked_base(surface: PackedFloat32Array, tiles: PackedInt32Array) -> void:
+	_baked_base_surface.clear()
+	_baked_base_tile.clear()
+	_baked_base_surface.resize(SIZE)
+	_baked_base_tile.resize(SIZE)
+	for lx in SIZE:
+		_baked_base_surface[lx] = []
+		_baked_base_surface[lx].resize(SIZE)
+		_baked_base_tile[lx] = []
+		_baked_base_tile[lx].resize(SIZE)
+	# Package layout matches WorldBakeService: index = lz * CELLS + lx
+	var i := 0
+	for lz in SIZE:
+		for lx in SIZE:
+			if i < surface.size():
+				_baked_base_surface[lx][lz] = float(surface[i])
+			if i < tiles.size():
+				_baked_base_tile[lx][lz] = int(tiles[i])
+			i += 1
+	_has_baked_base = true
+
+
+func has_baked_base() -> bool:
+	return _has_baked_base
+
+
+func get_baked_base_height(lx: int, lz: int) -> float:
+	if not _has_baked_base:
+		return 0.0
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return 0.0
+	if lx >= _baked_base_surface.size() or _baked_base_surface[lx] == null:
+		return 0.0
+	if lz >= _baked_base_surface[lx].size():
+		return 0.0
+	return float(_baked_base_surface[lx][lz])
+
+
+func get_baked_base_tile(lx: int, lz: int) -> int:
+	if not _has_baked_base:
+		return VoxelTypes.AIR
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return VoxelTypes.AIR
+	if lx >= _baked_base_tile.size() or _baked_base_tile[lx] == null:
+		return VoxelTypes.AIR
+	if lz >= _baked_base_tile[lx].size():
+		return VoxelTypes.AIR
+	return int(_baked_base_tile[lx][lz])
+
+
+## Natural (pre-overlay) height for dig/build strata mesh.
+func get_natural_surface_y(lx: int, lz: int) -> float:
+	if _has_baked_base:
+		return get_baked_base_height(lx, lz)
+	if world == null:
+		return 0.0
+	var wx: int = position.x * SIZE + lx
+	var wz: int = position.y * SIZE + lz
+	return world.get_surface_height_worker(float(wx), float(wz), 0.0)
 
 
 func _refresh_halo_interior_from_maps() -> void:
@@ -341,6 +483,16 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 		_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
 		_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
 		_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
+		if _worker_feature_baked.size() != SIZE:
+			_worker_feature_baked.resize(SIZE)
+		if _worker_feature_baked[x] == null or not (_worker_feature_baked[x] is Array) \
+				or _worker_feature_baked[x].size() != SIZE:
+			_worker_feature_baked[x] = []
+			_worker_feature_baked[x].resize(SIZE)
+		var feat_entry: Dictionary = ws.feature_cells.get(key, {})
+		var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
+			if "seeded_tile_keys" in ws else false
+		_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
 		# Refresh frozen halo height-delta ring for dirty edge columns (main thread).
 		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
@@ -351,6 +503,7 @@ func update_dirty_column_maps(local_cells: Array) -> int:
 		return 0
 	ensure_column_maps()
 	_ensure_surface_map_storage()
+	var bake = _WorldBakeService.get_active()
 	var examined := 0
 	var seen: Dictionary = {}
 	for cell_variant in local_cells:
@@ -363,20 +516,7 @@ func update_dirty_column_maps(local_cells: Array) -> int:
 		if x < 0 or x >= SIZE or z < 0 or z >= SIZE:
 			continue
 		examined += 1
-		var wx := float(position.x * SIZE + x)
-		var wz := float(position.y * SIZE + z)
-		if _has_worker_snapshot:
-			surface_map[x][z] = world.get_surface_height_worker(
-				wx, wz, float(_worker_height_delta[x][z])
-			)
-			tile_map[x][z] = world.get_tile_type_worker(
-				wx, wz,
-				int(_worker_build_tile[x][z]),
-				int(_worker_feature_tile[x][z])
-			)
-		else:
-			surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
-			tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
+		_rebuild_dirty_column(x, z, bake)
 		if _has_halo_surface:
 			_halo_surface[x + HALO][z + HALO] = surface_map[x][z]
 	for cell_variant in local_cells:
@@ -389,6 +529,65 @@ func update_dirty_column_maps(local_cells: Array) -> int:
 		var micro = _micro_grid()
 		last_micro_examined = micro.update_dirty_columns(self, local_cells, true)
 	return examined
+
+
+## Dirty column = baked base (or legacy noise outside package) + frozen WorldState overlays.
+func _rebuild_dirty_column(x: int, z: int, bake) -> void:
+	var hdelta: float = 0.0
+	var build_t: int = -1
+	var feat_t: int = -1
+	if _has_worker_snapshot:
+		hdelta = float(_worker_height_delta[x][z])
+		build_t = int(_worker_build_tile[x][z])
+		feat_t = int(_worker_feature_tile[x][z])
+	if _has_baked_base:
+		surface_map[x][z] = _WorldBakeService.compose_surface_height(
+			get_baked_base_height(x, z), hdelta
+		)
+		if build_t >= 0:
+			tile_map[x][z] = build_t
+		elif feat_t >= 0:
+			tile_map[x][z] = feat_t
+		else:
+			tile_map[x][z] = get_baked_base_tile(x, z)
+		if bake != null and bake.has_method("note_dirty_bake_hit"):
+			bake.note_dirty_bake_hit()
+		return
+	# No stored base: try live bake sample only if this column is covered (worker-safe if resident).
+	var wx_i: int = position.x * SIZE + x
+	var wz_i: int = position.y * SIZE + z
+	if bake != null and bake.valid and bake.has_method("covers_world_cell") \
+			and bool(bake.covers_world_cell(wx_i, wz_i)):
+		var sample: Dictionary = {}
+		if bake.has_method("sample_base"):
+			sample = bake.sample_base(position, x, z)
+		if not sample.is_empty():
+			if not _has_baked_base and bake.has_method("sample_base"):
+				# Soft-fill single cell natural height for dig strata; keep maps consistent.
+				pass
+			surface_map[x][z] = _WorldBakeService.compose_surface_height(
+				float(sample.get("surface", 0.0)), hdelta
+			)
+			if build_t >= 0:
+				tile_map[x][z] = build_t
+			elif feat_t >= 0:
+				tile_map[x][z] = feat_t
+			else:
+				tile_map[x][z] = int(sample.get("tile", VoxelTypes.AIR))
+			if bake.has_method("note_dirty_bake_hit"):
+				bake.note_dirty_bake_hit()
+			return
+		# Covered but package unavailable: never re-noise static terrain.
+		return
+	# Outside package / no bake: legacy procedural column.
+	var wx := float(wx_i)
+	var wz := float(wz_i)
+	if _has_worker_snapshot:
+		surface_map[x][z] = world.get_surface_height_worker(wx, wz, hdelta)
+		tile_map[x][z] = world.get_tile_type_worker(wx, wz, build_t, feat_t)
+	else:
+		surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
+		tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
 
 
 func _refresh_halo_for_local_cell(x: int, z: int) -> void:
@@ -434,8 +633,6 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 			var iz: int = lz + HALO
 			if ix < 0 or iz < 0 or ix >= _halo_surface.size() or iz >= _halo_surface[ix].size():
 				continue
-			var wx: int = position.x * SIZE + lx
-			var wz: int = position.y * SIZE + lz
 			var hdelta: float = 0.0
 			if _has_worker_snapshot and ix < _worker_halo_height_delta.size() \
 					and iz < _worker_halo_height_delta[ix].size():
@@ -443,10 +640,20 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 				hdelta = float(_worker_halo_height_delta[ix][iz])
 			else:
 				# Main-thread pre-snapshot path only.
+				var wx: int = position.x * SIZE + lx
+				var wz: int = position.y * SIZE + lz
 				var key := Vector2i(wx, wz)
 				var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 				hdelta = float(int(_WorldState.get_active().height_delta.get(key, 0))) * layer_h
-			_halo_surface[ix][iz] = world.get_surface_height_worker(float(wx), float(wz), hdelta)
+			# Recompose from frozen natural base — never re-noise covered bake cells.
+			if ix < _halo_base_surface.size() and iz < _halo_base_surface[ix].size():
+				var base_h: float = float(_halo_base_surface[ix][iz])
+				if base_h <= -9000.0:
+					_halo_surface[ix][iz] = -9999.0
+				else:
+					_halo_surface[ix][iz] = _WorldBakeService.compose_surface_height(base_h, hdelta)
+			else:
+				_halo_surface[ix][iz] = -9999.0
 
 
 func _compute_column_maps(use_uncached: bool = true):
@@ -456,6 +663,15 @@ func _compute_column_maps(use_uncached: bool = true):
 		return
 
 	_ensure_surface_map_storage()
+	# Prefer immutable baked base when present (should already be applied via pipeline).
+	if _has_baked_base and _has_worker_snapshot:
+		var bake = _WorldBakeService.get_active()
+		for x in SIZE:
+			for z in SIZE:
+				_rebuild_dirty_column(x, z, bake)
+		if _has_halo_surface:
+			_refresh_halo_interior_from_maps()
+		return
 	for x in SIZE:
 		for z in SIZE:
 			var wx := float(position.x * SIZE + x)
@@ -572,6 +788,29 @@ func get_worker_build_tile(lx: int, lz: int) -> int:
 	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
 		return -1
 	return int(_worker_build_tile[lx][lz])
+
+
+func get_worker_feature_tile(lx: int, lz: int) -> int:
+	if not _has_worker_snapshot:
+		return -1
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return -1
+	if lx >= _worker_feature_tile.size() or lz >= _worker_feature_tile[lx].size():
+		return -1
+	return int(_worker_feature_tile[lx][lz])
+
+
+## True when feature tile is baked static vegetation (not a runtime edit).
+func get_worker_feature_is_baked(lx: int, lz: int) -> bool:
+	if not _has_worker_snapshot:
+		return false
+	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
+		return false
+	if lx >= _worker_feature_baked.size() or _worker_feature_baked[lx] == null:
+		return false
+	if lz >= _worker_feature_baked[lx].size():
+		return false
+	return bool(_worker_feature_baked[lx][lz])
 
 
 func _ensure_surface_map_storage() -> void:

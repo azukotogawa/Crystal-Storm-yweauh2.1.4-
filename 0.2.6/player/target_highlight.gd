@@ -43,18 +43,30 @@ func _build_mesh() -> void:
 
 
 func _process(_delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("target_highlight")
 	if player == null or world == null or _mesh == null:
+		if profiler and profiler.has_method("end"):
+			profiler.end("target_highlight")
 		return
 	if _GameplayInput.blocks_actions():
 		_mesh.visible = false
+		if profiler and profiler.has_method("end"):
+			profiler.end("target_highlight")
 		return
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	var range_v := _active_range()
+	var resolve_t0 := Time.get_ticks_usec()
 	var info := _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
+	if profiler and profiler.has_method("record_func"):
+		profiler.record_func("ActionTargeting::resolve_action", Time.get_ticks_usec() - resolve_t0)
 	var mode: StringName = info.get("mode", &"none")
 	if mode not in [&"dig", &"build", &"attack"] or not info.get("valid", false):
 		_mesh.visible = false
+		if profiler and profiler.has_method("end"):
+			profiler.end("target_highlight")
 		return
 	_mesh.visible = true
 	var ws = _WorldSettings.get_active()
@@ -73,6 +85,8 @@ func _process(_delta: float) -> void:
 			_mat.albedo_color = Color(0.55, 0.75, 1.0, 0.38)
 		_:
 			_mat.albedo_color = Color(0.35, 0.95, 0.45, 0.38)
+	if profiler and profiler.has_method("end"):
+		profiler.end("target_highlight")
 
 
 func _active_range() -> float:

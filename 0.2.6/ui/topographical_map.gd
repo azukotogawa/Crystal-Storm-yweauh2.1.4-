@@ -133,9 +133,14 @@ func _build_ui() -> void:
 
 
 func _process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("topo_map")
 	if _world == null or not is_instance_valid(_world):
 		_bind_scene()
 		if _world == null:
+			if profiler and profiler.has_method("end"):
+				profiler.end("topo_map")
 			return
 
 	if not _active_map_job.is_empty():
@@ -145,6 +150,8 @@ func _process(delta: float) -> void:
 
 	if not _GameplayInput.blocks_actions() and Input.is_action_just_pressed("toggle_map"):
 		if not _fullscreen_map_enabled:
+			if profiler and profiler.has_method("end"):
+				profiler.end("topo_map")
 			return
 		_fullscreen_open = not _fullscreen_open
 		_fullscreen_panel.visible = _fullscreen_open
@@ -152,6 +159,8 @@ func _process(delta: float) -> void:
 			_queue_map_rebuild(true)
 
 	if not _minimap_enabled and not _fullscreen_open:
+		if profiler and profiler.has_method("end"):
+			profiler.end("topo_map")
 		return
 
 	_crystal_overlay_timer -= delta
@@ -166,6 +175,8 @@ func _process(delta: float) -> void:
 		_rebuild_timer = cfg.rebuild_interval_sec
 		_queue_map_rebuild(_fullscreen_open)
 		_last_center = center
+	if profiler and profiler.has_method("end"):
+		profiler.end("topo_map")
 
 
 func _player_center_cell() -> Vector2i:

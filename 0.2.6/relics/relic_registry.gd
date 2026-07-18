@@ -33,6 +33,14 @@ static func ensure_builtins() -> void:
 	register(_make_crystal_ward())
 	register(_make_flow_anchor())
 	register(_make_mason_glove())
+	register(_make_pathfinder_charm())
+	register(_make_ruin_seal())
+
+
+## Relics that can drop from ruin expeditions (exploration reward pool).
+static func ruin_loot_pool() -> Array[StringName]:
+	ensure_builtins()
+	return [&"pathfinder_charm", &"ruin_seal", &"flow_anchor", &"mason_glove"]
 
 
 ## Vertical-slice starter: slows crystal fluid flow (measurable via get_crystal_flow_mult).
@@ -73,4 +81,30 @@ static func _make_mason_glove() -> _RelicDef:
 		_StatModifier.mult(_StatIds.BUILD_COST, 0.8, &"mason_glove"),
 	]
 	d.build_cost_mult = 0.8
+	return d
+
+## Ruin find: move faster while scouting the wilds.
+static func _make_pathfinder_charm() -> _RelicDef:
+	var d := _RelicDef.new()
+	d.id = &"pathfinder_charm"
+	d.display_name = "Pathfinder's Charm"
+	d.description = "Pulled from a forgotten ruin — you cover ground faster."
+	d.rarity = _RelicDef.Rarity.COMMON
+	d.stat_modifiers = [
+		_StatModifier.mult(_StatIds.MOVE_SPEED, 1.18, &"pathfinder_charm"),
+	]
+	return d
+
+
+## Ruin find: resist crystal burn while exploring pressure fronts.
+static func _make_ruin_seal() -> _RelicDef:
+	var d := _RelicDef.new()
+	d.id = &"ruin_seal"
+	d.display_name = "Ruin Seal"
+	d.description = "A cracked ward-stone. Crystal contact burns less."
+	d.rarity = _RelicDef.Rarity.UNCOMMON
+	d.crystal_flow_mult = 0.92
+	d.stat_modifiers = [
+		_StatModifier.flat(_StatIds.CRYSTAL_RESISTANCE, 0.18, &"ruin_seal"),
+	]
 	return d

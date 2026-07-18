@@ -598,6 +598,15 @@ func get_surface_height_uncached(wx: float, wz: float) -> float:
 
 ## Worker-thread safe: pass terrain edits captured on the main thread (no shared dict access).
 func get_surface_height_worker(wx: float, wz: float, height_delta: float = 0.0) -> float:
+	# Isolation counter: in a complete baked world this must stay 0 for package cells.
+	var bake = null
+	var wb = load("res://world/world_bake_service.gd")
+	if wb != null and wb.has_method("get_active"):
+		bake = wb.get_active()
+	if bake != null and bake.has_method("should_count_runtime_noise_height") \
+			and bool(bake.should_count_runtime_noise_height(wx, wz)):
+		if bake.has_method("note_runtime_noise_height_call"):
+			bake.note_runtime_noise_height_call()
 	var h: float = _compute_surface_height(wx, wz)
 	h += height_delta
 	return _quantize_to_voxel_layer(h)

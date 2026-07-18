@@ -38,11 +38,16 @@ func _find_target():
 	follow_target = target.global_position
 
 func _process(delta: float):
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("camera_update")
 	if not target:
 		if not player:
 			player = get_tree().get_first_node_in_group("player")
 			target = player
 		if not target:
+			if profiler and profiler.has_method("end"):
+				profiler.end("camera_update")
 			return
 	var target_pos = target.global_position
 	var desired_pos = target_pos + get_offset_from_rotation()
@@ -60,6 +65,8 @@ func _process(delta: float):
 
 	# Keep fixed isometric rotation
 	rotation_degrees = Vector3(-35.264, 45.0 + orbit_rotation * 90.0, 0.0)
+	if profiler and profiler.has_method("end"):
+		profiler.end("camera_update")
 
 func get_offset_from_rotation() -> Vector3:
 	var angle = deg_to_rad(orbit_rotation * 90.0)

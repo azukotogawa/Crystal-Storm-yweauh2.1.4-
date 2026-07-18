@@ -78,6 +78,9 @@ var _sim_tick_id: int = 0
 var _perf_mesh_budget_us: int = 2500
 var _absorption_scan_offset: int = 0
 var _absorption_cells_per_tick: int = 64
+## Frame-budgeted sim event dispatch (Phase 3). Critical events flush immediately.
+var _dispatch_queue: Array = []  # {ev: Dictionary, enqueued_frame: int, enqueued_us: int}
+var _dispatch_queue_age_max: int = 0
 var _perf_spread_damping_start: int = 600
 var _perf_spread_damping_full: int = 3000
 var _perf_mesh_rebuilds_when_large: int = 1
@@ -567,6 +570,11 @@ func apply_performance_config(cfg) -> void:
 func _process(delta: float) -> void:
 	if not _initialized:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("crystal_manager")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("CrystalManager::_process")
 
 	if expansion_enabled:
 		_sim_accum += delta
@@ -577,14 +585,28 @@ func _process(delta: float) -> void:
 			_sim_accum -= step_dt
 			sim_steps += 1
 		# Absorption is advanced inside CrystalSimulation.tick via snapshot; side effects applied from events.
+		var power_t0 := Time.get_ticks_usec()
 		_tick_power(delta)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalManager::_tick_power", Time.get_ticks_usec() - power_t0)
 		_check_player_contact()
 
 	_sync_spawn_marker_visibility()
 	if _presentation:
+		var lod_t0 := Time.get_ticks_usec()
 		_last_player_chunk = _presentation.refresh_lod_if_player_moved(_last_player_chunk)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalPresentation::refresh_lod", Time.get_ticks_usec() - lod_t0)
 	if expansion_enabled or (_presentation and _presentation.dirty_chunk_count() > 0):
 		_flush_dirty_chunks()
+
+	# Drain deferred sim events under FrameBudgetScheduler (cannot monopolize frame).
+	_drain_dispatch_queue_budgeted()
+
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("CrystalManager::_process")
+	if profiler and profiler.has_method("end"):
+		profiler.end("crystal_manager")
 
 
 func _build_sim_snapshot(delta: float):
@@ -637,11 +659,22 @@ func _tick_crystal_sim(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("crystal_sim")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("CrystalManager::_tick_crystal_sim")
 	if _simulation:
+		var snap_t0 := Time.get_ticks_usec()
 		var snap = _build_sim_snapshot(delta)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalManager::_build_sim_snapshot", Time.get_ticks_usec() - snap_t0)
+		var tick_t0 := Time.get_ticks_usec()
 		var events: Array = _simulation.tick(snap)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalSimulation::tick", Time.get_ticks_usec() - tick_t0)
 		_last_sim_event_count = events.size()
+		var disp_t0 := Time.get_ticks_usec()
 		_dispatch_sim_events(events)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalManager::_dispatch_sim_events", Time.get_ticks_usec() - disp_t0)
 		_last_crystal_new_cells = _simulation.last_new_cells
 		covered_cells = _sim.cell_count() if _sim else 0
 		_absorption_scan_offset += _absorption_cells_per_tick
@@ -653,37 +686,183 @@ func _tick_crystal_sim(delta: float) -> void:
 			profiler.set_gauge("crystal_cells", float(covered_cells))
 			profiler.set_gauge("crystal_new_cells", float(_last_crystal_new_cells))
 			profiler.set_gauge("crystal_changed_cells", float(_simulation.last_mesh_dirty_count))
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("CrystalManager::_tick_crystal_sim")
 	if profiler and profiler.has_method("end"):
 		profiler.end("crystal_sim")
 
 
 func _dispatch_sim_events(events: Array) -> void:
-	if _presentation:
-		_presentation.apply_events(events)
+	## Split critical vs deferred. Simulation algorithms unchanged — only when side-effects run.
+	var frame_id := 0
+	var sched = get_node_or_null("/root/FrameBudgetScheduler")
+	if sched and sched.has_method("get_frame_id"):
+		frame_id = int(sched.get_frame_id())
+	var now_us := Time.get_ticks_usec()
 	for ev_v in events:
 		if not ev_v is Dictionary:
 			continue
 		var ev: Dictionary = ev_v
-		var kind: int = int(ev.get("kind", 0))
-		match kind:
-			_CrystalSimEvents.Kind.DEPTH_CHANGED, _CrystalSimEvents.Kind.DEPTH_CLEARED:
-				_stats_dirty = true
-				fluid_changed.emit(ev.pos)
-			_CrystalSimEvents.Kind.FLOW_BATCH:
-				# Batched flow does not emit per-cell fluid_changed (matches pre-split behavior).
-				_stats_dirty = true
-			_CrystalSimEvents.Kind.STATS:
-				total_volume = float(ev.get("volume", total_volume))
-				covered_cells = int(ev.get("cells", covered_cells))
-				_stats_dirty = false
-			_CrystalSimEvents.Kind.POWER_DELTA:
-				_add_power(float(ev.get("amount", 0.0)))
-			_CrystalSimEvents.Kind.ABSORPTION_READY:
-				_complete_absorption(ev.pos)
-			_CrystalSimEvents.Kind.RUIN_ABSORPTION_READY:
-				_apply_ruin_absorption_side_effects(ev.center)
-			_:
-				pass
+		if _is_critical_sim_event(ev):
+			_apply_one_sim_event(ev)
+			continue
+		# Split large FLOW_BATCH so one unit cannot monopolize a frame.
+		if int(ev.get("kind", 0)) == _CrystalSimEvents.Kind.FLOW_BATCH:
+			_enqueue_flow_batch_units(ev, frame_id, now_us)
+			continue
+		_dispatch_queue.append({
+			"ev": ev,
+			"enqueued_frame": frame_id,
+			"enqueued_us": now_us,
+		})
+	_report_dispatch_queue()
+
+
+const _FLOW_DIRTY_CHUNK: int = 32
+
+
+func _enqueue_flow_batch_units(ev: Dictionary, frame_id: int, now_us: int) -> void:
+	# Split both changed + mesh_dirty so a single budget unit stays small.
+	var changed: Array = ev.get("changed", [])
+	var mesh_dirty: Array = ev.get("mesh_dirty", [])
+	var new_cells_left: int = int(ev.get("new_cells", 0))
+	var ci := 0
+	if changed.is_empty() and mesh_dirty.is_empty():
+		_dispatch_queue.append({
+			"ev": {
+				"kind": _CrystalSimEvents.Kind.FLOW_BATCH,
+				"changed": [],
+				"mesh_dirty": [],
+				"new_cells": new_cells_left,
+			},
+			"enqueued_frame": frame_id,
+			"enqueued_us": now_us,
+		})
+		return
+	while ci < changed.size():
+		var cslice: Array = changed.slice(ci, mini(ci + _FLOW_DIRTY_CHUNK, changed.size()))
+		var nc := 0
+		if ci == 0:
+			nc = new_cells_left
+		_dispatch_queue.append({
+			"ev": {
+				"kind": _CrystalSimEvents.Kind.FLOW_BATCH,
+				"changed": cslice,
+				"mesh_dirty": [],
+				"new_cells": nc,
+			},
+			"enqueued_frame": frame_id,
+			"enqueued_us": now_us,
+		})
+		ci += _FLOW_DIRTY_CHUNK
+	var mi := 0
+	while mi < mesh_dirty.size():
+		var mslice: Array = mesh_dirty.slice(mi, mini(mi + _FLOW_DIRTY_CHUNK, mesh_dirty.size()))
+		_dispatch_queue.append({
+			"ev": {
+				"kind": _CrystalSimEvents.Kind.FLOW_BATCH,
+				"changed": [],
+				"mesh_dirty": mslice,
+				"new_cells": 0,
+			},
+			"enqueued_frame": frame_id,
+			"enqueued_us": now_us,
+		})
+		mi += _FLOW_DIRTY_CHUNK
+
+
+func _is_critical_sim_event(ev: Dictionary) -> bool:
+	var kind: int = int(ev.get("kind", 0))
+	return kind in [
+		_CrystalSimEvents.Kind.POWER_DELTA,
+		_CrystalSimEvents.Kind.STATS,
+		_CrystalSimEvents.Kind.ABSORPTION_READY,
+		_CrystalSimEvents.Kind.RUIN_ABSORPTION_READY,
+	]
+
+
+func _apply_one_sim_event(ev: Dictionary) -> void:
+	# Presentation + gameplay for a single event (unit of budgeted work).
+	if _presentation:
+		_presentation.apply_events([ev])
+	var kind: int = int(ev.get("kind", 0))
+	match kind:
+		_CrystalSimEvents.Kind.DEPTH_CHANGED, _CrystalSimEvents.Kind.DEPTH_CLEARED:
+			_stats_dirty = true
+			fluid_changed.emit(ev.pos)
+		_CrystalSimEvents.Kind.FLOW_BATCH:
+			_stats_dirty = true
+		_CrystalSimEvents.Kind.MESH_DIRTY:
+			pass
+		_CrystalSimEvents.Kind.STATS:
+			total_volume = float(ev.get("volume", total_volume))
+			covered_cells = int(ev.get("cells", covered_cells))
+			_stats_dirty = false
+		_CrystalSimEvents.Kind.POWER_DELTA:
+			_add_power(float(ev.get("amount", 0.0)))
+		_CrystalSimEvents.Kind.ABSORPTION_READY:
+			_complete_absorption(ev.pos)
+		_CrystalSimEvents.Kind.RUIN_ABSORPTION_READY:
+			_apply_ruin_absorption_side_effects(ev.center)
+		_:
+			pass
+
+
+func _drain_dispatch_queue_budgeted() -> void:
+	var sched = get_node_or_null("/root/FrameBudgetScheduler")
+	if _dispatch_queue.is_empty():
+		_report_dispatch_queue()
+		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("CrystalManager::_drain_dispatch_queue")
+	if sched and sched.has_method("run_budgeted"):
+		sched.run_budgeted(&"crystal_dispatch", func(token):
+			while token.can_continue() and not _dispatch_queue.is_empty():
+				var item: Dictionary = _dispatch_queue.pop_front()
+				var wait_us: int = Time.get_ticks_usec() - int(item.get("enqueued_us", Time.get_ticks_usec()))
+				if sched.has_method("report_item_latency"):
+					sched.report_item_latency(&"crystal_dispatch", wait_us)
+				_apply_one_sim_event(item.get("ev", {}))
+				token.spend_unit()
+		)
+	else:
+		# Fallback: hard unit cap without scheduler autoload.
+		var n := mini(_dispatch_queue.size(), 48)
+		for _i in n:
+			var item2: Dictionary = _dispatch_queue.pop_front()
+			_apply_one_sim_event(item2.get("ev", {}))
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("CrystalManager::_drain_dispatch_queue")
+	_report_dispatch_queue()
+
+
+func _report_dispatch_queue() -> void:
+	var sched = get_node_or_null("/root/FrameBudgetScheduler")
+	if sched == null or not sched.has_method("report_queue_depth"):
+		return
+	var oldest := 0
+	var frame_id := int(sched.get_frame_id()) if sched.has_method("get_frame_id") else 0
+	if not _dispatch_queue.is_empty():
+		var first: Dictionary = _dispatch_queue[0]
+		oldest = maxi(frame_id - int(first.get("enqueued_frame", frame_id)), 0)
+	_dispatch_queue_age_max = oldest
+	sched.report_queue_depth(&"crystal_dispatch", _dispatch_queue.size(), oldest)
+
+
+func get_dispatch_queue_depth() -> int:
+	return _dispatch_queue.size()
+
+
+## Emergency: flush all deferred events (save / win-lose critical paths).
+func flush_dispatch_queue() -> void:
+	var sched = get_node_or_null("/root/FrameBudgetScheduler")
+	if sched and sched.has_method("note_emergency_flush"):
+		sched.note_emergency_flush(&"crystal_dispatch")
+	while not _dispatch_queue.is_empty():
+		var item: Dictionary = _dispatch_queue.pop_front()
+		_apply_one_sim_event(item.get("ev", {}))
+	_report_dispatch_queue()
 
 
 func _apply_ruin_absorption_side_effects(center: Vector2i) -> void:
@@ -1261,6 +1440,8 @@ func get_coverage_ratio() -> float:
 
 
 func export_state() -> Dictionary:
+	# Ensure deferred presentation/gameplay events are applied before snapshot export.
+	flush_dispatch_queue()
 	var depth_rows: Array = []
 	if _simulation:
 		depth_rows = _simulation.export_depth_rows()

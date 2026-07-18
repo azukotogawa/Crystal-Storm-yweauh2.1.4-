@@ -25,6 +25,14 @@ static func ensure_builtins() -> void:
 	militia.chase_distance = 14.0
 	_register(militia)
 
+	# Living World civilians — wander near town center, flee crystal.
+	var villager := _make(&"town_villager", "Villager", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 6.0, 5.0, 22.0, 8.0)
+	villager.defend_radius = 0.0
+	villager.contact_damage = 0.0
+	villager.feeds_crystal_on_death = true
+	villager.crystal_feed_power = 2.0
+	_register(villager)
+
 	_register(_enemy_brain(&"crystal_mite", "Crystal Mite", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 10.0, 16.0, 18.0))
 	_register(_enemy_brain(&"farm_bomber", "Farm Bomber", _EntityBrainConfig.BehaviorProfile.SUICIDE_BOMBER, 12.0, 6.0, 28.0, 32.0))
 	_register(_enemy_brain(&"crystal_stag", "Crystal Stag", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 14.0, 22.0, 24.0))

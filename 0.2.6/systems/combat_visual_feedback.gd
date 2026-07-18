@@ -221,11 +221,16 @@ func _connect_signals() -> void:
 
 
 func _process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("combat_vfx")
 	_update_labels(delta)
 	_update_bursts(delta)
 	_update_spawn_marker_flashes(delta)
 	_update_boss_ring(delta)
 	_update_victory_flash(delta)
+	if profiler and profiler.has_method("end"):
+		profiler.end("combat_vfx")
 
 
 func show_damage_column(col_pos: Vector3, amount: float, color: Color = Color(1.0, 0.9, 0.5)) -> void:

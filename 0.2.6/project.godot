@@ -17,8 +17,10 @@ config/icon="uid://tamt6vl1r5pg"
 
 [autoload]
 
+MainThreadFrameProbe="*res://systems/main_thread_frame_probe.gd"
 CrystalTextureGenerator="*res://systems/crystal_texture_generator.gd"
 PerfProfiler="*res://systems/perf_profiler.gd"
+FrameBudgetScheduler="*res://systems/frame_budget_scheduler.gd"
 
 [display]
 

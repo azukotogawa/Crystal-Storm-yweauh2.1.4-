@@ -7,6 +7,7 @@ extends Node
 const _ServiceRegistry = preload("res://systems/service_registry.gd")
 const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 
 signal stage_changed(stage: int, name: String)
 signal boot_failed(reason: String, dump: Dictionary)
@@ -110,6 +111,8 @@ func boot_async() -> bool:
 	_boot_started_ms = Time.get_ticks_msec()
 	_boot_done = false
 	_failed_reason = ""
+	if _StartupProfiler.enabled_from_env():
+		_StartupProfiler.begin_session()
 	if registry == null:
 		registry = _ServiceRegistry.new()
 
@@ -118,9 +121,12 @@ func boot_async() -> bool:
 	if game == null:
 		return _fail("composition_root has no parent Game node")
 
+	_StartupProfiler.begin("scene_service_registration")
 	_register_scene_services(game)
+	_StartupProfiler.end("scene_service_registration")
 
 	# --- CONFIGURED ---
+	_StartupProfiler.begin("load_config")
 	var cfg = registry.require(ID_CONFIG)
 	if cfg == null:
 		return _fail("missing config_service")
@@ -130,9 +136,11 @@ func boot_async() -> bool:
 	# Authored config fan-out via registry (not group search).
 	if cfg.has_method("apply_to_registered"):
 		cfg.apply_to_registered(registry, {})
+	_StartupProfiler.end("load_config")
 	_advance(Stage.CONFIGURED)
 
 	# --- QUALITY + resolved config ---
+	_StartupProfiler.begin("quality_and_perf_policy")
 	var perf = registry.require(ID_PERF)
 	if perf == null:
 		return _fail("missing performance_service")
@@ -152,16 +160,20 @@ func boot_async() -> bool:
 	# Apply *effective* policy (quality folded with platform/debug) via registry.
 	if perf.has_method("apply_to_registered"):
 		perf.apply_to_registered(registry, resolved_config)
+	_StartupProfiler.end("quality_and_perf_policy")
 	_advance(Stage.QUALITY_APPLIED)
 
 	# --- FEATURES (textures only first — must not wait for chunks) ---
 	var features = registry.require(ID_FEATURES)
 	var visreg = registry.resolve(ID_VISUAL_REG)
+	_StartupProfiler.begin("shader_material_and_textures")
 	if visreg and visreg.has_method("ensure_textures_ready"):
 		await visreg.ensure_textures_ready()
 	elif visreg and visreg.has_method("ensure_ready"):
 		await visreg.ensure_ready()
+	_StartupProfiler.end("shader_material_and_textures")
 
+	_StartupProfiler.begin("feature_seeding")
 	if features and features.has_method("bootstrap_with_services"):
 		await features.bootstrap_with_services(registry, resolved_config)
 	elif features and features.has_method("ensure_ready"):
@@ -174,9 +186,11 @@ func boot_async() -> bool:
 			fframes += 1
 		if features and not bool(features.get("bootstrap_complete")):
 			return _fail("world_features bootstrap timeout")
+	_StartupProfiler.end("feature_seeding")
 	_advance(Stage.FEATURES_SEEDED)
 
-	# --- CHUNKS ---
+	# --- CHUNKS (includes bake index load + mesh plan bind + first stream request) ---
+	_StartupProfiler.begin("world_and_chunk_manager_init")
 	var voxel = registry.require(ID_VOXEL)
 	if voxel == null:
 		return _fail("missing voxel_world")
@@ -193,30 +207,79 @@ func boot_async() -> bool:
 	if cm == null:
 		return _fail("chunk_manager not created")
 	registry.register(ID_CHUNKS, cm, [ID_WORLD, ID_FEATURES, ID_CONFIG, ID_PERF])
+	_StartupProfiler.end("world_and_chunk_manager_init")
 
 	# Explicit handoff fan-out (replaces group lookups in on_chunk_manager_ready)
+	_StartupProfiler.begin("service_handoff_on_chunks")
 	_on_chunk_manager_ready_explicit(cm)
+	_StartupProfiler.end("service_handoff_on_chunks")
 	_advance(Stage.CHUNKS_CREATED)
 
-	# --- INITIAL STREAM ---
+	# --- INITIAL STREAM (first chunk(s) load + mesh upload drain window) ---
+	var SPP = load("res://systems/stream_phase_profiler.gd")
+	if SPP:
+		SPP.begin_session()
+		SPP.begin_window("initial_chunk_stream")
+	_StartupProfiler.begin("initial_chunk_stream")
 	var sframes := 0
+	var wait_us_acc := 0
 	while sframes < 90:
 		if cm.chunks != null and cm.chunks.size() >= 1:
 			break
+		var tw := Time.get_ticks_usec()
 		await get_tree().process_frame
+		wait_us_acc += Time.get_ticks_usec() - tw
 		sframes += 1
+	if SPP and SPP.is_enabled():
+		SPP.record("process_frame_wait", wait_us_acc)
+	_StartupProfiler.end("initial_chunk_stream")
+	if SPP and SPP.is_enabled():
+		SPP.end_window("initial_chunk_stream")
+		print("ICS_FRAMES_WAITED %d chunks_ready=%d" % [
+			sframes,
+			cm.chunks.size() if cm.chunks != null else 0,
+		])
+		SPP.print_report()
+		var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
+		if scratch.is_empty():
+			scratch = "/tmp/grok-goal-3c89103bbbb9/implementer"
+		var spath := scratch.path_join("stream_phase_profile.json")
+		var sf := FileAccess.open(spath, FileAccess.WRITE)
+		if sf:
+			var rep: Dictionary = SPP.report()
+			rep["ics_frames_waited"] = sframes
+			rep["chunks_ready_at_ics_end"] = cm.chunks.size() if cm.chunks != null else 0
+			sf.store_string(JSON.stringify(rep, "\t"))
+			sf.close()
+			print("WROTE %s" % spath)
 	_advance(Stage.INITIAL_STREAM_READY)
 
 	# --- VISUALS ---
+	_StartupProfiler.begin("visuals_commit")
 	var world_visuals = registry.resolve(ID_WORLD_VISUALS)
 	if world_visuals and world_visuals.has_method("post_bootstrap_refresh"):
 		await world_visuals.post_bootstrap_refresh()
 	elif visreg and visreg.has_method("post_bootstrap_refresh"):
 		await visreg.post_bootstrap_refresh()
+	_StartupProfiler.end("visuals_commit")
 	_advance(Stage.VISUALS_COMMITTED)
 
+	_StartupProfiler.begin("first_frame_after_running")
 	_advance(Stage.RUNNING)
+	await get_tree().process_frame
+	_StartupProfiler.end("first_frame_after_running")
 	_boot_done = true
+	if _StartupProfiler.is_enabled():
+		_StartupProfiler.print_report()
+		var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
+		var path := "user://startup_profile.json"
+		if not scratch.is_empty():
+			path = scratch.path_join("startup_profile.json")
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		if f:
+			f.store_string(_StartupProfiler.to_json_string())
+			f.close()
+			print("WROTE %s" % path)
 	boot_completed.emit()
 	return true
 
@@ -397,10 +460,17 @@ func shutdown() -> void:
 	_advance(Stage.SHUTTING_DOWN)
 	if registry == null:
 		return
+	# Chunk views / pending GPU uploads must release before worker wait ends and tree free.
+	var cm = registry.resolve(ID_CHUNKS)
+	if cm != null and cm.has_method("release_all_chunks_for_teardown"):
+		cm.release_all_chunks_for_teardown()
 	for id_variant in registry.shutdown_order():
 		var id: StringName = id_variant
 		var inst = registry.resolve(id)
 		if inst == null:
+			continue
+		# Chunk manager already fully released above.
+		if id == ID_CHUNKS:
 			continue
 		if inst.has_method("shutdown_workers"):
 			inst.shutdown_workers()

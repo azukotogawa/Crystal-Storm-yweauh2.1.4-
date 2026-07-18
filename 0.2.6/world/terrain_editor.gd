@@ -69,10 +69,18 @@ func apply_sim_config(cfg: _CrystalSimConfig) -> void:
 func _process(delta: float) -> void:
 	if world == null:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("terrain_editor")
 	_channel_tick_accum += delta
 	if _channel_tick_accum >= 0.25:
 		_channel_tick_accum = 0.0
+		var t0 := Time.get_ticks_usec()
 		_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("ChannelRegistry::tick_equilibrium", Time.get_ticks_usec() - t0)
+	if profiler and profiler.has_method("end"):
+		profiler.end("terrain_editor")
 
 
 func get_dig_delay(world_pos: Vector3) -> float:

@@ -5,10 +5,10 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
-@export var ruin_count: int = 4
-@export var min_distance_from_origin: float = 80.0
-@export var max_distance_from_origin: float = 200.0
-@export var min_separation: float = 160.0
+@export var ruin_count: int = 6
+@export var min_distance_from_origin: float = 48.0
+@export var max_distance_from_origin: float = 280.0
+@export var min_separation: float = 100.0
 
 signal ruin_registered(ruin: Dictionary)
 
@@ -72,7 +72,7 @@ func _place_ruins() -> void:
 		}
 		ruins.append(ruin_data)
 		placed.append(center)
-		_stamp_ruin(center)
+		_stamp_ruin(center, str(ruin_data.name))
 		ruin_registered.emit(ruin_data)
 
 
@@ -88,7 +88,7 @@ func _is_valid_ruin_site(wx: int, wz: int) -> bool:
 	return true
 
 
-func _stamp_ruin(center: Vector2i) -> void:
+func _stamp_ruin(center: Vector2i, ruin_name: String = "Forgotten Ruin") -> void:
 	for dx in range(-5, 6):
 		for dz in range(-5, 6):
 			if Vector2(dx, dz).length() > 5.0:
@@ -97,7 +97,8 @@ func _stamp_ruin(center: Vector2i) -> void:
 			var wz := center.y + dz
 			_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.RUIN, {
 				"center": center,
+				"name": ruin_name,
 				"is_spawn_point": true,
 			})
 			if absi(dx) <= 1 and absi(dz) <= 1:
-				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.STONE2)
+				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.STONE2, true)

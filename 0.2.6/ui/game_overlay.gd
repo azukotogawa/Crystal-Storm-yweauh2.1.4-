@@ -16,6 +16,10 @@ var _unlocked_enemies: Array[StringName] = []
 var _equipped_relic_names: Array[String] = []
 var _toast: Label = null
 var _toast_timer: float = 0.0
+var _living_world = null
+var _current_biome: String = ""
+var _opening_toast_shown: bool = false
+var _mite_threat_toast_shown: bool = false
 
 
 func _ready() -> void:
@@ -30,7 +34,34 @@ func _ready() -> void:
 	if _crystal and _crystal.has_signal("spawn_destroyed"):
 		_crystal.spawn_destroyed.connect(_on_spawn_destroyed)
 	call_deferred("_bind_progression")
+	call_deferred("_bind_living_world")
+	call_deferred("_bind_enemy_spawner")
+	call_deferred("_show_opening_toast")
 	_update_map_temp_label()
+
+
+func _show_opening_toast() -> void:
+	if _opening_toast_shown:
+		return
+	_opening_toast_shown = true
+	# Immediate orientation: crystal is the pressure, dig buys time.
+	_show_toast("Maze phase — dig trenches. Crystal blooms at the origin.")
+
+
+func _bind_enemy_spawner() -> void:
+	var spawner = get_tree().get_first_node_in_group("crystal_enemy_spawner")
+	if spawner == null:
+		return
+	if spawner.has_signal("enemy_spawned") and not spawner.enemy_spawned.is_connected(_on_crystal_enemy_spawned):
+		spawner.enemy_spawned.connect(_on_crystal_enemy_spawned)
+
+
+func _on_crystal_enemy_spawned(enemy_id: StringName, _world_pos: Vector2i) -> void:
+	if _mite_threat_toast_shown:
+		return
+	_mite_threat_toast_shown = true
+	var label := str(enemy_id).replace("_", " ")
+	_show_toast("Crystal hostiles rise (%s) — dig a trench or fight!" % label)
 
 
 func _ensure_toast() -> void:
@@ -51,6 +82,78 @@ func _ensure_toast() -> void:
 	_toast.offset_bottom = 28.0
 	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(_toast)
+
+
+func _bind_living_world() -> void:
+	_living_world = get_tree().get_first_node_in_group("living_world_director")
+	if _living_world == null:
+		return
+	if _living_world.has_signal("biome_changed") and not _living_world.biome_changed.is_connected(_on_biome_changed):
+		_living_world.biome_changed.connect(_on_biome_changed)
+	if _living_world.has_signal("ruin_discovered") and not _living_world.ruin_discovered.is_connected(_on_ruin_discovered):
+		_living_world.ruin_discovered.connect(_on_ruin_discovered)
+	if _living_world.has_signal("ruin_expedition_completed") and not _living_world.ruin_expedition_completed.is_connected(_on_ruin_expedition):
+		_living_world.ruin_expedition_completed.connect(_on_ruin_expedition)
+	if _living_world.has_signal("biome_first_visited") and not _living_world.biome_first_visited.is_connected(_on_biome_first_visit):
+		_living_world.biome_first_visited.connect(_on_biome_first_visit)
+	if _living_world.has_signal("town_militia_called") and not _living_world.town_militia_called.is_connected(_on_militia_toast):
+		_living_world.town_militia_called.connect(_on_militia_toast)
+	if _living_world.has_signal("town_rallied") and not _living_world.town_rallied.is_connected(_on_town_rallied):
+		_living_world.town_rallied.connect(_on_town_rallied)
+	if _living_world.has_signal("town_threat_changed") and not _living_world.town_threat_changed.is_connected(_on_town_threat_changed):
+		_living_world.town_threat_changed.connect(_on_town_threat_changed)
+	if _living_world.has_method("get_player_biome_name"):
+		_current_biome = str(_living_world.get_player_biome_name())
+
+
+func _on_biome_changed(biome_name: String) -> void:
+	_current_biome = biome_name
+	_update_map_temp_label()
+	_update_game_hud()
+
+
+func _on_ruin_discovered(ruin_name: String, _center: Vector2i, power_bonus: float) -> void:
+	# Base stir toast; full expedition toast may follow from ruin_expedition_completed.
+	_show_toast("Discovered %s — the crystal stirs (+%.0f power)" % [ruin_name, power_bonus])
+
+
+func _on_ruin_expedition(result: Dictionary) -> void:
+	var ruin_name: String = str(result.get("name", "Ruin"))
+	var loot: Dictionary = result.get("loot", {})
+	var relic_id: String = str(result.get("relic_id", ""))
+	var guardians: int = int(result.get("guardians", 0))
+	var parts: PackedStringArray = PackedStringArray()
+	parts.append("Plundered %s" % ruin_name)
+	if int(loot.get("stone", 0)) > 0 or int(loot.get("herb", 0)) > 0:
+		parts.append("+%d stone +%d herb" % [int(loot.get("stone", 0)), int(loot.get("herb", 0))])
+	if relic_id != "":
+		_RelicRegistry.ensure_builtins()
+		var def = _RelicRegistry.get_def(StringName(relic_id))
+		var rname: String = def.display_name if def else relic_id
+		parts.append("Relic: %s" % rname)
+	if guardians > 0:
+		parts.append("%d guardians wake!" % guardians)
+	_show_toast(" · ".join(parts))
+	_update_game_hud()
+
+
+func _on_biome_first_visit(biome_name: String, gift_item: String, gift_count: int) -> void:
+	_show_toast("First steps in %s — +%d %s" % [biome_name.capitalize(), gift_count, gift_item])
+
+
+func _on_militia_toast(town_name: String, count: int) -> void:
+	_show_toast("%s calls %d militia!" % [town_name, count])
+
+
+func _on_town_rallied(town_name: String, _center: Vector2i, militia: int, health_restored: float) -> void:
+	# Surprise: player arrival can save a settlement mid-siege.
+	_show_toast("You rallied %s! +%.0f HP · +%d militia" % [town_name, health_restored, militia])
+
+
+func _on_town_threat_changed(town_name: String, state_label: String, _center: Vector2i) -> void:
+	if state_label == "SAFE":
+		return
+	_show_toast("%s is under %s!" % [town_name, state_label])
 
 
 func _bind_progression() -> void:
@@ -147,23 +250,40 @@ func _update_map_temp_label() -> void:
 	var temp_label := ""
 	if world and "map_temperature_label" in world:
 		temp_label = " | %s map" % world.map_temperature_label
+	var biome_label := ""
+	if _current_biome != "":
+		biome_label = " | Biome: %s" % _current_biome.capitalize()
+	elif world and _game_manager:
+		var player = get_tree().get_first_node_in_group("player")
+		if player and player.has_method("get_voxel_position") and world.has_method("get_biome"):
+			var v: Vector3 = player.get_voxel_position()
+			var b: Dictionary = world.get_biome(v.x, 0.0, v.z)
+			_current_biome = str(b.get("name", ""))
+			if _current_biome != "":
+				biome_label = " | Biome: %s" % _current_biome.capitalize()
 	var goal := _spawn_goal_line()
+	var suffix := "%s%s" % [temp_label, biome_label]
 	if _game_manager and _game_manager.run_state == _GameManager.RunState.WON:
-		_phase_label.text = "Phase: Victory — all spawns destroyed%s" % temp_label
+		_phase_label.text = "Phase: Victory — all spawns destroyed%s" % suffix
 	elif _game_manager and _game_manager.run_state == _GameManager.RunState.LOST:
-		_phase_label.text = "Phase: Defeat%s" % temp_label
+		_phase_label.text = "Phase: Defeat%s" % suffix
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
-		_phase_label.text = "Phase: Maze — dig, build, collect, steer the crystal%s" % temp_label
+		_phase_label.text = "Phase: Maze — dig, build, collect, defend the living world%s" % suffix
 	elif goal != "":
-		_phase_label.text = "Phase: Assault — %s%s" % [goal, temp_label]
+		_phase_label.text = "Phase: Assault — %s%s" % [goal, suffix]
 	else:
-		_phase_label.text = "Phase: Assault — push back to the origin%s" % temp_label
+		_phase_label.text = "Phase: Assault — push back to the origin%s" % suffix
 
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 
 func _process(delta: float) -> void:
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("ui_overlay")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("GameOverlay::_process")
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
 		if _toast_timer <= 0.0 and _toast:
@@ -176,10 +296,18 @@ func _process(delta: float) -> void:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_update_game_hud()
 	if _GameplayInput.blocks_actions():
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("GameOverlay::_process")
+		if profiler and profiler.has_method("end"):
+			profiler.end("ui_overlay")
 		return
 	if Input.is_action_just_pressed("interact") and _panel.visible:
 		if _game_manager and _game_manager.has_method("restart_run"):
 			_game_manager.restart_run()
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("GameOverlay::_process")
+	if profiler and profiler.has_method("end"):
+		profiler.end("ui_overlay")
 
 
 func _update_game_hud() -> void:
@@ -198,9 +326,22 @@ func _update_game_hud() -> void:
 	var relic_line := ""
 	if not _equipped_relic_names.is_empty():
 		relic_line = "  |  Relics: %s" % ", ".join(_equipped_relic_names)
+	var biome_line := ""
+	if _current_biome != "":
+		biome_line = "  |  %s" % _current_biome.capitalize()
+	var town_line := ""
+	if _living_world and _living_world.has_method("get_town_hud_line"):
+		var tl: String = str(_living_world.get_town_hud_line())
+		if tl != "":
+			town_line = "  |  %s" % tl
+	var ruins_line := ""
+	if _living_world and _living_world.has_method("get_ruins_hud_line"):
+		var rl: String = str(_living_world.get_ruins_hud_line())
+		if rl != "":
+			ruins_line = "  |  %s" % rl
 	_game_hud.text = (
-		"Crystal %.1f%% / %.0f%%  |  %s%s  |  Pick dig  RMB build  LMB fight  M map  I inventory"
-		% [cov_pct, max_cov, spawns_line, relic_line]
+		"Crystal %.1f%% / %.0f%%  |  %s%s%s%s%s  |  Pick dig  RMB build  LMB fight  M map  I inventory"
+		% [cov_pct, max_cov, spawns_line, relic_line, biome_line, town_line, ruins_line]
 	)
 
 

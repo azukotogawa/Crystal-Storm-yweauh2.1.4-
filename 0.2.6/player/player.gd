@@ -184,6 +184,11 @@ func _setup_body_collision() -> void:
 func _physics_process(delta: float) -> void:
 	if not world_ready:
 		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("player_physics")
+	if profiler and profiler.has_method("begin_func"):
+		profiler.begin_func("Player::_physics_process")
 
 	_floor_probe.feet_height_hint = voxel_position.y
 
@@ -278,6 +283,11 @@ func _physics_process(delta: float) -> void:
 	_sync_global_from_voxel()
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
 	player_mesh.rotation.y = current_skew
+
+	if profiler and profiler.has_method("end_func"):
+		profiler.end_func("Player::_physics_process")
+	if profiler and profiler.has_method("end"):
+		profiler.end("player_physics")
 
 
 func _slope_speed_multiplier() -> float:
@@ -394,12 +404,27 @@ func _resolve_spawn_column() -> Vector2i:
 		var spawns: Array = crystal_manager.get_active_spawns()
 		if not spawns.is_empty():
 			source = spawns[0].world_pos
-	# Stand uphill from the origin boss so crystal fluid flows toward the player.
-	for offset in [Vector2i(4, -4), Vector2i(3, -5), Vector2i(5, -3), Vector2i(2, -6), Vector2i(6, -2)]:
+	# Early-run PE: spawn on the crystal doorstep was an instant mite death.
+	# Stand dry land ~28–40 columns from origin so maze dig/build is learnable first.
+	var ring_offsets: Array[Vector2i] = []
+	for dist in [32, 28, 36, 40, 24]:
+		ring_offsets.append(Vector2i(dist, 0))
+		ring_offsets.append(Vector2i(-dist, 0))
+		ring_offsets.append(Vector2i(0, dist))
+		ring_offsets.append(Vector2i(0, -dist))
+		ring_offsets.append(Vector2i(dist, -dist / 2))
+		ring_offsets.append(Vector2i(-dist, dist / 2))
+		ring_offsets.append(Vector2i(dist / 2, dist))
+		ring_offsets.append(Vector2i(-dist / 2, -dist))
+	for offset in ring_offsets:
 		var candidate: Vector2i = source + offset
-		if world and not _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
+		if world == null:
 			return candidate
-	return source + Vector2i(4, -4)
+		if _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
+			continue
+		return candidate
+	# Last resort (still farther than legacy ±4).
+	return source + Vector2i(28, -8)
 
 
 func get_stat(stat_id: StringName) -> float:

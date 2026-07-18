@@ -26,6 +26,12 @@ static func acquire(coord: Vector2i, world: InfiniteNoiseWorld) -> ChunkData:
 		return fresh
 	_alloc_reuse_count += 1
 	var data: ChunkData = _pool.pop_back()
+	if data.has_meta("_in_chunk_pool"):
+		data.remove_meta("_in_chunk_pool")
+	if data.has_meta("_pooled_released"):
+		data.remove_meta("_pooled_released")
+	if data.has_meta("_pooled"):
+		data.remove_meta("_pooled")
 	data.prepare_for_reuse(coord, world)
 	if data.is_macro_terrain_enabled():
 		data.prewarm_macro_storage()
@@ -35,9 +41,15 @@ static func acquire(coord: Vector2i, world: InfiniteNoiseWorld) -> ChunkData:
 static func release(data: ChunkData) -> void:
 	if data == null:
 		return
+	# Never pool the same shell twice (double free / RefCounted corruption).
+	if data.has_meta("_in_chunk_pool"):
+		return
 	data.world = null
+	if data.has_meta("_pooled"):
+		data.remove_meta("_pooled")
 	_release_count += 1
 	if _pool.size() < MAX_POOL_SIZE:
+		data.set_meta("_in_chunk_pool", true)
 		_pool.append(data)
 
 

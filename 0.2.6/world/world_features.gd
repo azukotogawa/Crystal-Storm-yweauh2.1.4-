@@ -6,6 +6,7 @@ const _TownManager = preload("res://world/town_manager.gd")
 const _VegetationManager = preload("res://world/vegetation_manager.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")
 const _RuinManager = preload("res://world/ruin_manager.gd")
+const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 
 # Orchestrates town, vegetation, and animal placement before chunk visuals finalize.
 
@@ -45,21 +46,27 @@ func bootstrap_with_services(registry, resolved: Dictionary = {}) -> void:
 	if bootstrap_complete:
 		return
 	var perf_svc = registry.resolve(&"performance_service") if registry else null
+	_StartupProfiler.begin("fs/bootstrap_perf_ready")
 	if perf_svc and perf_svc.has_method("ensure_ready"):
 		await perf_svc.ensure_ready()
+	_StartupProfiler.end("fs/bootstrap_perf_ready")
 	# Honor resolved safe-mode / crystal policy for seeding decisions.
 	var policy: Dictionary = resolved.get("policy", {}) if not resolved.is_empty() else {}
 	var visual_registry = registry.resolve(&"game_visual_registry") if registry else null
+	_StartupProfiler.begin("fs/bootstrap_visual_textures")
 	if visual_registry and visual_registry.has_method("ensure_textures_ready"):
 		await visual_registry.ensure_textures_ready()
 	elif visual_registry and visual_registry.has_method("ensure_ready"):
 		await visual_registry.ensure_ready()
+	_StartupProfiler.end("fs/bootstrap_visual_textures")
+	_StartupProfiler.begin("fs/world_resolve_and_policy")
 	world = registry.resolve(&"world") if registry else null
 	if world == null and registry == null:
 		world = get_tree().get_first_node_in_group("world")
 	# Apply effective caves policy when world already present (before chunks).
 	if world and world.has_method("set_caves_enabled") and policy.has("caves_enabled"):
 		world.set_caves_enabled(bool(policy.get("caves_enabled")))
+	_StartupProfiler.end("fs/world_resolve_and_policy")
 	await _seed_content(perf_svc)
 	bootstrap_complete = true
 
@@ -90,32 +97,99 @@ func _bootstrap() -> void:
 
 
 func _seed_content(perf_svc) -> void:
+	_StartupProfiler.begin("fs/registry_reset")
 	_FeatureRegistry.reset()
 	_ChannelRegistry.reset()
+	_StartupProfiler.end("fs/registry_reset")
 
 	var safe_mode := false
 	if perf_svc and perf_svc.has_method("is_safe_mode"):
 		safe_mode = perf_svc.is_safe_mode()
 
+	# Biome Voronoi regions are built in InfiniteNoiseWorld._init (before this stage).
+	_StartupProfiler.mark("fs/biome_initialization", 0)
+
 	var town_mgr = get_node_or_null("TownManager")
 	if town_mgr and town_mgr.has_method("generate") and not safe_mode:
+		_StartupProfiler.begin("fs/town_generation")
 		town_mgr.generate()
+		_StartupProfiler.end("fs/town_generation")
+		_StartupProfiler.begin("fs/await_frame_after_town")
 		await get_tree().process_frame
+		_StartupProfiler.end("fs/await_frame_after_town")
+	else:
+		_StartupProfiler.mark("fs/town_generation", 0)
+		_StartupProfiler.mark("fs/town_site_search", 0)
+		_StartupProfiler.mark("fs/town_ground_stamp", 0)
+		_StartupProfiler.mark("fs/road_generation", 0)
+		_StartupProfiler.mark("fs/resource_field_generation", 0)
 
 	var veg_mgr = get_node_or_null("VegetationManager")
-	if veg_mgr and veg_mgr.has_method("generate_scatter_async") and not safe_mode:
+	# Baked vegetation streams with .chk packages — never scatter inside bake bounds.
+	if _should_skip_runtime_vegetation_scatter():
+		_StartupProfiler.mark("fs/vegetation_placement", 0)
+		_StartupProfiler.mark("fs/vegetation_baked_streamed", 0)
+	elif veg_mgr and veg_mgr.has_method("generate_scatter_async") and not safe_mode:
+		_StartupProfiler.begin("fs/vegetation_placement")
 		await veg_mgr.generate_scatter_async()
+		_StartupProfiler.end("fs/vegetation_placement")
 	elif veg_mgr and veg_mgr.has_method("generate") and not safe_mode:
+		_StartupProfiler.begin("fs/vegetation_placement")
 		veg_mgr.generate()
+		_StartupProfiler.end("fs/vegetation_placement")
+	else:
+		_StartupProfiler.mark("fs/vegetation_placement", 0)
 
 	var ruin_mgr = get_node_or_null("RuinManager")
 	if ruin_mgr and ruin_mgr.has_method("generate") and not safe_mode:
+		_StartupProfiler.begin("fs/ruin_generation")
 		ruin_mgr.generate()
+		_StartupProfiler.end("fs/ruin_generation")
+		_StartupProfiler.begin("fs/await_frame_after_ruin")
 		await get_tree().process_frame
+		_StartupProfiler.end("fs/await_frame_after_ruin")
+	else:
+		_StartupProfiler.mark("fs/ruin_generation", 0)
 
 	var entity_mgr = get_node_or_null("EntityManager")
 	if entity_mgr and not safe_mode:
+		_StartupProfiler.begin("fs/spawn_region_generation")
 		entity_mgr.seed_spawns()
+		_StartupProfiler.end("fs/spawn_region_generation")
+	else:
+		_StartupProfiler.mark("fs/spawn_region_generation", 0)
+
+	# Categories not present in this stage (explicit zero; town marks road/farmland itself).
+	_StartupProfiler.mark("fs/cave_feature_generation", 0)
+	_StartupProfiler.mark("fs/navigation_generation", 0)
+	_StartupProfiler.mark("fs/crystal_initialization", 0)
+	_StartupProfiler.mark("fs/serialization", 0)
+	_StartupProfiler.mark("fs/spatial_index_creation", 0)  # denial spatial is lazy on first query
+	_StartupProfiler.mark("fs/node_creation", 0)  # seed_spawns registers spawn points; no Node spawn here
+
+
+func _should_skip_runtime_vegetation_scatter() -> bool:
+	var Bake = load("res://world/world_bake_service.gd")
+	if Bake == null:
+		return false
+	var bake = Bake.get_active()
+	if bake == null and Bake.has_method("ensure_active"):
+		bake = Bake.ensure_active()
+	if bake == null:
+		return false
+	if bool(bake.get("valid")) and bool(bake.get("vegetation_baked")):
+		return true
+	# Feature seeding runs before ChunkManager; probe index so we can skip scatter
+	# when a v4+ bake with vegetation already exists on disk.
+	if world == null:
+		return false
+	var seed: int = int(world.world_seed) if "world_seed" in world else 0
+	var want_full: bool = false
+	if Bake.has_method("use_full_world_from_env"):
+		want_full = bool(Bake.use_full_world_from_env())
+	if bake.has_method("load_bake_for_seed") and bake.load_bake_for_seed(seed, want_full):
+		return bool(bake.get("vegetation_baked"))
+	return false
 
 
 func on_chunk_manager_ready(cm: ChunkManager) -> void:

@@ -50,13 +50,13 @@ extends Resource
 @export var shoreline_flatten_strength: float = 0.65
 
 @export_group("Towns")
-@export var small_town_count: int = 2
+@export var small_town_count: int = 3
 @export var large_port_count: int = 1
 @export var small_town_radius_min: int = 10
 @export var small_town_radius_max: int = 14
-@export var port_radius_min: int = 18
-@export var port_radius_max: int = 24
-@export var town_min_separation: float = 220.0
+@export var port_radius_min: int = 16
+@export var port_radius_max: int = 22
+@export var town_min_separation: float = 140.0
 
 @export_group("Vegetation")
 @export var grass_density: float = 0.18

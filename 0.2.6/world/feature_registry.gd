@@ -48,15 +48,24 @@ static func reset() -> void:
 	_invalidate_derived()
 
 
-static func set_tile_override(wx: int, wz: int, voxel_id: int) -> void:
+## world_seeded: town/ruin/road stamps that are part of immutable world content for mesh plans.
+static func set_tile_override(wx: int, wz: int, voxel_id: int, world_seeded: bool = false) -> void:
 	var ws = _ws()
-	ws.tile_overrides[Vector2i(wx, wz)] = voxel_id
+	var key := Vector2i(wx, wz)
+	ws.tile_overrides[key] = voxel_id
+	if world_seeded:
+		ws.seeded_tile_keys[key] = true
+	else:
+		# Runtime mutation of a tile override is no longer "seeded pristine".
+		ws.seeded_tile_keys.erase(key)
 	ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 
 
 static func clear_tile_override(wx: int, wz: int) -> void:
 	var ws = _ws()
-	ws.tile_overrides.erase(Vector2i(wx, wz))
+	var key := Vector2i(wx, wz)
+	ws.tile_overrides.erase(key)
+	ws.seeded_tile_keys.erase(key)
 	ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 
 
@@ -66,6 +75,8 @@ static func clear_feature(wx: int, wz: int) -> void:
 	if ws.feature_cells.has(key) and ws.feature_cells[key].has("plant_id"):
 		_mark_plant_removed(key)
 	ws.feature_cells.erase(key)
+	# Session tombstone so streamed baked vegetation is not re-installed.
+	ws.feature_cleared[key] = true
 	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
@@ -81,10 +92,56 @@ static func register_feature(wx: int, wz: int, kind: int, data: Dictionary = {})
 	entry["kind"] = kind
 	var old_stage := int(ws.feature_cells.get(key, {}).get("growth_stage", -1)) if had_plant else -1
 	ws.feature_cells[key] = entry
+	if ws.feature_cleared.has(key):
+		ws.feature_cleared.erase(key)
 	if entry.has("plant_id"):
 		_plant_keys_dirty = true
 		_maybe_invalidate_denial(entry, old_stage)
 	ws.bump(_WorldState.DOMAIN_FEATURE)
+
+
+## Install baked static vegetation for one chunk. Skips session-cleared cells and
+## cells that already have a WorldState feature (dynamic overlay wins).
+## entries: Array of {lx, lz, tile, kind, plant_id, growth_stage, growth_progress, biome?}
+static func apply_baked_vegetation_chunk(chunk_coord: Vector2i, entries: Array) -> int:
+	if entries.is_empty():
+		return 0
+	var ws = _ws()
+	var installed := 0
+	var origin_x: int = chunk_coord.x * CHUNK_CELLS
+	var origin_z: int = chunk_coord.y * CHUNK_CELLS
+	for item_v in entries:
+		var item: Dictionary = item_v
+		var lx: int = int(item.get("lx", -1))
+		var lz: int = int(item.get("lz", -1))
+		if lx < 0 or lz < 0 or lx >= CHUNK_CELLS or lz >= CHUNK_CELLS:
+			continue
+		var key := Vector2i(origin_x + lx, origin_z + lz)
+		if ws.feature_cleared.has(key):
+			continue
+		if ws.feature_cells.has(key):
+			continue
+		var tile_id: int = int(item.get("tile", -1))
+		if tile_id >= 0 and not ws.tile_overrides.has(key):
+			ws.tile_overrides[key] = tile_id
+			ws.seeded_tile_keys[key] = true
+		var entry: Dictionary = {
+			"kind": int(item.get("kind", _WorldFeatureTypes.FeatureKind.NONE)),
+			"plant_id": str(item.get("plant_id", "")),
+			"growth_stage": int(item.get("growth_stage", 1)),
+			"growth_progress": float(item.get("growth_progress", 1.0)),
+			"_baked_static": true,
+		}
+		if item.has("biome"):
+			entry["biome"] = str(item.get("biome", ""))
+		ws.feature_cells[key] = entry
+		installed += 1
+	if installed > 0:
+		_plant_keys_dirty = true
+		_plant_denial_cache_dirty = true
+		_denial_spatial_dirty = true
+		ws.bump(_WorldState.DOMAIN_FEATURE | _WorldState.DOMAIN_FEATURE_TILE)
+	return installed
 
 
 ## In-place growth update — avoids duplicate() + denial rebuild every progress tick.
