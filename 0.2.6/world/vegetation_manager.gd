@@ -41,12 +41,17 @@ func generate_scatter_async() -> void:
 	if world == null:
 		world = get_tree().get_first_node_in_group("world")
 	if world == null:
+		_crash_crumb("VegetationManager.generate_scatter_async ABORT world=null")
 		return
 	_rng.seed = world.world_seed + 55002
 	var half := int(_WorldBorder.PLAYABLE_HALF_X) * 0.85
 	var attempts := maxi(scatter_attempts, 0)
 	var batch := 0
 	const BATCH_SIZE := 200
+	_crash_crumb(
+		"VegetationManager.generate_scatter_async ENTER attempts=%d half=%.0f seed=%d"
+		% [attempts, half, int(world.world_seed)]
+	)
 	for _i in attempts:
 		var wx := _rng.randi_range(int(-half), int(half))
 		var wz := _rng.randi_range(int(-half), int(half))
@@ -59,7 +64,20 @@ func generate_scatter_async() -> void:
 		batch += 1
 		if batch >= BATCH_SIZE:
 			batch = 0
+			if _i == BATCH_SIZE or (_i > 0 and _i % 2000 == 0):
+				_crash_crumb("VegetationManager.generate_scatter_async progress i=%d/%d" % [_i, attempts])
 			await get_tree().process_frame
+	_crash_crumb("VegetationManager.generate_scatter_async EXIT ok attempts=%d" % attempts)
+
+
+static func _crash_crumb(msg: String) -> void:
+	var line := "[CRASH_CRUMB t=%d] %s" % [Time.get_ticks_msec(), msg]
+	print(line)
+	var path := "user://startup_last_step.txt"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f:
+		f.store_string(line + "\n")
+		f.close()
 
 
 ## Offline bake: same placement rules, no FeatureRegistry writes.

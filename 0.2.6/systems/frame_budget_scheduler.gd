@@ -10,6 +10,7 @@ const SYS_TOWN_DEFENSE := &"town_defense"
 const SYS_CHUNK_APPLY := &"chunk_apply"
 const SYS_CHUNK_UPLOAD := &"chunk_upload"
 const SYS_ENTITY_SPAWN := &"entity_spawn"
+const SYS_FEATURE_VISUAL := &"feature_visual"
 const SYS_WORLD_REBUILD := &"world_rebuild"
 const SYS_HUD := &"hud_rebuild"
 
@@ -21,6 +22,7 @@ const DEFAULT_PRIORITY := {
 	SYS_TOWN_DEFENSE: 40,
 	SYS_LIVING_WORLD: 50,
 	SYS_ENTITY_SPAWN: 60,
+	SYS_FEATURE_VISUAL: 65,
 	SYS_WORLD_REBUILD: 70,
 	SYS_HUD: 90,
 }
@@ -33,6 +35,8 @@ const DEFAULT_BUDGET_US := {
 	SYS_TOWN_DEFENSE: 1500,
 	SYS_LIVING_WORLD: 1200,
 	SYS_ENTITY_SPAWN: 1000,
+	## One chunk of billboards per frame — populate can be multi-ms for dense veg.
+	SYS_FEATURE_VISUAL: 2000,
 	SYS_WORLD_REBUILD: 1500,
 	SYS_HUD: 800,
 }
@@ -46,7 +50,8 @@ const DEFAULT_MAX_UNITS := {
 	SYS_CHUNK_UPLOAD: 1,
 	SYS_TOWN_DEFENSE: 2,
 	SYS_LIVING_WORLD: 8,
-	SYS_ENTITY_SPAWN: 4,
+	SYS_ENTITY_SPAWN: 2,
+	SYS_FEATURE_VISUAL: 1,
 	SYS_WORLD_REBUILD: 4,
 	SYS_HUD: 1,
 }
@@ -59,6 +64,7 @@ const DEFAULT_MIN_UNITS := {
 	SYS_TOWN_DEFENSE: 1,
 	SYS_LIVING_WORLD: 2,
 	SYS_ENTITY_SPAWN: 0,
+	SYS_FEATURE_VISUAL: 1,
 	SYS_WORLD_REBUILD: 1,
 	SYS_HUD: 0,
 }

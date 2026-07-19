@@ -34,6 +34,7 @@ func _maybe_legacy_create() -> void:
 
 
 ## Composition-root path: features already seeded; create ChunkManager and return it.
+## World bake load/rebuild is awaited cooperatively so the loading UI stays responsive.
 func create_chunk_manager_with_services(registry) -> ChunkManager:
 	_composition_driven = true
 	if manager != null:
@@ -43,7 +44,10 @@ func create_chunk_manager_with_services(registry) -> ChunkManager:
 	if features and not bool(features.get("bootstrap_complete")) and features.has_method("ensure_ready"):
 		await features.ensure_ready()
 	manager = ChunkManager.new()
+	manager.defer_world_bake_bootstrap = true
 	add_child(manager)
+	if manager.has_method("bootstrap_world_bake_async"):
+		await manager.bootstrap_world_bake_async()
 	# Root performs explicit handoff; still notify features for chunk_manager field.
 	if features:
 		features.chunk_manager = manager

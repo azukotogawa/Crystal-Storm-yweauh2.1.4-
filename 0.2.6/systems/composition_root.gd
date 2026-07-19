@@ -68,6 +68,15 @@ var _failed_reason: String = ""
 var _debug_overrides: Dictionary = {}
 var _platform_overrides: Dictionary = {}
 var _default_stage_timeout_frames: int = 1800
+## Boot stage dwell instrumentation (measurement only — no gameplay effect).
+## Each closed stage: start_ms, end_ms, duration_ms, ops[], slowest_op, slowest_ms.
+var _boot_trace_enabled: bool = true
+var _boot_trace_stages: Array = []  # closed stage dicts
+var _boot_trace_current_name: String = ""
+var _boot_trace_current_start_ms: int = 0
+var _boot_trace_ops: Array = []  # {name, start_ms, end_ms, duration_ms}
+var _boot_trace_op_stack: Array = []  # open op names
+var _boot_trace_op_start_ms: Dictionary = {}
 
 
 static func get_active():
@@ -111,8 +120,9 @@ func boot_async() -> bool:
 	_boot_started_ms = Time.get_ticks_msec()
 	_boot_done = false
 	_failed_reason = ""
-	if _StartupProfiler.enabled_from_env():
-		_StartupProfiler.begin_session()
+	_boot_trace_reset()
+	# Always collect StartupProfiler samples during boot for stage op attribution.
+	_StartupProfiler.begin_session()
 	if registry == null:
 		registry = _ServiceRegistry.new()
 
@@ -121,25 +131,34 @@ func boot_async() -> bool:
 	if game == null:
 		return _fail("composition_root has no parent Game node")
 
+	_trace_op_begin("scene_service_registration")
 	_StartupProfiler.begin("scene_service_registration")
 	_register_scene_services(game)
 	_StartupProfiler.end("scene_service_registration")
+	_trace_op_end("scene_service_registration")
 
 	# --- CONFIGURED ---
+	_trace_op_begin("load_config")
 	_StartupProfiler.begin("load_config")
 	var cfg = registry.require(ID_CONFIG)
 	if cfg == null:
 		return _fail("missing config_service")
 	# ConfigService._ready may already have run; ensure defaults applied.
 	if cfg.has_method("ensure_ready_sync"):
+		_trace_op_begin("ConfigService.ensure_ready_sync")
 		cfg.ensure_ready_sync()
+		_trace_op_end("ConfigService.ensure_ready_sync")
 	# Authored config fan-out via registry (not group search).
 	if cfg.has_method("apply_to_registered"):
+		_trace_op_begin("ConfigService.apply_to_registered(initial)")
 		cfg.apply_to_registered(registry, {})
+		_trace_op_end("ConfigService.apply_to_registered(initial)")
 	_StartupProfiler.end("load_config")
+	_trace_op_end("load_config")
 	_advance(Stage.CONFIGURED)
 
 	# --- QUALITY + resolved config ---
+	_trace_op_begin("quality_and_perf_policy")
 	_StartupProfiler.begin("quality_and_perf_policy")
 	var perf = registry.require(ID_PERF)
 	if perf == null:
@@ -147,32 +166,45 @@ func boot_async() -> bool:
 	# Ensure quality resource selected (env/preset may already have set quality).
 	if not bool(perf.get("_applied")) if "_applied" in perf else true:
 		if perf.has_method("ensure_ready"):
+			_trace_op_begin("PerformanceService.ensure_ready(wait__applied)")
 			var frames := 0
 			while not bool(perf.get("_applied")) and frames < _default_stage_timeout_frames:
 				await get_tree().process_frame
 				frames += 1
+			_trace_op_end("PerformanceService.ensure_ready(wait__applied)")
 			if not bool(perf.get("_applied")):
 				return _fail("performance_service quality not applied (timeout)")
+	_trace_op_begin("RuntimeConfigResolver._rebuild_resolved_config")
 	_rebuild_resolved_config(cfg, perf)
+	_trace_op_end("RuntimeConfigResolver._rebuild_resolved_config")
 	# Re-push authored config with resolved vegetation multipliers etc.
 	if cfg.has_method("apply_to_registered"):
+		_trace_op_begin("ConfigService.apply_to_registered(resolved)")
 		cfg.apply_to_registered(registry, resolved_config)
+		_trace_op_end("ConfigService.apply_to_registered(resolved)")
 	# Apply *effective* policy (quality folded with platform/debug) via registry.
 	if perf.has_method("apply_to_registered"):
+		_trace_op_begin("PerformanceService.apply_to_registered")
 		perf.apply_to_registered(registry, resolved_config)
+		_trace_op_end("PerformanceService.apply_to_registered")
 	_StartupProfiler.end("quality_and_perf_policy")
+	_trace_op_end("quality_and_perf_policy")
 	_advance(Stage.QUALITY_APPLIED)
 
 	# --- FEATURES (textures only first — must not wait for chunks) ---
+	# Loading UI still shows QUALITY_APPLIED until FEATURES_SEEDED advances.
 	var features = registry.require(ID_FEATURES)
 	var visreg = registry.resolve(ID_VISUAL_REG)
+	_trace_op_begin("GameVisualRegistry.ensure_textures_ready")
 	_StartupProfiler.begin("shader_material_and_textures")
 	if visreg and visreg.has_method("ensure_textures_ready"):
 		await visreg.ensure_textures_ready()
 	elif visreg and visreg.has_method("ensure_ready"):
 		await visreg.ensure_ready()
 	_StartupProfiler.end("shader_material_and_textures")
+	_trace_op_end("GameVisualRegistry.ensure_textures_ready")
 
+	_trace_op_begin("WorldFeatures.bootstrap_with_services")
 	_StartupProfiler.begin("feature_seeding")
 	if features and features.has_method("bootstrap_with_services"):
 		await features.bootstrap_with_services(registry, resolved_config)
@@ -180,16 +212,20 @@ func boot_async() -> bool:
 		await features.ensure_ready()
 	if features == null or not bool(features.get("bootstrap_complete")):
 		# Wait for features seed if still async
+		_trace_op_begin("WorldFeatures.wait_bootstrap_complete")
 		var fframes := 0
 		while features and not bool(features.get("bootstrap_complete")) and fframes < _default_stage_timeout_frames:
 			await get_tree().process_frame
 			fframes += 1
+		_trace_op_end("WorldFeatures.wait_bootstrap_complete")
 		if features and not bool(features.get("bootstrap_complete")):
 			return _fail("world_features bootstrap timeout")
 	_StartupProfiler.end("feature_seeding")
+	_trace_op_end("WorldFeatures.bootstrap_with_services")
 	_advance(Stage.FEATURES_SEEDED)
 
 	# --- CHUNKS (includes bake index load + mesh plan bind + first stream request) ---
+	_trace_op_begin("VoxelWorld.create_chunk_manager_with_services")
 	_StartupProfiler.begin("world_and_chunk_manager_init")
 	var voxel = registry.require(ID_VOXEL)
 	if voxel == null:
@@ -208,11 +244,14 @@ func boot_async() -> bool:
 		return _fail("chunk_manager not created")
 	registry.register(ID_CHUNKS, cm, [ID_WORLD, ID_FEATURES, ID_CONFIG, ID_PERF])
 	_StartupProfiler.end("world_and_chunk_manager_init")
+	_trace_op_end("VoxelWorld.create_chunk_manager_with_services")
 
 	# Explicit handoff fan-out (replaces group lookups in on_chunk_manager_ready)
+	_trace_op_begin("service_handoff_on_chunks")
 	_StartupProfiler.begin("service_handoff_on_chunks")
 	_on_chunk_manager_ready_explicit(cm)
 	_StartupProfiler.end("service_handoff_on_chunks")
+	_trace_op_end("service_handoff_on_chunks")
 	_advance(Stage.CHUNKS_CREATED)
 
 	# --- INITIAL STREAM (first chunk(s) load + mesh upload drain window) ---
@@ -220,6 +259,7 @@ func boot_async() -> bool:
 	if SPP:
 		SPP.begin_session()
 		SPP.begin_window("initial_chunk_stream")
+	_trace_op_begin("initial_chunk_stream_wait")
 	_StartupProfiler.begin("initial_chunk_stream")
 	var sframes := 0
 	var wait_us_acc := 0
@@ -233,6 +273,7 @@ func boot_async() -> bool:
 	if SPP and SPP.is_enabled():
 		SPP.record("process_frame_wait", wait_us_acc)
 	_StartupProfiler.end("initial_chunk_stream")
+	_trace_op_end("initial_chunk_stream_wait")
 	if SPP and SPP.is_enabled():
 		SPP.end_window("initial_chunk_stream")
 		print("ICS_FRAMES_WAITED %d chunks_ready=%d" % [
@@ -255,6 +296,7 @@ func boot_async() -> bool:
 	_advance(Stage.INITIAL_STREAM_READY)
 
 	# --- VISUALS ---
+	_trace_op_begin("visuals_commit/post_bootstrap_refresh")
 	_StartupProfiler.begin("visuals_commit")
 	var world_visuals = registry.resolve(ID_WORLD_VISUALS)
 	if world_visuals and world_visuals.has_method("post_bootstrap_refresh"):
@@ -262,19 +304,24 @@ func boot_async() -> bool:
 	elif visreg and visreg.has_method("post_bootstrap_refresh"):
 		await visreg.post_bootstrap_refresh()
 	_StartupProfiler.end("visuals_commit")
+	_trace_op_end("visuals_commit/post_bootstrap_refresh")
 	_advance(Stage.VISUALS_COMMITTED)
 
+	_trace_op_begin("first_frame_after_running")
 	_StartupProfiler.begin("first_frame_after_running")
 	_advance(Stage.RUNNING)
 	await get_tree().process_frame
 	_StartupProfiler.end("first_frame_after_running")
+	_trace_op_end("first_frame_after_running")
 	_boot_done = true
+	_close_stage_trace("RUNNING")
+	_print_boot_stage_trace_report()
 	if _StartupProfiler.is_enabled():
 		_StartupProfiler.print_report()
-		var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
+		var scratch2 := OS.get_environment("CRYSTALSTORM_SCRATCH")
 		var path := "user://startup_profile.json"
-		if not scratch.is_empty():
-			path = scratch.path_join("startup_profile.json")
+		if not scratch2.is_empty():
+			path = scratch2.path_join("startup_profile.json")
 		var f := FileAccess.open(path, FileAccess.WRITE)
 		if f:
 			f.store_string(_StartupProfiler.to_json_string())
@@ -380,9 +427,13 @@ func _advance(next_stage: int) -> void:
 		return
 	if next_stage < stage and next_stage != Stage.SHUTTING_DOWN and next_stage != Stage.FAILED:
 		push_warning("CompositionRoot: non-forward stage %s -> %s" % [get_stage_name(), get_stage_name(next_stage)])
+	# Close dwell for previous label (ops since last advance / PRE_CONFIGURED).
+	if not _boot_trace_current_name.is_empty():
+		_close_stage_trace(_boot_trace_current_name)
 	stage = next_stage
 	var name := get_stage_name()
 	_stage_times_ms[name] = Time.get_ticks_msec() - _boot_started_ms
+	_open_stage_trace(name)
 	stage_changed.emit(stage, name)
 	print("[CompositionRoot] stage=%s t=%dms" % [name, int(_stage_times_ms[name])])
 
@@ -390,11 +441,222 @@ func _advance(next_stage: int) -> void:
 func _fail(reason: String) -> bool:
 	_failed_reason = reason
 	stage = Stage.FAILED
+	_close_stage_trace("FAILED")
+	_print_boot_stage_trace_report()
 	var dump := get_diagnostics()
 	boot_failed.emit(reason, dump)
 	push_error("[CompositionRoot] BOOT FAILED: %s" % reason)
 	print(JSON.stringify(dump, "\t"))
 	return false
+
+
+func _boot_trace_reset() -> void:
+	_boot_trace_stages.clear()
+	_boot_trace_current_name = "PRE_CONFIGURED"
+	_boot_trace_current_start_ms = Time.get_ticks_msec()
+	_boot_trace_ops.clear()
+	_boot_trace_op_stack.clear()
+	_boot_trace_op_start_ms.clear()
+
+
+func _open_stage_trace(stage_name: String) -> void:
+	if not _boot_trace_enabled:
+		return
+	_boot_trace_current_name = stage_name
+	_boot_trace_current_start_ms = Time.get_ticks_msec()
+	_boot_trace_ops.clear()
+
+
+func _close_stage_trace(stage_name: String) -> void:
+	if not _boot_trace_enabled:
+		return
+	# Flush any open ops.
+	while not _boot_trace_op_stack.is_empty():
+		_trace_op_end(str(_boot_trace_op_stack[_boot_trace_op_stack.size() - 1]))
+	var end_ms: int = Time.get_ticks_msec()
+	var start_ms: int = _boot_trace_current_start_ms
+	var dur: int = maxi(end_ms - start_ms, 0)
+	var slowest_name := ""
+	var slowest_ms: float = 0.0
+	var ops_out: Array = []
+	for op_v in _boot_trace_ops:
+		var op: Dictionary = op_v
+		ops_out.append(op.duplicate())
+		var dms: float = float(op.get("duration_ms", 0.0))
+		if dms >= slowest_ms:
+			slowest_ms = dms
+			slowest_name = str(op.get("name", ""))
+	var entry := {
+		"stage": stage_name,
+		"start_ms": start_ms - _boot_started_ms if _boot_started_ms > 0 else start_ms,
+		"end_ms": end_ms - _boot_started_ms if _boot_started_ms > 0 else end_ms,
+		"duration_ms": dur,
+		"ops": ops_out,
+		"slowest_op": slowest_name,
+		"slowest_ms": slowest_ms,
+	}
+	_boot_trace_stages.append(entry)
+	_boot_trace_ops.clear()
+
+
+func _trace_op_begin(op_name: String) -> void:
+	if not _boot_trace_enabled:
+		return
+	_boot_trace_op_stack.append(op_name)
+	_boot_trace_op_start_ms[op_name] = Time.get_ticks_msec()
+	print("[BootTrace] START %-52s @+%dms" % [
+		op_name,
+		Time.get_ticks_msec() - _boot_started_ms if _boot_started_ms > 0 else 0,
+	])
+
+
+func _trace_op_end(op_name: String) -> void:
+	if not _boot_trace_enabled:
+		return
+	if not _boot_trace_op_start_ms.has(op_name):
+		return
+	var start_ms: int = int(_boot_trace_op_start_ms[op_name])
+	_boot_trace_op_start_ms.erase(op_name)
+	if _boot_trace_op_stack.size() > 0 and str(_boot_trace_op_stack[_boot_trace_op_stack.size() - 1]) == op_name:
+		_boot_trace_op_stack.pop_back()
+	else:
+		# Remove nested/mismatched by name
+		var idx: int = _boot_trace_op_stack.rfind(op_name)
+		if idx >= 0:
+			_boot_trace_op_stack.remove_at(idx)
+	var end_ms: int = Time.get_ticks_msec()
+	var dur: float = float(end_ms - start_ms)
+	var op := {
+		"name": op_name,
+		"start_ms": start_ms - _boot_started_ms if _boot_started_ms > 0 else start_ms,
+		"end_ms": end_ms - _boot_started_ms if _boot_started_ms > 0 else end_ms,
+		"duration_ms": dur,
+	}
+	_boot_trace_ops.append(op)
+	print("[BootTrace] END   %-52s duration=%.1fms  stage=%s" % [
+		op_name, dur, _boot_trace_current_name,
+	])
+
+
+func get_boot_stage_trace() -> Array:
+	return _boot_trace_stages.duplicate(true)
+
+
+func _print_boot_stage_trace_report() -> void:
+	if not _boot_trace_enabled:
+		return
+	# Include StartupProfiler sub-ops under feature seeding for the gap report.
+	var sp_report: Dictionary = {}
+	if _StartupProfiler.is_enabled():
+		sp_report = _StartupProfiler.report()
+	print("")
+	print("========== BOOT STAGE TRACE (ranked by dwell duration) ==========")
+	print("Times are wall-clock while each stage label is active (until next _advance).")
+	print("Loading UI freezes at QUALITY_APPLIED while ops in that dwell run.")
+	print("")
+	var ranked: Array = _boot_trace_stages.duplicate()
+	ranked.sort_custom(func(a, b): return float(a.get("duration_ms", 0)) > float(b.get("duration_ms", 0)))
+	print("| rank | stage                      | start_ms | end_ms | duration_ms | slowest_op | slowest_ms |")
+	print("|-----:|:---------------------------|--------:|------:|------------:|:-----------|----------:|")
+	var rank := 1
+	for e in ranked:
+		print("| %4d | %-27s | %8d | %6d | %11d | %-40s | %10.1f |" % [
+			rank,
+			str(e.get("stage", "")),
+			int(e.get("start_ms", 0)),
+			int(e.get("end_ms", 0)),
+			int(e.get("duration_ms", 0)),
+			str(e.get("slowest_op", "")).substr(0, 40),
+			float(e.get("slowest_ms", 0.0)),
+		])
+		rank += 1
+	print("")
+	# Detail each stage in boot order
+	print("--- Stage detail (boot order) ---")
+	for e in _boot_trace_stages:
+		print("")
+		print("### %s  dwell=%dms  [%d → %d ms from boot]" % [
+			str(e.get("stage", "")),
+			int(e.get("duration_ms", 0)),
+			int(e.get("start_ms", 0)),
+			int(e.get("end_ms", 0)),
+		])
+		print("    slowest: %s (%.1f ms)" % [str(e.get("slowest_op", "")), float(e.get("slowest_ms", 0.0))])
+		var ops: Array = e.get("ops", [])
+		if ops.is_empty():
+			print("    (no traced ops)")
+			continue
+		var ops_sorted: Array = ops.duplicate()
+		ops_sorted.sort_custom(func(a, b): return float(a.get("duration_ms", 0)) > float(b.get("duration_ms", 0)))
+		for op in ops_sorted:
+			print("    - %-52s %8.1f ms  (start +%d)" % [
+				str(op.get("name", "")),
+				float(op.get("duration_ms", 0.0)),
+				int(op.get("start_ms", 0)),
+			])
+	# Explicit QUALITY → FEATURES gap analysis
+	print("")
+	print("--- QUALITY_APPLIED → FEATURES_SEEDED gap analysis ---")
+	var qa: Dictionary = {}
+	for e in _boot_trace_stages:
+		if str(e.get("stage", "")) == "QUALITY_APPLIED":
+			qa = e
+			break
+	if qa.is_empty():
+		print("QUALITY_APPLIED dwell not recorded.")
+	else:
+		print("While loading UI shows 'Applying Graphics Settings' (QUALITY_APPLIED):")
+		print("  dwell_ms = %d" % int(qa.get("duration_ms", 0)))
+		print("  slowest  = %s (%.1f ms)" % [str(qa.get("slowest_op", "")), float(qa.get("slowest_ms", 0.0))])
+		var ops2: Array = qa.get("ops", [])
+		var sum_ops: float = 0.0
+		for op in ops2:
+			sum_ops += float(op.get("duration_ms", 0.0))
+		print("  sum(traced ops) = %.1f ms  residual(dwell - sum) = %.1f ms" % [
+			sum_ops, float(qa.get("duration_ms", 0)) - sum_ops,
+		])
+	# StartupProfiler nested samples (feature seed internals)
+	if not sp_report.is_empty():
+		print("")
+		print("--- StartupProfiler samples (includes WorldFeatures sub-ops) ---")
+		var stages_sp: Array = sp_report.get("stages", [])
+		stages_sp = stages_sp.duplicate()
+		stages_sp.sort_custom(func(a, b): return float(a.get("total_us", 0)) > float(b.get("total_us", 0)))
+		print("| rank | sample | total_ms | worst_ms | n |")
+		print("|-----:|:-------|---------:|---------:|--:|")
+		var r2 := 1
+		for st in stages_sp:
+			var tot_us: float = float(st.get("total_us", 0))
+			if tot_us < 500.0:
+				continue
+			print("| %4d | %-40s | %8.1f | %8.1f | %2d |" % [
+				r2,
+				str(st.get("stage", "")),
+				tot_us / 1000.0,
+				float(st.get("worst_us", 0)) / 1000.0,
+				int(st.get("n", 0)),
+			])
+			r2 += 1
+			if r2 > 25:
+				break
+	print("")
+	print("========== END BOOT STAGE TRACE ==========")
+	print("")
+	# Persist JSON for offline analysis
+	var out_path := "user://boot_stage_trace.json"
+	var scratch3 := OS.get_environment("CRYSTALSTORM_SCRATCH")
+	if not scratch3.is_empty():
+		out_path = scratch3.path_join("boot_stage_trace.json")
+	var payload := {
+		"stages": _boot_trace_stages,
+		"startup_profiler": sp_report,
+		"boot_elapsed_ms": Time.get_ticks_msec() - _boot_started_ms if _boot_started_ms > 0 else 0,
+	}
+	var jf := FileAccess.open(out_path, FileAccess.WRITE)
+	if jf:
+		jf.store_string(JSON.stringify(payload, "\t"))
+		jf.close()
+		print("WROTE %s" % out_path)
 
 
 ## Wait until stage reached or timeout (frames).

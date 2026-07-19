@@ -155,9 +155,11 @@ func _process(_delta: float) -> void:
 			else:
 				break  # legacy: one chunk per frame
 	if fbs and fbs.has_method("run_budgeted"):
-		fbs.run_budgeted(&"entity_spawn", drain)
+		# Dedicated budget (not entity_spawn) so one dense veg chunk cannot stack
+		# with animal spawn in the same frame under a shared unit pool.
+		fbs.run_budgeted(&"feature_visual", drain)
 		if fbs.has_method("report_queue_depth"):
-			fbs.report_queue_depth(&"entity_spawn", _pending_populate.size(), 0)
+			fbs.report_queue_depth(&"feature_visual", _pending_populate.size(), 0)
 	else:
 		drain.call(null)
 	if profiler and profiler.has_method("end"):

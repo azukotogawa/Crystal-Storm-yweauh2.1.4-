@@ -2,6 +2,8 @@ class_name WorldBakeService
 extends RefCounted
 ## Streamed finite-world bake for Engine 1.0.
 ##
+## Loading UI may connect to status_changed for real progress (mode + 0..1).
+##
 ## Disk layout (v4):
 ##   user://world_bakes/v4_s{seed}_{full|rN}/
 ##     world.index          — lightweight bounds + flags (only thing loaded at startup)
@@ -29,8 +31,19 @@ const FLAG_STREAMED: int = 2
 const FLAG_VEGETATION: int = 4
 
 static var _active = null
+## When true, next bootstrap_for_world forces a full rebuild (loading UI "Rebuild World").
+static var force_rebuild_next: bool = false
+
+## mode: "idle"|"loading"|"generating"|"valid"|"error"
+## progress: 0.0..1.0 (or -1 if unknown)
+## message: human-readable status for loading UI
+signal status_changed(mode: String, progress: float, message: String)
 
 var world_seed: int = 0
+## Last UI-facing status (loading screen can poll if signal missed).
+var last_status_mode: String = "idle"
+var last_status_progress: float = 0.0
+var last_status_message: String = ""
 var min_cx: int = 0
 var max_cx: int = 0
 var min_cz: int = 0
@@ -552,16 +565,33 @@ func log_invalid_bake(reasons: PackedStringArray) -> void:
 			print("reason=%s" % str(r))
 
 
+func _emit_status(mode: String, progress: float, message: String) -> void:
+	last_status_mode = mode
+	last_status_progress = progress
+	last_status_message = message
+	status_changed.emit(mode, progress, message)
+
+
+## Public alias for loading UI / WorldFeatures (presentation only).
+func notify_ui_status(mode: String, progress: float, message: String) -> void:
+	_emit_status(mode, progress, message)
+
+
 func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictionary:
 	if world == null:
 		return {"ok": false, "error": "no world"}
+	if force_rebuild_next:
+		force_bake = true
+		force_rebuild_next = false
 	if not bake_enabled_from_env() and not force_bake:
 		clear_memory()
+		_emit_status("idle", 1.0, "World bake disabled")
 		return {"ok": true, "mode": "disabled"}
 	var seed: int = int(world.world_seed) if "world_seed" in world else 0
 	set_active(self)
 	var want_full := use_full_world_from_env()
 	var loaded := false
+	_emit_status("loading", 0.05, "Loading World...")
 	if not force_bake:
 		loaded = load_bake_for_seed(seed, want_full)
 	var validation: Dictionary = {}
@@ -575,6 +605,7 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 				validation = validate_loaded_bake(seed, want_full)
 			if bool(validation.get("ok", false)):
 				log_valid_bake(validation)
+				_emit_status("valid", 1.0, "Loading World...")
 				return {
 					"ok": true,
 					"mode": "loaded",
@@ -590,16 +621,23 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 			# Repair failed integrity → fall through to rebuild.
 			var reasons2: PackedStringArray = validation.get("reasons", PackedStringArray())
 			log_invalid_bake(reasons2)
+			_emit_status(
+				"generating",
+				0.1,
+				"Generating World... This only happens the first time you play or after major world updates."
+			)
 		else:
 			# Only mesh-plan issues → try repair before full rebuild.
 			var reasons: PackedStringArray = validation.get("reasons", PackedStringArray())
 			var only_plans := _reasons_only_mesh_plan(reasons)
 			if only_plans and host != null:
 				print("[WorldBake] Mesh plans incomplete — repairing once and writing to disk...")
+				_emit_status("generating", 0.15, "Repairing mesh plans...")
 				var plan_info2: Dictionary = ensure_mesh_plans(host, world, true)
 				validation = validate_loaded_bake(seed, want_full)
 				if bool(validation.get("ok", false)):
 					log_valid_bake(validation)
+					_emit_status("valid", 1.0, "Loading World...")
 					return {
 						"ok": true,
 						"mode": "loaded",
@@ -614,6 +652,11 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 						"repaired_plans": true,
 					}
 			log_invalid_bake(reasons)
+			_emit_status(
+				"generating",
+				0.1,
+				"Generating World... This only happens the first time you play or after major world updates."
+			)
 	else:
 		var miss_reasons: PackedStringArray = PackedStringArray()
 		if last_error.is_empty():
@@ -621,46 +664,170 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 		else:
 			miss_reasons.append(last_error)
 		log_invalid_bake(miss_reasons)
+		_emit_status(
+			"generating",
+			0.05,
+			"Generating World... This only happens the first time you play or after major world updates."
+		)
 
 	if force_bake or bake_on_new_from_env():
 		# Production auto-bake: full world unless smoke radius override is set.
 		var rad: int = -1
 		if not want_full:
 			rad = smoke_radius_from_env()
+		_emit_status(
+			"generating",
+			0.12,
+			"Generating World... This only happens the first time you play or after major world updates."
+		)
 		var baked: Dictionary = bake_world(world, rad, host)
-		if not bool(baked.get("ok", false)):
-			return baked
-		var saved: Dictionary = save_bake()
-		# One-shot plan refresh for live town/ruin stamps after offline bake, then persist meta.
-		var post_plans: Dictionary = ensure_mesh_plans(host, world, false)
-		_write_plan_seed_meta()
-		var post: Dictionary = validate_loaded_bake(seed, want_full)
-		baked["mesh_plan"] = post_plans
-		if bool(post.get("ok", false)):
-			log_valid_bake(post)
-		else:
-			print(
-				"[WorldBake] Rebuild finished but validation still failing: %s"
-				% str(post.get("reasons", []))
-			)
-		return {
-			"ok": bool(saved.get("ok", false)),
-			"mode": "baked",
-			"seed": seed,
-			"full_world": full_world,
-			"streamed": streamed,
-			"bounds": bounds_dict(),
-			"chunks": chunk_count(),
-			"bake_ms": last_bake_time_ms,
-			"bytes": last_bake_bytes,
-			"mesh_plan": baked.get("mesh_plan", {}),
-			"mesh_plan_bytes": saved.get("mesh_plan_bytes", 0),
-			"static_meta_bytes": last_static_meta_bytes,
-			"error": last_error,
-			"validation": post,
-		}
+		return _finish_bootstrap_after_bake(baked, seed, want_full, host)
 	clear_memory()
 	return {"ok": true, "mode": "miss", "seed": seed}
+
+
+## Async production path: cooperative bake so loading UI stays responsive (128×128).
+func bootstrap_for_world_async(world, force_bake: bool = false, host = null) -> Dictionary:
+	if world == null:
+		return {"ok": false, "error": "no world"}
+	if force_rebuild_next:
+		force_bake = true
+		force_rebuild_next = false
+	if not bake_enabled_from_env() and not force_bake:
+		clear_memory()
+		_emit_status("idle", 1.0, "World bake disabled")
+		return {"ok": true, "mode": "disabled"}
+	var seed: int = int(world.world_seed) if "world_seed" in world else 0
+	set_active(self)
+	var want_full := use_full_world_from_env()
+	var loaded := false
+	_emit_status("loading", 0.05, "Loading World...")
+	if not force_bake:
+		loaded = load_bake_for_seed(seed, want_full)
+	var validation: Dictionary = {}
+	if loaded:
+		validation = validate_loaded_bake(seed, want_full)
+		if bool(validation.get("ok", false)):
+			var plan_info: Dictionary = ensure_mesh_plans(host, world)
+			if str(plan_info.get("mode", "")) == "repaired":
+				validation = validate_loaded_bake(seed, want_full)
+			if bool(validation.get("ok", false)):
+				log_valid_bake(validation)
+				_emit_status("valid", 1.0, "Loading World...")
+				return {
+					"ok": true,
+					"mode": "loaded",
+					"seed": seed,
+					"full_world": full_world,
+					"streamed": streamed,
+					"bounds": bounds_dict(),
+					"chunks": chunk_count(),
+					"resident": resident_count(),
+					"mesh_plan": plan_info,
+					"validation": validation,
+				}
+			var reasons2: PackedStringArray = validation.get("reasons", PackedStringArray())
+			log_invalid_bake(reasons2)
+			_emit_status(
+				"generating",
+				0.1,
+				"Generating World... This only happens the first time you play or after major world updates."
+			)
+		else:
+			var reasons: PackedStringArray = validation.get("reasons", PackedStringArray())
+			var only_plans := _reasons_only_mesh_plan(reasons)
+			if only_plans and host != null:
+				print("[WorldBake] Mesh plans incomplete — repairing once and writing to disk...")
+				_emit_status("generating", 0.15, "Repairing mesh plans...")
+				var plan_info2: Dictionary = ensure_mesh_plans(host, world, true)
+				validation = validate_loaded_bake(seed, want_full)
+				if bool(validation.get("ok", false)):
+					log_valid_bake(validation)
+					_emit_status("valid", 1.0, "Loading World...")
+					return {
+						"ok": true,
+						"mode": "loaded",
+						"seed": seed,
+						"full_world": full_world,
+						"streamed": streamed,
+						"bounds": bounds_dict(),
+						"chunks": chunk_count(),
+						"resident": resident_count(),
+						"mesh_plan": plan_info2,
+						"validation": validation,
+						"repaired_plans": true,
+					}
+			log_invalid_bake(reasons)
+			_emit_status(
+				"generating",
+				0.1,
+				"Generating World... This only happens the first time you play or after major world updates."
+			)
+	else:
+		var miss_reasons: PackedStringArray = PackedStringArray()
+		if last_error.is_empty():
+			miss_reasons.append("no_bake_for_seed")
+		else:
+			miss_reasons.append(last_error)
+		log_invalid_bake(miss_reasons)
+		_emit_status(
+			"generating",
+			0.05,
+			"Generating World... This only happens the first time you play or after major world updates."
+		)
+
+	if force_bake or bake_on_new_from_env():
+		var rad: int = -1
+		if not want_full:
+			rad = smoke_radius_from_env()
+		_emit_status(
+			"generating",
+			0.12,
+			"Generating World... This only happens the first time you play or after major world updates."
+		)
+		var baked: Dictionary = await bake_world_async(world, rad, host)
+		return _finish_bootstrap_after_bake(baked, seed, want_full, host)
+	clear_memory()
+	return {"ok": true, "mode": "miss", "seed": seed}
+
+
+func _finish_bootstrap_after_bake(
+	baked: Dictionary, seed: int, want_full: bool, host
+) -> Dictionary:
+	if not bool(baked.get("ok", false)):
+		return baked
+	var saved: Dictionary = save_bake()
+	var world_ref = null
+	if host != null and "world" in host:
+		world_ref = host.world
+	# One-shot plan refresh for live town/ruin stamps after offline bake, then persist meta.
+	var post_plans: Dictionary = ensure_mesh_plans(host, world_ref, false)
+	_write_plan_seed_meta()
+	var post: Dictionary = validate_loaded_bake(seed, want_full)
+	baked["mesh_plan"] = post_plans
+	if bool(post.get("ok", false)):
+		log_valid_bake(post)
+	else:
+		print(
+			"[WorldBake] Rebuild finished but validation still failing: %s"
+			% str(post.get("reasons", []))
+		)
+	return {
+		"ok": bool(saved.get("ok", false)),
+		"mode": "baked",
+		"seed": seed,
+		"full_world": full_world,
+		"streamed": streamed,
+		"bounds": bounds_dict(),
+		"chunks": chunk_count(),
+		"bake_ms": last_bake_time_ms,
+		"bytes": last_bake_bytes,
+		"mesh_plan": baked.get("mesh_plan", {}),
+		"mesh_plan_bytes": saved.get("mesh_plan_bytes", 0),
+		"static_meta_bytes": last_static_meta_bytes,
+		"error": last_error,
+		"validation": post,
+	}
 
 
 func _reasons_only_mesh_plan(reasons: PackedStringArray) -> bool:
@@ -1034,6 +1201,8 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 				_FeatureRegistry.apply_baked_vegetation_chunk(ck, veg_by_chunk[ck])
 	set_active(self)
 
+	var total_chunks: int = maxi((max_cx - min_cx + 1) * (max_cz - min_cz + 1), 1)
+	var progress_emit_every: int = maxi(total_chunks / 40, 1)
 	for cz in range(min_cz, max_cz + 1):
 		for cx in range(min_cx, max_cx + 1):
 			var coord := Vector2i(cx, cz)
@@ -1066,6 +1235,13 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 			var wbytes: int = _write_chunk_package(coord, surface, tiles, plan, veg)
 			bytes_written += wbytes
 			count += 1
+			if count == 1 or count % progress_emit_every == 0 or count >= total_chunks:
+				var p: float = clampf(float(count) / float(total_chunks), 0.0, 1.0)
+				_emit_status(
+					"generating",
+					0.15 + p * 0.8,
+					"Generating World... %d / %d chunks" % [count, total_chunks]
+				)
 
 	if _WorldState:
 		if prev_ws != null:
@@ -1084,6 +1260,176 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 		return {"ok": false, "error": last_error, "packages": count}
 	last_error = "" if valid else "empty bake"
 	# Do not keep per-chunk data in RAM after bake.
+	_resident.clear()
+	_chunks.clear()
+
+	var mesh_plan_info := {
+		"ok": plan_count > 0,
+		"chunks": plan_count,
+		"avg_plan_qn": avg_qn,
+		"total_plan_qn": plan_qn_total,
+		"bake_ms": last_bake_time_ms,
+		"streamed": true,
+	}
+	return {
+		"ok": valid,
+		"seed": world_seed,
+		"full_world": full_world,
+		"streamed": true,
+		"bounds": bounds_dict(),
+		"radius": radius,
+		"chunks": count,
+		"expected_chunks": expected_chunk_count(),
+		"bake_ms": last_bake_time_ms,
+		"bytes": bytes_written,
+		"vegetation_entries": last_vegetation_entries,
+		"vegetation_bake_ms": last_vegetation_bake_ms,
+		"mesh_plan": mesh_plan_info,
+		"static_meta": _capture_static_meta(world),
+		"error": last_error,
+	}
+
+
+## Cooperative bake for production boot / loading UI: yields to SceneTree so the
+## main loop can process frames (progress bar, avoid "frozen" window).
+## Same packages/determinism as bake_world; only scheduling differs.
+func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
+	if world == null:
+		last_error = "bake_world: null world"
+		valid = false
+		return {"ok": false, "error": last_error}
+	var t0 := Time.get_ticks_msec()
+	world_seed = int(world.world_seed) if "world_seed" in world else 0
+	valid = false
+	vegetation_baked = false
+	_resident.clear()
+	_chunks.clear()
+	streamed = true
+	if rad >= 0:
+		full_world = false
+		radius = rad
+		min_cx = -rad
+		max_cx = rad
+		min_cz = -rad
+		max_cz = rad
+	elif use_full_world_from_env():
+		var b: Dictionary = full_world_chunk_bounds()
+		full_world = true
+		min_cx = int(b.min_cx)
+		max_cx = int(b.max_cx)
+		min_cz = int(b.min_cz)
+		max_cz = int(b.max_cz)
+		radius = maxi(absi(min_cx), absi(max_cx))
+	else:
+		full_world = false
+		radius = smoke_radius_from_env()
+		min_cx = -radius
+		max_cx = radius
+		min_cz = -radius
+		max_cz = radius
+
+	package_dir = bake_dir_for(world_seed, radius if not full_world else -1, full_world)
+	var chunks_dir := package_dir.path_join("chunks")
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(chunks_dir))
+
+	_emit_status("generating", 0.12, "Generating World... preparing vegetation...")
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree:
+		await tree.process_frame
+
+	var veg_t0 := Time.get_ticks_msec()
+	var veg_by_chunk: Dictionary = _bake_vegetation_by_chunk(world)
+	last_vegetation_bake_ms = Time.get_ticks_msec() - veg_t0
+	last_vegetation_entries = 0
+	for ck in veg_by_chunk.keys():
+		last_vegetation_entries += (veg_by_chunk[ck] as Array).size()
+	if tree:
+		await tree.process_frame
+
+	var count := 0
+	var plan_count := 0
+	var plan_qn_total := 0
+	var bytes_written := 0
+	var mesh_host = _resolve_mesh_host(host, world)
+	var co_mesh: bool = mesh_host != null and mesh_host.has_method("_build_mesh")
+	if not co_mesh:
+		last_error = "bake_world: cannot resolve mesh host for plans"
+		valid = false
+		return {"ok": false, "error": last_error}
+	var _WorldState = load("res://world/world_state.gd")
+	var _ChunkData = load("res://chunks/chunk_data.gd")
+	var _FeatureRegistry = load("res://world/feature_registry.gd")
+	var prev_ws = null
+	if _WorldState:
+		prev_ws = _WorldState.get_active()
+		_WorldState.replace_active()
+		if _FeatureRegistry and _FeatureRegistry.has_method("apply_baked_vegetation_chunk"):
+			for ck in veg_by_chunk.keys():
+				_FeatureRegistry.apply_baked_vegetation_chunk(ck, veg_by_chunk[ck])
+	set_active(self)
+
+	var total_chunks: int = maxi((max_cx - min_cx + 1) * (max_cz - min_cz + 1), 1)
+	var progress_emit_every: int = maxi(total_chunks / 40, 1)
+	# Yield often enough for UI; denser for huge full-world bakes.
+	var yield_every: int = 4 if total_chunks > 1000 else maxi(progress_emit_every, 1)
+	for cz in range(min_cz, max_cz + 1):
+		for cx in range(min_cx, max_cx + 1):
+			var coord := Vector2i(cx, cz)
+			var surface := PackedFloat32Array()
+			var tiles := PackedInt32Array()
+			surface.resize(CELLS2)
+			tiles.resize(CELLS2)
+			var i := 0
+			for lz in CELLS:
+				for lx in CELLS:
+					var wx := float(cx * CELLS + lx)
+					var wz := float(cz * CELLS + lz)
+					surface[i] = float(world.get_surface_height_worker(wx, wz, 0.0))
+					tiles[i] = int(world.get_tile_type_worker(wx, wz, -1, -1))
+					i += 1
+			var plan: Array = []
+			var data = _ChunkData.new(coord, world)
+			data.capture_worker_snapshot()
+			_apply_pack_to_data(data, surface, tiles)
+			if data.has_method("_bind_macro_surface_if_needed"):
+				data._bind_macro_surface_if_needed()
+			var built: Dictionary = mesh_host._build_mesh(data)
+			var quads: Array = built.get("quads", [])
+			plan.resize(quads.size())
+			for qi in quads.size():
+				plan[qi] = (quads[qi] as Dictionary).duplicate(true)
+			plan_qn_total += plan.size()
+			plan_count += 1
+			var veg: Array = veg_by_chunk.get(coord, [])
+			var wbytes: int = _write_chunk_package(coord, surface, tiles, plan, veg)
+			bytes_written += wbytes
+			count += 1
+			if count == 1 or count % progress_emit_every == 0 or count >= total_chunks:
+				var p: float = clampf(float(count) / float(total_chunks), 0.0, 1.0)
+				_emit_status(
+					"generating",
+					0.15 + p * 0.8,
+					"Generating World... %d / %d chunks" % [count, total_chunks]
+				)
+			if tree and (count % yield_every == 0):
+				await tree.process_frame
+
+	if _WorldState:
+		if prev_ws != null:
+			_WorldState.set_active(prev_ws)
+		else:
+			_WorldState.replace_active()
+
+	last_bake_time_ms = Time.get_ticks_msec() - t0
+	last_bake_bytes = bytes_written
+	valid = count > 0 and plan_count == count
+	vegetation_baked = valid
+	var avg_qn: float = float(plan_qn_total) / float(maxi(plan_count, 1))
+	if plan_qn_total <= 0:
+		last_error = "bake_world: all mesh plans empty"
+		valid = false
+		return {"ok": false, "error": last_error, "packages": count}
+	last_error = "" if valid else "empty bake"
 	_resident.clear()
 	_chunks.clear()
 

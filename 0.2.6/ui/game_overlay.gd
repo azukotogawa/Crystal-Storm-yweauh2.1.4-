@@ -23,6 +23,7 @@ var _mite_threat_toast_shown: bool = false
 
 
 func _ready() -> void:
+	add_to_group("game_overlay")
 	_panel.visible = false
 	_ensure_toast()
 	_game_manager = get_tree().get_first_node_in_group("game_manager")
@@ -36,8 +37,23 @@ func _ready() -> void:
 	call_deferred("_bind_progression")
 	call_deferred("_bind_living_world")
 	call_deferred("_bind_enemy_spawner")
-	call_deferred("_show_opening_toast")
+	# Opening toast waits until LoadingScreen fades (or shows after short delay if no loader).
+	call_deferred("_schedule_opening_toast")
 	_update_map_temp_label()
+
+
+func _schedule_opening_toast() -> void:
+	# If a loading overlay is still covering the view, wait for notify_loading_finished.
+	var ls = get_node_or_null("../../LoadingLayer/LoadingScreen")
+	if ls == null:
+		ls = get_tree().root.find_child("LoadingScreen", true, false)
+	if ls != null and ls.visible and float(ls.modulate.a) > 0.05:
+		return  # loading_screen will call notify_loading_finished
+	_show_opening_toast()
+
+
+func notify_loading_finished() -> void:
+	_show_opening_toast()
 
 
 func _show_opening_toast() -> void:

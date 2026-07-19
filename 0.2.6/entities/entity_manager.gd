@@ -23,10 +23,14 @@ var _entities: Array[Node3D] = []
 var _spawned_cells: Dictionary = {}
 var _defenders_by_town: Dictionary = {}
 var physics_skip_frames: int = 0
+## Stream hitch isolation: spawn wildlife/townfolk off chunk_ready hot path.
+var _pending_stream_coords: Array = []
+var _pending_stream_set: Dictionary = {}
 
 
 func _enter_tree() -> void:
 	add_to_group("entity_manager")
+	set_process(true)
 
 
 func _entity_parent() -> Node:
@@ -290,6 +294,8 @@ func _is_valid_animal_cell(wx: int, wz: int) -> bool:
 
 
 func _on_chunk_unloaded(coord: Vector2i) -> void:
+	if _pending_stream_set.has(coord):
+		_pending_stream_set.erase(coord)
 	_despawn_entities_in_chunk(coord)
 
 
@@ -315,6 +321,46 @@ func _despawn_entities_in_chunk(coord: Vector2i) -> void:
 
 
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
+	# Queue for budgeted drain — spawning agents inside ChunkManager apply
+	# stacked multi-ms entity instantiate/tree work onto chunk_upload.
+	if _pending_stream_set.has(coord):
+		return
+	_pending_stream_set[coord] = true
+	_pending_stream_coords.append(coord)
+
+
+func _process(_delta: float) -> void:
+	if _pending_stream_coords.is_empty():
+		return
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("entity_stream_spawn")
+	var fbs = get_node_or_null("/root/FrameBudgetScheduler")
+	var drain := func(token = null) -> void:
+		while not _pending_stream_coords.is_empty():
+			if token != null and not token.can_continue():
+				break
+			var coord: Vector2i = _pending_stream_coords.pop_front()
+			if not _pending_stream_set.has(coord):
+				continue
+			_pending_stream_set.erase(coord)
+			if chunk_manager != null and chunk_manager.chunks.has(coord):
+				_activate_chunk_entities(coord)
+			if token != null:
+				token.spend_unit()
+			else:
+				break
+	if fbs and fbs.has_method("run_budgeted"):
+		fbs.run_budgeted(&"entity_spawn", drain)
+		if fbs.has_method("report_queue_depth"):
+			fbs.report_queue_depth(&"entity_spawn", _pending_stream_coords.size(), 0)
+	else:
+		drain.call(null)
+	if profiler and profiler.has_method("end"):
+		profiler.end("entity_stream_spawn")
+
+
+func _activate_chunk_entities(coord: Vector2i) -> void:
 	# Re-populate standing townfolk when a settlement chunk streams back in.
 	_ensure_town_population_for_chunk(coord)
 	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:

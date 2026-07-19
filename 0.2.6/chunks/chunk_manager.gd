@@ -79,6 +79,11 @@ var _mesh_completion_order_dirty: bool = true
 ## Cached autoload refs (avoid get_node every _process / drain).
 var _profiler_node: Node = null
 var _fbs_node: Node = null
+## Detached ChunkView pool — avoids instantiate + free on stream unload/reload.
+const _VIEW_POOL_MAX: int = 48
+var _view_pool: Array = []
+## When true, _ready skips bake bootstrap; CompositionRoot awaits bootstrap_world_bake_async().
+var defer_world_bake_bootstrap: bool = false
 
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
@@ -110,15 +115,31 @@ func _ready():
 		print("WARNING: World node (group 'world') not found in _ready!")
 
 	# Prefer immutable baked base for streaming when present (no pipeline redesign).
+	if defer_world_bake_bootstrap:
+		# Composition path: await bootstrap_world_bake_async() after add_child.
+		return
 	_bootstrap_world_bake()
 	_bootstrap_mesh_plan_cache()
+	_request_initial_stream()
 
-	# Request initial chunks...
+
+func _request_initial_stream() -> void:
 	if player and world:
 		var col := _player_column_pos()
 		var cx = floori(col.x / float(ChunkData.SIZE))
 		var cz = floori(col.y / float(ChunkData.SIZE))
 		update_stream(cx, cz)
+
+
+## Composition-root path: load or cooperatively rebuild production bake (128×128).
+func bootstrap_world_bake_async() -> void:
+	if world == null:
+		world = get_tree().get_first_node_in_group("world") if get_tree() else null
+	if player == null and get_tree():
+		player = get_tree().get_first_node_in_group("player")
+	await _bootstrap_world_bake_async()
+	_bootstrap_mesh_plan_cache()
+	_request_initial_stream()
 
 
 func _WorldBakeService_is_outside(coord: Vector2i) -> bool:
@@ -144,15 +165,53 @@ func _bootstrap_world_bake() -> void:
 		if _SP and _SP.is_enabled():
 			_SP.end("load_bake_index")
 		return
-	# Pass self as mesh host so world bake co-emits / backfills MeshPlanCache.
+	# Sync path (legacy / tests): may block during rebuild.
 	var result: Dictionary = bake.bootstrap_for_world(world, false, self)
+	_finish_bootstrap_world_bake_result(result, _SP)
+
+
+func _bootstrap_world_bake_async() -> void:
+	if world == null:
+		return
+	var _SP = load("res://systems/startup_profiler.gd")
+	if _SP and _SP.is_enabled():
+		_SP.begin("load_bake_index")
+	var wb_script = load("res://world/world_bake_service.gd")
+	if wb_script == null:
+		if _SP and _SP.is_enabled():
+			_SP.end("load_bake_index")
+		return
+	var bake = wb_script.ensure_active() if wb_script.has_method("ensure_active") else null
+	if bake == null:
+		if _SP and _SP.is_enabled():
+			_SP.end("load_bake_index")
+		return
+	print("[CRASH_CRUMB t=%d] ChunkManager → WorldBakeService.bootstrap_for_world_async ENTER" % Time.get_ticks_msec())
+	var _cf := FileAccess.open("user://startup_last_step.txt", FileAccess.WRITE)
+	if _cf:
+		_cf.store_string("[CRASH_CRUMB] ChunkManager → bootstrap_for_world_async ENTER\n")
+		_cf.close()
+	var result: Dictionary = await bake.bootstrap_for_world_async(world, false, self)
+	print("[CRASH_CRUMB t=%d] ChunkManager → bootstrap_for_world_async EXIT ok=%s mode=%s" % [
+		Time.get_ticks_msec(), str(result.get("ok", false)), str(result.get("mode", "")),
+	])
+	_cf = FileAccess.open("user://startup_last_step.txt", FileAccess.WRITE)
+	if _cf:
+		_cf.store_string(
+			"[CRASH_CRUMB] bootstrap_for_world_async EXIT ok=%s mode=%s\n"
+			% [str(result.get("ok", false)), str(result.get("mode", ""))]
+		)
+		_cf.close()
+	_finish_bootstrap_world_bake_result(result, _SP)
+
+
+func _finish_bootstrap_world_bake_result(result: Dictionary, _SP) -> void:
 	if _SP and _SP.is_enabled():
 		_SP.end("load_bake_index")
 		var mp0: Dictionary = result.get("mesh_plan", {})
 		_SP.mark("load_mesh_plan_cache", int(mp0.get("bake_ms", 0)) * 1000)
 	if bool(result.get("ok", false)):
 		var mode := str(result.get("mode", ""))
-		# bootstrap_for_world already prints Valid bake found / rebuilding lines.
 		if mode == "baked":
 			print(
 				"[WorldBake] Rebuild complete bake_ms=%s bytes=%s chunks=%s"
@@ -167,7 +226,6 @@ func _bootstrap_world_bake() -> void:
 		var mp: Dictionary = result.get("mesh_plan", {})
 		if not mp.is_empty():
 			var mpm := str(mp.get("mode", ""))
-			# valid / streamed / loaded = no repair; repaired / baked = wrote plans this launch.
 			if mpm != "valid" and mpm != "streamed" and mpm != "loaded":
 				print(
 					"[MeshPlanCache] mode=%s chunks=%s bytes=%s bake_ms=%s"
@@ -308,6 +366,7 @@ func release_all_chunks_for_teardown() -> void:
 	_rebuild_pending.clear()
 	_patch_pending.clear()
 	_ChunkDataPool.clear()
+	_clear_view_pool()
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")
 	_shutdown_trace("release_all end")
@@ -361,6 +420,8 @@ func _exit_tree() -> void:
 	_rebuild_pending.clear()
 	_patch_pending.clear()
 	_ChunkDataPool.clear()
+	# Pooled views are detached (not SceneTree children) — free explicitly.
+	_clear_view_pool()
 	_shutdown_trace("_exit_tree end (children left for SceneTree free)")
 
 
@@ -389,21 +450,19 @@ func _unload_chunk_view(key: Vector2i) -> void:
 		view.chunk_data = null
 		view.mesh_data = {}
 		if data_to_pool != null and not data_to_pool.has_meta("_pooled"):
-			# Mark before free path so tree_exited / teardown cannot double-pool.
 			data_to_pool.set_meta("_pooled", true)
-			view.tree_exited.connect(
-				Callable(self, "_pool_chunk_data_after_view_free").bind(data_to_pool),
-				CONNECT_ONE_SHOT
-			)
 		if view.get_parent() == self:
 			if profiler and profiler.has_method("begin"):
 				profiler.begin("chunk_scenetree_remove")
 			remove_child(view)
 			if profiler and profiler.has_method("end"):
 				profiler.end("chunk_scenetree_remove")
-		# Profiled deferred free (same MQ phase as queue_free) so node deletion
-		# cost is a named leaf instead of opaque MessageQueue residual.
-		call_deferred("_profiled_free_chunk_view", view)
+		# View is detached: return ChunkData shell to pool immediately (view no longer owns it).
+		if data_to_pool != null:
+			_pool_chunk_data_after_view_free(data_to_pool)
+		# Prefer ChunkView pool over free — MultiMesh/MeshInstance children stay for reuse.
+		if not _try_pool_chunk_view(view):
+			call_deferred("_profiled_free_chunk_view", view)
 	# Release bake package only when no remaining resident/pending chunk needs it
 	# as a mesh-halo neighbor (chebyshev ≤ 1). Premature release forces cold
 	# ensure+deserialize on the next stream start's capture_worker_snapshot (~11ms).
@@ -433,6 +492,49 @@ func _maybe_release_bake_package(key: Vector2i) -> void:
 	bake.release_chunk(key)
 
 
+## Park a detached ChunkView for reuse. Returns false if pool full / invalid.
+func _try_pool_chunk_view(view: Node) -> bool:
+	if view == null or not is_instance_valid(view) or _shutting_down:
+		return false
+	if _view_pool.size() >= _VIEW_POOL_MAX:
+		return false
+	if view is not ChunkView:
+		return false
+	# Detach GPU resources from free path but keep MultiMesh nodes for next setup.
+	var cv := view as ChunkView
+	cv.chunk_data = null
+	cv.mesh_data = {}
+	if cv.layer_container and is_instance_valid(cv.layer_container):
+		for child in cv.layer_container.get_children():
+			if child is MultiMeshInstance3D:
+				var mmi := child as MultiMeshInstance3D
+				# Keep MultiMesh resource; zero instance count to drop GPU buffers.
+				if mmi.multimesh != null:
+					mmi.multimesh.instance_count = 0
+			elif child is MeshInstance3D:
+				(child as MeshInstance3D).mesh = null
+	_view_pool.append(cv)
+	var profiler = _profiler_node if _profiler_node != null else get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("inc_frame"):
+		profiler.inc_frame("chunk_view_pool_puts", 1)
+	if profiler and profiler.has_method("set_gauge"):
+		profiler.set_gauge("chunk_view_pool_size", float(_view_pool.size()))
+	return true
+
+
+func _acquire_chunk_view() -> ChunkView:
+	while not _view_pool.is_empty():
+		var v: ChunkView = _view_pool.pop_back() as ChunkView
+		if v != null and is_instance_valid(v):
+			var profiler = _profiler_node if _profiler_node != null else get_node_or_null("/root/PerfProfiler")
+			if profiler and profiler.has_method("inc_frame"):
+				profiler.inc_frame("chunk_view_pool_gets", 1)
+			if profiler and profiler.has_method("set_gauge"):
+				profiler.set_gauge("chunk_view_pool_size", float(_view_pool.size()))
+			return v
+	return CHUNK_VIEW_SCENE.instantiate() as ChunkView
+
+
 ## Measurement-only: destroy a detached ChunkView during MessageQueue flush.
 ## Replaces queue_free so free cost is attributed (same frame deferred phase).
 func _profiled_free_chunk_view(view: Node) -> void:
@@ -448,6 +550,14 @@ func _profiled_free_chunk_view(view: Node) -> void:
 		profiler.end_func("ChunkManager::_profiled_free_chunk_view")
 	if profiler and profiler.has_method("end"):
 		profiler.end("chunk_node_free")
+
+
+func _clear_view_pool() -> void:
+	for v in _view_pool:
+		if v != null and is_instance_valid(v):
+			(v as Node).free()
+	_view_pool.clear()
+
 
 func request_chunk(coord: Vector2i, high_priority: bool = false) -> void:
 	if _is_chunk_resident(coord):
@@ -2319,14 +2429,18 @@ func _on_chunk_ready(
 				_ChunkStreamingTelemetry.finalize_lifecycle(data.position, token)
 			_set_lifecycle_state(data.position, _ChunkStreamLifecycle.ACTIVE)
 			var sig_t0 := Time.get_ticks_usec()
+			if profiler and profiler.has_method("begin"):
+				profiler.begin("chunk_ready_signal")
 			chunk_ready.emit(data.position, data)
+			if profiler and profiler.has_method("end"):
+				profiler.end("chunk_ready_signal")
 			if profiler and profiler.has_method("record_us"):
 				profiler.record_us("chunk_ready_signal", Time.get_ticks_usec() - sig_t0)
 			_schedule_patch_flush_if_needed()
 			if profiler and profiler.has_method("end_func"):
 				profiler.end_func("ChunkManager::_on_chunk_ready")
 			return
-	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()
+	var view: ChunkView = _acquire_chunk_view()
 	if view == null:
 		push_warning("ChunkManager: failed to instantiate ChunkView for %s" % str(data.position))
 		if profiler and profiler.has_method("end_func"):
@@ -2375,7 +2489,14 @@ func _on_chunk_ready(
 		_ChunkStreamingTelemetry.transition(data.position, token, _ChunkStreamingTelemetry.STATE_ACTIVE)
 		_ChunkStreamingTelemetry.finalize_lifecycle(data.position, token)
 	_set_lifecycle_state(data.position, _ChunkStreamLifecycle.ACTIVE)
+	var sig_t1 := Time.get_ticks_usec()
+	if profiler and profiler.has_method("begin"):
+		profiler.begin("chunk_ready_signal")
 	chunk_ready.emit(data.position, data)
+	if profiler and profiler.has_method("end"):
+		profiler.end("chunk_ready_signal")
+	if profiler and profiler.has_method("record_us"):
+		profiler.record_us("chunk_ready_signal", Time.get_ticks_usec() - sig_t1)
 	_schedule_patch_flush_if_needed()
 	if profiler and profiler.has_method("end_func"):
 		profiler.end_func("ChunkManager::_on_chunk_ready")
