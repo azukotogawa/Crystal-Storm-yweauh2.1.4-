@@ -20,6 +20,18 @@ static var _plant_denial_cache: Array = []
 static var _plant_denial_cache_dirty: bool = true
 static var _denial_spatial: Dictionary = {}  # Vector2i chunk -> Array[denial entry]
 static var _denial_spatial_dirty: bool = true
+## Derived ruin-center list (dirty on feature write) + frame-local return cache.
+static var _ruin_centers_dirty: bool = true
+static var _ruin_centers_list: Array[Vector2i] = []
+static var _ruin_centers_frame: int = -1
+static var _ruin_centers_frame_cache: Array[Vector2i] = []
+static var _ruin_centers_frame_valid: bool = false
+## Measurement (optional).
+static var _measure_enabled: bool = false
+static var _ops: Dictionary = {}
+static var _ruin_centers_hits: int = 0
+static var _ruin_centers_misses: int = 0
+static var _ruin_centers_dups: int = 0
 
 
 static func _ws():
@@ -30,6 +42,11 @@ static func _invalidate_derived() -> void:
 	_plant_keys_dirty = true
 	_plant_denial_cache_dirty = true
 	_denial_spatial_dirty = true
+	_ruin_centers_dirty = true
+	_ruin_centers_list.clear()
+	_ruin_centers_frame_valid = false
+	_ruin_centers_frame_cache.clear()
+	_ruin_centers_frame = -1
 
 
 ## Call after WorldState.replace_active / restore so derived caches cannot leak across sessions.
@@ -46,6 +63,38 @@ static func reset() -> void:
 	_plant_denial_cache.clear()
 	_denial_spatial.clear()
 	_invalidate_derived()
+
+
+static func set_query_measure_enabled(enabled: bool) -> void:
+	_measure_enabled = enabled
+
+
+static func reset_query_stats() -> void:
+	_ops.clear()
+	_ruin_centers_hits = 0
+	_ruin_centers_misses = 0
+	_ruin_centers_dups = 0
+
+
+static func get_query_stats() -> Dictionary:
+	return {
+		"ops": _ops.duplicate(true),
+		"ruin_centers_hits": _ruin_centers_hits,
+		"ruin_centers_misses": _ruin_centers_misses,
+		"ruin_centers_dups": _ruin_centers_dups,
+	}
+
+
+static func _record_op(op: String, t0_us: int) -> void:
+	if not _measure_enabled:
+		return
+	var dt := Time.get_ticks_usec() - t0_us
+	if not _ops.has(op):
+		_ops[op] = {"n": 0, "total_us": 0, "max_us": 0}
+	var row: Dictionary = _ops[op]
+	row["n"] = int(row["n"]) + 1
+	row["total_us"] = int(row["total_us"]) + dt
+	row["max_us"] = maxi(int(row["max_us"]), dt)
 
 
 ## world_seeded: town/ruin/road stamps that are part of immutable world content for mesh plans.
@@ -77,6 +126,8 @@ static func clear_feature(wx: int, wz: int) -> void:
 	ws.feature_cells.erase(key)
 	# Session tombstone so streamed baked vegetation is not re-installed.
 	ws.feature_cleared[key] = true
+	_ruin_centers_dirty = true
+	_ruin_centers_frame_valid = false
 	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
@@ -97,6 +148,9 @@ static func register_feature(wx: int, wz: int, kind: int, data: Dictionary = {})
 	if entry.has("plant_id"):
 		_plant_keys_dirty = true
 		_maybe_invalidate_denial(entry, old_stage)
+	# Ruin centers are derived from feature_cells — invalidate on any write.
+	_ruin_centers_dirty = true
+	_ruin_centers_frame_valid = false
 	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
@@ -298,6 +352,28 @@ static func get_towns() -> Array[Dictionary]:
 
 
 static func get_ruin_centers() -> Array[Vector2i]:
+	var t0 := Time.get_ticks_usec() if _measure_enabled else 0
+	var frame := Engine.get_process_frames()
+	# Same-frame duplicate: return without rescanning feature_cells.
+	if _ruin_centers_frame_valid and _ruin_centers_frame == frame:
+		if _measure_enabled:
+			_ruin_centers_hits += 1
+			_ruin_centers_dups += 1
+			_record_op("get_ruin_centers", t0)
+		return _ruin_centers_frame_cache.duplicate()
+	_ensure_ruin_centers_list()
+	_ruin_centers_frame_cache = _ruin_centers_list.duplicate()
+	_ruin_centers_frame = frame
+	_ruin_centers_frame_valid = true
+	if _measure_enabled:
+		_ruin_centers_misses += 1
+		_record_op("get_ruin_centers", t0)
+	return _ruin_centers_frame_cache.duplicate()
+
+
+static func _ensure_ruin_centers_list() -> void:
+	if not _ruin_centers_dirty:
+		return
 	var found: Dictionary = {}
 	var cells: Dictionary = _ws().feature_cells
 	for key in cells.keys():
@@ -309,7 +385,8 @@ static func get_ruin_centers() -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	for c in found.keys():
 		out.append(c)
-	return out
+	_ruin_centers_list = out
+	_ruin_centers_dirty = false
 
 
 static func register_entity_spawn(wx: int, wz: int, kind: int, animal_kind: int = -1) -> void:

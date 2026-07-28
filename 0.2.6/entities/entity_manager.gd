@@ -26,6 +26,12 @@ var physics_skip_frames: int = 0
 ## Stream hitch isolation: spawn wildlife/townfolk off chunk_ready hot path.
 var _pending_stream_coords: Array = []
 var _pending_stream_set: Dictionary = {}
+## Stream wake counters (measurement).
+var _stream_ready_n: int = 0
+var _stream_ready_us: int = 0
+var _stream_ready_max_us: int = 0
+var _stream_activate_n: int = 0
+var _stream_activate_us: int = 0
 
 
 func _enter_tree() -> void:
@@ -320,13 +326,38 @@ func _despawn_entities_in_chunk(coord: Vector2i) -> void:
 		entity.queue_free()
 
 
+func reset_stream_wake_trace() -> void:
+	_stream_ready_n = 0
+	_stream_ready_us = 0
+	_stream_ready_max_us = 0
+	_stream_activate_n = 0
+	_stream_activate_us = 0
+
+
+func get_stream_wake_trace() -> Dictionary:
+	return {
+		"chunk_ready_n": _stream_ready_n,
+		"chunk_ready_us": _stream_ready_us,
+		"chunk_ready_max_us": _stream_ready_max_us,
+		"activate_n": _stream_activate_n,
+		"activate_us": _stream_activate_us,
+		"pending_queue": _pending_stream_coords.size(),
+		"deferred": true,
+	}
+
+
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 	# Queue for budgeted drain — spawning agents inside ChunkManager apply
 	# stacked multi-ms entity instantiate/tree work onto chunk_upload.
+	var t0 := Time.get_ticks_usec()
 	if _pending_stream_set.has(coord):
 		return
 	_pending_stream_set[coord] = true
 	_pending_stream_coords.append(coord)
+	var dt := Time.get_ticks_usec() - t0
+	_stream_ready_n += 1
+	_stream_ready_us += dt
+	_stream_ready_max_us = maxi(_stream_ready_max_us, dt)
 
 
 func _process(_delta: float) -> void:
@@ -345,7 +376,10 @@ func _process(_delta: float) -> void:
 				continue
 			_pending_stream_set.erase(coord)
 			if chunk_manager != null and chunk_manager.chunks.has(coord):
+				var at0 := Time.get_ticks_usec()
 				_activate_chunk_entities(coord)
+				_stream_activate_n += 1
+				_stream_activate_us += Time.get_ticks_usec() - at0
 			if token != null:
 				token.spend_unit()
 			else:

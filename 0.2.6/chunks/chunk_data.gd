@@ -132,11 +132,75 @@ func prewarm_macro_storage() -> void:
 
 ## Call on main thread immediately before dispatching chunk gen to WorkerThreadPool.
 ## Copies mesh-input overlays from WorldState into frozen per-chunk arrays.
+## Optional exclusive leaves: CRYSTALSTORM_DRAIN_STREAM_MEASURE=1 (via static report).
+static var _snap_measure: bool = false
+static var _snap_phase: Dictionary = {}  # phase -> {n, total_us, max_us}
+static var _snap_worst: Dictionary = {}
+static var _snap_n: int = 0
+static var _snap_max_us: int = 0
+static var _snap_last_halo: Dictionary = {}
+
+
+static func set_snapshot_measure_enabled(enabled: bool) -> void:
+	_snap_measure = enabled
+	if enabled:
+		_snap_phase.clear()
+		_snap_worst.clear()
+		_snap_n = 0
+		_snap_max_us = 0
+
+
+static func _snap_add(phase: String, us: int) -> void:
+	if not _snap_measure or us < 0:
+		return
+	if not _snap_phase.has(phase):
+		_snap_phase[phase] = {"n": 0, "total_us": 0, "max_us": 0}
+	var row: Dictionary = _snap_phase[phase]
+	row["n"] = int(row["n"]) + 1
+	row["total_us"] = int(row["total_us"]) + us
+	row["max_us"] = maxi(int(row["max_us"]), us)
+
+
+static func get_snapshot_measure() -> Dictionary:
+	var phases: Array = []
+	for k in _snap_phase.keys():
+		var row: Dictionary = _snap_phase[k]
+		phases.append({
+			"phase": k,
+			"n": int(row.get("n", 0)),
+			"total_us": int(row.get("total_us", 0)),
+			"total_ms": float(row.get("total_us", 0)) / 1000.0,
+			"max_us": int(row.get("max_us", 0)),
+			"max_ms": float(row.get("max_us", 0)) / 1000.0,
+			"avg_us": float(row.get("total_us", 0)) / float(maxi(int(row.get("n", 0)), 1)),
+		})
+	phases.sort_custom(func(a, b): return int(a.max_us) > int(b.max_us))
+	return {
+		"calls": _snap_n,
+		"max_us": _snap_max_us,
+		"max_ms": float(_snap_max_us) / 1000.0,
+		"phases": phases,
+		"worst": _snap_worst.duplicate(true),
+	}
+
+
 func capture_worker_snapshot() -> void:
+	if not _snap_measure and OS.get_environment("CRYSTALSTORM_DRAIN_STREAM_MEASURE").strip_edges().to_lower() in ["1", "true", "on"]:
+		_snap_measure = true
+	var t_all := Time.get_ticks_usec() if _snap_measure else 0
+	var parts: Dictionary = {} if _snap_measure else {}
 	var ws = _WorldState.get_active()
+	var t0 := Time.get_ticks_usec() if _snap_measure else 0
 	overlay_mesh_stamp = ws.capture_mesh_overlay_stamp()
+	if _snap_measure:
+		_snap_add("capture_mesh_overlay_stamp", Time.get_ticks_usec() - t0)
+		parts["capture_mesh_overlay_stamp_us"] = Time.get_ticks_usec() - t0
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
+	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_ensure_worker_overlay_storage()
+	if _snap_measure:
+		_snap_add("ensure_worker_overlay_storage", Time.get_ticks_usec() - t0)
+		parts["ensure_worker_overlay_storage_us"] = Time.get_ticks_usec() - t0
 	# Fast path: no overlay maps → zero-fill without Dictionary lookups (common on pristine bake walk).
 	var overlays_empty: bool = (
 		ws.height_delta.is_empty()
@@ -145,6 +209,7 @@ func capture_worker_snapshot() -> void:
 		and ws.feature_cells.is_empty()
 		and (not ("seeded_tile_keys" in ws) or ws.seeded_tile_keys.is_empty())
 	)
+	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	if overlays_empty:
 		for x in SIZE:
 			for z in SIZE:
@@ -152,6 +217,10 @@ func capture_worker_snapshot() -> void:
 				_worker_build_tile[x][z] = -1
 				_worker_feature_tile[x][z] = -1
 				_worker_feature_baked[x][z] = false
+		if _snap_measure:
+			_snap_add("overlay_copy_empty_fast", Time.get_ticks_usec() - t0)
+			parts["overlay_path"] = "empty_fast"
+			parts["overlay_copy_us"] = Time.get_ticks_usec() - t0
 	else:
 		for x in SIZE:
 			for z in SIZE:
@@ -167,8 +236,30 @@ func capture_worker_snapshot() -> void:
 				var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 					if "seeded_tile_keys" in ws else false
 				_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+		if _snap_measure:
+			_snap_add("overlay_copy_dict_walk", Time.get_ticks_usec() - t0)
+			parts["overlay_path"] = "dict_walk"
+			parts["overlay_copy_us"] = Time.get_ticks_usec() - t0
+			parts["feature_cells_n"] = ws.feature_cells.size()
+			parts["seeded_tile_keys_n"] = ws.seeded_tile_keys.size() if "seeded_tile_keys" in ws else 0
 	_has_worker_snapshot = true
+	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_capture_halo_surface()
+	if _snap_measure:
+		var halo_us := Time.get_ticks_usec() - t0
+		_snap_add("capture_halo_surface", halo_us)
+		parts["capture_halo_surface_us"] = halo_us
+		for hk in _snap_last_halo.keys():
+			parts[hk] = _snap_last_halo[hk]
+		var tot := Time.get_ticks_usec() - t_all
+		_snap_add("capture_worker_snapshot_total", tot)
+		_snap_n += 1
+		if tot >= _snap_max_us:
+			_snap_max_us = tot
+			parts["total_us"] = tot
+			parts["total_ms"] = float(tot) / 1000.0
+			parts["coord"] = [position.x, position.y]
+			_snap_worst = parts.duplicate(true)
 
 
 func _ensure_worker_overlay_storage() -> void:
@@ -210,9 +301,16 @@ func _capture_halo_surface() -> void:
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	var ws = _WorldState.get_active()
 	var bake = _WorldBakeService.get_active()
+	var t_alloc := Time.get_ticks_usec() if _snap_measure else 0
 	_halo_surface.resize(dim)
 	_halo_base_surface.resize(dim)
 	_worker_halo_height_delta.resize(dim)
+	var resolve_bake_us := 0
+	var resolve_noise_us := 0
+	var resolve_n := 0
+	var bake_hits := 0
+	var noise_hits := 0
+	var deferred_n := 0
 	for ix in dim:
 		_halo_surface[ix] = []
 		_halo_surface[ix].resize(dim)
@@ -234,7 +332,20 @@ func _capture_halo_surface() -> void:
 			# Main-thread capture only: freeze height delta for later worker refresh.
 			var hdelta: float = float(int(ws.height_delta.get(key, 0))) * layer_h
 			_worker_halo_height_delta[ix][iz] = hdelta
+			var t_r := Time.get_ticks_usec() if _snap_measure else 0
 			var resolved: Dictionary = _resolve_halo_natural_height(wx, wz, bake)
+			if _snap_measure:
+				var rus := Time.get_ticks_usec() - t_r
+				resolve_n += 1
+				if bool(resolved.get("via_bake", false)):
+					resolve_bake_us += rus
+					bake_hits += 1
+				elif bool(resolved.get("deferred", false)):
+					resolve_bake_us += rus
+					deferred_n += 1
+				else:
+					resolve_noise_us += rus
+					noise_hits += 1
 			if bool(resolved.get("deferred", false)):
 				_halo_base_surface[ix][iz] = -9999.0
 				_halo_surface[ix][iz] = -9999.0
@@ -243,6 +354,18 @@ func _capture_halo_surface() -> void:
 			_halo_base_surface[ix][iz] = base_h
 			_halo_surface[ix][iz] = _WorldBakeService.compose_surface_height(base_h, hdelta)
 	_has_halo_surface = true
+	if _snap_measure:
+		_snap_add("halo_resolve_bake_sample", resolve_bake_us)
+		_snap_add("halo_resolve_noise", resolve_noise_us)
+		_snap_last_halo = {
+			"halo_resolve_bake_us": resolve_bake_us,
+			"halo_resolve_noise_us": resolve_noise_us,
+			"halo_bake_hits": bake_hits,
+			"halo_noise_hits": noise_hits,
+			"halo_deferred_n": deferred_n,
+			"halo_border_cells": resolve_n,
+			"halo_loop_wall_us": Time.get_ticks_usec() - t_alloc,
+		}
 
 
 ## Main-thread: natural (pre-overlay) height for a halo world cell.
@@ -254,13 +377,13 @@ func _resolve_halo_natural_height(wx: int, wz: int, bake) -> Dictionary:
 		if sample.is_empty():
 			if bake.has_method("note_halo_deferred"):
 				bake.note_halo_deferred()
-			return {"deferred": true}
+			return {"deferred": true, "via_bake": true}
 		if bake.has_method("note_halo_bake_hit"):
 			bake.note_halo_bake_hit()
-		return {"base": float(sample.get("surface", 0.0)), "deferred": false}
+		return {"base": float(sample.get("surface", 0.0)), "deferred": false, "via_bake": true}
 	# Outside package bounds, or no valid bake: legacy noise (allowed for out-of-bounds).
 	var h: float = world.get_surface_height_worker(float(wx), float(wz), 0.0)
-	return {"base": h, "deferred": false}
+	return {"base": h, "deferred": false, "via_bake": false}
 
 
 func store_baked_base(surface: PackedFloat32Array, tiles: PackedInt32Array) -> void:

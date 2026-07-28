@@ -18,6 +18,10 @@ var _crystal_manager = null
 var _world_state = null
 var _bound_chunk_signals: bool = false
 var _tracked_nodes: Dictionary = {}  # instance_id -> spatial handle id
+## Stream wake counters (measurement).
+var _stream_ready_n: int = 0
+var _stream_ready_us: int = 0
+var _stream_ready_max_us: int = 0
 
 
 func _init() -> void:
@@ -111,13 +115,41 @@ func bind_world_state(ws) -> void:
 		ws.changed.connect(_on_world_state_changed)
 
 
+## Trace counter (measurement only).
+var _trace_ws_changed_count: int = 0
+var _trace_ws_changed_enabled: bool = false
+var _trace_ws_reindex_chunks: int = 0
+
+
+func reset_trace_counters() -> void:
+	_trace_ws_changed_count = 0
+	_trace_ws_reindex_chunks = 0
+	_trace_ws_changed_enabled = true
+
+
+func stop_trace_counters() -> void:
+	_trace_ws_changed_enabled = false
+
+
+func get_trace_ws_changed_count() -> int:
+	return _trace_ws_changed_count
+
+
+func get_trace_ws_reindex_chunks() -> int:
+	return _trace_ws_reindex_chunks
+
+
 func _on_world_state_changed(domain: int, _revision: int) -> void:
 	# Domain-level invalidation: drop static feature markers; consumers re-query WorldState/features.
 	# We reindex loaded-chunk statics only (incremental to loaded set).
 	if layer == null:
 		return
+	if _trace_ws_changed_enabled:
+		_trace_ws_changed_count += 1
 	# Soft invalidation: remove structure/town statics in loaded chunks and reindex.
 	var loaded: Array = layer.iter_loaded_chunks()
+	if _trace_ws_changed_enabled:
+		_trace_ws_reindex_chunks += loaded.size()
 	for coord_v in loaded:
 		_remove_static_in_chunk(coord_v)
 		_index_static_features_in_chunk(coord_v)
@@ -126,9 +158,26 @@ func _on_world_state_changed(domain: int, _revision: int) -> void:
 	_d = _d
 
 
+func reset_stream_wake_trace() -> void:
+	_stream_ready_n = 0
+	_stream_ready_us = 0
+	_stream_ready_max_us = 0
+
+
+func get_stream_wake_trace() -> Dictionary:
+	return {
+		"chunk_ready_n": _stream_ready_n,
+		"chunk_ready_us": _stream_ready_us,
+		"chunk_ready_max_us": _stream_ready_max_us,
+		"deferred": false,
+		"work": "immediate index terrain marker + static features in chunk",
+	}
+
+
 func _on_chunk_ready(coord: Vector2i, _data = null) -> void:
 	if layer == null:
 		return
+	var t0 := Time.get_ticks_usec()
 	layer.mark_chunk_loaded(coord)
 	# Terrain chunk marker (discovery of loaded terrain extent)
 	var cs := float(layer.chunk_size)
@@ -145,6 +194,10 @@ func _on_chunk_ready(coord: Vector2i, _data = null) -> void:
 		coord
 	)
 	_index_static_features_in_chunk(coord)
+	var dt := Time.get_ticks_usec() - t0
+	_stream_ready_n += 1
+	_stream_ready_us += dt
+	_stream_ready_max_us = maxi(_stream_ready_max_us, dt)
 
 
 func _on_chunk_unloaded(coord: Vector2i) -> void:

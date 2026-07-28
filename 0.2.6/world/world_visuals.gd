@@ -92,17 +92,21 @@ func post_bootstrap_refresh() -> void:
 		await registry.post_bootstrap_refresh()
 	elif registry and registry.has_method("refresh_all"):
 		await get_tree().process_frame
-		registry.refresh_all()
+		registry.refresh_all("WorldVisuals.post_bootstrap_refresh")
 	_post_bootstrap_done = true
 
 
 func _bind_chunk_streaming(cm: ChunkManager) -> void:
-	if cm.has_signal("chunk_ready") and not cm.chunk_ready.is_connected(_on_chunk_ready):
-		cm.chunk_ready.connect(_on_chunk_ready)
+	# Do not refresh all layers on every chunk_ready — that path regenerated the
+	# full texture bundle and repopulated every feature chunk (multi-ms hitch).
+	# FeatureVisualLayer + EntityManager handle per-chunk population with budgets.
+	if cm.has_signal("chunk_ready") and cm.chunk_ready.is_connected(_on_chunk_ready):
+		cm.chunk_ready.disconnect(_on_chunk_ready)
 
 
 func _on_chunk_ready(_coord: Vector2i, _data: ChunkData) -> void:
-	call_deferred("_refresh_all_layers")
+	# Legacy no-op (disconnected). Kept for signal-safety if reconnected elsewhere.
+	pass
 
 
 func _await_chunk_manager() -> void:
@@ -114,16 +118,19 @@ func _await_chunk_manager() -> void:
 
 
 func _on_visuals_ready() -> void:
-	_refresh_all_layers()
+	# Textures are ready. Full scene repopulate is owned by post_bootstrap_refresh
+	# (once). Per-chunk FeatureVisualLayer / EntityManager handle streaming loads.
+	pass
 
 
 func _refresh_all_layers() -> void:
+	# One-shot full refresh for debug / explicit callers — not per chunk.
 	var feat := get_feature_layer()
 	if feat and feat.has_method("repopulate_all"):
 		feat.repopulate_all()
 	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if registry and registry.has_method("refresh_all"):
-		registry.refresh_all()
+		registry.refresh_all("WorldVisuals._refresh_all_layers")
 	var combat = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if combat and combat.has_method("reload_textures"):
 		combat.reload_textures()

@@ -68,7 +68,11 @@ func reload_textures() -> void:
 
 
 func on_chunk_manager_ready(_cm: ChunkManager) -> void:
-	reload_textures()
+	# Bind handles once; do not regenerate combat textures on every handoff.
+	if _textures.is_empty():
+		reload_textures()
+	else:
+		_apply_textures_to_indicators()
 
 
 func _await_chunk_manager() -> void:
@@ -84,8 +88,9 @@ func _load_textures() -> void:
 		await registry.ensure_ready()
 	await _await_chunk_manager()
 	if registry:
+		# Bundle is generated once at registry init; preload is a no-op when ready.
 		if registry.has_method("preload_game_bundle"):
-			registry.preload_game_bundle()
+			registry.preload_game_bundle(false, "CombatVisualFeedback._load_textures")
 		_textures = {
 			"damage_number": registry.get_combat_texture(&"damage_number"),
 			"hit_flash": registry.get_combat_texture(&"hit_flash"),

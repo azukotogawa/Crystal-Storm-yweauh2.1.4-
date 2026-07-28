@@ -29,6 +29,72 @@ var _gen: Node
 var _initialized: bool = false
 var _visuals_committed: bool = false
 var _post_bootstrap_done: bool = false
+## Procedural textures are generated once and reused for the session.
+var _bundle_ready: bool = false
+## Hitch counters (measurement / verify).
+var _bundle_gen_count: int = 0
+var _refresh_all_count: int = 0
+var _refresh_scene_count: int = 0
+## Single-tick / teleport visual trace.
+var _trace_refresh_enabled: bool = false
+var _trace_refresh_all: int = 0
+var _trace_refresh_scene: int = 0
+var _trace_refresh_entity: int = 0
+var _trace_preload_calls: int = 0
+var _trace_preload_noop: int = 0
+var _trace_preload_regen: int = 0
+var _trace_clear_cache: int = 0
+var _trace_generate_bundle: int = 0
+var _trace_fallback_generate: int = 0
+var _trace_refresh_callers: Array = []
+var _trace_preload_callers: Array = []
+var _trace_clear_callers: Array = []
+
+
+func reset_trace_counters() -> void:
+	_trace_refresh_all = 0
+	_trace_refresh_scene = 0
+	_trace_refresh_entity = 0
+	_trace_preload_calls = 0
+	_trace_preload_noop = 0
+	_trace_preload_regen = 0
+	_trace_clear_cache = 0
+	_trace_generate_bundle = 0
+	_trace_fallback_generate = 0
+	_trace_refresh_callers.clear()
+	_trace_preload_callers.clear()
+	_trace_clear_callers.clear()
+	_trace_refresh_enabled = true
+
+
+func stop_trace_counters() -> void:
+	_trace_refresh_enabled = false
+
+
+func get_trace_refresh_counts() -> Dictionary:
+	return {
+		"refresh_all": _trace_refresh_all,
+		"refresh_scene": _trace_refresh_scene,
+		"refresh_entity_visual": _trace_refresh_entity,
+		"preload_calls": _trace_preload_calls,
+		"preload_noop": _trace_preload_noop,
+		"preload_regen": _trace_preload_regen,
+		"clear_cache": _trace_clear_cache,
+		"generate_bundle": _trace_generate_bundle,
+		"fallback_generate": _trace_fallback_generate,
+		"bundle_gen_count": _bundle_gen_count,
+		"bundle_ready": _bundle_ready,
+		"cache_size": _cache.size(),
+		"refresh_callers": _trace_refresh_callers.duplicate(),
+		"preload_callers": _trace_preload_callers.duplicate(),
+		"clear_callers": _trace_clear_callers.duplicate(),
+	}
+
+
+func _trace_note_caller(bucket: Array, label: String) -> void:
+	if not _trace_refresh_enabled:
+		return
+	bucket.append(label)
 
 
 
@@ -91,20 +157,26 @@ func on_chunk_manager_ready(cm: ChunkManager) -> void:
 		_commit_visual_refresh()
 
 
-func refresh_all_visuals() -> void:
+func refresh_all_visuals(caller: String = "unknown") -> void:
 	if not is_inside_tree():
 		return
 	if not _initialized:
 		return
-	preload_game_bundle()
+	_refresh_all_count += 1
+	if _trace_refresh_enabled:
+		_trace_refresh_all += 1
+		_trace_note_caller(_trace_refresh_callers, caller)
+	# Reuse session textures — never regenerate the full bundle on refresh.
+	if not _bundle_ready or _cache.is_empty():
+		preload_game_bundle(false, "refresh_all_visuals:" + caller)
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	_refresh_scene_visuals()
 
 
 ## Public alias used by debug tooling and legacy callers.
-func refresh_all() -> void:
-	refresh_all_visuals()
+func refresh_all(caller: String = "unknown") -> void:
+	refresh_all_visuals(caller)
 
 
 ## One-time refresh after ChunkManager + WorldVisuals exist and initial chunks are loaded.
@@ -128,7 +200,8 @@ func post_bootstrap_refresh() -> void:
 	if not _visuals_committed:
 		_commit_visual_refresh()
 	else:
-		refresh_all()
+		# Scene binding only — textures already in cache from first preload.
+		refresh_all("post_bootstrap_refresh")
 	_post_bootstrap_done = true
 	post_bootstrap_refreshed.emit()
 
@@ -138,11 +211,15 @@ func generate_game_visual_bundle() -> Dictionary:
 	if _gen == null or not _gen.has_method("generate_game_visual_bundle"):
 		push_warning("[GameVisualRegistry] generate_game_visual_bundle unavailable on texture generator")
 		return {}
+	if _trace_refresh_enabled:
+		_trace_generate_bundle += 1
 	var bundle: Dictionary = _gen.generate_game_visual_bundle()
+	_bundle_gen_count += 1
 	for key in bundle.keys():
 		var tex: Texture2D = bundle[key]
 		if tex != null:
 			_cache[str(key)] = tex
+	_bundle_ready = not _cache.is_empty()
 	return bundle
 
 
@@ -167,12 +244,37 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		max_feature_billboards_per_chunk = maxi(int(cfg.max_feature_billboards_per_chunk), 0)
 
 
-func clear_cache() -> void:
+func clear_cache(caller: String = "unknown") -> void:
+	if _trace_refresh_enabled:
+		_trace_clear_cache += 1
+		_trace_note_caller(_trace_clear_callers, caller)
 	_cache.clear()
+	_bundle_ready = false
 
 
-func preload_game_bundle() -> void:
+## Generate procedural combat/entity/veg/item textures once per session.
+## Subsequent calls are no-ops unless force=true or cache was cleared.
+func preload_game_bundle(force: bool = false, caller: String = "unknown") -> void:
+	if _trace_refresh_enabled:
+		_trace_preload_calls += 1
+		_trace_note_caller(_trace_preload_callers, caller if not force else caller + ":force")
+	if _bundle_ready and not force and not _cache.is_empty():
+		if _trace_refresh_enabled:
+			_trace_preload_noop += 1
+		return
+	if _trace_refresh_enabled:
+		_trace_preload_regen += 1
 	generate_game_visual_bundle()
+
+
+func get_hitch_counters() -> Dictionary:
+	return {
+		"bundle_gen_count": _bundle_gen_count,
+		"refresh_all_count": _refresh_all_count,
+		"refresh_scene_count": _refresh_scene_count,
+		"cache_size": _cache.size(),
+		"bundle_ready": _bundle_ready,
+	}
 
 
 func get_entity_texture(entity_id: StringName) -> Texture2D:
@@ -384,6 +486,8 @@ func _make_billboard_material(tex: Texture2D, tint: Color) -> StandardMaterial3D
 func _get_or_fallback(cache_key: String, category: int, variant_id: StringName) -> Texture2D:
 	if _cache.has(cache_key):
 		return _cache[cache_key]
+	if _trace_refresh_enabled:
+		_trace_fallback_generate += 1
 	var tex := _generate(category, variant_id)
 	if tex != null:
 		_cache[cache_key] = tex
@@ -496,17 +600,19 @@ func _await_initial_chunks(max_frames: int = 900) -> void:
 
 
 func _bind_chunk_streaming() -> void:
+	# Intentionally no chunk_ready → full scene refresh.
+	# Per-chunk billboards/entities are owned by FeatureVisualLayer + EntityManager
+	# (budgeted). Reconnecting a global refresh here regenerates work every load.
 	if chunk_manager == null:
 		return
 	if chunk_manager.has_signal("chunk_ready") \
-			and not chunk_manager.chunk_ready.is_connected(_on_chunk_ready_refresh):
-		chunk_manager.chunk_ready.connect(_on_chunk_ready_refresh)
+			and chunk_manager.chunk_ready.is_connected(_on_chunk_ready_refresh):
+		chunk_manager.chunk_ready.disconnect(_on_chunk_ready_refresh)
 
 
+## Legacy no-op: kept so old connects cannot reintroduce full-world refresh.
 func _on_chunk_ready_refresh(_coord: Vector2i, _data: ChunkData) -> void:
-	if not _initialized or chunk_manager == null:
-		return
-	call_deferred("_refresh_scene_visuals")
+	pass
 
 
 func _commit_visual_refresh() -> void:
@@ -525,13 +631,20 @@ func _commit_visual_refresh() -> void:
 func _refresh_scene_visuals() -> void:
 	if not is_inside_tree():
 		return
+	_refresh_scene_count += 1
+	if _trace_refresh_enabled:
+		_trace_refresh_scene += 1
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	for entity in get_tree().get_nodes_in_group("world_entity"):
 		if is_instance_valid(entity) and entity.has_method("refresh_visual"):
+			if _trace_refresh_enabled:
+				_trace_refresh_entity += 1
 			entity.refresh_visual()
 	for enemy in get_tree().get_nodes_in_group("crystal_enemy"):
 		if is_instance_valid(enemy) and enemy.has_method("refresh_visual"):
+			if _trace_refresh_enabled:
+				_trace_refresh_entity += 1
 			enemy.refresh_visual()
 	var crystal = get_tree().get_first_node_in_group("crystal_manager")
 	if crystal and crystal.has_method("refresh_spawn_marker_textures"):

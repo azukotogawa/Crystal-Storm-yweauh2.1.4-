@@ -54,12 +54,39 @@ func get_config() -> _GenConfig:
 # Public API — textures
 # ---------------------------------------------------------------------------
 
+## Measurement counters (teleport/visual regen investigation).
+var _trace_generate_image_count: int = 0
+var _trace_generate_texture_count: int = 0
+var _trace_generate_image_by_category: Dictionary = {}
+var _trace_enabled: bool = false
+
+
+func set_gen_trace_enabled(enabled: bool) -> void:
+	_trace_enabled = enabled
+
+
+func reset_gen_trace() -> void:
+	_trace_generate_image_count = 0
+	_trace_generate_texture_count = 0
+	_trace_generate_image_by_category.clear()
+
+
+func get_gen_trace() -> Dictionary:
+	return {
+		"generate_image_count": _trace_generate_image_count,
+		"generate_texture_count": _trace_generate_texture_count,
+		"by_category": _trace_generate_image_by_category.duplicate(),
+	}
+
+
 func generate_texture(
 	category: Category,
 	variant_id: StringName = &"default",
 	size: int = -1,
 	seed_offset: int = 0
 ) -> ImageTexture:
+	if _trace_enabled:
+		_trace_generate_texture_count += 1
 	var image := generate_image(category, variant_id, size, seed_offset)
 	var tex := ImageTexture.create_from_image(image)
 	tex.set_meta("category", category)
@@ -75,6 +102,10 @@ func generate_image(
 	size: int = -1,
 	seed_offset: int = 0
 ) -> Image:
+	if _trace_enabled:
+		_trace_generate_image_count += 1
+		var ck := str(category)
+		_trace_generate_image_by_category[ck] = int(_trace_generate_image_by_category.get(ck, 0)) + 1
 	var dim := size if size > 0 else config.default_texture_size
 	var palette := _resolve_palette(category, variant_id)
 	var seed_val := config.master_seed + seed_offset + _category_seed_bias(category)

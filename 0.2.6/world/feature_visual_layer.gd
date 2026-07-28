@@ -22,6 +22,12 @@ var _nodes_by_cell: Dictionary = {}
 ## FIFO of Vector2i; _pending_set de-dupes and supports unload cancel.
 var _pending_populate: Array = []
 var _pending_set: Dictionary = {}
+## Stream wake counters (measurement).
+var _stream_ready_n: int = 0
+var _stream_ready_us: int = 0
+var _stream_ready_max_us: int = 0
+var _stream_populate_n: int = 0
+var _stream_populate_us: int = 0
 
 
 func _ready() -> void:
@@ -111,15 +117,40 @@ func apply_performance_config(cfg) -> void:
 			_on_chunk_ready(coord, null)
 
 
+func reset_stream_wake_trace() -> void:
+	_stream_ready_n = 0
+	_stream_ready_us = 0
+	_stream_ready_max_us = 0
+	_stream_populate_n = 0
+	_stream_populate_us = 0
+
+
+func get_stream_wake_trace() -> Dictionary:
+	return {
+		"chunk_ready_n": _stream_ready_n,
+		"chunk_ready_us": _stream_ready_us,
+		"chunk_ready_max_us": _stream_ready_max_us,
+		"populate_n": _stream_populate_n,
+		"populate_us": _stream_populate_us,
+		"pending_queue": _pending_populate.size(),
+		"deferred": true,
+	}
+
+
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return
 	# Do not build vegetation/building nodes inside ChunkManager apply (measured
 	# ~9ms of _on_chunk_ready after setup was only ~0.75ms). Queue for budgeted drain.
+	var t0 := Time.get_ticks_usec()
 	if _pending_set.has(coord):
 		return
 	_pending_set[coord] = true
 	_pending_populate.append(coord)
+	var dt := Time.get_ticks_usec() - t0
+	_stream_ready_n += 1
+	_stream_ready_us += dt
+	_stream_ready_max_us = maxi(_stream_ready_max_us, dt)
 
 
 func _on_chunk_unloaded(coord: Vector2i) -> void:
@@ -149,7 +180,10 @@ func _process(_delta: float) -> void:
 				continue
 			_pending_set.erase(coord)
 			if chunk_manager != null and chunk_manager.chunks.has(coord):
+				var pt0 := Time.get_ticks_usec()
 				_populate_chunk(coord)
+				_stream_populate_n += 1
+				_stream_populate_us += Time.get_ticks_usec() - pt0
 			if token != null:
 				token.spend_unit()
 			else:

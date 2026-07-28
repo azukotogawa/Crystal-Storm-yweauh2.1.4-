@@ -134,9 +134,9 @@ func refresh_world_visuals() -> void:
 		if visual_registry.has_method("apply_performance_config"):
 			visual_registry.apply_performance_config(quality)
 		if visual_registry.has_method("preload_game_bundle"):
-			visual_registry.preload_game_bundle()
+			visual_registry.preload_game_bundle(false, "PerformanceService.refresh_world_visuals")
 		if visual_registry.has_method("refresh_all"):
-			visual_registry.refresh_all()
+			visual_registry.refresh_all("PerformanceService.refresh_world_visuals")
 	var feature_visuals = get_tree().get_first_node_in_group("feature_visual_layer")
 	if feature_visuals:
 		if feature_visuals.has_method("apply_performance_config"):

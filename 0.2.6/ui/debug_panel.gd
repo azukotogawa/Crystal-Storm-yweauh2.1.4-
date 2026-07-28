@@ -145,7 +145,7 @@ func _process(_delta: float) -> void:
 
 	# Biome & Tile
 	if world and player_voxel != Vector3.ZERO:
-		var biome = world._get_biome_compute(player_voxel.x, 0.0, player_voxel.z)
+		var biome = world.get_biome(player_voxel.x, 0.0, player_voxel.z)
 		if biome is Dictionary:
 			if "type" in biome and biome.type != null:
 				biome_name = str(biome.type)

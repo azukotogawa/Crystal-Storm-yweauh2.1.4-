@@ -67,6 +67,9 @@ var last_vegetation_bake_ms: int = 0
 
 ## Resident only: Vector2i -> { surface, tiles, plan, vegetation }
 var _resident: Dictionary = {}
+## Lightweight surface/tile cache for halo sampling (no plan, no vegetation).
+## Avoids synchronous full-package ensure_chunk_resident during capture_worker_snapshot.
+var _surface_resident: Dictionary = {}
 ## Optional monolith fallback (legacy tests): full in-memory map
 var _chunks: Dictionary = {}
 
@@ -81,6 +84,14 @@ var stats_disk_reads: int = 0
 var stats_disk_read_us: int = 0
 var stats_releases: int = 0
 var stats_missing_package_errors: int = 0
+## Surface-only loads (halo path) vs full package loads (mesh/veg).
+var stats_surface_disk_reads: int = 0
+var stats_surface_disk_read_us: int = 0
+var stats_full_package_loads: int = 0
+var stats_sample_base_calls: int = 0
+var stats_sample_base_surface_hits: int = 0
+var stats_sample_base_full_hits: int = 0
+var stats_sample_base_surface_loads: int = 0
 ## Runtime isolation counters (baked world must stay at 0 for in-package cells).
 var stats_generate_chunk_calls: int = 0
 var stats_halo_noise_calls: int = 0
@@ -310,11 +321,35 @@ func reset_stats() -> void:
 	stats_disk_read_us = 0
 	stats_releases = 0
 	stats_missing_package_errors = 0
+	stats_surface_disk_reads = 0
+	stats_surface_disk_read_us = 0
+	stats_full_package_loads = 0
+	stats_sample_base_calls = 0
+	stats_sample_base_surface_hits = 0
+	stats_sample_base_full_hits = 0
+	stats_sample_base_surface_loads = 0
 	last_column_source = ""
+
+
+func package_load_stats() -> Dictionary:
+	return {
+		"disk_reads_full": stats_disk_reads,
+		"disk_read_us_full": stats_disk_read_us,
+		"surface_disk_reads": stats_surface_disk_reads,
+		"surface_disk_read_us": stats_surface_disk_read_us,
+		"full_package_loads": stats_full_package_loads,
+		"sample_base_calls": stats_sample_base_calls,
+		"sample_base_surface_hits": stats_sample_base_surface_hits,
+		"sample_base_full_hits": stats_sample_base_full_hits,
+		"sample_base_surface_loads": stats_sample_base_surface_loads,
+		"resident_full": _resident.size(),
+		"resident_surface": _surface_resident.size(),
+	}
 
 
 func clear_memory() -> void:
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 	valid = false
 	last_error = ""
@@ -377,6 +412,10 @@ func has_chunk(coord: Vector2i) -> bool:
 
 func is_resident(coord: Vector2i) -> bool:
 	return _resident.has(coord) or _chunks.has(coord)
+
+
+func is_surface_resident(coord: Vector2i) -> bool:
+	return _surface_resident.has(coord) or _resident.has(coord) or _chunks.has(coord)
 
 
 func resident_count() -> int:
@@ -469,6 +508,7 @@ func validate_loaded_bake(expected_seed: int, require_full: bool = true) -> Dict
 		else:
 			with_plan += 1
 	_resident.clear()
+	_surface_resident.clear()
 	if samples.size() > 0 and with_plan == 0:
 		plan_ok = false
 		if "mesh_plans_empty" not in reasons:
@@ -895,6 +935,7 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 		var stats: Dictionary = sample_package_plan_stats(mini(expected_chunk_count(), 8))
 		# Sampling may have loaded packages; drop them so startup resident count stays 0.
 		_resident.clear()
+		_surface_resident.clear()
 		return {
 			"ok": true,
 			"mode": mode,
@@ -1117,6 +1158,7 @@ func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 		filled += 1
 	# Drop RAM after fill (stream on demand).
 	_resident.clear()
+	_surface_resident.clear()
 	var avg_qn: float = float(total_qn) / float(maxi(filled, 1))
 	return {
 		"ok": filled > 0 and empty_after == 0,
@@ -1140,6 +1182,7 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	valid = false
 	vegetation_baked = false
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 	streamed = true
 	if rad >= 0:
@@ -1261,6 +1304,7 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	last_error = "" if valid else "empty bake"
 	# Do not keep per-chunk data in RAM after bake.
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 
 	var mesh_plan_info := {
@@ -1303,6 +1347,7 @@ func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 	valid = false
 	vegetation_baked = false
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 	streamed = true
 	if rad >= 0:
@@ -1431,6 +1476,7 @@ func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 		return {"ok": false, "error": last_error, "packages": count}
 	last_error = "" if valid else "empty bake"
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 
 	var mesh_plan_info := {
@@ -1549,17 +1595,25 @@ func _write_chunk_package(
 func _read_chunk_package(coord: Vector2i) -> Dictionary:
 	var path := chunk_package_path(coord)
 	var t0 := Time.get_ticks_usec()
+	var leaf: Dictionary = {} if _res_measure else {}
 	var SPP = load("res://systems/stream_phase_profiler.gd")
 	var spp_on: bool = SPP != null and SPP.is_enabled()
+	var t_leaf := Time.get_ticks_usec() if _res_measure else 0
 	if not FileAccess.file_exists(path):
 		last_error = "missing chunk package %s" % path
 		stats_missing_package_errors += 1
 		return {}
+	if _res_measure:
+		_res_add("file_exists", Time.get_ticks_usec() - t_leaf)
+		t_leaf = Time.get_ticks_usec()
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		last_error = "open failed %s" % path
 		stats_missing_package_errors += 1
 		return {}
+	if _res_measure:
+		_res_add("file_open", Time.get_ticks_usec() - t_leaf)
+		t_leaf = Time.get_ticks_usec()
 	# v3/v4 packages are uncompressed — decompression always 0.
 	if spp_on:
 		SPP.record("decompression", 0, coord)
@@ -1581,6 +1635,9 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		last_error = "chunk coord mismatch file=(%d,%d) want=%s" % [cx, cz, str(coord)]
 		f.close()
 		return {}
+	if _res_measure:
+		_res_add("header_parse", Time.get_ticks_usec() - t_leaf)
+		t_leaf = Time.get_ticks_usec()
 	var checksum: int = ver ^ cx ^ cz
 	# package_file_read: open + header + raw column floats/ints (no Variant decode).
 	var surface := PackedFloat32Array()
@@ -1596,6 +1653,11 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		checksum = checksum ^ tv
 	var qn: int = int(f.get_32())
 	checksum = checksum ^ qn
+	var col_us: int = Time.get_ticks_usec() - t_leaf if _res_measure else 0
+	if _res_measure:
+		_res_add("column_surface_tiles_loop", col_us)
+		leaf["column_loop_us"] = col_us
+		t_leaf = Time.get_ticks_usec()
 	var file_read_us: int = Time.get_ticks_usec() - t0
 	# deserialization: plan + vegetation Variant blobs + trailer.
 	var t_deser0 := Time.get_ticks_usec()
@@ -1608,6 +1670,11 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		last_error = "plan count mismatch"
 		f.close()
 		return {}
+	if _res_measure:
+		_res_add("get_var_plan", Time.get_ticks_usec() - t_leaf)
+		leaf["plan_us"] = Time.get_ticks_usec() - t_leaf
+		leaf["plan_quads"] = qn
+		t_leaf = Time.get_ticks_usec()
 	var vegetation: Array = []
 	if ver >= 4:
 		var vn: int = int(f.get_32())
@@ -1622,8 +1689,15 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 			f.close()
 			return {}
 		vegetation = veg_raw as Array
+		if _res_measure:
+			_res_add("get_var_vegetation", Time.get_ticks_usec() - t_leaf)
+			leaf["veg_us"] = Time.get_ticks_usec() - t_leaf
+			leaf["veg_n"] = vn
+			t_leaf = Time.get_ticks_usec()
 	var file_cs: int = int(f.get_32())
 	f.close()
+	if _res_measure:
+		_res_add("file_close_trailer", Time.get_ticks_usec() - t_leaf)
 	var deser_us: int = Time.get_ticks_usec() - t_deser0
 	if spp_on:
 		SPP.record("package_file_read", file_read_us, coord)
@@ -1634,13 +1708,102 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		last_error = "chunk checksum mismatch %s want=%d got=%d" % [path, _u32(checksum), file_cs]
 		stats_missing_package_errors += 1
 		return {}
+	if _res_measure:
+		leaf["total_read_us"] = Time.get_ticks_usec() - t0
+		leaf["deser_us"] = deser_us
+		leaf["file_read_us"] = file_read_us
+		leaf["coord"] = [coord.x, coord.y]
+		if int(leaf.get("total_read_us", 0)) >= int(_res_worst.get("read_total_us", 0)):
+			_res_worst["read_total_us"] = leaf["total_read_us"]
+			_res_worst["read_detail"] = leaf.duplicate()
 	return {"surface": surface, "tiles": tiles, "plan": plan, "vegetation": vegetation}
+
+
+## Read only header + surface + tiles. Skips plan/vegetation Variant blobs.
+## Used for halo height sampling — full package not required.
+func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
+	var path := chunk_package_path(coord)
+	var t0 := Time.get_ticks_usec()
+	if not FileAccess.file_exists(path):
+		last_error = "missing chunk package %s" % path
+		stats_missing_package_errors += 1
+		return {}
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		last_error = "open failed %s" % path
+		stats_missing_package_errors += 1
+		return {}
+	var magic := f.get_buffer(4).get_string_from_utf8()
+	if magic != CHUNK_MAGIC:
+		last_error = "bad chunk magic %s" % path
+		f.close()
+		stats_missing_package_errors += 1
+		return {}
+	var ver: int = int(f.get_32())
+	if ver != BAKE_VERSION and ver != 3:
+		last_error = "chunk version mismatch %d" % ver
+		f.close()
+		return {}
+	var cx: int = int(f.get_64())
+	var cz: int = int(f.get_64())
+	if cx != coord.x or cz != coord.y:
+		last_error = "chunk coord mismatch file=(%d,%d) want=%s" % [cx, cz, str(coord)]
+		f.close()
+		return {}
+	var surface := PackedFloat32Array()
+	var tiles := PackedInt32Array()
+	surface.resize(CELLS2)
+	tiles.resize(CELLS2)
+	for i in CELLS2:
+		surface[i] = f.get_float()
+		tiles[i] = int(f.get_32())
+	# Stop before plan get_var / vegetation — halo only needs columns.
+	f.close()
+	stats_surface_disk_reads += 1
+	stats_surface_disk_read_us += Time.get_ticks_usec() - t0
+	if _res_measure:
+		_res_add("surface_columns_only_read", Time.get_ticks_usec() - t0)
+	return {"surface": surface, "tiles": tiles}
+
+
+## Ensure surface+tiles are in RAM for halo sampling (no plan, no veg install).
+func ensure_surface_data_resident(coord: Vector2i) -> bool:
+	_maybe_enable_res_measure_from_env()
+	var t_all := Time.get_ticks_usec() if _res_measure else 0
+	if not valid:
+		return false
+	if not coord_in_package(coord):
+		return false
+	if _surface_resident.has(coord) or _resident.has(coord) or _chunks.has(coord):
+		if _res_measure:
+			_res_add("ensure_surface.cache_hit", Time.get_ticks_usec() - t_all)
+		return true
+	if package_dir.is_empty():
+		return _chunks.has(coord)
+	var pack: Dictionary = _read_chunk_package_columns_only(coord)
+	if pack.is_empty():
+		return false
+	_surface_resident[coord] = pack
+	if _res_measure:
+		_res_add("ensure_surface.disk_load", Time.get_ticks_usec() - t_all)
+	return true
+
+
+func _note_surface_from_full_pack(coord: Vector2i, pack: Dictionary) -> void:
+	if pack.is_empty() or _surface_resident.has(coord):
+		return
+	var surface = pack.get("surface", null)
+	var tiles = pack.get("tiles", null)
+	if surface is PackedFloat32Array and tiles is PackedInt32Array:
+		_surface_resident[coord] = {"surface": surface, "tiles": tiles}
 
 
 ## Load chunk package into RAM if needed. Returns false if missing/corrupt.
 ## Vegetation stamps are installed once when the package first becomes resident
 ## (not on every ensure hit — that re-walked FeatureRegistry on every stream start).
 func ensure_chunk_resident(coord: Vector2i) -> bool:
+	_maybe_enable_res_measure_from_env()
+	var t_all := Time.get_ticks_usec() if _res_measure else 0
 	if not valid:
 		last_error = "ensure_chunk_resident: bake not valid"
 		return false
@@ -1648,15 +1811,29 @@ func ensure_chunk_resident(coord: Vector2i) -> bool:
 		last_error = "ensure_chunk_resident: coord out of package %s" % str(coord)
 		return false
 	if _resident.has(coord) or _chunks.has(coord):
+		if _res_measure:
+			_res_add("ensure_chunk_resident.cache_hit", Time.get_ticks_usec() - t_all)
 		return true
 	# Streamed packages (and any package_dir with chunks/) load on demand.
 	if not package_dir.is_empty():
+		var t_read := Time.get_ticks_usec() if _res_measure else 0
 		var pack: Dictionary = _read_chunk_package(coord)
+		if _res_measure:
+			var rus := Time.get_ticks_usec() - t_read
+			_res_add("ensure_chunk_resident._read_chunk_package", rus)
+			_res_read_us += rus
+			_res_read_max_us = maxi(_res_read_max_us, rus)
 		if pack.is_empty():
 			push_error("[WorldBake] %s" % last_error)
 			return false
 		_resident[coord] = pack
+		_note_surface_from_full_pack(coord, pack)
+		stats_full_package_loads += 1
+		var t_veg := Time.get_ticks_usec() if _res_measure else 0
 		_install_resident_vegetation(coord, pack)
+		if _res_measure:
+			_res_add("ensure_chunk_resident.veg_install", Time.get_ticks_usec() - t_veg)
+			_res_add("ensure_chunk_resident.total", Time.get_ticks_usec() - t_all)
 		return true
 	last_error = "ensure_chunk_resident: no package_dir and not in monolith"
 	return _chunks.has(coord)
@@ -1664,20 +1841,145 @@ func ensure_chunk_resident(coord: Vector2i) -> bool:
 
 ## Ensure package bytes/surfaces are in RAM for mesh-halo sampling without reinstalling vegetation.
 ## Use for neighbor ring prefetch around a stream start; full ensure_chunk_resident for the target.
+## Measurement (CRYSTALSTORM_BAKE_RESIDENT_MEASURE=1).
+var _res_measure: bool = false
+var _res_env_checked: bool = false
+var _res_n: int = 0
+var _res_hit: int = 0
+var _res_miss: int = 0
+var _res_total_us: int = 0
+var _res_max_us: int = 0
+var _res_read_us: int = 0
+var _res_read_max_us: int = 0
+var _res_phase: Dictionary = {}  # leaf -> {n, total_us, max_us}
+var _res_worst: Dictionary = {}
+
+
+func _maybe_enable_res_measure_from_env() -> void:
+	if _res_env_checked or _res_measure:
+		return
+	_res_env_checked = true
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_RESIDENT_MEASURE").strip_edges().to_lower()
+	if raw == "1" or raw == "true" or raw == "on":
+		set_resident_measure_enabled(true)
+
+
+func set_resident_measure_enabled(enabled: bool) -> void:
+	_res_measure = enabled
+	_res_env_checked = true
+	if enabled:
+		reset_resident_measure()
+
+
+func reset_resident_measure() -> void:
+	_res_n = 0
+	_res_hit = 0
+	_res_miss = 0
+	_res_total_us = 0
+	_res_max_us = 0
+	_res_read_us = 0
+	_res_read_max_us = 0
+	_res_phase.clear()
+	_res_worst.clear()
+
+
+## Measure-only: drop RAM package cache so next ensure reloads from disk (cold path).
+func drop_resident_packages_for_measure() -> int:
+	var n: int = _resident.size() + _surface_resident.size()
+	_resident.clear()
+	_surface_resident.clear()
+	return n
+
+
+func get_resident_measure() -> Dictionary:
+	var phases: Array = []
+	for k in _res_phase.keys():
+		var row: Dictionary = _res_phase[k]
+		phases.append({
+			"phase": k,
+			"n": int(row.get("n", 0)),
+			"total_us": int(row.get("total_us", 0)),
+			"total_ms": float(row.get("total_us", 0)) / 1000.0,
+			"max_us": int(row.get("max_us", 0)),
+			"max_ms": float(row.get("max_us", 0)) / 1000.0,
+			"avg_us": float(row.get("total_us", 0)) / float(maxi(int(row.get("n", 0)), 1)),
+		})
+	phases.sort_custom(func(a, b): return int(a.total_us) > int(b.total_us))
+	var leaf_names := {
+		"file_exists": true, "file_open": true, "header_parse": true,
+		"column_surface_tiles_loop": true, "get_var_plan": true,
+		"get_var_vegetation": true, "file_close_trailer": true,
+		"store_resident_dict": true, "cache_hit_early_return": true,
+		"ensure_chunk_resident.veg_install": true,
+		"ensure_chunk_resident.cache_hit": true,
+		"surface_columns_only_read": true,
+		"ensure_surface.cache_hit": true,
+		"ensure_surface.disk_load": true,
+	}
+	var leaves: Array = []
+	for ph in phases:
+		if leaf_names.has(str(ph.get("phase", ""))):
+			leaves.append(ph)
+	leaves.sort_custom(func(a, b): return int(a.max_us) > int(b.max_us))
+	var dominant_leaf := ""
+	var dominant_leaf_max_us := 0
+	var dominant_leaf_total_us := 0
+	if leaves.size() > 0:
+		dominant_leaf = str(leaves[0].get("phase", ""))
+		dominant_leaf_max_us = int(leaves[0].get("max_us", 0))
+		dominant_leaf_total_us = int(leaves[0].get("total_us", 0))
+	return {
+		"calls": _res_n,
+		"cache_hits": _res_hit,
+		"cache_misses": _res_miss,
+		"total_us": _res_total_us,
+		"total_ms": float(_res_total_us) / 1000.0,
+		"avg_us": float(_res_total_us) / float(maxi(_res_n, 1)),
+		"max_us": _res_max_us,
+		"max_ms": float(_res_max_us) / 1000.0,
+		"read_package_us": _res_read_us,
+		"read_package_max_us": _res_read_max_us,
+		"read_package_max_ms": float(_res_read_max_us) / 1000.0,
+		"phases": phases,
+		"exclusive_leaves": leaves,
+		"dominant_exclusive_leaf": dominant_leaf,
+		"dominant_exclusive_leaf_max_us": dominant_leaf_max_us,
+		"dominant_exclusive_leaf_max_ms": float(dominant_leaf_max_us) / 1000.0,
+		"dominant_exclusive_leaf_total_us": dominant_leaf_total_us,
+		"worst_call": _res_worst.duplicate(true),
+	}
+
+
+func _res_add(phase: String, us: int) -> void:
+	if not _res_measure:
+		return
+	if not _res_phase.has(phase):
+		_res_phase[phase] = {"n": 0, "total_us": 0, "max_us": 0}
+	var row: Dictionary = _res_phase[phase]
+	row["n"] = int(row["n"]) + 1
+	row["total_us"] = int(row["total_us"]) + us
+	row["max_us"] = maxi(int(row["max_us"]), us)
+
+
 func ensure_package_data_resident(coord: Vector2i) -> bool:
-	if not valid:
-		return false
-	if not coord_in_package(coord):
-		return false
-	if _resident.has(coord) or _chunks.has(coord):
-		return true
-	if package_dir.is_empty():
-		return _chunks.has(coord)
-	var pack: Dictionary = _read_chunk_package(coord)
-	if pack.is_empty():
-		return false
-	_resident[coord] = pack
-	return true
+	## Halo-neighbor prefetch: surface+tiles only (no plan get_var, no vegetation).
+	## Full package load remains ensure_chunk_resident for mesh apply / plan / veg.
+	_maybe_enable_res_measure_from_env()
+	var t_all := Time.get_ticks_usec() if _res_measure else 0
+	if _res_measure:
+		_res_n += 1
+	var had := is_surface_resident(coord)
+	var ok := ensure_surface_data_resident(coord)
+	if _res_measure:
+		var tot := Time.get_ticks_usec() - t_all
+		_res_total_us += tot
+		_res_max_us = maxi(_res_max_us, tot)
+		if had:
+			_res_hit += 1
+		elif ok:
+			_res_miss += 1
+		_res_add("ensure_package_data_resident", tot)
+	return ok
 
 
 func _install_resident_vegetation(coord: Vector2i, pack: Dictionary) -> void:
@@ -1702,6 +2004,8 @@ func release_chunk(coord: Vector2i) -> void:
 	if _resident.has(coord):
 		_resident.erase(coord)
 		stats_releases += 1
+	if _surface_resident.has(coord):
+		_surface_resident.erase(coord)
 	# Monolith _chunks intentionally retained only for legacy non-streamed mode.
 
 
@@ -1866,6 +2170,7 @@ func load_index(dir: String, expected_seed: int = -1) -> bool:
 	radius = maxi(absi(min_cx), absi(max_cx))
 	package_dir = dir
 	_resident.clear()
+	_surface_resident.clear()
 	_chunks.clear()
 	valid = true
 	last_load_time_ms = Time.get_ticks_msec() - t0
@@ -1907,6 +2212,7 @@ func _try_load_legacy_file(file_path: String, expected_seed: int) -> bool:
 		return false
 	_chunks.clear()
 	_resident.clear()
+	_surface_resident.clear()
 	if ver == 1:
 		var file_radius: int = int(f.get_32())
 		var count: int = int(f.get_32())
@@ -2092,11 +2398,25 @@ func avg_column_us_generate() -> float:
 
 
 func sample_base(coord: Vector2i, lx: int, lz: int) -> Dictionary:
+	## Halo / base height sample: surface+tiles only — never force full package + veg.
+	stats_sample_base_calls += 1
 	if not has_chunk(coord):
 		return {}
-	if not ensure_chunk_resident(coord):
-		return {}
-	var pack: Dictionary = _resident.get(coord, _chunks.get(coord, {}))
+	var pack: Dictionary = {}
+	if _resident.has(coord):
+		pack = _resident[coord]
+		stats_sample_base_full_hits += 1
+	elif _chunks.has(coord):
+		pack = _chunks[coord]
+		stats_sample_base_full_hits += 1
+	elif _surface_resident.has(coord):
+		pack = _surface_resident[coord]
+		stats_sample_base_surface_hits += 1
+	else:
+		if not ensure_surface_data_resident(coord):
+			return {}
+		pack = _surface_resident.get(coord, {})
+		stats_sample_base_surface_loads += 1
 	if pack.is_empty():
 		return {}
 	var surface: PackedFloat32Array = pack.get("surface", PackedFloat32Array())
@@ -2139,6 +2459,7 @@ func corrupt_chunk_package(coord: Vector2i) -> bool:
 	f.store_buffer(bytes)
 	f.close()
 	_resident.erase(coord)
+	_surface_resident.erase(coord)
 	return true
 
 

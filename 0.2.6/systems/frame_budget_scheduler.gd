@@ -43,7 +43,9 @@ const DEFAULT_BUDGET_US := {
 
 ## Hard unit caps (work items) per frame — primary determinism control.
 const DEFAULT_MAX_UNITS := {
-	SYS_CRYSTAL_DISPATCH: 48,
+	## Absorption completes can cost tens of ms each (WorldState + chunk rebuild).
+	## Cap units so a backlog of ABSORPTION_READY cannot monopolize a frame.
+	SYS_CRYSTAL_DISPATCH: 8,
 	## One apply/upload unit per frame: avoids stacking two multi-ms ChunkView.setup
 	## costs into a single hitch while stream still progresses every frame (min_units=1).
 	SYS_CHUNK_APPLY: 1,
@@ -58,7 +60,8 @@ const DEFAULT_MAX_UNITS := {
 
 ## Guaranteed progress even if soft budget is already spent.
 const DEFAULT_MIN_UNITS := {
-	SYS_CRYSTAL_DISPATCH: 8,
+	## Was 8: forced eight absorption rebuilds even when soft wall was long exceeded.
+	SYS_CRYSTAL_DISPATCH: 1,
 	SYS_CHUNK_APPLY: 1,
 	SYS_CHUNK_UPLOAD: 1,
 	SYS_TOWN_DEFENSE: 1,

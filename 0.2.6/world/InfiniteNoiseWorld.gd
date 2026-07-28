@@ -82,6 +82,21 @@ const MOUNTAIN_HEIGHT_BOOST := 78.0
 var _surface_cache: Dictionary = {}
 var _tile_cache: Dictionary = {}
 var _biome_cache: Dictionary = {}   # key "x,z" -> biome dict (light)
+## Optional query measurement (profiler scripts).
+var _query_measure_enabled: bool = false
+var _query_ops: Dictionary = {}
+var _query_surface_hits: int = 0
+var _query_surface_misses: int = 0
+var _query_biome_hits: int = 0
+var _query_biome_misses: int = 0
+var _query_tile_hits: int = 0
+var _query_tile_misses: int = 0
+var _query_frame_seen_surface: Dictionary = {}
+var _query_frame_seen_biome: Dictionary = {}
+var _query_frame_id: int = -1
+var _query_surface_dups: int = 0
+var _query_biome_dups: int = 0
+var _query_tile_dups: int = 0
 
 # FastNoiseLite generators (all seeded deterministically from world_seed)
 var _warp_x: FastNoiseLite
@@ -468,20 +483,35 @@ func _sample_cave(wx: float, wy: float, wz: float) -> float:
 func get_biome(wx: float, wy: float, wz: float) -> Dictionary:
 	var key: String = "%d,%d" % [floori(wx), floori(wz)]
 	if _biome_cache.has(key) and abs(wy) < 3.0:
+		if _query_measure_enabled:
+			_query_biome_hits += 1
+			_note_frame_dup_biome(key)
 		return _biome_cache[key]
 
-	var res: Dictionary = _get_biome_compute(wx, wy, wz)
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
+	# Reuse session surface cache (same quantize+edits as uncached path).
+	var surface_h: float = get_surface_height(wx, wz)
+	var res: Dictionary = _get_biome_compute(wx, wy, wz, surface_h)
 	if abs(wy) < 2.5:
 		_biome_cache[key] = res
 		if _biome_cache.size() > 4096:
 			_biome_cache.clear()
+	if _query_measure_enabled:
+		_query_biome_misses += 1
+		_note_frame_dup_biome(key)
+		_record_query_op("get_biome", t0)
 	return res
 
 func get_biome_uncached(wx: float, wy: float, wz: float) -> Dictionary:
 	# Pure compute path. Safe for background worker threads (never mutates caches).
-	return _get_biome_compute(wx, wy, wz)
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
+	var elev: float = get_surface_height_uncached(wx, wz)
+	var res: Dictionary = _get_biome_compute(wx, wy, wz, elev)
+	if _query_measure_enabled:
+		_record_query_op("get_biome_uncached", t0)
+	return res
 
-func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
+func _get_biome_compute(wx: float, wy: float, wz: float, surface_h: float = NAN) -> Dictionary:
 	var border_name: String = WorldBorder.border_biome_name(wx, wz)
 	if border_name != "":
 		var border_h: float = _compute_raw_elevation(wx, wz)
@@ -503,7 +533,8 @@ func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
 
 	# Temperature — local noise shaped by seed-rolled map theme (hot / mild / cold).
 	var t: float = (_temp.get_noise_2d(x, z) + 1.0) * 0.5
-	var elev_for_temp: float = get_surface_height_uncached(wx, wz)
+	# elev/surface computed once (was previously two identical uncached height calls).
+	var elev_for_temp: float = surface_h if not is_nan(surface_h) else get_surface_height_uncached(wx, wz)
 	var lapse: float = clamp((elev_for_temp - 42.0) / 115.0, 0.0, 0.92)
 	t = clamp(t - lapse * 0.82, 0.0, 1.0)
 	t = _apply_map_temperature_bias(t)
@@ -542,8 +573,7 @@ func _get_biome_compute(wx: float, wy: float, wz: float) -> Dictionary:
 		m = minf(m, 0.42)
 
 	# High altitude air override — use surface height, not passed wy
-	var surface_h: float = get_surface_height_uncached(wx, wz)
-	if surface_h > 42.0 and wy > surface_h + 8.0:   # only true air above surface
+	if elev_for_temp > 42.0 and wy > elev_for_temp + 8.0:   # only true air above surface
 		return {"is_air": true, "name": "air", "type": "None"}
 	
 	return {
@@ -580,20 +610,110 @@ func _compute_local_ruggedness(wx: float, wz: float) -> float:
 func get_surface_height(wx: float, wz: float) -> float:
 	var k: Vector2i = Vector2i(floori(wx), floori(wz))
 	if _surface_cache.has(k):
+		if _query_measure_enabled:
+			_query_surface_hits += 1
+			_note_frame_dup_surface(k)
 		return _surface_cache[k]
 
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
 	var h: float = _compute_surface_height(wx, wz)
 	h += _TerrainEdits.get_height_delta(k.x, k.y)
 	h = _quantize_to_voxel_layer(h)
 	_surface_cache[k] = h
 	if _surface_cache.size() > 12288:
 		_surface_cache.clear()
+	if _query_measure_enabled:
+		_query_surface_misses += 1
+		_note_frame_dup_surface(k)
+		_record_query_op("get_surface_height", t0)
 	return h
 
 func get_surface_height_uncached(wx: float, wz: float) -> float:
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
 	var h: float = _compute_surface_height(wx, wz)
 	h += _TerrainEdits.get_height_delta(floori(wx), floori(wz))
-	return _quantize_to_voxel_layer(h)
+	h = _quantize_to_voxel_layer(h)
+	if _query_measure_enabled:
+		_record_query_op("get_surface_height_uncached", t0)
+	return h
+
+
+func set_query_measure_enabled(enabled: bool) -> void:
+	_query_measure_enabled = enabled
+
+
+func reset_query_stats() -> void:
+	_query_ops.clear()
+	_query_surface_hits = 0
+	_query_surface_misses = 0
+	_query_biome_hits = 0
+	_query_biome_misses = 0
+	_query_tile_hits = 0
+	_query_tile_misses = 0
+	_query_surface_dups = 0
+	_query_biome_dups = 0
+	_query_tile_dups = 0
+	_query_frame_seen_surface.clear()
+	_query_frame_seen_biome.clear()
+	_query_frame_id = -1
+
+
+func get_query_stats() -> Dictionary:
+	var s_n := _query_surface_hits + _query_surface_misses
+	var b_n := _query_biome_hits + _query_biome_misses
+	var t_n := _query_tile_hits + _query_tile_misses
+	return {
+		"ops": _query_ops.duplicate(true),
+		"surface_hits": _query_surface_hits,
+		"surface_misses": _query_surface_misses,
+		"surface_dups": _query_surface_dups,
+		"surface_hit_rate": float(_query_surface_hits) / float(maxi(s_n, 1)),
+		"biome_hits": _query_biome_hits,
+		"biome_misses": _query_biome_misses,
+		"biome_dups": _query_biome_dups,
+		"biome_hit_rate": float(_query_biome_hits) / float(maxi(b_n, 1)),
+		"tile_hits": _query_tile_hits,
+		"tile_misses": _query_tile_misses,
+		"tile_dups": _query_tile_dups,
+		"tile_hit_rate": float(_query_tile_hits) / float(maxi(t_n, 1)),
+	}
+
+
+func _record_query_op(op: String, t0_us: int) -> void:
+	if not _query_measure_enabled:
+		return
+	var dt := Time.get_ticks_usec() - t0_us
+	if not _query_ops.has(op):
+		_query_ops[op] = {"n": 0, "total_us": 0, "max_us": 0}
+	var row: Dictionary = _query_ops[op]
+	row["n"] = int(row["n"]) + 1
+	row["total_us"] = int(row["total_us"]) + dt
+	row["max_us"] = maxi(int(row["max_us"]), dt)
+
+
+func _sync_query_frame() -> void:
+	var f := Engine.get_process_frames()
+	if f == _query_frame_id:
+		return
+	_query_frame_id = f
+	_query_frame_seen_surface.clear()
+	_query_frame_seen_biome.clear()
+
+
+func _note_frame_dup_surface(k: Vector2i) -> void:
+	_sync_query_frame()
+	if _query_frame_seen_surface.has(k):
+		_query_surface_dups += 1
+	else:
+		_query_frame_seen_surface[k] = true
+
+
+func _note_frame_dup_biome(key: String) -> void:
+	_sync_query_frame()
+	if _query_frame_seen_biome.has(key):
+		_query_biome_dups += 1
+	else:
+		_query_frame_seen_biome[key] = true
 
 
 ## Worker-thread safe: pass terrain edits captured on the main thread (no shared dict access).
@@ -690,12 +810,19 @@ func get_tile_type(wx: float, wz: float) -> int:
 	if override >= 0:
 		return override
 	if _tile_cache.has(k):
+		if _query_measure_enabled:
+			_query_tile_hits += 1
 		return _tile_cache[k]
 
-	var id: int = _compute_surface_tile(wx, wz)
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
+	# Main-thread path reuses surface/biome session caches (same deterministic values).
+	var id: int = _compute_surface_tile(wx, wz, true)
 	_tile_cache[k] = id
 	if _tile_cache.size() > 12288:
 		_tile_cache.clear()
+	if _query_measure_enabled:
+		_query_tile_misses += 1
+		_record_query_op("get_tile_type", t0)
 	return id
 
 func get_tile_type_uncached(wx: float, wz: float) -> int:
@@ -707,11 +834,20 @@ func get_tile_type_uncached(wx: float, wz: float) -> int:
 	var override: int = _FeatureRegistry.get_tile_override(ix, iz)
 	if override >= 0:
 		return override
-	return _compute_surface_tile(wx, wz)
+	return _compute_surface_tile(wx, wz, false)
 
-func _compute_surface_tile(wx: float, wz: float) -> int:
-	var surf: float = get_surface_height_uncached(wx, wz)   # use uncached inside uncached path
-	var biome: Dictionary = get_biome_uncached(wx, 0.0, wz)
+func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false) -> int:
+	# When use_session_cache=true (main-thread get_tile_type), share surface/biome
+	# caches so crystal flow does not recompute height 2–3× for the same cell.
+	# Uncached path remains pure for workers / bake isolation.
+	var surf: float
+	var biome: Dictionary
+	if use_session_cache:
+		surf = get_surface_height(wx, wz)
+		biome = get_biome(wx, 0.0, wz)
+	else:
+		surf = get_surface_height_uncached(wx, wz)
+		biome = get_biome_uncached(wx, 0.0, wz)
 	var bname: String = biome.get("name", "plains")
 
 	if bname == "ocean":

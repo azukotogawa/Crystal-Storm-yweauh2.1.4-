@@ -85,6 +85,17 @@ var _view_pool: Array = []
 ## When true, _ready skips bake bootstrap; CompositionRoot awaits bootstrap_world_bake_async().
 var defer_world_bake_bootstrap: bool = false
 
+## Exclusive drain/enqueue measure (CRYSTALSTORM_DRAIN_STREAM_MEASURE=1).
+var _drain_measure: bool = false
+var _drain_n: int = 0
+var _drain_sum_us: int = 0
+var _drain_max_us: int = 0
+var _drain_phase: Dictionary = {}  # phase -> {n, total_us, max_us}
+var _drain_worst: Dictionary = {}  # worst single drain frame breakdown
+var _drain_enqueue_n: int = 0
+var _drain_enqueue_max_us: int = 0
+var _drain_enqueue_worst: Dictionary = {}
+
 # Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
 const _WB_PLAYABLE_HALF := 1024
 const _WB_TRANSITION := 240.0
@@ -565,28 +576,119 @@ func request_chunk(coord: Vector2i, high_priority: bool = false) -> void:
 	_queue_stream_load(coord, high_priority)
 
 
+func set_drain_measure_enabled(enabled: bool) -> void:
+	_drain_measure = enabled
+	if enabled:
+		reset_drain_measure()
+	if OS.get_environment("CRYSTALSTORM_BAKE_RESIDENT_MEASURE").strip_edges().to_lower() in ["1", "true", "on"] \
+			or enabled:
+		var bake = load("res://world/world_bake_service.gd").get_active()
+		if bake != null and bake.has_method("set_resident_measure_enabled"):
+			bake.set_resident_measure_enabled(enabled)
+
+
+func reset_drain_measure() -> void:
+	_drain_n = 0
+	_drain_sum_us = 0
+	_drain_max_us = 0
+	_drain_phase.clear()
+	_drain_worst.clear()
+	_drain_enqueue_n = 0
+	_drain_enqueue_max_us = 0
+	_drain_enqueue_worst.clear()
+
+
+func _drain_add(phase: String, us: int) -> void:
+	if not _drain_measure or us < 0:
+		return
+	if not _drain_phase.has(phase):
+		_drain_phase[phase] = {"n": 0, "total_us": 0, "max_us": 0}
+	var row: Dictionary = _drain_phase[phase]
+	row["n"] = int(row["n"]) + 1
+	row["total_us"] = int(row["total_us"]) + us
+	row["max_us"] = maxi(int(row["max_us"]), us)
+
+
+func get_drain_measure() -> Dictionary:
+	var phases: Array = []
+	for k in _drain_phase.keys():
+		var row: Dictionary = _drain_phase[k]
+		var tot: int = int(row.get("total_us", 0))
+		var n: int = int(row.get("n", 0))
+		phases.append({
+			"phase": k,
+			"n": n,
+			"total_us": tot,
+			"total_ms": float(tot) / 1000.0,
+			"max_us": int(row.get("max_us", 0)),
+			"max_ms": float(row.get("max_us", 0)) / 1000.0,
+			"avg_us": float(tot) / float(maxi(n, 1)),
+			"share_of_drain_sum": float(tot) / float(maxi(_drain_sum_us, 1)),
+		})
+	phases.sort_custom(func(a, b): return int(a.total_us) > int(b.total_us))
+	var bake_m: Dictionary = {}
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake != null and bake.has_method("get_resident_measure"):
+		bake_m = bake.get_resident_measure()
+	var snap_m: Dictionary = ChunkData.get_snapshot_measure()
+	return {
+		"drain_calls": _drain_n,
+		"drain_total_us": _drain_sum_us,
+		"drain_total_ms": float(_drain_sum_us) / 1000.0,
+		"drain_avg_us": float(_drain_sum_us) / float(maxi(_drain_n, 1)),
+		"drain_max_us": _drain_max_us,
+		"drain_max_ms": float(_drain_max_us) / 1000.0,
+		"phases": phases,
+		"worst_drain": _drain_worst.duplicate(true),
+		"enqueue_calls": _drain_enqueue_n,
+		"enqueue_max_us": _drain_enqueue_max_us,
+		"enqueue_max_ms": float(_drain_enqueue_max_us) / 1000.0,
+		"worst_enqueue": _drain_enqueue_worst.duplicate(true),
+		"bake_resident": bake_m,
+		"capture_worker_snapshot": snap_m,
+	}
+
+
 func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> void:
 	if pending.has(coord) or _chunk_tasks.has(coord):
 		return
+	var t_enq0 := Time.get_ticks_usec() if _drain_measure else 0
+	var enq_parts: Dictionary = {}
 	var SPP = load("res://systems/stream_phase_profiler.gd")
 	if SPP and SPP.is_enabled():
 		SPP.begin_chunk(coord)
-	# Prefetch streamed bake package + halo neighbors on main thread so
-	# capture_worker_snapshot stays on the hot (resident) path (~4ms vs ~11ms cold).
+	# Prefetch bake data for snapshot halo before capture_worker_snapshot:
+	# - Target (if in package): full ensure_chunk_resident (mesh plan + veg once).
+	# - All package-covered cells in the 3×3 ring: surface+tiles only (no plan/veg).
+	# Always warm the ring even when the target is *outside* package bounds so
+	# edge stream jobs do not cold-load packages inside sample_base.
 	var bake_pre = load("res://world/world_bake_service.gd").get_active()
-	if bake_pre != null and bake_pre.valid:
-		if bake_pre.has_method("coord_in_package") and bake_pre.coord_in_package(coord):
-			if bake_pre.has_method("ensure_chunk_resident"):
-				bake_pre.ensure_chunk_resident(coord)
-			# Neighbor packages: data only (surfaces for halo); no vegetation reinstall.
-			if bake_pre.has_method("ensure_package_data_resident"):
-				for dz in range(-1, 2):
-					for dx in range(-1, 2):
-						if dx == 0 and dz == 0:
-							continue
-						var n := Vector2i(coord.x + dx, coord.y + dz)
-						if bake_pre.coord_in_package(n):
-							bake_pre.ensure_package_data_resident(n)
+	if bake_pre != null and bake_pre.valid and bake_pre.has_method("coord_in_package"):
+		if bake_pre.coord_in_package(coord) and bake_pre.has_method("ensure_chunk_resident"):
+			var t_ec := Time.get_ticks_usec() if _drain_measure else 0
+			bake_pre.ensure_chunk_resident(coord)
+			if _drain_measure:
+				var ec_us := Time.get_ticks_usec() - t_ec
+				_drain_add("ensure_chunk_resident", ec_us)
+				enq_parts["ensure_chunk_resident_us"] = ec_us
+		var t_halo := Time.get_ticks_usec() if _drain_measure else 0
+		var halo_n := 0
+		var surface_fn := "ensure_surface_data_resident" if bake_pre.has_method("ensure_surface_data_resident") \
+			else "ensure_package_data_resident"
+		if bake_pre.has_method(surface_fn):
+			for dz in range(-1, 2):
+				for dx in range(-1, 2):
+					if dx == 0 and dz == 0 and bake_pre.coord_in_package(coord):
+						continue  # already full-resident above
+					var n := Vector2i(coord.x + dx, coord.y + dz)
+					if bake_pre.coord_in_package(n):
+						bake_pre.call(surface_fn, n)
+						halo_n += 1
+		if _drain_measure:
+			var halo_us := Time.get_ticks_usec() - t_halo
+			_drain_add("ensure_surface_halo", halo_us)
+			enq_parts["ensure_surface_halo_us"] = halo_us
+			enq_parts["halo_calls"] = halo_n
 	if world == null:
 		return
 
@@ -600,13 +702,21 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 	if data == null:
 		pending.erase(coord)
 		return
+	var alloc_us := Time.get_ticks_usec() - t_alloc
+	if _drain_measure:
+		_drain_add("chunk_data_alloc", alloc_us)
+		enq_parts["chunk_data_alloc_us"] = alloc_us
 	var alloc_path := "pool_reuse" if int(pool_stats_before.get("alloc_reuse", 0)) < int(_ChunkDataPool.get_stats().get("alloc_reuse", 0)) else "ChunkData.new"
 	if SPP and SPP.is_enabled():
-		SPP.record("chunk_data_alloc", Time.get_ticks_usec() - t_alloc, coord)
+		SPP.record("chunk_data_alloc", alloc_us, coord)
 	var t_snap := Time.get_ticks_usec()
 	data.capture_worker_snapshot()
+	var snap_us := Time.get_ticks_usec() - t_snap
+	if _drain_measure:
+		_drain_add("capture_worker_snapshot", snap_us)
+		enq_parts["capture_worker_snapshot_us"] = snap_us
 	if SPP and SPP.is_enabled():
-		SPP.record("worker_snapshot_capture", Time.get_ticks_usec() - t_snap, coord)
+		SPP.record("worker_snapshot_capture", snap_us, coord)
 	_set_lifecycle_state(coord, _ChunkStreamLifecycle.ALLOCATED)
 
 	if _ChunkRebuildTelemetry.is_enabled():
@@ -627,6 +737,7 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 			"alloc_path": alloc_path,
 		})
 
+	var t_wq := Time.get_ticks_usec() if _drain_measure else 0
 	var task_id := WorkerThreadPool.add_task(
 		Callable(self, "_chunk_mesh_task").bind(
 			coord, data, token, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), [], {}
@@ -634,6 +745,20 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 		high_priority
 	)
 	_chunk_tasks[coord] = task_id
+	if _drain_measure:
+		var wq_us := Time.get_ticks_usec() - t_wq
+		_drain_add("worker_queue_add_task", wq_us)
+		enq_parts["worker_queue_add_task_us"] = wq_us
+		var enq_tot := Time.get_ticks_usec() - t_enq0
+		_drain_add("enqueue_chunk_generation", enq_tot)
+		_drain_enqueue_n += 1
+		if enq_tot >= _drain_enqueue_max_us:
+			_drain_enqueue_max_us = enq_tot
+			enq_parts["coord"] = [coord.x, coord.y]
+			enq_parts["total_us"] = enq_tot
+			enq_parts["total_ms"] = float(enq_tot) / 1000.0
+			enq_parts["high_priority"] = high_priority
+			_drain_enqueue_worst = enq_parts.duplicate(true)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.transition(coord, token, _ChunkStreamingTelemetry.STATE_WORKER_QUEUED, {
 			"worker_tasks": _chunk_tasks.size(),
@@ -1910,6 +2035,8 @@ func _process(_delta):
 
 
 func _drain_stream_pipeline() -> void:
+	if not _drain_measure and OS.get_environment("CRYSTALSTORM_DRAIN_STREAM_MEASURE").strip_edges().to_lower() in ["1", "true", "on"]:
+		set_drain_measure_enabled(true)
 	if _shutting_down:
 		_stream_load_pending.clear()
 		_stream_unload_pending.clear()
@@ -1923,11 +2050,16 @@ func _drain_stream_pipeline() -> void:
 	var t0 := Time.get_ticks_usec()
 	var starts := 0
 	var unloads := 0
+	var frame_parts: Dictionary = {} if _drain_measure else {}
 
 	# Sort unload only when the list was mutated (not every idle frame).
 	if _stream_unload_order_dirty and not _stream_unload_pending.is_empty():
+		var t_us := Time.get_ticks_usec() if _drain_measure else 0
 		_sort_stream_unload_pending()
 		_stream_unload_order_dirty = false
+		if _drain_measure:
+			_drain_add("unload_sort", Time.get_ticks_usec() - t_us)
+	var t_unl0 := Time.get_ticks_usec() if _drain_measure else 0
 	while _stream_unload_pending.size() > 0 and unloads < max_stream_unloads_per_frame:
 		if Time.get_ticks_usec() - t0 >= budget_us:
 			break
@@ -1935,10 +2067,17 @@ func _drain_stream_pipeline() -> void:
 		if chunks.has(key):
 			_unload_chunk_view(key)
 		unloads += 1
+	if _drain_measure and unloads > 0:
+		var unl_us := Time.get_ticks_usec() - t_unl0
+		_drain_add("unload_loop", unl_us)
+		frame_parts["unload_loop_us"] = unl_us
+		frame_parts["unloads"] = unloads
 
 	var inflight := _chunk_tasks.size() + _mesh_completion_queue.size()
 	if ChunkView.pending_buffer_upload_count() > 4:
 		_stream_budget_used_us = Time.get_ticks_usec() - t0
+		if _drain_measure:
+			_drain_finish_call(t0, frame_parts, starts, unloads, "early_upload_backpressure")
 		return
 	var can_start := (
 		inflight < MAX_INFLIGHT_CHUNKS
@@ -1947,18 +2086,24 @@ func _drain_stream_pipeline() -> void:
 	)
 	if not can_start:
 		_stream_budget_used_us = Time.get_ticks_usec() - t0
+		if _drain_measure:
+			_drain_finish_call(t0, frame_parts, starts, unloads, "no_start")
 		return
 
 	# Hot path: at most one (or few) starts → O(n) best-pick, no full sort.
 	# Same priority_score ordering as sort_load_candidates (deterministic ties).
 	var starts_cap: int = 1 if unloads > 0 else maxi(max_stream_starts_per_frame, 1)
 	var player_chunk_once := _player_chunk_coord()
+	var pick_us_sum := 0
 	while starts < starts_cap and inflight < MAX_INFLIGHT_CHUNKS:
 		if Time.get_ticks_usec() - t0 >= budget_us:
 			break
 		if _stream_load_pending.is_empty():
 			break
+		var t_pick := Time.get_ticks_usec() if _drain_measure else 0
 		var best: Dictionary = _ChunkStreamScheduler.pick_best_load_candidate(_stream_load_pending)
+		if _drain_measure:
+			pick_us_sum += Time.get_ticks_usec() - t_pick
 		if best.is_empty():
 			break
 		var coord: Vector2i = best.get("coord", Vector2i.ZERO)
@@ -1976,7 +2121,10 @@ func _drain_stream_pipeline() -> void:
 			)
 			if chebyshev > 1:
 				# Best overall is far; scan for best with chebyshev<=1 without full sort.
+				var t_near := Time.get_ticks_usec() if _drain_measure else 0
 				var near_best := _pick_best_near_load(player_chunk_once, 1)
+				if _drain_measure:
+					pick_us_sum += Time.get_ticks_usec() - t_near
 				if near_best.is_empty():
 					break
 				coord = near_best.get("coord", Vector2i.ZERO)
@@ -1992,8 +2140,31 @@ func _drain_stream_pipeline() -> void:
 		_enqueue_chunk_generation(coord, high_priority)
 		starts += 1
 		inflight += 1
+	if _drain_measure and pick_us_sum > 0:
+		_drain_add("pick_best_load", pick_us_sum)
+		frame_parts["pick_best_load_us"] = pick_us_sum
 
 	_stream_budget_used_us = Time.get_ticks_usec() - t0
+	if _drain_measure:
+		frame_parts["starts"] = starts
+		_drain_finish_call(t0, frame_parts, starts, unloads, "ok")
+
+
+func _drain_finish_call(t0: int, frame_parts: Dictionary, starts: int, unloads: int, reason: String) -> void:
+	var tot := Time.get_ticks_usec() - t0
+	_drain_n += 1
+	_drain_sum_us += tot
+	_drain_add("drain_total", tot)
+	if tot >= _drain_max_us:
+		_drain_max_us = tot
+		frame_parts["total_us"] = tot
+		frame_parts["total_ms"] = float(tot) / 1000.0
+		frame_parts["starts"] = starts
+		frame_parts["unloads"] = unloads
+		frame_parts["reason"] = reason
+		if not _drain_enqueue_worst.is_empty():
+			frame_parts["worst_enqueue_so_far"] = _drain_enqueue_worst.duplicate(true)
+		_drain_worst = frame_parts.duplicate(true)
 
 
 ## O(n) scan for highest-score pending load within chebyshev radius.

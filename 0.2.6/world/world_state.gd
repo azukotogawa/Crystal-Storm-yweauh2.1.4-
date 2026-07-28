@@ -97,6 +97,30 @@ func end_batch() -> void:
 		_bump_now(domains)
 
 
+## Trace counter (measurement only): CRYSTALSTORM_CRYSTAL_TICK_TRACE=1 arms via reset_trace_counters.
+static var _trace_bump_count: int = 0
+static var _trace_bump_domains: Array = []
+static var _trace_bump_enabled: bool = false
+
+
+static func reset_trace_counters() -> void:
+	_trace_bump_count = 0
+	_trace_bump_domains.clear()
+	_trace_bump_enabled = true
+
+
+static func stop_trace_counters() -> void:
+	_trace_bump_enabled = false
+
+
+static func get_trace_bump_count() -> int:
+	return _trace_bump_count
+
+
+static func get_trace_bump_domains() -> Array:
+	return _trace_bump_domains.duplicate()
+
+
 func bump(domain: int) -> void:
 	if domain == DOMAIN_NONE:
 		return
@@ -107,6 +131,9 @@ func bump(domain: int) -> void:
 
 
 func _bump_now(domain: int) -> void:
+	if _trace_bump_enabled:
+		_trace_bump_count += 1
+		_trace_bump_domains.append(domain)
 	revision += 1
 	if domain & DOMAIN_TERRAIN:
 		terrain_revision += 1

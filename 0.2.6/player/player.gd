@@ -48,6 +48,98 @@ var world_ready := false
 
 var _floor_probe: _VoxelFloorProbe
 
+## Physics process exclusive breakdown (CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1).
+var _phys_measure: bool = false
+var _phys_n: int = 0
+var _phys_sum_us: int = 0
+var _phys_max_us: int = 0
+var _phys_phase_sum: Dictionary = {}  # name -> us sum
+var _phys_phase_max: Dictionary = {}
+var _phys_phase_calls: Dictionary = {}
+var _phys_worst_phases: Dictionary = {}
+var _phys_worst_us: int = 0
+var _phys_worst_frame: int = 0
+var _phys_call_can_move: int = 0
+var _phys_call_snap: int = 0
+var _phys_call_grounded: int = 0
+var _phys_call_collide: int = 0
+var _phys_call_slope: int = 0
+
+
+func set_physics_measure_enabled(enabled: bool) -> void:
+	_phys_measure = enabled
+	if enabled:
+		reset_physics_measure()
+	if _floor_probe and _floor_probe.has_method("set_measure_enabled"):
+		_floor_probe.set_measure_enabled(enabled)
+
+
+func reset_physics_measure() -> void:
+	_phys_n = 0
+	_phys_sum_us = 0
+	_phys_max_us = 0
+	_phys_phase_sum.clear()
+	_phys_phase_max.clear()
+	_phys_phase_calls.clear()
+	_phys_worst_phases.clear()
+	_phys_worst_us = 0
+	_phys_worst_frame = 0
+	_phys_call_can_move = 0
+	_phys_call_snap = 0
+	_phys_call_grounded = 0
+	_phys_call_collide = 0
+	_phys_call_slope = 0
+	if _floor_probe and _floor_probe.has_method("reset_measure"):
+		_floor_probe.reset_measure()
+
+
+func get_physics_measure() -> Dictionary:
+	var phases: Array = []
+	for k in _phys_phase_sum.keys():
+		var s: int = int(_phys_phase_sum[k])
+		var c: int = int(_phys_phase_calls.get(k, 0))
+		phases.append({
+			"phase": k,
+			"total_us": s,
+			"total_ms": float(s) / 1000.0,
+			"avg_us": float(s) / float(maxi(c, 1)),
+			"max_us": int(_phys_phase_max.get(k, 0)),
+			"calls": c,
+			"share_of_sum": float(s) / float(maxi(_phys_sum_us, 1)),
+		})
+	phases.sort_custom(func(a, b): return int(a.total_us) > int(b.total_us))
+	var probe: Dictionary = {}
+	if _floor_probe and _floor_probe.has_method("get_measure"):
+		probe = _floor_probe.get_measure()
+	return {
+		"frames": _phys_n,
+		"total_us": _phys_sum_us,
+		"total_ms": float(_phys_sum_us) / 1000.0,
+		"avg_us": float(_phys_sum_us) / float(maxi(_phys_n, 1)),
+		"avg_ms": float(_phys_sum_us) / float(maxi(_phys_n, 1)) / 1000.0,
+		"max_us": _phys_max_us,
+		"max_ms": float(_phys_max_us) / 1000.0,
+		"worst_frame": _phys_worst_frame,
+		"worst_phases": _phys_worst_phases.duplicate(),
+		"phases": phases,
+		"call_counts": {
+			"can_move_to": _phys_call_can_move,
+			"snap_to_ground": _phys_call_snap,
+			"is_grounded": _phys_call_grounded,
+			"is_colliding_at": _phys_call_collide,
+			"slope_speed_multiplier": _phys_call_slope,
+		},
+		"floor_probe": probe,
+	}
+
+
+func _phys_add(phase: String, us: int) -> void:
+	if not _phys_measure:
+		return
+	_phys_phase_sum[phase] = int(_phys_phase_sum.get(phase, 0)) + us
+	_phys_phase_max[phase] = maxi(int(_phys_phase_max.get(phase, 0)), us)
+	_phys_phase_calls[phase] = int(_phys_phase_calls.get(phase, 0)) + 1
+
 
 func _ws():
 	return _WorldSettings.get_active()
@@ -184,18 +276,28 @@ func _setup_body_collision() -> void:
 func _physics_process(delta: float) -> void:
 	if not world_ready:
 		return
+	var measure := _phys_measure or OS.get_environment("CRYSTALSTORM_PLAYER_PHYSICS_MEASURE") == "1"
+	if measure and not _phys_measure:
+		set_physics_measure_enabled(true)
+		measure = true
+	var t_all := Time.get_ticks_usec() if measure else 0
+	var phase_local: Dictionary = {} if measure else {}
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("player_physics")
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("Player::_physics_process")
 
+	var t0 := Time.get_ticks_usec() if measure else 0
 	_floor_probe.feet_height_hint = voxel_position.y
 
 	if current_state != State.FALLING:
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
+	if measure:
+		phase_local["animation_lerp"] = Time.get_ticks_usec() - t0
 
+	t0 = Time.get_ticks_usec() if measure else 0
 	var input_dir := Vector2.ZERO
 	if not _GameplayInput.blocks_actions():
 		if Input.is_action_pressed("ui_right"):
@@ -207,13 +309,18 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("ui_up"):
 			input_dir.y -= 1
 		input_dir = input_dir.normalized()
+	if measure:
+		phase_local["input"] = Time.get_ticks_usec() - t0
 
 	var moving := input_dir != Vector2.ZERO
+	t0 = Time.get_ticks_usec() if measure else 0
 	if not _GameplayInput.blocks_actions() \
 			and current_state in [State.IDLE, State.RUNNING] \
 			and Input.is_action_just_pressed("jump"):
 		if _can_initiate_jump(moving):
 			change_state(State.JUMPING)
+	if measure:
+		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
 	if input_dir != Vector2.ZERO:
 		if not is_input_locked:
@@ -222,10 +329,15 @@ func _physics_process(delta: float) -> void:
 	else:
 		is_input_locked = false
 
+	t0 = Time.get_ticks_usec() if measure else 0
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
 	speed *= _slope_speed_multiplier()
+	if measure:
+		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
+		_phys_call_slope += 1
 
 	var airborne := current_state in [State.JUMPING, State.FALLING]
+	t0 = Time.get_ticks_usec() if measure else 0
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta := move_vec * speed * delta
@@ -246,7 +358,10 @@ func _physics_process(delta: float) -> void:
 			change_state(State.RUNNING)
 	elif not airborne and current_state == State.RUNNING:
 		change_state(State.IDLE)
+	if measure:
+		phase_local["horizontal_move"] = Time.get_ticks_usec() - t0
 
+	t0 = Time.get_ticks_usec() if measure else 0
 	match current_state:
 		State.JUMPING:
 			velocity.y -= _gravity() * delta
@@ -279,15 +394,32 @@ func _physics_process(delta: float) -> void:
 			if not _is_grounded(moving):
 				change_state(State.FALLING)
 				velocity.y = 0.0
+	if measure:
+		phase_local["vertical_state"] = Time.get_ticks_usec() - t0
 
+	t0 = Time.get_ticks_usec() if measure else 0
 	_sync_global_from_voxel()
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
 	player_mesh.rotation.y = current_skew
+	if measure:
+		phase_local["sync_visual"] = Time.get_ticks_usec() - t0
 
 	if profiler and profiler.has_method("end_func"):
 		profiler.end_func("Player::_physics_process")
 	if profiler and profiler.has_method("end"):
 		profiler.end("player_physics")
+
+	if measure:
+		var total := Time.get_ticks_usec() - t_all
+		_phys_n += 1
+		_phys_sum_us += total
+		_phys_max_us = maxi(_phys_max_us, total)
+		for k in phase_local.keys():
+			_phys_add(str(k), int(phase_local[k]))
+		if total >= _phys_worst_us:
+			_phys_worst_us = total
+			_phys_worst_frame = Engine.get_physics_frames()
+			_phys_worst_phases = phase_local.duplicate()
 
 
 func _slope_speed_multiplier() -> float:
@@ -321,11 +453,15 @@ func _sync_global_from_voxel() -> void:
 
 
 func is_colliding_at(pos: Vector3) -> bool:
+	if _phys_measure:
+		_phys_call_collide += 1
 	_floor_probe.feet_height_hint = pos.y
 	return _floor_probe.is_blocked_at(pos, _player_height(), _player_radius())
 
 
 func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
+	if _phys_measure:
+		_phys_call_can_move += 1
 	if not airborne:
 		airborne = current_state == State.JUMPING or current_state == State.FALLING
 	var max_step: float = _ws().max_step_up_walk()
@@ -342,6 +478,8 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 
 
 func _snap_to_ground() -> void:
+	if _phys_measure:
+		_phys_call_snap += 1
 	if chunk_manager == null or chunk_manager.world == null:
 		return
 	voxel_position = _floor_probe.snap_position_y(voxel_position)
@@ -360,6 +498,8 @@ func _ground_snap_distance(moving: bool) -> float:
 
 
 func _is_grounded(moving: bool = false) -> bool:
+	if _phys_measure:
+		_phys_call_grounded += 1
 	return _floor_probe.is_grounded_at(voxel_position, _ground_snap_distance(moving))
 
 

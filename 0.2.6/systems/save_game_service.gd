@@ -254,7 +254,7 @@ func _transaction_apply_body(data: Dictionary) -> bool:
 
 	var visual_registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if visual_registry and visual_registry.has_method("refresh_all"):
-		visual_registry.refresh_all()
+		visual_registry.refresh_all("SaveGameService")
 	return true
 
 

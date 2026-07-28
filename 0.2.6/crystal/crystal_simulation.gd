@@ -22,6 +22,20 @@ var last_new_cells: int = 0
 var last_mesh_dirty_count: int = 0
 var event_count: int = 0
 var tick_count: int = 0
+## False when flow is mid-budget resume; façade should call tick again next frame.
+var last_tick_complete: bool = true
+## Soft wall for fluid.tick_flow cell processing (0 = unlimited).
+var flow_budget_us: int = 0
+## Last tick breakdown (us) when CRYSTALSTORM_CRYSTAL_STARTUP_MEASURE is on.
+var last_tick_breakdown: Dictionary = {}
+## Snapshot held while a budgeted flow job is in progress.
+var _pending_snapshot = null
+var _pending_sub_delta: float = 0.0
+var _pending_substep_i: int = 0
+var _pending_substeps: int = 1
+var _pending_all_changed: Array = []
+var _pending_all_mesh: Array = []
+var _pending_emitters_done: bool = false
 
 
 func _init(p_config: _CrystalSimConfig = null, p_terrain = null) -> void:
@@ -51,6 +65,22 @@ func clear() -> void:
 	last_events.clear()
 	last_new_cells = 0
 	last_mesh_dirty_count = 0
+	last_tick_complete = true
+	_clear_pending_tick()
+
+
+func has_pending_tick() -> bool:
+	return _pending_snapshot != null or (fluid != null and fluid.has_pending_flow())
+
+
+func _clear_pending_tick() -> void:
+	_pending_snapshot = null
+	_pending_sub_delta = 0.0
+	_pending_substep_i = 0
+	_pending_substeps = 1
+	_pending_all_changed.clear()
+	_pending_all_mesh.clear()
+	_pending_emitters_done = false
 
 
 func get_depth_at(wx: int, wz: int) -> float:
@@ -79,52 +109,128 @@ func set_depth(pos: Vector2i, depth: float, spawn_id: int = -1, emit: bool = tru
 
 
 ## Primary tick entry: snapshot in → events out. No get_tree / Node access.
+## When flow_budget_us > 0, may return [] with last_tick_complete=false until the
+## logical tick finishes (same final state as a single unbounded tick).
 func tick(snapshot) -> Array:
 	last_events.clear()
-	if fluid == null or snapshot == null:
+	last_tick_breakdown = {}
+	last_tick_complete = true
+	if fluid == null:
 		return last_events
-	tick_count += 1
+	# Resume path: snapshot may be null; use pending.
+	var resuming := has_pending_tick()
+	if resuming:
+		snapshot = _pending_snapshot
+	if snapshot == null:
+		return last_events
+
+	var measure := _measure_enabled()
 	if snapshot.terrain:
 		fluid.terrain = snapshot.terrain
 		if snapshot.terrain.has_method("begin_sim_tick"):
 			snapshot.terrain.begin_sim_tick(snapshot.tick_id)
 	fluid.is_cell_active = Callable(snapshot, "is_cell_active")
 	fluid.global_flow_mult = snapshot.global_flow_mult
+	fluid.flow_budget_us = flow_budget_us
 
-	# Emitters from snapshot rows (not live scene spawns).
-	_tick_emitters_from_snapshot(snapshot)
+	if not resuming:
+		tick_count += 1
+		_pending_snapshot = snapshot
+		_pending_substeps = maxi(snapshot.flow_substeps, 1)
+		_pending_sub_delta = snapshot.delta / float(_pending_substeps)
+		_pending_substep_i = 0
+		_pending_all_changed.clear()
+		_pending_all_mesh.clear()
+		_pending_emitters_done = false
 
-	var sub_delta: float = snapshot.delta / float(maxi(snapshot.flow_substeps, 1))
-	var all_changed: Array = []
-	var all_mesh: Array = []
-	for _i in snapshot.flow_substeps:
-		var changed: Array = fluid.tick_flow(sub_delta)
+	# Emitters once at start of logical tick.
+	var t0 := Time.get_ticks_usec() if measure else 0
+	if not _pending_emitters_done:
+		_tick_emitters_from_snapshot(snapshot)
+		_pending_emitters_done = true
+		if measure:
+			last_tick_breakdown["emitters_us"] = Time.get_ticks_usec() - t0
+
+	var flow_us := 0
+	var active_acc := 0
+	var selected_acc := 0
+	t0 = Time.get_ticks_usec() if measure else 0
+	while _pending_substep_i < _pending_substeps:
+		var changed: Array = fluid.tick_flow(_pending_sub_delta)
+		if measure and fluid.has_method("get_last_flow_scan_stats"):
+			var st: Dictionary = fluid.get_last_flow_scan_stats()
+			active_acc += int(st.get("active_cells", 0))
+			selected_acc += int(st.get("selected_cells", 0))
+		if not fluid.last_flow_complete:
+			if measure:
+				last_tick_breakdown["flow_us"] = Time.get_ticks_usec() - t0
+				last_tick_breakdown["active_cells"] = active_acc
+				last_tick_breakdown["selected_cells"] = selected_acc
+				last_tick_breakdown["flow_substeps"] = _pending_substeps
+				last_tick_breakdown["budget_partial"] = 1
+			last_tick_complete = false
+			return last_events
 		var mesh_dirty: Array = fluid.get_last_mesh_dirty() if fluid.has_method("get_last_mesh_dirty") else changed
 		for p in changed:
-			if p not in all_changed:
-				all_changed.append(p)
+			if p not in _pending_all_changed:
+				_pending_all_changed.append(p)
 		for p in mesh_dirty:
-			if p not in all_mesh:
-				all_mesh.append(p)
+			if p not in _pending_all_mesh:
+				_pending_all_mesh.append(p)
+		_pending_substep_i += 1
+	if measure:
+		flow_us = Time.get_ticks_usec() - t0
+		last_tick_breakdown["flow_us"] = flow_us
+		last_tick_breakdown["active_cells"] = active_acc
+		last_tick_breakdown["selected_cells"] = selected_acc
+		last_tick_breakdown["flow_substeps"] = _pending_substeps
+
+	var all_changed: Array = _pending_all_changed
+	var all_mesh: Array = _pending_all_mesh
 	last_new_cells = fluid.last_new_cells
 	last_mesh_dirty_count = all_mesh.size()
 	if not all_changed.is_empty():
 		last_events.append(_CrystalSimEvents.flow_batch(all_changed, all_mesh, last_new_cells))
 
 	# Absorption progress (side-effect-free); completion as events for façade.
+	t0 = Time.get_ticks_usec() if measure else 0
 	_tick_absorption_progress(snapshot)
+	if measure:
+		last_tick_breakdown["absorption_us"] = Time.get_ticks_usec() - t0
+	t0 = Time.get_ticks_usec() if measure else 0
 	_tick_animal_absorption_progress(snapshot)
+	if measure:
+		last_tick_breakdown["animal_us"] = Time.get_ticks_usec() - t0
+	t0 = Time.get_ticks_usec() if measure else 0
 	_tick_ruin_absorption_progress(snapshot)
+	if measure:
+		last_tick_breakdown["ruin_us"] = Time.get_ticks_usec() - t0
 
 	if fluid:
+		t0 = Time.get_ticks_usec() if measure else 0
 		var stats: Dictionary = fluid.recalc_volume()
+		if measure:
+			last_tick_breakdown["stats_us"] = Time.get_ticks_usec() - t0
 		last_events.append(_CrystalSimEvents.stats(
 			float(stats.get("volume", 0.0)),
 			int(stats.get("cells", 0))
 		))
 
 	event_count += last_events.size()
+	_clear_pending_tick()
+	last_tick_complete = true
 	return last_events
+
+
+func _measure_enabled() -> bool:
+	var raw := OS.get_environment("CRYSTALSTORM_CRYSTAL_STARTUP_MEASURE").strip_edges().to_lower()
+	return raw == "1" or raw == "true" or raw == "on"
+
+
+func consume_last_tick_breakdown() -> Dictionary:
+	var d: Dictionary = last_tick_breakdown.duplicate()
+	last_tick_breakdown = {}
+	return d
 
 
 func _tick_emitters_from_snapshot(snapshot) -> void:
