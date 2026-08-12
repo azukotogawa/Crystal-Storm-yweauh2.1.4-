@@ -6,6 +6,7 @@ const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _WorldBorder = preload("res://helpers/world_border.gd")
 
 const _MARKER_TOWN_R := 2
 const _MARKER_RUIN_R := 3
@@ -358,9 +359,44 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 	elif bool(job.get("channel_overlay", false)) and _ChannelRegistry.is_channel(wx, wz):
 		color = color.lerp(cfg.color_channel, 0.8)
 
+	# Intentional map edge: ocean/mountain borders + rim at playable half.
+	color = _apply_border_map_style(color, wx, wz, tile, cfg)
+
 	cache[key] = color
 	job.column_cache = cache
 	return _apply_crystal_tint(color, job, key)
+
+
+## Ocean rim / mountain wall read as deliberate map edges (not infinite noise).
+static func _apply_border_map_style(
+	base: Color, wx: int, wz: int, tile: int, cfg: _TopographicalMapConfig
+) -> Color:
+	var info: Dictionary = _WorldBorder.zone_info(float(wx), float(wz))
+	var color: Color = base
+	if str(info.get("zone", "")) == "border":
+		var side: String = str(info.get("side", ""))
+		var t: float = float(info.get("transition", 0.0))
+		var deep: float = float(info.get("deep", 0.0))
+		if side == "ocean" or (side == "corner" and float(info.get("ocean_weight", 0.0)) >= 0.5):
+			var ocean_c: Color = cfg.color_ocean.darkened(clampf(deep * 0.45, 0.0, 0.4))
+			color = color.lerp(ocean_c, clampf(0.55 + t * 0.4, 0.55, 0.95))
+		else:
+			var mtn_c: Color = cfg.color_mountain.lightened(clampf(t * 0.15, 0.0, 0.2))
+			color = color.lerp(mtn_c, clampf(0.5 + t * 0.45, 0.5, 0.95))
+		if _WorldBorder.is_ocean_tile(tile):
+			color = color.lerp(cfg.color_ocean, 0.35)
+		elif _WorldBorder.is_border_mountain_tile(tile):
+			color = color.lerp(cfg.color_mountain, 0.3)
+	# Crisp rim just inside/outside the playable rectangle.
+	var rim: float = _WorldBorder.map_edge_rim_strength(float(wx), float(wz), 8.0)
+	if rim > 0.001:
+		var rim_color := Color(0.04, 0.05, 0.08, 1.0)
+		if str(info.get("side", "")) == "ocean" or _WorldBorder.is_ocean_tile(tile):
+			rim_color = Color(0.08, 0.16, 0.32, 1.0)
+		elif str(info.get("side", "")) == "mountain" or _WorldBorder.is_border_mountain_tile(tile):
+			rim_color = Color(0.22, 0.2, 0.24, 1.0)
+		color = color.lerp(rim_color, clampf(rim * 0.55, 0.0, 0.7))
+	return color
 
 
 static func _apply_crystal_tint(base: Color, job: Dictionary, key: Vector2i) -> Color:

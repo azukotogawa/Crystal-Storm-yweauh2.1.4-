@@ -110,7 +110,13 @@ func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 	var voxel_s: float = ws.voxel_scale
 	var depth := maxf(cell.depth, 0.12)
 	var layer_h: float = ws.layer_height()
-	var visual_depth := maxf(depth, layer_h * 0.55)
+	# Frontier cells read as a taller, wider purple front without changing sim depth.
+	var frontier_boost: float = 1.0
+	var footprint_mul: float = 1.0
+	if cell.is_frontier:
+		frontier_boost = 1.38
+		footprint_mul = 1.16
+	var visual_depth := maxf(depth, layer_h * 0.55) * frontier_boost
 	var chunk_origin_x: float = ws.column_to_world(float(chunk_coord.x * ChunkData.SIZE))
 	var chunk_origin_z: float = ws.column_to_world(float(chunk_coord.y * ChunkData.SIZE))
 	var local_x: float = ws.column_to_world(float(cell.world_pos.x) + 0.5) - chunk_origin_x
@@ -118,14 +124,14 @@ func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 
 	var basis: Basis
 	if _CrystalClusterMesh.use_legacy_renderer():
-		var footprint := voxel_s * 1.02
+		var footprint := voxel_s * 1.02 * footprint_mul
 		var center_y := cell.terrain_y + visual_depth * 0.5
 		basis = Basis.IDENTITY.scaled(Vector3(footprint, visual_depth, footprint))
 		mm.set_instance_transform(idx, Transform3D(basis, Vector3(local_x, center_y, local_z)))
 		return
 
 	var natural_h := _CrystalClusterMesh.natural_height()
-	var footprint := 1.02
+	var footprint := 1.02 * footprint_mul
 	var scale_y := visual_depth / natural_h
 	var rot_y := _CrystalClusterMesh.growth_rotation_y(cell.neighbor_mask)
 	var center_y := cell.terrain_y + visual_depth * 0.5

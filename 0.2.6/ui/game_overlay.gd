@@ -20,6 +20,12 @@ var _living_world = null
 var _current_biome: String = ""
 var _opening_toast_shown: bool = false
 var _mite_threat_toast_shown: bool = false
+var _pressure_toast_shown: bool = false
+var _assault_toast_shown: bool = false
+var _last_phase_for_toast: int = -1
+var _terrain_crystal_toast_cd: float = 0.0
+var _phase_label_pulse: float = 0.0
+var _phase_label_base_mod: Color = Color.WHITE
 
 
 func _ready() -> void:
@@ -34,12 +40,78 @@ func _ready() -> void:
 		_on_phase_changed(_game_manager.phase)
 	if _crystal and _crystal.has_signal("spawn_destroyed"):
 		_crystal.spawn_destroyed.connect(_on_spawn_destroyed)
+	if _crystal and _crystal.has_signal("power_changed"):
+		_crystal.power_changed.connect(_on_crystal_power_changed)
 	call_deferred("_bind_progression")
 	call_deferred("_bind_living_world")
 	call_deferred("_bind_enemy_spawner")
+	call_deferred("_bind_build_feedback")
+	call_deferred("_bind_terrain_crystal_feedback")
 	# Opening toast waits until LoadingScreen fades (or shows after short delay if no loader).
 	call_deferred("_schedule_opening_toast")
 	_update_map_temp_label()
+	if _phase_label:
+		_phase_label_base_mod = _phase_label.modulate
+
+
+func _bind_build_feedback() -> void:
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	var weapon = player.get_node_or_null("WeaponController")
+	if weapon and weapon.has_signal("structure_built") \
+			and not weapon.structure_built.is_connected(_on_structure_built):
+		weapon.structure_built.connect(_on_structure_built)
+
+
+func _bind_terrain_crystal_feedback() -> void:
+	var editor = get_tree().get_first_node_in_group("terrain_editor")
+	if editor == null:
+		return
+	if editor.has_signal("terrain_edited") \
+			and not editor.terrain_edited.is_connected(_on_terrain_edited_near_crystal):
+		editor.terrain_edited.connect(_on_terrain_edited_near_crystal)
+
+
+## When dig/build happens beside crystal, spell out that terrain is buying time / routing.
+func _on_terrain_edited_near_crystal(wx: int, wz: int, kind: StringName) -> void:
+	if _terrain_crystal_toast_cd > 0.0:
+		return
+	if _game_manager and _game_manager.run_state != _GameManager.RunState.PLAYING:
+		return
+	if _crystal == null or not _crystal.has_method("get_depth_at"):
+		return
+	var near := false
+	var min_d: float = 0.04
+	if "sim_config" in _crystal and _crystal.sim_config:
+		min_d = float(_crystal.sim_config.min_depth)
+	for dx in range(-3, 4):
+		for dz in range(-3, 4):
+			if _crystal.get_depth_at(wx + dx, wz + dz) >= min_d:
+				near = true
+				break
+		if near:
+			break
+	if not near:
+		return
+	_terrain_crystal_toast_cd = 7.5
+	var k := str(kind)
+	if k == "dig":
+		_show_toast("Trench cut — purple front follows lower ground")
+	elif k == "gate":
+		_show_toast("Gate holds a crawl path — crystal slows, you pass")
+	elif k == "bridge":
+		_show_toast("Bridge spans the cut — crystal still feels the drop")
+	else:
+		_show_toast("Wall raised — crystal slows here; it will find another way")
+
+
+func _on_structure_built(build_id: StringName, _world_pos: Vector3) -> void:
+	# Rate-limit: only toast gates/bridges; walls stay silent for hold-to-stack feel.
+	if build_id == &"gate":
+		_show_toast("Gate placed — walk through · slows crystal")
+	elif build_id == &"bridge":
+		_show_toast("Bridge placed — span digs & low ground")
 
 
 func _schedule_opening_toast() -> void:
@@ -60,8 +132,17 @@ func _show_opening_toast() -> void:
 	if _opening_toast_shown:
 		return
 	_opening_toast_shown = true
-	# Immediate orientation: crystal is the pressure, dig buys time.
-	_show_toast("Maze phase — dig trenches. Crystal blooms at the origin.")
+	# Point at the purple mass, not only the HUD.
+	_show_toast("Watch the purple front — dig trenches & walls where it advances")
+
+
+func _on_crystal_power_changed(_power: float, tier: int) -> void:
+	if _pressure_toast_shown or tier < 1:
+		return
+	if _game_manager and _game_manager.run_state != _GameManager.RunState.PLAYING:
+		return
+	_pressure_toast_shown = true
+	_show_toast("Crystal pressure rising — terrain slows it, it never stops")
 
 
 func _bind_enemy_spawner() -> void:
@@ -284,11 +365,11 @@ func _update_map_temp_label() -> void:
 	elif _game_manager and _game_manager.run_state == _GameManager.RunState.LOST:
 		_phase_label.text = "Phase: Defeat%s" % suffix
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
-		_phase_label.text = "Phase: Maze — dig, build, collect, defend the living world%s" % suffix
+		_phase_label.text = "Phase: Maze — dig & build routes · terrain buys time%s" % suffix
 	elif goal != "":
-		_phase_label.text = "Phase: Assault — %s%s" % [goal, suffix]
+		_phase_label.text = "Phase: Assault — fight the crystal · %s%s" % [goal, suffix]
 	else:
-		_phase_label.text = "Phase: Assault — push back to the origin%s" % suffix
+		_phase_label.text = "Phase: Assault — push to the origin heart%s" % suffix
 
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
@@ -304,6 +385,14 @@ func _process(delta: float) -> void:
 		_toast_timer -= delta
 		if _toast_timer <= 0.0 and _toast:
 			_toast.visible = false
+	if _terrain_crystal_toast_cd > 0.0:
+		_terrain_crystal_toast_cd = maxf(_terrain_crystal_toast_cd - delta, 0.0)
+	if _phase_label_pulse > 0.0 and _phase_label:
+		_phase_label_pulse = maxf(_phase_label_pulse - delta, 0.0)
+		var t: float = _phase_label_pulse / 2.2
+		_phase_label.modulate = _phase_label_base_mod.lerp(Color(1.0, 0.45, 1.0), t)
+	elif _phase_label and _phase_label.modulate != _phase_label_base_mod:
+		_phase_label.modulate = _phase_label_base_mod
 	if not _progression_bound:
 		_bind_progression()
 	if _game_manager == null:
@@ -355,14 +444,47 @@ func _update_game_hud() -> void:
 		var rl: String = str(_living_world.get_ruins_hud_line())
 		if rl != "":
 			ruins_line = "  |  %s" % rl
+	var tool_line := "Pick dig · RMB wall · LMB fight · M map · I inv"
+	var weapon = null
+	var player = get_tree().get_first_node_in_group("player")
+	if player:
+		weapon = player.get_node_or_null("WeaponController")
+	if weapon and weapon.has_method("get_active_item"):
+		var slot = weapon.get_active_item()
+		if slot != null:
+			var sid := str(slot.id)
+			if sid == "stone_pick":
+				tool_line = "DIG · LMB carve · RMB wall · Shift gate · Ctrl bridge"
+			elif sid == "stone" or sid == "wood":
+				tool_line = "BUILD · RMB wall · Shift gate · Ctrl bridge"
+			elif sid == "wooden_sword" or sid == "shortbow":
+				tool_line = "FIGHT · LMB attack · RMB build"
+	var phase_tag := "MAZE"
+	if _game_manager.phase == _GameManager.Phase.ASSAULT:
+		phase_tag = "ASSAULT"
+	elif _game_manager.phase == _GameManager.Phase.VICTORY:
+		phase_tag = "VICTORY"
+	var tier_line := ""
+	if "strength_tier" in _crystal:
+		tier_line = "  |  T%d" % int(_crystal.strength_tier)
 	_game_hud.text = (
-		"Crystal %.1f%% / %.0f%%  |  %s%s%s%s%s  |  Pick dig  RMB build  LMB fight  M map  I inventory"
-		% [cov_pct, max_cov, spawns_line, relic_line, biome_line, town_line, ruins_line]
+		"%s  |  Crystal %.1f%% / %.0f%%%s  |  %s%s%s%s%s  |  %s"
+		% [phase_tag, cov_pct, max_cov, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]
 	)
 
 
-func _on_phase_changed(_new_phase: int) -> void:
+func _on_phase_changed(new_phase: int) -> void:
 	_update_map_temp_label()
+	if _game_manager and _game_manager.run_state != _GameManager.RunState.PLAYING:
+		return
+	if new_phase == _GameManager.Phase.ASSAULT:
+		_phase_label_pulse = 2.2
+		if not _assault_toast_shown:
+			_assault_toast_shown = true
+			_show_toast("ASSAULT — you are on the purple front. Fight or pull back and rebuild")
+	elif new_phase == _GameManager.Phase.MAZE and _last_phase_for_toast == int(_GameManager.Phase.ASSAULT):
+		_show_toast("Maze again — distance bought time. Reshape, then re-engage")
+	_last_phase_for_toast = new_phase
 
 
 func _on_run_state_changed(new_state: int) -> void:

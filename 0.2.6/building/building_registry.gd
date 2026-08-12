@@ -42,16 +42,21 @@ static func ensure_builtins() -> void:
 		return
 	register(_make_stone_wall())
 	register(_make_wood_wall())
+	register(_make_gate())
+	register(_make_bridge())
 
 
 static func _make_stone_wall() -> _BuildableDef:
 	var d := _BuildableDef.new()
 	d.id = &"stone_wall"
 	d.display_name = "Stone Wall"
+	d.category = _BuildableDef.Category.TERRAIN_WALL
 	d.material_id = "stone"
 	d.material_count = 1
 	d.wood_fallback_count = 2
 	d.tile_id = _VoxelTypes.STONE
+	d.height_delta = 1
+	d.raises_terrain = true
 	d.flow_resistance = 0.85
 	return d
 
@@ -60,8 +65,46 @@ static func _make_wood_wall() -> _BuildableDef:
 	var d := _BuildableDef.new()
 	d.id = &"wood_wall"
 	d.display_name = "Wood Wall"
+	d.category = _BuildableDef.Category.TERRAIN_WALL
 	d.material_id = "wood"
 	d.material_count = 2
 	d.tile_id = _VoxelTypes.DIRT
+	d.height_delta = 1
+	d.raises_terrain = true
 	d.flow_resistance = 0.55
+	return d
+
+
+static func _make_gate() -> _BuildableDef:
+	var d := _BuildableDef.new()
+	d.id = &"gate"
+	d.display_name = "Gate"
+	d.category = _BuildableDef.Category.PASSAGE
+	d.material_id = "wood"
+	d.material_count = 1
+	d.wood_fallback_count = 0
+	d.tile_id = _VoxelTypes.DIRT
+	d.height_delta = 0
+	d.raises_terrain = false
+	d.is_passage = true
+	# Strong baffle while remaining walkable (player passes; crystal crawls).
+	d.flow_resistance = 0.72
+	d.placement_range = 2.8
+	return d
+
+
+static func _make_bridge() -> _BuildableDef:
+	var d := _BuildableDef.new()
+	d.id = &"bridge"
+	d.display_name = "Bridge"
+	d.category = _BuildableDef.Category.BRIDGE
+	d.material_id = "wood"
+	d.material_count = 1
+	d.wood_fallback_count = 0
+	d.tile_id = _VoxelTypes.DIRT
+	d.height_delta = 1
+	d.raises_terrain = true
+	d.is_bridge = true
+	d.flow_resistance = 0.28
+	d.placement_range = 2.8
 	return d

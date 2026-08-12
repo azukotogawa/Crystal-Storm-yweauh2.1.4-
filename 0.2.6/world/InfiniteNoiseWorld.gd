@@ -608,31 +608,31 @@ func _compute_local_ruggedness(wx: float, wz: float) -> float:
 # Public surface API (used by ChunkData, player, debug)
 # -----------------------------
 func get_surface_height(wx: float, wz: float) -> float:
+	## Cache natural (pre-edit) height only; live dig/build deltas always apply on top
+	## so walkable feet update immediately after terrain edits (no stale feet snap).
 	var k: Vector2i = Vector2i(floori(wx), floori(wz))
+	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
+	var natural: float
 	if _surface_cache.has(k):
 		if _query_measure_enabled:
 			_query_surface_hits += 1
 			_note_frame_dup_surface(k)
-		return _surface_cache[k]
-
-	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
-	var h: float = _compute_surface_height(wx, wz)
-	h += _TerrainEdits.get_height_delta(k.x, k.y)
-	h = _quantize_to_voxel_layer(h)
-	_surface_cache[k] = h
-	if _surface_cache.size() > 12288:
-		_surface_cache.clear()
-	if _query_measure_enabled:
-		_query_surface_misses += 1
-		_note_frame_dup_surface(k)
-		_record_query_op("get_surface_height", t0)
-	return h
+		natural = float(_surface_cache[k])
+	else:
+		natural = _quantize_to_voxel_layer(_compute_surface_height(wx, wz))
+		_surface_cache[k] = natural
+		if _surface_cache.size() > 12288:
+			_surface_cache.clear()
+		if _query_measure_enabled:
+			_query_surface_misses += 1
+			_note_frame_dup_surface(k)
+			_record_query_op("get_surface_height", t0)
+	return natural + _TerrainEdits.get_height_delta(k.x, k.y)
 
 func get_surface_height_uncached(wx: float, wz: float) -> float:
 	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
-	var h: float = _compute_surface_height(wx, wz)
+	var h: float = _quantize_to_voxel_layer(_compute_surface_height(wx, wz))
 	h += _TerrainEdits.get_height_delta(floori(wx), floori(wz))
-	h = _quantize_to_voxel_layer(h)
 	if _query_measure_enabled:
 		_record_query_op("get_surface_height_uncached", t0)
 	return h

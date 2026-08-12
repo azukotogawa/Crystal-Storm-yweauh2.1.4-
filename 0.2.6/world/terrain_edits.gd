@@ -57,6 +57,17 @@ static func build_wall(wx: int, wz: int, tile_id: int) -> bool:
 	return true
 
 
+## Gate / marker: set build tile without raising column height (walkable passage).
+static func set_build_tile_only(wx: int, wz: int, tile_id: int) -> bool:
+	if not can_edit(wx, wz):
+		return false
+	var ws = _ws()
+	var key := Vector2i(wx, wz)
+	ws.build_tile[key] = tile_id
+	ws.bump(_WorldState.DOMAIN_TERRAIN)
+	return true
+
+
 static func edit_count() -> int:
 	return _ws().height_delta.size()
 

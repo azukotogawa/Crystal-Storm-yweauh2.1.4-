@@ -15,6 +15,10 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var cliff_height: float = 1.05
 @export var flow_substeps: int = 2
 @export var lateral_spread_bias: float = 0.07
+## Multiplier when crystal/fluid tries to climb (1 = free, lower = harder).
+@export var uphill_flow_penalty: float = 0.35
+## Extra pressure gain for downhill drops.
+@export var downhill_flow_bonus: float = 0.55
 
 @export_group("Water & Rivers")
 ## Crystal can build OVER water but spreads into/out of rivers very slowly.

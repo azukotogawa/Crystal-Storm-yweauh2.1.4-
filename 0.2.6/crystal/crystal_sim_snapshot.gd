@@ -36,6 +36,9 @@ var tile_at: Callable = Callable()
 
 
 func is_cell_active(pos: Vector2i) -> bool:
+	const _WorldBorder = preload("res://helpers/world_border.gd")
+	if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
+		return false
 	if not sim_loaded_chunks_only or loaded_chunks.is_empty():
 		return true
 	var coord := Vector2i(

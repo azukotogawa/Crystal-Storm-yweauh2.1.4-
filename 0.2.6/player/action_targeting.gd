@@ -11,10 +11,11 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 static func _orbit_index(player: Node3D) -> int:
 	if player == null:
 		return 0
-	if player.is_input_locked:
-		return int(player.locked_rotation)
-	if player.camera:
-		return int(player.camera.orbit_rotation)
+	if bool(player.get("is_input_locked")):
+		return int(player.get("locked_rotation"))
+	var cam = player.get("camera")
+	if cam != null and "orbit_rotation" in cam:
+		return int(cam.orbit_rotation)
 	return 0
 
 
@@ -30,7 +31,7 @@ static func _rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
 static func attack_forward(player: Node3D) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
-	var cam: Camera3D = player.get("camera") as Camera3D if "camera" in player else null
+	var cam: Camera3D = player.get("camera") as Camera3D
 	if cam:
 		var flat := -cam.global_transform.basis.z
 		flat.y = 0.0
@@ -79,9 +80,13 @@ static func _is_fluid_tile(tile: int) -> bool:
 static func _is_column_loaded(chunk_manager: ChunkManager, wx: int, wz: int) -> bool:
 	if chunk_manager == null:
 		return true
-	if chunk_manager.has_method("is_world_cell_loaded"):
-		return chunk_manager.is_world_cell_loaded(wx, wz)
-	return true
+	if not chunk_manager.has_method("is_world_cell_loaded"):
+		return true
+	# Empty streamer (or unit probes): do not treat the world as unloaded for targeting.
+	if "chunks" in chunk_manager and chunk_manager.chunks is Dictionary:
+		if (chunk_manager.chunks as Dictionary).is_empty():
+			return true
+	return chunk_manager.is_world_cell_loaded(wx, wz)
 
 
 static func _is_solid_column(
@@ -236,28 +241,133 @@ static func _target_column_forward(
 	chunk_manager: ChunkManager
 ) -> Vector3:
 	var forward := attack_forward(player)
+	if forward.length_squared() < 0.0001:
+		forward = Vector3(1.0, 0.0, 0.0)
 	var dist := 0.0
+	var last_in_range := Vector3.ZERO
 	while dist <= range_v + 0.01:
 		var probe: Vector3 = player.voxel_position + forward * dist
 		var wx := floori(probe.x)
 		var wz := floori(probe.z)
-		if _column_in_range(player, wx, wz, range_v) \
-				and _is_solid_column(world, chunk_manager, wx, wz):
-			return Vector3(float(wx) + 0.5, player.voxel_position.y, float(wz) + 0.5)
+		if _column_in_range(player, wx, wz, range_v):
+			last_in_range = Vector3(float(wx) + 0.5, player.voxel_position.y, float(wz) + 0.5)
+			if _is_solid_column(world, chunk_manager, wx, wz):
+				return last_in_range
 		dist += 0.35
-	return Vector3.ZERO
+	# Prefer a facing column even while streaming/solid checks are cold so dig never no-ops.
+	if last_in_range != Vector3.ZERO:
+		return last_in_range
+	var fallback: Vector3 = player.voxel_position + forward * minf(range_v, 1.25)
+	return Vector3(float(floori(fallback.x)) + 0.5, player.voxel_position.y, float(floori(fallback.z)) + 0.5)
 
 
+## Stable ortho pick: iterative plane intersect refined by walkable surface height.
+## When require_in_range is false, follows the mouse even outside dig/build range (cursor fidelity).
 static func _pick_column_from_mouse(
 	player: Node3D,
 	range_v: float,
 	world: InfiniteNoiseWorld,
-	chunk_manager: ChunkManager
+	chunk_manager: ChunkManager,
+	require_in_range: bool = true
 ) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
-	var cam: Camera3D = player.get("camera") as Camera3D if "camera" in player else null
+	var cam: Camera3D = player.get("camera") as Camera3D
 	var vp: Viewport = player.get_viewport()
+	if cam == null or vp == null:
+		return Vector3.ZERO
+	var ws = _WorldSettings.get_active()
+	var mouse := vp.get_mouse_position()
+	var rect := vp.get_visible_rect()
+	# Off-screen mouse (probes / warp away): fall back to facing. Skip when viewport has no size (headless).
+	if rect.size.x > 4.0 and rect.size.y > 4.0:
+		if mouse.x < rect.position.x - 2.0 or mouse.y < rect.position.y - 2.0 \
+				or mouse.x > rect.end.x + 2.0 or mouse.y > rect.end.y + 2.0:
+			return Vector3.ZERO
+	var origin := cam.project_ray_origin(mouse)
+	var dir := cam.project_ray_normal(mouse)
+	if dir.length_squared() < 0.00001:
+		return Vector3.ZERO
+	dir = dir.normalized()
+	if absf(dir.y) < 0.00001:
+		return Vector3.ZERO
+
+	# Iterative plane pick (stable, no step-ray jitter between neighboring columns).
+	var plane_y: float = player.global_position.y
+	var best := Vector3.ZERO
+	var max_abs_t: float = 400.0
+	for _refine in 5:
+		var t_plane: float = (plane_y - origin.y) / dir.y
+		if t_plane < 0.0 or t_plane > max_abs_t:
+			break
+		var hit: Vector3 = origin + dir * t_plane
+		var wx: int = floori(ws.world_to_column(hit.x))
+		var wz: int = floori(ws.world_to_column(hit.z))
+		var col_x: float = float(wx) + 0.5
+		var col_z: float = float(wz) + 0.5
+		var in_range: bool = _column_in_range(player, wx, wz, range_v)
+		if require_in_range and not in_range:
+			# Still refine height from nearest guess so cursor settles smoothly when re-entering range.
+			if world != null:
+				plane_y = _walkable_top(world, chunk_manager, col_x, col_z)
+			continue
+		# Always lock the column under the mouse when in range — solid checks must not
+		# discard the pick (missed digs/placements). try_dig/try_build validate later.
+		best = Vector3(col_x, player.voxel_position.y, col_z)
+		if world != null:
+			var next_y: float = _walkable_top(world, chunk_manager, col_x, col_z)
+			if absf(next_y - plane_y) < 0.02:
+				break
+			plane_y = next_y
+		else:
+			break
+	if best != Vector3.ZERO:
+		return best
+
+	# Fallback: denser ray march within range (entities / odd slabs).
+	if world != null:
+		var step: float = ws.voxel_scale * 0.15
+		var max_dist: float = minf((range_v + 3.0) * ws.voxel_scale * 3.5, 120.0)
+		var t: float = 0.0
+		var best_t: float = INF
+		while t <= max_dist:
+			var p: Vector3 = origin + dir * t
+			var wxm: int = floori(ws.world_to_column(p.x))
+			var wzm: int = floori(ws.world_to_column(p.z))
+			var in_r: bool = _column_in_range(player, wxm, wzm, range_v)
+			if not require_in_range or in_r:
+				var hits_slab := _ray_y_hits_surface_slab(world, chunk_manager, wxm, wzm, p.y)
+				var hits_entity := _entity_column_near(player, wxm, wzm, range_v)
+				if (hits_slab and _is_solid_column(world, chunk_manager, wxm, wzm)) or hits_entity:
+					if t < best_t:
+						best_t = t
+						best = Vector3(float(wxm) + 0.5, player.voxel_position.y, float(wzm) + 0.5)
+			t += step
+	return best
+
+
+## Mouse hover column for cursor UI (ignores dig range so the box follows the pointer).
+static func pick_hover_column(
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float = 8.0
+) -> Vector3:
+	return _pick_column_from_mouse(player, range_v, world, chunk_manager, false)
+
+
+## Predicted next column past hover along the camera ray (for dig/build trail feel).
+static func predict_next_column(
+	player: Node3D,
+	from_col: Vector3,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float
+) -> Vector3:
+	if player == null or from_col == Vector3.ZERO:
+		return Vector3.ZERO
+	var cam: Camera3D = player.get("camera") as Camera3D
+	var vp: Viewport = player.get_viewport() if player.is_inside_tree() else null
 	if cam == null or vp == null:
 		return Vector3.ZERO
 	var ws = _WorldSettings.get_active()
@@ -267,36 +377,25 @@ static func _pick_column_from_mouse(
 	if dir.length_squared() < 0.00001:
 		return Vector3.ZERO
 	dir = dir.normalized()
-
-	if world != null:
-		var step: float = ws.voxel_scale * 0.25
-		var max_dist: float = minf((range_v + 1.0) * ws.voxel_scale * 2.5, 72.0)
-		var prev: Vector3 = origin
-		var t: float = 0.0
-		var best_t: float = INF
-		var best_col := Vector3.ZERO
-		while t <= max_dist:
-			var p: Vector3 = origin + dir * t
-			var wx := floori(ws.world_to_column(p.x))
-			var wz := floori(ws.world_to_column(p.z))
-			if _column_in_range(player, wx, wz, range_v):
-				var col_x: float = float(wx) + 0.5
-				var col_z: float = float(wz) + 0.5
-				var hits_slab := _ray_y_hits_surface_slab(world, chunk_manager, wx, wz, p.y)
-				var hits_entity := _entity_column_near(player, wx, wz, range_v)
-				if hits_slab and _is_solid_column(world, chunk_manager, wx, wz):
-					if t < best_t:
-						best_t = t
-						best_col = Vector3(col_x, player.voxel_position.y, col_z)
-				elif hits_entity and t < best_t:
-					best_t = t
-					best_col = Vector3(col_x, player.voxel_position.y, col_z)
-			prev = p
-			t += step
-		if best_col != Vector3.ZERO:
-			return best_col
-
-	return Vector3.ZERO
+	# Horizontal ray direction in column space.
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.00001:
+		flat = attack_forward(player)
+	flat = flat.normalized()
+	var step_x: int = 0
+	var step_z: int = 0
+	if absf(flat.x) >= absf(flat.z):
+		step_x = 1 if flat.x >= 0.0 else -1
+	else:
+		step_z = 1 if flat.z >= 0.0 else -1
+	var wx: int = floori(from_col.x) + step_x
+	var wz: int = floori(from_col.z) + step_z
+	if not _column_in_range(player, wx, wz, range_v + 1.0):
+		return Vector3.ZERO
+	if world != null and not _is_solid_column(world, chunk_manager, wx, wz) \
+			and not _entity_column_near(player, wx, wz, range_v + 1.0):
+		return Vector3.ZERO
+	return Vector3(float(wx) + 0.5, from_col.y, float(wz) + 0.5)
 
 
 ## Screen position for a column center (probes / warp_mouse).
@@ -353,7 +452,20 @@ static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 		return Vector3.ZERO
 	var world := _player_world(player)
 	var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") if player.is_inside_tree() else null
-	var mouse_col := _pick_column_from_mouse(player, range_v, world, chunk_manager)
+	# Prefer the same column the highlight is showing (zero missed digs vs cursor).
+	if player.is_inside_tree():
+		var hl = player.get_node_or_null("TargetHighlight")
+		if hl != null and hl.has_method("get_action_column"):
+			var shared: Vector3 = hl.get_action_column()
+			if shared != Vector3.ZERO:
+				var sx := floori(shared.x)
+				var sz := floori(shared.z)
+				# Return highlighted cell only when in range; out-of-range is ZERO so callers fail clear.
+				if _column_in_range(player, sx, sz, range_v):
+					return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
+				return Vector3.ZERO
+	# Actions only accept in-range picks (require_in_range=true).
+	var mouse_col := _pick_column_from_mouse(player, range_v, world, chunk_manager, true)
 	if mouse_col != Vector3.ZERO:
 		return mouse_col
 	return _target_column_forward(player, range_v, world, chunk_manager)
@@ -377,36 +489,16 @@ static func target_cell(player: Node3D, range_v: float = 2.0) -> Vector2i:
 	return cell_column(target_column(player, range_v))
 
 
-static func resolve_action(
-	player: Node3D,
-	world: InfiniteNoiseWorld,
-	chunk_manager: ChunkManager,
-	range_v: float = 2.0,
-	simulate_interact: bool = false
-) -> Dictionary:
-	var col := target_column(player, range_v)
-	if col == Vector3.ZERO:
-		return {
-			"column": Vector3.ZERO,
-			"cell": Vector2i.ZERO,
-			"surface_y": 0.0,
-			"world_pos": Vector3.ZERO,
-			"mode": &"none",
-			"valid": false,
-			"range": range_v,
-		}
-	var wx := floori(col.x)
-	var wz := floori(col.z)
-	col = Vector3(float(wx) + 0.5, col.y, float(wz) + 0.5)
-	var surf: float = world.get_surface_height(col.x, col.z) if world else col.y
-	var ws = _WorldSettings.get_active()
-	var walk_top: float = surf + ws.layer_height()
-	if world:
-		walk_top = _walkable_top(world, chunk_manager, col.x, col.z)
-	var layer_h: float = ws.layer_height()
-	var built_layers: int = maxi(0, int(round(_TerrainEdits.get_height_delta(wx, wz) / layer_h)))
-	var mode := &"none"
-	var weapon := player.get_node_or_null("WeaponController") if player else null
+## Resolve hotbar/tool mode. When force_build (simulate_interact / RMB held), prefer build if materials.
+static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) -> StringName:
+	if player == null:
+		return &"none"
+	var inv = player.get("inventory") if "inventory" in player else null
+	var has_build_mat: bool = false
+	if inv != null and inv.has_method("count_item"):
+		has_build_mat = int(inv.count_item("stone")) > 0 or int(inv.count_item("wood")) > 0
+	var mode: StringName = &"none"
+	var weapon := player.get_node_or_null("WeaponController")
 	if weapon and weapon.has_method("get_active_item"):
 		var slot = weapon.get_active_item()
 		if slot != null:
@@ -420,18 +512,74 @@ static func resolve_action(
 					mode = &"attack" if kind == _ItemTypes.WeaponKind.MELEE else &"ranged"
 				elif str(slot.id) == "stone" and int(slot.get("count", 0)) > 0:
 					mode = &"build"
-	if (simulate_interact or Input.is_action_pressed("interact")) and mode == &"none":
-		var inv = player.get("inventory") if player else null
-		if inv and inv.has_method("count_item") and inv.count_item("stone") > 0:
-			mode = &"build"
-	var valid := mode != &"none" and _is_action_valid(world, chunk_manager, wx, wz, mode, player, range_v)
-	if not valid:
-		mode = &"none"
-	var highlight_y: float = walk_top - layer_h * 0.5
-	if mode == &"build":
-		highlight_y = walk_top + layer_h * (float(built_layers) + 0.5)
+				elif str(slot.id) == "wood" and int(slot.get("count", 0)) > 0:
+					mode = &"build"
+	if force_build and has_build_mat:
+		return &"build"
+	if mode == &"none" and force_build and has_build_mat:
+		return &"build"
+	return mode
+
+
+static func resolve_action(
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float = 2.0,
+	simulate_interact: bool = false,
+	force_mode: StringName = &"",
+	override_column: Vector3 = Vector3(INF, INF, INF)
+) -> Dictionary:
+	var col: Vector3
+	if override_column.x < 1.0e20:
+		col = override_column
+	else:
+		col = target_column(player, range_v)
+	if col == Vector3.ZERO:
+		return {
+			"column": Vector3.ZERO,
+			"cell": Vector2i.ZERO,
+			"surface_y": 0.0,
+			"world_pos": Vector3.ZERO,
+			"mode": &"none",
+			"valid": false,
+			"blocked": false,
+			"in_range": false,
+			"range": range_v,
+		}
+	var wx := floori(col.x)
+	var wz := floori(col.z)
+	col = Vector3(float(wx) + 0.5, col.y, float(wz) + 0.5)
+	var surf: float = world.get_surface_height(col.x, col.z) if world else col.y
+	var ws = _WorldSettings.get_active()
+	# walk_top = feet / top face of the column (dig highlight anchors here).
+	var walk_top: float = surf + ws.layer_height()
+	if world:
+		walk_top = _walkable_top(world, chunk_manager, col.x, col.z)
+	var layer_h: float = ws.layer_height()
+	var built_layers: int = maxi(0, int(round(_TerrainEdits.get_height_delta(wx, wz) / layer_h)))
+	var want_build: bool = simulate_interact \
+		or Input.is_action_pressed("interact") \
+		or Input.is_action_pressed("build_place")
+	var mode: StringName = _weapon_mode_from_player(player, want_build)
+	if force_mode != &"":
+		mode = force_mode
+	var in_range: bool = _column_in_range(player, wx, wz, range_v)
+	var valid := mode != &"none" and in_range \
+		and _is_action_valid(world, chunk_manager, wx, wz, mode, player, range_v)
+	var blocked := mode != &"none" and not valid
+	# Keep mode when blocked so the player still sees a red/orange preview (not a blank cursor).
+	# Dig: box sits on walk_top (column top face) — not buried mid-slab.
+	var highlight_y: float = walk_top
+	if mode == &"dig":
+		highlight_y = walk_top
+	elif mode == &"build":
+		# Placement top face of the next stacked layer.
+		highlight_y = walk_top + layer_h * float(built_layers + 1)
 	elif mode in [&"attack", &"ranged"] and not _is_solid_column(world, chunk_manager, wx, wz):
 		highlight_y = walk_top + layer_h * 0.35
+	elif mode in [&"attack", &"ranged"]:
+		highlight_y = walk_top
 	var world_pos := Vector3(
 		ws.column_to_world(col.x),
 		highlight_y,
@@ -441,8 +589,11 @@ static func resolve_action(
 		"column": col,
 		"cell": Vector2i(wx, wz),
 		"surface_y": surf,
+		"walk_top": walk_top,
 		"world_pos": world_pos,
 		"mode": mode,
 		"valid": valid,
+		"blocked": blocked,
+		"in_range": in_range,
 		"range": range_v,
 	}

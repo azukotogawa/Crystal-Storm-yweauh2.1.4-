@@ -290,11 +290,13 @@ func _make_render_cell(pos: Vector2i, depth: float, spawn_id: int):
 	if crystal_floor_at.is_valid():
 		floor_h = float(crystal_floor_at.call(pos))
 	var cell = _CrystalCell.new(pos, floor_h, depth, spawn_id)
-	if not _CrystalClusterMesh.use_legacy_renderer() and fluid:
-		var min_d: float = sim_config.min_depth if sim_config else 0.04
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	if fluid:
 		cell.neighbor_mask = _CrystalClusterMesh.neighbor_mask_from_depths(
 			pos, fluid.depth, min_d
 		)
+		# Frontier = active purple front (open edge). Interior has all 4 cardinals filled.
+		cell.is_frontier = (cell.neighbor_mask & 15) != 15
 	return cell
 
 

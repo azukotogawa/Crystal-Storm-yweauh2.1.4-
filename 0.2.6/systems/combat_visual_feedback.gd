@@ -238,6 +238,87 @@ func _process(delta: float) -> void:
 		profiler.end("combat_vfx")
 
 
+## Brief placement flash for walls / gates / bridges (satisfying build feedback).
+func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") -> void:
+	if not enabled:
+		return
+	_ensure_visual_roots()
+	var color := Color(0.45, 1.0, 0.55)
+	var label := "Wall"
+	match build_id:
+		&"gate":
+			color = Color(0.95, 0.85, 0.35)
+			label = "Gate"
+		&"bridge":
+			color = Color(0.55, 0.8, 1.0)
+			label = "Bridge"
+		&"wood_wall":
+			label = "Wood"
+		&"dig":
+			color = Color(0.85, 0.55, 0.28)
+			label = ""
+		&"crystal_front":
+			# Sparse pulse on the nearest open crystal edge (readability only).
+			color = Color(0.85, 0.35, 1.0)
+			label = ""
+		_:
+			label = "Wall"
+	var ws = _WorldSettings.get_active()
+	var scale: float = ws.voxel_scale
+	var layer: float = ws.layer_height()
+	var wx: float = floorf(col_pos.x) + 0.5
+	var wz: float = floorf(col_pos.z) + 0.5
+	var y: float = col_pos.y + layer * 0.35
+	var anchor := Node3D.new()
+	_burst_root.add_child(anchor)
+	anchor.global_position = _WorldVisualCoords.column_to_world_pos(wx, y, wz)
+	var mesh_i := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = Vector3(scale * 0.95, layer * 0.35, scale * 0.95)
+	mesh_i.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(color.r, color.g, color.b, 0.55)
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 1.6
+	mat.no_depth_test = true
+	mesh_i.material_override = mat
+	anchor.add_child(mesh_i)
+	var tag: Label3D = null
+	if not label.is_empty():
+		tag = Label3D.new()
+		tag.text = label
+		tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		tag.font_size = 18
+		tag.outline_size = 4
+		tag.modulate = color
+		tag.position = Vector3(0.0, layer * 0.55, 0.0)
+		anchor.add_child(tag)
+	var life: float = 0.28
+	var vel := Vector3(0.0, 1.2, 0.0)
+	if build_id == &"dig":
+		life = 0.18
+		vel = Vector3(0.0, 0.6, 0.0)
+	elif build_id == &"crystal_front":
+		life = 0.55
+		vel = Vector3(0.0, 0.35, 0.0)
+		box.size = Vector3(scale * 1.35, layer * 0.55, scale * 1.35)
+		mesh_i.mesh = box
+		mat.albedo_color = Color(color.r, color.g, color.b, 0.42)
+		mat.emission_energy_multiplier = 2.4
+	_bursts.append({
+		"anchor": anchor,
+		"sprite": null,
+		"vel": vel,
+		"life": life,
+		"place": true,
+		"mesh": mesh_i,
+		"tag": tag,
+	})
+
+
 func show_damage_column(col_pos: Vector3, amount: float, color: Color = Color(1.0, 0.9, 0.5)) -> void:
 	if not enabled or amount <= 0.0:
 		return
@@ -469,13 +550,25 @@ func _update_bursts(delta: float) -> void:
 		if life <= 0.0:
 			anchor.queue_free()
 			continue
-		anchor.global_position += Vector3(b.vel) * delta
-		b.vel = Vector3(b.vel) + Vector3(0.0, -2.5, 0.0) * delta
+		var vel: Vector3 = b.get("vel", Vector3.ZERO)
+		anchor.global_position += vel * delta
+		if not bool(b.get("place", false)):
+			b.vel = vel + Vector3(0.0, -2.5, 0.0) * delta
+		else:
+			b.vel = vel * 0.92
 		var fade := clampf(life / 0.5, 0.0, 1.0)
 		if is_instance_valid(sprite):
 			sprite.modulate.a = fade
 			if sprite.material_override is StandardMaterial3D:
 				(sprite.material_override as StandardMaterial3D).albedo_color.a = fade
+		var mesh_i: MeshInstance3D = b.get("mesh")
+		if is_instance_valid(mesh_i) and mesh_i.material_override is StandardMaterial3D:
+			var mat := mesh_i.material_override as StandardMaterial3D
+			mat.albedo_color.a = 0.55 * fade
+			mat.emission_energy_multiplier = 1.6 * fade
+		var tag: Label3D = b.get("tag")
+		if is_instance_valid(tag):
+			tag.modulate.a = fade
 		b.life = life
 		kept.append(b)
 	_bursts = kept

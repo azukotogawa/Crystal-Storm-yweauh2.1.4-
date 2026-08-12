@@ -3,6 +3,11 @@ extends RefCounted
 ## Versioned save schema: validate, migrate, integrity hash.
 ## schema_version 1 = legacy flat terrain_edits/features/channels
 ## schema_version 2 = world_state authority block + revisions + integrity
+##
+## Terrain overlay contract (macro/micro):
+## - Persist only WorldState height_delta / build_tile (and features/channels).
+## - Micro bricks are runtime-derived from overlays on generate/rebuild — never saved.
+## - v1→v2 migration lifts flat terrain_edits into world_state; load rebuild re-derives micro.
 
 const FORMAT_ID := "crystalstorm_save"
 const CURRENT_VERSION := 2

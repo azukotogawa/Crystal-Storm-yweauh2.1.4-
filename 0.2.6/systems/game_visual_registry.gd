@@ -12,6 +12,15 @@ const SURFACE_LIFT: float = 0.12
 ## World units per texture pixel (= voxel_scale * factor in 0.025–0.04 band).
 const SPRITE_PIXEL_SCALE: float = 0.026
 
+## On-disk authored structure meshes (visual id → Mesh resource). Only wood_wall is filled for now.
+const AUTHORED_BUILDING_MESH_PATHS: Dictionary = {
+	"wood_wall": "res://assets/structures/wood_wall/wood_wall.obj",
+}
+## Optional albedo overrides (nearest-filter wood texture).
+const AUTHORED_BUILDING_ALBEDO_PATHS: Dictionary = {
+	"wood_wall": "res://assets/structures/wood_wall/wood_wall_albedo.png",
+}
+
 signal visuals_ready
 signal post_bootstrap_refreshed
 
@@ -31,6 +40,10 @@ var _visuals_committed: bool = false
 var _post_bootstrap_done: bool = false
 ## Procedural textures are generated once and reused for the session.
 var _bundle_ready: bool = false
+## Session cache of loaded authored building meshes (id → Mesh).
+var _authored_building_meshes: Dictionary = {}
+## Session cache of authored albedo textures (id → Texture2D).
+var _authored_building_albedos: Dictionary = {}
 ## Hitch counters (measurement / verify).
 var _bundle_gen_count: int = 0
 var _refresh_all_count: int = 0
@@ -388,32 +401,279 @@ func apply_to_sprite3d(sprite: Sprite3D, tex: Texture2D, tint: Color = Color.WHI
 	configure_sprite3d(sprite, tex, tint, pixel_size)
 
 
+## True when visual id has an on-disk mesh under AUTHORED_BUILDING_MESH_PATHS.
+func has_authored_building_mesh(building_id: String) -> bool:
+	return AUTHORED_BUILDING_MESH_PATHS.has(str(building_id))
+
+
+## Resource path for authored mesh (empty if none).
+func authored_building_mesh_path(building_id: String) -> String:
+	return str(AUTHORED_BUILDING_MESH_PATHS.get(str(building_id), ""))
+
+
+## Load (and cache) authored Mesh for a building visual id. Returns null if missing.
+func get_authored_building_mesh(building_id: String) -> Mesh:
+	var id := str(building_id)
+	if _authored_building_meshes.has(id):
+		return _authored_building_meshes[id] as Mesh
+	var path := authored_building_mesh_path(id)
+	if path.is_empty() or not ResourceLoader.exists(path):
+		return null
+	var res: Resource = load(path)
+	var mesh: Mesh = _extract_mesh_from_resource(res)
+	if mesh == null:
+		return null
+	# Stamp identity so verifies can prove the bind path without re-loading.
+	if mesh is Resource:
+		(mesh as Resource).set_meta("authored_resource_path", path)
+		(mesh as Resource).set_meta("building_visual_id", id)
+	_authored_building_meshes[id] = mesh
+	return mesh
+
+
+## Authored albedo for a building id (falls back to null → caller uses procedural).
+func get_authored_building_albedo(building_id: String) -> Texture2D:
+	var id := str(building_id)
+	if _authored_building_albedos.has(id):
+		return _authored_building_albedos[id] as Texture2D
+	var path := str(AUTHORED_BUILDING_ALBEDO_PATHS.get(id, ""))
+	if path.is_empty() or not ResourceLoader.exists(path):
+		return null
+	var tex: Texture2D = load(path) as Texture2D
+	if tex != null:
+		_authored_building_albedos[id] = tex
+	return tex
+
+
+func _extract_mesh_from_resource(res: Resource) -> Mesh:
+	if res is Mesh:
+		return res as Mesh
+	if res is PackedScene:
+		var inst: Node = (res as PackedScene).instantiate()
+		var mesh := _find_mesh_in_node(inst)
+		if inst:
+			inst.queue_free()
+		return mesh
+	return null
+
+
+func _find_mesh_in_node(node: Node) -> Mesh:
+	if node is MeshInstance3D:
+		var mi := node as MeshInstance3D
+		if mi.mesh != null:
+			return mi.mesh
+	for child in node.get_children():
+		var found := _find_mesh_in_node(child)
+		if found != null:
+			return found
+	return null
+
+
+## Bind structure presentation mesh. Prefers on-disk authored mesh for ids that have one
+## (currently wood_wall). Other ids use multi-box temporary silhouettes.
+## Textures: authored albedo when present, else procedural `tex`.
 func configure_building_mesh(
 	mesh_inst: MeshInstance3D,
 	tex: Texture2D,
 	size: Vector3,
-	tint: Color = Color.WHITE
+	tint: Color = Color.WHITE,
+	building_id: String = ""
 ) -> void:
 	if mesh_inst == null:
 		return
-	var box := BoxMesh.new()
-	box.size = size
-	mesh_inst.mesh = box
-	mesh_inst.position.y = size.y * 0.5
+	var id := building_id
+	if id.is_empty() and mesh_inst.has_meta("building_visual_id"):
+		id = str(mesh_inst.get_meta("building_visual_id"))
+	mesh_inst.position = Vector3.ZERO
 	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if tex == null:
+	mesh_inst.set_meta("building_visual_id", id)
+
+	var authored: Mesh = get_authored_building_mesh(id)
+	var used_authored := authored != null
+	if used_authored:
+		mesh_inst.mesh = authored
+		mesh_inst.set_meta("uses_authored_mesh", true)
+		mesh_inst.set_meta("authored_resource_path", authored_building_mesh_path(id))
+		# Authored plank wall has real construction silhouette (not multi-box part count).
+		mesh_inst.set_meta("structure_part_count", -1)
+	else:
+		var parts: Array = structure_mesh_parts(id, size)
+		mesh_inst.mesh = build_structure_array_mesh(parts)
+		mesh_inst.set_meta("uses_authored_mesh", false)
+		mesh_inst.set_meta("authored_resource_path", "")
+		mesh_inst.set_meta("structure_part_count", parts.size())
+
+	var albedo: Texture2D = get_authored_building_albedo(id)
+	if albedo == null:
+		albedo = tex
+	if albedo == null and mesh_inst.mesh == null:
 		mesh_inst.material_override = null
 		mesh_inst.visible = false
 		return
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	mat.albedo_texture = tex
-	mat.albedo_color = tint
-	mat.roughness = 0.9
-	mat.metallic = 0.0
+	mat.albedo_texture = albedo
+	mat.albedo_color = structure_material_tint(id, tint)
+	mat.roughness = structure_roughness(id)
+	mat.metallic = structure_metallic(id)
+	if id == "gate" or id == "town_hall":
+		mat.emission_enabled = true
+		mat.emission = mat.albedo_color * 0.35
+		mat.emission_energy_multiplier = 0.45 if id == "gate" else 0.55
+	# Authored wood: keep material path explicit for verifies.
+	if used_authored:
+		mat.set_meta("authored_albedo_path", str(AUTHORED_BUILDING_ALBEDO_PATHS.get(id, "")))
 	mesh_inst.material_override = mat
 	mesh_inst.visible = true
+
+
+## Public silhouette parts for verifies (center + size boxes in local ground space).
+func structure_mesh_parts(building_id: String, fallback_size: Vector3 = Vector3(1, 1.5, 1)) -> Array:
+	match building_id:
+		"gate":
+			# Open passage: two posts + lintel (clear middle).
+			return [
+				{"center": Vector3(-0.42, 1.0, 0.0), "size": Vector3(0.26, 2.05, 0.42)},
+				{"center": Vector3(0.42, 1.0, 0.0), "size": Vector3(0.26, 2.05, 0.42)},
+				{"center": Vector3(0.0, 1.95, 0.0), "size": Vector3(1.12, 0.32, 0.48)},
+			]
+		"bridge":
+			# Flat crossing deck + side rails (low profile).
+			return [
+				{"center": Vector3(0.0, 0.22, 0.0), "size": Vector3(1.35, 0.28, 1.35)},
+				{"center": Vector3(-0.58, 0.48, 0.0), "size": Vector3(0.14, 0.42, 1.2)},
+				{"center": Vector3(0.58, 0.48, 0.0), "size": Vector3(0.14, 0.42, 1.2)},
+			]
+		"wood_wall":
+			# Solid obstacle face (slightly thinner timber look).
+			return [
+				{"center": Vector3(0.0, 0.85, 0.0), "size": Vector3(0.92, 1.55, 0.92)},
+				{"center": Vector3(0.0, 1.68, 0.0), "size": Vector3(1.0, 0.18, 1.0)},
+			]
+		"stone_wall":
+			# Heavier stone block + cap.
+			return [
+				{"center": Vector3(0.0, 0.95, 0.0), "size": Vector3(1.05, 1.75, 1.05)},
+				{"center": Vector3(0.0, 1.88, 0.0), "size": Vector3(1.12, 0.22, 1.12)},
+			]
+		"ruin_pillar":
+			# Environmental: tall broken pillar + rubble base (not a wall slab).
+			return [
+				{"center": Vector3(0.0, 0.18, 0.0), "size": Vector3(1.05, 0.35, 1.05)},
+				{"center": Vector3(-0.08, 1.35, 0.06), "size": Vector3(0.48, 2.35, 0.48)},
+				{"center": Vector3(0.22, 2.35, -0.12), "size": Vector3(0.28, 0.45, 0.28)},
+			]
+		"town_hall":
+			# Settlement landmark: wide hall + pitched roof mass.
+			return [
+				{"center": Vector3(0.0, 1.1, 0.0), "size": Vector3(2.35, 2.15, 2.15)},
+				{"center": Vector3(0.0, 2.55, 0.0), "size": Vector3(2.55, 0.95, 2.35)},
+				{"center": Vector3(0.0, 0.35, 1.05), "size": Vector3(0.55, 0.7, 0.2)},
+			]
+		_:
+			var s := fallback_size
+			if s.length() < 0.01:
+				s = Vector3(1.0, 1.5, 1.0)
+			return [{"center": Vector3(0.0, s.y * 0.5, 0.0), "size": s}]
+
+
+func structure_material_tint(building_id: String, base: Color = Color.WHITE) -> Color:
+	match building_id:
+		"gate":
+			return base * Color(1.08, 0.95, 0.72)
+		"bridge":
+			return base * Color(0.78, 0.88, 1.05)
+		"wood_wall":
+			return base * Color(1.0, 0.92, 0.8)
+		"stone_wall":
+			return base * Color(0.92, 0.92, 0.95)
+		"ruin_pillar":
+			return base * Color(0.85, 0.82, 0.78)
+		"town_hall":
+			return base * Color(1.05, 0.98, 0.88)
+		_:
+			return base
+
+
+func structure_roughness(building_id: String) -> float:
+	match building_id:
+		"stone_wall", "ruin_pillar":
+			return 0.95
+		"wood_wall", "bridge", "gate":
+			return 0.82
+		"town_hall":
+			return 0.75
+		_:
+			return 0.9
+
+
+func structure_metallic(building_id: String) -> float:
+	match building_id:
+		"gate":
+			return 0.12
+		"stone_wall":
+			return 0.05
+		_:
+			return 0.0
+
+
+## Merge axis-aligned boxes into one ArrayMesh (temporary distinct silhouettes).
+func build_structure_array_mesh(parts: Array) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for part_v in parts:
+		var part: Dictionary = part_v
+		var c: Vector3 = part.get("center", Vector3.ZERO)
+		var s: Vector3 = part.get("size", Vector3.ONE)
+		_st_add_box(st, c, s)
+	st.generate_normals()
+	return st.commit()
+
+
+func _st_add_box(st: SurfaceTool, center: Vector3, size: Vector3) -> void:
+	var hx := size.x * 0.5
+	var hy := size.y * 0.5
+	var hz := size.z * 0.5
+	var p := [
+		center + Vector3(-hx, -hy, -hz),
+		center + Vector3(hx, -hy, -hz),
+		center + Vector3(hx, hy, -hz),
+		center + Vector3(-hx, hy, -hz),
+		center + Vector3(-hx, -hy, hz),
+		center + Vector3(hx, -hy, hz),
+		center + Vector3(hx, hy, hz),
+		center + Vector3(-hx, hy, hz),
+	]
+	# Face quads as two triangles each (CCW outward).
+	var faces: Array = [
+		[0, 1, 2, 3], # -Z
+		[5, 4, 7, 6], # +Z
+		[4, 0, 3, 7], # -X
+		[1, 5, 6, 2], # +X
+		[3, 2, 6, 7], # +Y
+		[4, 5, 1, 0], # -Y
+	]
+	var uvs: Array = [
+		Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)
+	]
+	for face in faces:
+		var i0: int = face[0]
+		var i1: int = face[1]
+		var i2: int = face[2]
+		var i3: int = face[3]
+		st.set_uv(uvs[0])
+		st.add_vertex(p[i0])
+		st.set_uv(uvs[1])
+		st.add_vertex(p[i1])
+		st.set_uv(uvs[2])
+		st.add_vertex(p[i2])
+		st.set_uv(uvs[0])
+		st.add_vertex(p[i0])
+		st.set_uv(uvs[2])
+		st.add_vertex(p[i2])
+		st.set_uv(uvs[3])
+		st.add_vertex(p[i3])
 
 
 func anchor_sprite_y(

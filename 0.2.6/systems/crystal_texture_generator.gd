@@ -171,7 +171,7 @@ func generate_game_visual_bundle() -> Dictionary:
 		"bush_s0", "bush_s1", "bush_s2", "tree_s0", "tree_s1", "tree_s2",
 	]:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
-	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar"]:
+	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar", &"gate", &"bridge"]:
 		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
 	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb"]:
 		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id))
@@ -678,23 +678,89 @@ func _fill_building_sprite(image: Image, palette: _Palette, seed_val: int, varia
 	var dim := image.get_width()
 	image.fill(Color(0, 0, 0, 0))
 	var id_str := str(variant_id)
+	if id_str == "gate":
+		_fill_gate_sprite(image, palette)
+		return
+	if id_str == "bridge":
+		_fill_bridge_sprite(image, palette)
+		return
 	var is_ruin := id_str.contains("ruin")
 	var is_wood := id_str.contains("wood")
+	var is_stone := id_str.contains("stone")
+	var is_hall := id_str == "town_hall"
 
 	for y in dim:
 		for x in dim:
 			var u := float(x) / float(dim)
 			var v := float(y) / float(dim)
-			if v < 0.28 or v > 0.92 or u < 0.18 or u > 0.82:
+			if v < 0.22 or v > 0.94 or u < 0.14 or u > 0.86:
 				continue
 			var c := palette.secondary.lerp(palette.primary, v)
 			if is_wood:
-				c = c.lerp(palette.accent, absf(sin(v * 22.0)) * 0.15)
+				# Vertical timber grain.
+				c = c.lerp(palette.accent, absf(sin(v * 22.0)) * 0.18)
+				if absf(u - 0.5) < 0.04:
+					c = c.lerp(palette.shadow, 0.25)
+			if is_stone:
+				# Blocky mortar joints.
+				if int(u * 6.0) % 2 == 0 and absf(sin(v * 18.0)) > 0.85:
+					c = c.lerp(palette.shadow, 0.4)
+				c = c.lerp(palette.accent, absf(sin(u * 9.0 + v * 7.0)) * 0.12)
 			if is_ruin:
-				c = c.lerp(palette.shadow, absf(sin(u * 31.0 + float(seed_val))) * 0.35)
-			if id_str == "town_hall" and v < 0.42 and absf(u - 0.5) < 0.22:
-				c = palette.accent
+				c = c.lerp(palette.shadow, absf(sin(u * 31.0 + float(seed_val))) * 0.45)
+				if v > 0.7 and absf(u - 0.5) > 0.22:
+					continue  # broken top silhouette in texture
+			if is_hall:
+				# Warm walls + brighter roof band.
+				if v < 0.40:
+					c = palette.accent.lerp(palette.primary, 0.35)
+				elif absf(u - 0.5) < 0.12 and v > 0.55 and v < 0.78:
+					c = palette.secondary.darkened(0.2)  # door
 			c.a = 0.95
+			image.set_pixel(x, y, c)
+
+
+## Temporary distinct gate: upright posts + open arch (not a solid wood wall).
+func _fill_gate_sprite(image: Image, palette: _Palette) -> void:
+	var dim := image.get_width()
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			var post_l := u >= 0.12 and u <= 0.28 and v >= 0.18 and v <= 0.92
+			var post_r := u >= 0.72 and u <= 0.88 and v >= 0.18 and v <= 0.92
+			var lintel := v >= 0.18 and v <= 0.34 and u >= 0.12 and u <= 0.88
+			var arch_gap := u > 0.32 and u < 0.68 and v > 0.36 and v < 0.90
+			if arch_gap and not lintel:
+				continue
+			if not (post_l or post_r or lintel):
+				continue
+			var c := palette.primary.lerp(palette.accent, 1.0 - v)
+			if lintel:
+				c = palette.accent
+			c.a = 1.0
+			image.set_pixel(x, y, c)
+
+
+## Temporary distinct bridge: horizontal deck + side rails (not a vertical wall).
+func _fill_bridge_sprite(image: Image, palette: _Palette) -> void:
+	var dim := image.get_width()
+	for y in dim:
+		for x in dim:
+			var u := float(x) / float(dim)
+			var v := float(y) / float(dim)
+			var deck := v >= 0.48 and v <= 0.62 and u >= 0.08 and u <= 0.92
+			var rail_l := u >= 0.08 and u <= 0.16 and v >= 0.32 and v <= 0.62
+			var rail_r := u >= 0.84 and u <= 0.92 and v >= 0.32 and v <= 0.62
+			var plank := deck and int(u * 14.0) % 2 == 0
+			if not (deck or rail_l or rail_r):
+				continue
+			var c := palette.primary
+			if plank:
+				c = palette.secondary
+			if rail_l or rail_r:
+				c = palette.accent
+			c.a = 1.0
 			image.set_pixel(x, y, c)
 
 
@@ -808,6 +874,16 @@ func _building_palette(variant_id: StringName) -> _Palette:
 			p.primary = Color(0.55, 0.38, 0.22)
 			p.secondary = Color(0.38, 0.26, 0.15)
 			p.accent = Color(0.72, 0.52, 0.32)
+		"gate":
+			# Amber posts — clearly not wood_wall brown.
+			p.primary = Color(0.78, 0.62, 0.22)
+			p.secondary = Color(0.48, 0.36, 0.12)
+			p.accent = Color(0.98, 0.88, 0.42)
+		"bridge":
+			# Cool blue-slate deck — clearly not wood_wall or gate.
+			p.primary = Color(0.32, 0.48, 0.62)
+			p.secondary = Color(0.22, 0.34, 0.46)
+			p.accent = Color(0.55, 0.72, 0.88)
 		"town_hall":
 			p.primary = Color(0.62, 0.58, 0.52)
 			p.secondary = Color(0.45, 0.4, 0.36)

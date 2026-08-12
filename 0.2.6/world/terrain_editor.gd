@@ -17,12 +17,19 @@ const _ChunkData = preload("res://chunks/chunk_data.gd")
 
 const REBUILD_EDGE_BAND := 2
 
+signal structure_placed(wx: int, wz: int, build_id: StringName, world_pos: Vector3)
+signal terrain_edited(wx: int, wz: int, kind: StringName)
+
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 
 var _channel_tick_accum: float = 0.0
 var _growth_manager: Node
+## Last dig/build/plant/channel failure for UI toast (empty on success).
+var last_fail_reason: String = ""
+## Last successful build id (for UI / feedback).
+var last_build_id: StringName = &""
 
 
 func _ready() -> void:
@@ -72,13 +79,16 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("terrain_editor")
-	_channel_tick_accum += delta
-	if _channel_tick_accum >= 0.25:
-		_channel_tick_accum = 0.0
-		var t0 := Time.get_ticks_usec()
-		_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
-		if profiler and profiler.has_method("record_func"):
-			profiler.record_func("ChannelRegistry::tick_equilibrium", Time.get_ticks_usec() - t0)
+	# VoxelFluidService owns gravity water when present; equilibrium is fallback only.
+	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
+	if fluid_svc == null:
+		_channel_tick_accum += delta
+		if _channel_tick_accum >= 0.25:
+			_channel_tick_accum = 0.0
+			var t0 := Time.get_ticks_usec()
+			_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
+			if profiler and profiler.has_method("record_func"):
+				profiler.record_func("ChannelRegistry::tick_equilibrium", Time.get_ticks_usec() - t0)
 	if profiler and profiler.has_method("end"):
 		profiler.end("terrain_editor")
 
@@ -87,12 +97,14 @@ func get_dig_delay(world_pos: Vector3) -> float:
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
 	var dug_depth := maxf(0.0, -_TerrainEdits.get_height_delta(wx, wz))
-	var base_delay := 0.1 + dug_depth * 0.18 + dug_depth * dug_depth * 0.35
+	# Sustained rapid dig: ~12–16/s shallow, still responsive deep (terrain as strategy tool).
+	var base_delay := 0.055 + dug_depth * 0.016 + dug_depth * dug_depth * 0.008
 	var dig_speed := 1.0
-	var player := get_tree().get_first_node_in_group("player")
-	if player and player.has_method("get_stat"):
-		dig_speed = maxf(player.get_stat(_StatIds.DIG_SPEED), 0.1)
-	return base_delay / dig_speed
+	if is_inside_tree():
+		var player := get_tree().get_first_node_in_group("player")
+		if player and player.has_method("get_stat"):
+			dig_speed = maxf(player.get_stat(_StatIds.DIG_SPEED), 0.1)
+	return minf(base_delay / dig_speed, 0.14)
 
 
 func get_channel_delay(world_pos: Vector3) -> float:
@@ -101,6 +113,11 @@ func get_channel_delay(world_pos: Vector3) -> float:
 	if player and player.has_method("get_stat"):
 		channel_speed = maxf(player.get_stat(_StatIds.CHANNEL_SPEED), 0.1)
 	return get_dig_delay(world_pos) / channel_speed
+
+
+## Walls / gates / bridges place instantly — hold-repeat stays snappy, never weapon-slow.
+func get_build_delay(_world_pos: Vector3 = Vector3.ZERO) -> float:
+	return 0.03
 
 
 func get_plant_delay() -> float:
@@ -112,17 +129,22 @@ func get_plant_delay() -> float:
 
 
 func try_dig(world_pos: Vector3) -> bool:
+	last_fail_reason = ""
 	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
 		return false
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
 	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
 		return false
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
 	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
 	if edited_h <= min_h:
+		last_fail_reason = "Can't dig any deeper"
 		return false
 	if not _TerrainEdits.dig(wx, wz, 1):
+		last_fail_reason = "Can't dig here"
 		return false
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("inc_frame"):
@@ -133,6 +155,9 @@ func try_dig(world_pos: Vector3) -> bool:
 		inv = player.inventory
 	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
+	# Immediate water response so trenches redirect/fill without waiting a tick.
+	_notify_water_reflow(wx, wz, true)
+	terrain_edited.emit(wx, wz, &"dig")
 	return true
 
 
@@ -169,15 +194,41 @@ func try_build_wall(world_pos: Vector3, inventory, prefer_stone: bool = true) ->
 	return try_build(world_pos, inventory, build_id)
 
 
+func try_build_gate(world_pos: Vector3, inventory) -> bool:
+	return try_build(world_pos, inventory, &"gate")
+
+
+func try_build_bridge(world_pos: Vector3, inventory) -> bool:
+	return try_build(world_pos, inventory, &"bridge")
+
+
 func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone_wall") -> bool:
-	if world == null or chunk_manager == null or inventory == null:
+	last_fail_reason = ""
+	last_build_id = &""
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
 		return false
+	if inventory == null:
+		last_fail_reason = "No inventory"
+		return false
+	_BuildingRegistry.ensure_builtins()
 	var def = _BuildingRegistry.get_def(buildable_id)
 	if def == null:
 		return try_build_wall(world_pos, inventory, buildable_id == &"stone_wall")
 
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
+		return false
+
+	# Gates need open ground (no stacked wall) so the player can walk through.
+	if def.is_passage:
+		var layers: int = int(round(_TerrainEdits.get_height_delta(wx, wz) / maxf(_WorldSettings.get_active().layer_height(), 0.001)))
+		if layers > 0 and _TerrainEdits.get_build_tile(wx, wz) >= 0:
+			last_fail_reason = "Clear wall before placing a gate"
+			return false
+
 	var mat_count := int(def.material_count)
 	var build_cost_mult := 1.0
 	var flow_block := 0.85
@@ -187,23 +238,46 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 		flow_block = clampf(player.get_stat(_StatIds.BUILD_FLOW_BLOCK), 0.0, 1.0)
 	mat_count = maxi(1, int(ceil(float(mat_count) * build_cost_mult)))
 
+	var paid_with: String = str(def.material_id)
+	var paid_count: int = mat_count
 	if not inventory.consume_item(def.material_id, mat_count):
-		if def.material_id == "stone" and inventory.consume_item("wood", def.wood_fallback_count):
-			pass
+		if def.material_id == "stone" and def.wood_fallback_count > 0 \
+				and inventory.consume_item("wood", def.wood_fallback_count):
+			paid_with = "wood"
+			paid_count = int(def.wood_fallback_count)
 		else:
+			last_fail_reason = "Need %d %s" % [mat_count, def.material_id]
 			return false
 
-	if not _TerrainEdits.build_wall(wx, wz, def.tile_id):
-		inventory.add_item(def.material_id, mat_count)
-		return false
+	if def.raises_terrain:
+		if not _TerrainEdits.build_wall(wx, wz, def.tile_id):
+			inventory.add_item(paid_with, paid_count)
+			last_fail_reason = "Stack full" if not def.is_bridge else "Bridge stack full"
+			return false
+	else:
+		# Passage: mark build tile for crystal/query without raising surface.
+		if not _TerrainEdits.set_build_tile_only(wx, wz, def.tile_id):
+			inventory.add_item(paid_with, paid_count)
+			last_fail_reason = "Can't place gate here"
+			return false
 
 	var resist := clampf(def.flow_resistance * flow_block, 0.02, 0.98)
 	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
 		"build_id": str(buildable_id),
 		"flow_resistance": resist,
 		"player_built": true,
+		"is_passage": bool(def.is_passage),
+		"is_bridge": bool(def.is_bridge),
+		"raises_terrain": bool(def.raises_terrain),
 	})
+	if def.is_passage or def.is_bridge:
+		_FeatureRegistry.set_tile_override(wx, wz, def.tile_id)
 	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
+	last_build_id = buildable_id
+	var place_pos := Vector3(float(wx) + 0.5, world.get_surface_height(float(wx), float(wz)), float(wz) + 0.5)
+	structure_placed.emit(wx, wz, buildable_id, place_pos)
+	terrain_edited.emit(wx, wz, buildable_id)
 	return true
 
 
@@ -283,6 +357,7 @@ func _channel_dig(wx: int, wz: int, inventory) -> bool:
 		"water_level": water_level,
 	})
 	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
 	return true
 
 
@@ -298,6 +373,7 @@ func _channel_raise(wx: int, wz: int, inventory) -> bool:
 		new_level = _ChannelRegistry.get_water_level(wx, wz)
 	_update_channel_metadata(wx, wz, new_level)
 	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
 	return true
 
 
@@ -315,6 +391,7 @@ func _channel_lower(wx: int, wz: int, inventory) -> bool:
 	else:
 		_update_channel_metadata(wx, wz, new_level)
 	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
 	return true
 
 
@@ -328,6 +405,7 @@ func _channel_redirect(wx: int, wz: int, face_dir: Vector3) -> bool:
 	_ChannelRegistry.set_flow_dir(wx, wz, flow_dir)
 	_update_channel_metadata(wx, wz, _ChannelRegistry.get_water_level(wx, wz))
 	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
 	return true
 
 
@@ -353,7 +431,11 @@ func _can_plant_at(wx: int, wz: int) -> bool:
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	if not feat.is_empty():
 		var kind: int = int(feat.get("kind", _WorldFeatureTypes.FeatureKind.NONE))
-		if kind in [_WorldFeatureTypes.FeatureKind.TOWN, _WorldFeatureTypes.FeatureKind.RUIN]:
+		if kind in [
+			_WorldFeatureTypes.FeatureKind.TOWN,
+			_WorldFeatureTypes.FeatureKind.TOWN_BUILDING,
+			_WorldFeatureTypes.FeatureKind.RUIN,
+		]:
 			return false
 	return true
 
@@ -394,3 +476,14 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 			chunk_manager.flush_rebuild_pending()
 	elif chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
+
+
+## Dig/channel/build reshape water — mark fluid dirty; channels force immediate steps.
+func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
+	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
+	if fluid_svc == null:
+		return
+	if immediate and fluid_svc.has_method("recompute_region_now"):
+		fluid_svc.recompute_region_now(wx, wz, 2, 8)
+	elif fluid_svc.has_method("mark_region_dirty"):
+		fluid_svc.mark_region_dirty(wx, wz, 2)

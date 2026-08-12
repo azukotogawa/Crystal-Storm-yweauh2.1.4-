@@ -90,6 +90,9 @@ var _last_tracked_player_chunk: Vector2i = Vector2i(999999, 999999)
 ## Soft-start after gates clear so the first expansion ticks cannot spike one frame.
 const _EXPANSION_SOFT_START_TICKS: int = 8
 var _expansion_soft_ticks_left: int = _EXPANSION_SOFT_START_TICKS
+## Sparse front-edge pulse toward the player (readability; does not alter fluid state).
+const _FRONTIER_PULSE_INTERVAL: float = 2.4
+var _frontier_pulse_accum: float = 0.0
 ## Hitch measurement (session counters).
 var _last_process_us: int = 0
 var _last_tick_us: int = 0
@@ -345,6 +348,7 @@ func _bootstrap_when_ready() -> void:
 	evolution = _CrystalEvolution.new()
 	configure_evolution()
 	_init_sim()
+	_bind_terrain_edit_invalidation()
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] _init_sim done t_ms=%d" % Time.get_ticks_msec())
 	_initialize_spawns()
@@ -468,6 +472,28 @@ func _init_sim() -> void:
 	_presentation.mesh_rebuilds_when_large = _perf_mesh_rebuilds_when_large
 
 
+## Dig/build must refresh crystal heights immediately (no stale trench routing).
+func _bind_terrain_edit_invalidation() -> void:
+	var editor = get_tree().get_first_node_in_group("terrain_editor")
+	if editor and editor.has_signal("terrain_edited"):
+		if not editor.terrain_edited.is_connected(_on_player_terrain_edited):
+			editor.terrain_edited.connect(_on_player_terrain_edited)
+	var ws = _WorldState.get_active() if _WorldState else null
+	if ws and ws.has_signal("changed") and not ws.changed.is_connected(_on_world_state_changed_for_terrain):
+		ws.changed.connect(_on_world_state_changed_for_terrain)
+
+
+func _on_player_terrain_edited(_wx: int, _wz: int, _kind: StringName) -> void:
+	if _terrain_query and _terrain_query.has_method("invalidate_terrain_caches"):
+		_terrain_query.invalidate_terrain_caches()
+
+
+func _on_world_state_changed_for_terrain(domain: int, _revision: int) -> void:
+	if domain & _WorldState.DOMAIN_TERRAIN:
+		if _terrain_query and _terrain_query.has_method("invalidate_terrain_caches"):
+			_terrain_query.invalidate_terrain_caches()
+
+
 func _make_chunk_layer(coord: Vector2i) -> CrystalChunkLayer:
 	var layer := CrystalChunkLayer.new()
 	layer.name = "CrystalChunk_%d_%d" % [coord.x, coord.y]
@@ -518,12 +544,13 @@ func _setup_materials() -> void:
 	_crystal_material = StandardMaterial3D.new()
 	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_crystal_material.albedo_color = Color(0.58, 0.22, 0.95, 0.78)
+	# Brighter mass so the purple front is readable in the first minute (presentation only).
+	_crystal_material.albedo_color = Color(0.72, 0.28, 1.0, 0.88)
 	_crystal_material.emission_enabled = true
-	_crystal_material.emission = Color(0.38, 0.12, 0.78)
-	_crystal_material.emission_energy_multiplier = 1.35
-	_crystal_material.roughness = 0.18
-	_crystal_material.metallic = 0.25
+	_crystal_material.emission = Color(0.55, 0.18, 0.95)
+	_crystal_material.emission_energy_multiplier = 2.15
+	_crystal_material.roughness = 0.14
+	_crystal_material.metallic = 0.28
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -1003,6 +1030,9 @@ func _process(delta: float) -> void:
 			profiler.record_func("CrystalPresentation::refresh_lod", Time.get_ticks_usec() - lod_t0)
 	if run_expansion or (_presentation and _presentation.dirty_chunk_count() > 0):
 		_flush_dirty_chunks()
+	# Sparse readability pulse on the nearest open front (presentation only; no sim change).
+	if run_expansion and _sim != null and not _sim.depth.is_empty():
+		_tick_frontier_readability_pulse(delta)
 
 	# Drain deferred sim events under FrameBudgetScheduler (cannot monopolize frame).
 	var drain_t0 := Time.get_ticks_usec() if _tick_trace_active else 0
@@ -1556,6 +1586,9 @@ func _bind_chunk_stream() -> void:
 
 
 func _is_cell_sim_active(pos: Vector2i) -> bool:
+	# Crystal never expands past the intentional playable map edge.
+	if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
+		return false
 	if not _sim_loaded_chunks_only or chunk_manager == null:
 		return true
 	if chunk_manager.has_method("is_world_cell_loaded"):
@@ -1900,6 +1933,64 @@ func get_nearest_crystal_distance(from_pos: Vector3) -> float:
 			if spawn.active:
 				best = minf(best, Vector2(from_pos.x, from_pos.z).distance_to(Vector2(spawn.world_pos)))
 	return best
+
+
+## Presentation: pulse nearest open-edge crystal cell so the front is glanceable.
+func _tick_frontier_readability_pulse(delta: float) -> void:
+	_frontier_pulse_accum += delta
+	if _frontier_pulse_accum < _FRONTIER_PULSE_INTERVAL:
+		return
+	_frontier_pulse_accum = 0.0
+	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if player == null or not player.has_method("get_voxel_position"):
+		return
+	var pv: Vector3 = player.get_voxel_position()
+	var front: Vector2i = find_nearest_frontier_cell(pv)
+	if front.x == 999999:
+		return
+	var vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	if vfx == null or not vfx.has_method("show_place_flash"):
+		return
+	var ty: float = _terrain_at(front)
+	var depth: float = get_depth_at(front.x, front.y)
+	var pos := Vector3(float(front.x) + 0.5, ty + maxf(depth, 0.4), float(front.y) + 0.5)
+	vfx.show_place_flash(pos, &"crystal_front")
+
+
+## Nearest crystal cell with an empty cardinal neighbor (the active front).
+func find_nearest_frontier_cell(from_pos: Vector3) -> Vector2i:
+	if _sim == null or _sim.depth.is_empty():
+		return Vector2i(999999, 999999)
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	var px := int(floor(from_pos.x))
+	var pz := int(floor(from_pos.z))
+	var best := Vector2i(999999, 999999)
+	var best_d := INF
+	# Scan local window first (readable front near the player).
+	for dx in range(-40, 41):
+		for dz in range(-40, 41):
+			var key := Vector2i(px + dx, pz + dz)
+			if float(_sim.depth.get(key, 0.0)) < min_d:
+				continue
+			if not _is_frontier_cell(key, min_d):
+				continue
+			var dist := Vector2(from_pos.x, from_pos.z).distance_to(
+				Vector2(float(key.x) + 0.5, float(key.y) + 0.5)
+			)
+			if dist < best_d:
+				best_d = dist
+				best = key
+	return best
+
+
+func _is_frontier_cell(pos: Vector2i, min_d: float) -> bool:
+	if _sim == null:
+		return false
+	for dir in CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = pos + dir
+		if float(_sim.depth.get(n, 0.0)) < min_d:
+			return true
+	return false
 
 
 func _tick_absorption(delta: float) -> void:

@@ -48,6 +48,15 @@ func begin_sim_tick(tick_id: int) -> void:
 	_channel_mult_cache.clear()
 
 
+## Call after player dig/build so crystal flow uses live height immediately.
+func invalidate_terrain_caches() -> void:
+	_cache_tick = -1
+	_height_cache.clear()
+	_tile_cache.clear()
+	_flow_cache.clear()
+	_channel_mult_cache.clear()
+
+
 func set_query_measure_enabled(enabled: bool) -> void:
 	_measure_enabled = enabled
 	if enabled and OS.get_environment("CRYSTALSTORM_TERRAIN_QUERY_MEASURE") != "1":
@@ -205,13 +214,35 @@ func get_channel_water_level(pos: Vector2i) -> float:
 	return _ChannelRegistry.get_water_level(pos.x, pos.y)
 
 
-func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
+## Effective standing water for crystal interaction (channels + natural water tiles).
+func get_standing_water_level(pos: Vector2i) -> float:
 	if _ChannelRegistry.is_channel(pos.x, pos.y):
-		var level: float = _ChannelRegistry.get_water_level(pos.x, pos.y)
-		var level_scale := lerpf(0.65, sim_config.channel_water_level_flow_scale, level)
-		return sim_config.channel_base_flow_factor * level_scale
+		return _ChannelRegistry.get_water_level(pos.x, pos.y)
+	if is_water_tile(get_tile(pos)):
+		return 1.0
+	return 0.0
+
+
+func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
+	# Water resists crystal: wetter cells conduct less (crystal cannot freely cross water).
+	var water_level: float = get_standing_water_level(pos)
+	if water_level >= 0.05:
+		if _ChannelRegistry.is_channel(pos.x, pos.y):
+			var wet: float = clampf(water_level, 0.05, 1.0)
+			# channel_base_flow_factor ~0.1; higher water → closer to minimum crawl.
+			return clampf(
+				sim_config.channel_base_flow_factor * lerpf(1.25, 0.35, wet),
+				0.02,
+				0.35
+			)
+		# Natural river / ocean tiles.
+		return clampf(sim_config.river_flow_factor, 0.02, 0.15)
 
 	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
+	# Player builds (wall / gate / bridge) — gates baffle crystal without stacking height.
+	if feat.get("player_built", false) and feat.has("flow_resistance"):
+		return 1.0 - clampf(float(feat.flow_resistance), 0.02, 0.98)
+
 	if feat.has("plant_id"):
 		var def = _PlantableRegistry.get_def(StringName(str(feat.plant_id))) as _PlantableDef
 		if def:
@@ -220,8 +251,6 @@ func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
 
 	var build_tile: int = _TerrainEdits.get_build_tile(pos.x, pos.y)
 	if build_tile >= 0:
-		if feat.has("flow_resistance"):
-			return 1.0 - clampf(float(feat.flow_resistance), 0.02, 0.98)
 		var build_def = _BuildingRegistry.get_def_for_tile(build_tile)
 		if build_def:
 			return 1.0 - clampf(build_def.flow_resistance, 0.02, 0.98)

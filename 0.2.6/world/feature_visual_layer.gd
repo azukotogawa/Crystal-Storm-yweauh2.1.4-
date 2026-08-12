@@ -46,6 +46,74 @@ func _bind() -> void:
 	if growth and growth.has_signal("growth_stage_changed"):
 		if not growth.growth_stage_changed.is_connected(_on_growth_stage_changed):
 			growth.growth_stage_changed.connect(_on_growth_stage_changed)
+	_bind_terrain_placement_refresh()
+
+
+## Player place must show gate/bridge props immediately (not wait for chunk_ready).
+func _bind_terrain_placement_refresh() -> void:
+	var editor = get_tree().get_first_node_in_group("terrain_editor")
+	if editor == null:
+		return
+	if editor.has_signal("structure_placed") \
+			and not editor.structure_placed.is_connected(_on_structure_placed_visual):
+		editor.structure_placed.connect(_on_structure_placed_visual)
+	if editor.has_signal("terrain_edited") \
+			and not editor.terrain_edited.is_connected(_on_terrain_edited_visual):
+		editor.terrain_edited.connect(_on_terrain_edited_visual)
+
+
+func _on_structure_placed_visual(wx: int, wz: int, _build_id: StringName, _world_pos: Vector3) -> void:
+	refresh_cell(wx, wz)
+
+
+func _on_terrain_edited_visual(wx: int, wz: int, kind: StringName) -> void:
+	# Dig/build near structures — refresh cell when a player-built feature is present.
+	var k := str(kind)
+	if k in ["gate", "bridge", "stone_wall", "wood_wall", "dig"]:
+		refresh_cell(wx, wz)
+
+
+## Immediate single-cell feature visual rebuild (placement / edit).
+func refresh_cell(wx: int, wz: int) -> void:
+	_bind_layer_roots()
+	_resolve_registry()
+	if _registry == null or not _registry.feature_billboards_enabled:
+		return
+	var key := Vector2i(wx, wz)
+	_remove_cell_anchor(key)
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if feat.is_empty():
+		return
+	var anchor := _make_feature_anchor(wx, wz, feat)
+	if anchor == null:
+		return
+	var parent := _parent_for_feature(feat)
+	parent.add_child(anchor)
+	_nodes_by_cell[key] = anchor
+	# Keep chunk index in sync if this cell's chunk is tracked.
+	var coord := Vector2i(
+		floori(float(wx) / float(ChunkData.SIZE)),
+		floori(float(wz) / float(ChunkData.SIZE))
+	)
+	if not _nodes_by_chunk.has(coord):
+		_nodes_by_chunk[coord] = []
+	var bucket: Array = _nodes_by_chunk[coord]
+	if anchor not in bucket:
+		bucket.append(anchor)
+
+
+func _remove_cell_anchor(key: Vector2i) -> void:
+	var old: Node3D = _nodes_by_cell.get(key)
+	if old != null and is_instance_valid(old):
+		var coord := Vector2i(
+			floori(float(key.x) / float(ChunkData.SIZE)),
+			floori(float(key.y) / float(ChunkData.SIZE))
+		)
+		if _nodes_by_chunk.has(coord):
+			var bucket: Array = _nodes_by_chunk[coord]
+			bucket.erase(old)
+		old.queue_free()
+	_nodes_by_cell.erase(key)
 
 
 func on_chunk_manager_ready(cm: ChunkManager) -> void:
@@ -279,18 +347,75 @@ func _make_feature_anchor(wx: int, wz: int, feat: Dictionary) -> Node3D:
 	var kind: int = int(feat.get("kind", _WorldFeatureTypes.FeatureKind.NONE))
 	match kind:
 		_WorldFeatureTypes.FeatureKind.RUIN:
-			return _make_building_anchor(wx, wz, col_x, col_z, "ruin_pillar", Vector3(1.2, 2.2, 1.2), 1.1)
+			# One landmark prop at the ruin center (not a field of wall-like pillars).
+			if not _is_ruin_visual_cell(wx, wz, feat):
+				return null
+			return _make_building_anchor(wx, wz, col_x, col_z, "ruin_pillar", Vector3(1.2, 2.4, 1.2), 0.0)
 		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING:
-			return _make_building_anchor(wx, wz, col_x, col_z, "town_hall", Vector3(2.4, 3.0, 2.4), 1.4)
+			return _make_building_anchor(wx, wz, col_x, col_z, "town_hall", Vector3(2.4, 3.0, 2.4), 0.0)
 		_WorldFeatureTypes.FeatureKind.TOWN:
+			# Settlement disk has no per-cell prop; hall is stamped as TOWN_BUILDING at center.
 			return null
 		_:
-			var tile_override: int = _FeatureRegistry.get_tile_override(wx, wz)
-			if tile_override == VoxelTypes.STONE:
-				return _make_building_anchor(wx, wz, col_x, col_z, "stone_wall", Vector3(1.0, 1.7, 1.0), 0.85)
-			if tile_override == VoxelTypes.DIRT:
-				return _make_building_anchor(wx, wz, col_x, col_z, "wood_wall", Vector3(1.0, 1.5, 1.0), 0.85)
-			return null
+			# Player builds: prefer explicit build_id / flags — never map gate/bridge via DIRT→wood_wall.
+			var visual_id: String = _resolve_player_build_visual_id(feat, wx, wz)
+			if visual_id.is_empty():
+				return null
+			var size_off: Dictionary = _visual_size_for_build(visual_id)
+			return _make_building_anchor(
+				wx, wz, col_x, col_z,
+				visual_id,
+				size_off.size,
+				float(size_off.height_offset)
+			)
+
+
+## Ruin cells fill a radius disk for discovery gameplay; only the center gets a landmark mesh.
+func _is_ruin_visual_cell(wx: int, wz: int, feat: Dictionary) -> bool:
+	var center_v = feat.get("center", Vector2i(wx, wz))
+	var center: Vector2i
+	if center_v is Vector2i:
+		center = center_v
+	elif center_v is Array and center_v.size() >= 2:
+		center = Vector2i(int(center_v[0]), int(center_v[1]))
+	else:
+		center = Vector2i(wx, wz)
+	return wx == center.x and wz == center.y
+
+
+## Gate/bridge/wood_wall/stone_wall identity from feature metadata (gameplay DIRT tile unchanged).
+func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> String:
+	var build_id := str(feat.get("build_id", "")).strip_edges()
+	if bool(feat.get("is_passage", false)) or build_id == "gate":
+		return "gate"
+	if bool(feat.get("is_bridge", false)) or build_id == "bridge":
+		return "bridge"
+	if build_id == "wood_wall":
+		return "wood_wall"
+	if build_id == "stone_wall":
+		return "stone_wall"
+	# Legacy tile_override fallback (not used for gate/bridge after build_id fix).
+	var tile_override: int = _FeatureRegistry.get_tile_override(wx, wz)
+	if tile_override == VoxelTypes.STONE:
+		return "stone_wall"
+	if tile_override == VoxelTypes.DIRT:
+		return "wood_wall"
+	return ""
+
+
+func _visual_size_for_build(visual_id: String) -> Dictionary:
+	# height_offset 0: multi-part meshes are ground-based (y grows upward from feet).
+	match visual_id:
+		"gate":
+			return {"size": Vector3(1.15, 2.05, 0.55), "height_offset": 0.0}
+		"bridge":
+			return {"size": Vector3(1.35, 0.55, 1.35), "height_offset": 0.0}
+		"wood_wall":
+			return {"size": Vector3(1.0, 1.55, 1.0), "height_offset": 0.0}
+		"stone_wall":
+			return {"size": Vector3(1.05, 1.75, 1.05), "height_offset": 0.0}
+		_:
+			return {"size": Vector3(1.0, 1.5, 1.0), "height_offset": 0.0}
 
 
 func _make_vegetation_anchor(
@@ -336,11 +461,13 @@ func _make_building_anchor(
 		return null
 	var anchor := Node3D.new()
 	anchor.name = "Building_%s_%d_%d" % [building_id, wx, wz]
+	anchor.set_meta("building_visual_id", building_id)
 	anchor.position = _anchor_pos(col_x, col_z, height_offset)
 	var mesh_inst := MeshInstance3D.new()
 	mesh_inst.name = "Mesh"
+	mesh_inst.set_meta("building_visual_id", building_id)
 	anchor.add_child(mesh_inst)
-	_apply_building_mesh(mesh_inst, tex, size)
+	_apply_building_mesh(mesh_inst, tex, size, building_id)
 	return anchor
 
 
@@ -351,11 +478,19 @@ func _apply_plant_texture(sprite: Sprite3D, plant_id: StringName, stage: int) ->
 	_apply_sprite(sprite, tex, -1.0)
 
 
-func _apply_building_mesh(mesh_inst: MeshInstance3D, tex: Texture2D, size: Vector3) -> void:
+func _apply_building_mesh(
+	mesh_inst: MeshInstance3D,
+	tex: Texture2D,
+	size: Vector3,
+	building_id: String = ""
+) -> void:
 	_resolve_registry()
 	if mesh_inst == null or _registry == null:
 		return
-	_registry.configure_building_mesh(mesh_inst, tex, size)
+	var id := building_id
+	if id.is_empty() and mesh_inst.has_meta("building_visual_id"):
+		id = str(mesh_inst.get_meta("building_visual_id"))
+	_registry.configure_building_mesh(mesh_inst, tex, size, Color.WHITE, id)
 
 
 func _billboard_texture(id: String, stage: int = -1) -> Texture2D:

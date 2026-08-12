@@ -341,6 +341,10 @@ static func register_town(center: Vector2i, radius: int, town_name: String) -> v
 			if Vector2(dx, dz).length() > float(radius):
 				continue
 			register_feature(center.x + dx, center.y + dz, _WorldFeatureTypes.FeatureKind.TOWN, town)
+	# Landmark hall on the existing TOWN_BUILDING visual path (presentation only).
+	var hall := town.duplicate()
+	hall["town_building"] = "hall"
+	register_feature(center.x, center.y, _WorldFeatureTypes.FeatureKind.TOWN_BUILDING, hall)
 	ws.end_batch()
 
 

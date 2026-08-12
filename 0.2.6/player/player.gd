@@ -24,6 +24,11 @@ var player_material: StandardMaterial3D
 var _body_collision: CollisionShape3D
 
 @export var move_speed := 16.0
+## Horizontal acceleration / friction (units per second²) — removes binary start/stop grid feel.
+@export var move_accel := 95.0
+@export var move_friction := 85.0
+## Soft ground follow rate while walking (higher = stickier, lower = floatier).
+@export var ground_follow_rate := 24.0
 @export var max_health := 100.0
 
 signal died
@@ -32,6 +37,8 @@ var health := 100.0
 
 ## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
+## Continuous horizontal velocity in column-space XZ (smooth micro-movement).
+var _move_vel_xz: Vector2 = Vector2.ZERO
 
 var sprite_scale_modifier := Vector2.ONE
 var current_skew := 0.0
@@ -338,22 +345,19 @@ func _physics_process(delta: float) -> void:
 
 	var airborne := current_state in [State.JUMPING, State.FALLING]
 	t0 = Time.get_ticks_usec() if measure else 0
+	# Continuous accel/friction → micro-smooth starts/stops (no binary grid lurch).
+	var desired_vel := Vector2.ZERO
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
-		var move_delta := move_vec * speed * delta
+		desired_vel = move_vec * speed
+	var accel: float = move_accel if desired_vel.length_squared() > 0.0001 else move_friction
+	_move_vel_xz = _move_vel_xz.move_toward(desired_vel, accel * delta)
+	if _move_vel_xz.length_squared() < 0.0004 and desired_vel == Vector2.ZERO:
+		_move_vel_xz = Vector2.ZERO
 
-		var target_pos_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
-		if _can_move_to(target_pos_x, airborne):
-			voxel_position.x = target_pos_x.x
-			if not airborne:
-				_snap_to_ground()
-
-		var target_pos_z := voxel_position + Vector3(0.0, 0.0, move_delta.y)
-		if _can_move_to(target_pos_z, airborne):
-			voxel_position.z = target_pos_z.z
-			if not airborne:
-				_snap_to_ground()
-
+	if _move_vel_xz.length_squared() > 0.0001:
+		var move_delta := _move_vel_xz * delta
+		_try_move_delta(move_delta, airborne, delta)
 		if not airborne and current_state == State.IDLE:
 			change_state(State.RUNNING)
 	elif not airborne and current_state == State.RUNNING:
@@ -378,20 +382,22 @@ func _physics_process(delta: float) -> void:
 			velocity.y -= _gravity() * delta
 			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
 			if is_colliding_at(next_pos):
+				# Land with a firm settle (not a mid-air soft float).
 				voxel_position.y = _sample_walkable_feet(voxel_position.x, voxel_position.z)
 				velocity.y = 0.0
+				_move_vel_xz *= 0.65
 				sprite_scale_modifier = Vector2(1.6, 0.5)
 				current_skew = -0.1
 				landing_timer += delta
 				if landing_timer > 0.2:
 					landing_timer = 0.0
-					change_state(State.RUNNING if moving else State.IDLE)
+					change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
 			else:
 				voxel_position.y = next_pos.y
 
 		State.IDLE, State.RUNNING:
-			_snap_to_ground()
-			if not _is_grounded(moving):
+			_soft_follow_ground(delta)
+			if not _is_grounded(moving or _move_vel_xz.length_squared() > 0.01):
 				change_state(State.FALLING)
 				velocity.y = 0.0
 	if measure:
@@ -423,13 +429,14 @@ func _physics_process(delta: float) -> void:
 
 
 func _slope_speed_multiplier() -> float:
+	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
 	var excess: float = _floor_probe.slope_excess_at(voxel_position.x, voxel_position.z)
 	var layer: float = _ws().layer_height()
 	var radius: float = _ws().player_floor_probe_radius
 	var slope_limit: float = tan(deg_to_rad(_ws().player_slope_limit_degrees)) * radius
-	if excess <= slope_limit:
+	if excess <= slope_limit * 1.35:
 		return 1.0
-	return clampf(1.0 - (excess - slope_limit) / layer, 0.35, 1.0)
+	return clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
 
 
 func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
@@ -475,6 +482,45 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 		max_step,
 		airborne
 	)
+
+
+## Full diagonal move first, then axis slide — removes grid-axis stutter without losing wall slide.
+func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
+	var full := voxel_position + Vector3(move_delta.x, 0.0, move_delta.y)
+	if _can_move_to(full, airborne):
+		voxel_position.x = full.x
+		voxel_position.z = full.z
+		if not airborne:
+			_soft_follow_ground(delta)
+		return
+	var moved := false
+	var only_x := voxel_position + Vector3(move_delta.x, 0.0, 0.0)
+	if absf(move_delta.x) > 0.00001 and _can_move_to(only_x, airborne):
+		voxel_position.x = only_x.x
+		moved = true
+	var only_z := voxel_position + Vector3(0.0, 0.0, move_delta.y)
+	if absf(move_delta.y) > 0.00001 and _can_move_to(only_z, airborne):
+		voxel_position.z = only_z.z
+		moved = true
+	if moved and not airborne:
+		_soft_follow_ground(delta)
+	elif not moved:
+		# Fully blocked: kill residual velocity into the wall so we don't jitter.
+		if not _can_move_to(voxel_position + Vector3(move_delta.x, 0.0, 0.0), airborne):
+			_move_vel_xz.x = 0.0
+		if not _can_move_to(voxel_position + Vector3(0.0, 0.0, move_delta.y), airborne):
+			_move_vel_xz.y = 0.0
+
+
+func _soft_follow_ground(delta: float) -> void:
+	if _phys_measure:
+		_phys_call_snap += 1
+	if chunk_manager == null or chunk_manager.world == null:
+		return
+	if _floor_probe and _floor_probe.has_method("soft_follow_y"):
+		voxel_position = _floor_probe.soft_follow_y(voxel_position, delta, ground_follow_rate)
+	else:
+		voxel_position = _floor_probe.snap_position_y(voxel_position)
 
 
 func _snap_to_ground() -> void:
@@ -544,10 +590,10 @@ func _resolve_spawn_column() -> Vector2i:
 		var spawns: Array = crystal_manager.get_active_spawns()
 		if not spawns.is_empty():
 			source = spawns[0].world_pos
-	# Early-run PE: spawn on the crystal doorstep was an instant mite death.
-	# Stand dry land ~28–40 columns from origin so maze dig/build is learnable first.
+	# Start outside assault_distance (~48) so the first minutes are pure MAZE prep:
+	# dig trenches / walls while watching crystal pressure build, then walk in to ASSAULT.
 	var ring_offsets: Array[Vector2i] = []
-	for dist in [32, 28, 36, 40, 24]:
+	for dist in [56, 52, 60, 48, 64, 44]:
 		ring_offsets.append(Vector2i(dist, 0))
 		ring_offsets.append(Vector2i(-dist, 0))
 		ring_offsets.append(Vector2i(0, dist))
@@ -563,8 +609,8 @@ func _resolve_spawn_column() -> Vector2i:
 		if _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
 			continue
 		return candidate
-	# Last resort (still farther than legacy ±4).
-	return source + Vector2i(28, -8)
+	# Last resort: still outside default assault_distance.
+	return source + Vector2i(56, -12)
 
 
 func get_stat(stat_id: StringName) -> float:
