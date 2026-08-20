@@ -1,0 +1,76 @@
+[gd_scene load_steps=2 format=3 uid="uid://crystal_texture_dock"]
+
+[ext_resource type="Script" path="res://addons/crystal_texture_tools/texture_gen_dock.gd" id="1_dock"]
+
+[node name="TextureGenDock" type="VBoxContainer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dock")
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 2
+text = "Crystal Texture Generator"
+horizontal_alignment = 1
+
+[node name="ConfigPath" type="LineEdit" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Config .tres path"
+text = "res://config/default_texture_gen.tres"
+
+[node name="VariantCount" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+min_value = 1.0
+max_value = 16.0
+value = 4.0
+
+[node name="BtnGenerate" type="Button" parent="."]
+layout_mode = 2
+text = "Generate Crystal Variants"
+
+[node name="BtnExportSheet" type="Button" parent="."]
+layout_mode = 2
+text = "Export Sprite Sheet"
+
+[node name="BtnExportJson" type="Button" parent="."]
+layout_mode = 2
+text = "Export Palettes JSON"
+
+[node name="BtnImportJson" type="Button" parent="."]
+layout_mode = 2
+text = "Import Palettes JSON"
+
+[node name="HBox" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="BtnPreviewBiome" type="Button" parent="HBox"]
+layout_mode = 2
+text = "Preview Biome"
+
+[node name="BtnPreviewOre" type="Button" parent="HBox"]
+layout_mode = 2
+text = "Preview Ore"
+
+[node name="PreviewRect" type="TextureRect" parent="."]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(128, 128)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="StatusLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 3
+text = "Ready."
+
+[connection signal="pressed" from="BtnGenerate" to="." method="_on_generate_crystal_variants_pressed"]
+[connection signal="pressed" from="BtnExportSheet" to="." method="_on_export_sprite_sheet_pressed"]
+[connection signal="pressed" from="BtnExportJson" to="." method="_on_export_palettes_json_pressed"]
+[connection signal="pressed" from="BtnImportJson" to="." method="_on_import_palettes_json_pressed"]
+[connection signal="pressed" from="HBox/BtnPreviewBiome" to="." method="_on_preview_biome_pressed"]
+[connection signal="pressed" from="HBox/BtnPreviewOre" to="." method="_on_preview_ore_pressed"]

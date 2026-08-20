@@ -1,0 +1,3 @@
+newmtl stone_wall_mat
+Kd 1.00 1.00 1.00
+map_Kd stone_wall_albedo.png

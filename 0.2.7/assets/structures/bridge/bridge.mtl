@@ -1,0 +1,3 @@
+newmtl bridge_mat
+Kd 1.00 1.00 1.00
+map_Kd bridge_albedo.png

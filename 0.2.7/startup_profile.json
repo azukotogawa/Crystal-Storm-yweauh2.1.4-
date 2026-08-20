@@ -1,0 +1,324 @@
+{
+	"dominant_avg_us": 2105637.0,
+	"dominant_stage": "feature_seeding",
+	"stages": [
+		{
+			"avg_us": 111164.0,
+			"n": 1,
+			"p95_us": 111164.0,
+			"pct_total": 0.417931660857277,
+			"stage": "scene_service_registration",
+			"total_us": 111164,
+			"worst_us": 111164
+		},
+		{
+			"avg_us": 392031.0,
+			"n": 1,
+			"p95_us": 392031.0,
+			"pct_total": 1.47387793654006,
+			"stage": "load_config",
+			"total_us": 392031,
+			"worst_us": 392031
+		},
+		{
+			"avg_us": 1496645.0,
+			"n": 1,
+			"p95_us": 1496645.0,
+			"pct_total": 5.62677962797074,
+			"stage": "quality_and_perf_policy",
+			"total_us": 1496645,
+			"worst_us": 1496645
+		},
+		{
+			"avg_us": 203564.0,
+			"n": 1,
+			"p95_us": 203564.0,
+			"pct_total": 0.765318273998334,
+			"stage": "shader_material_and_textures",
+			"total_us": 203564,
+			"worst_us": 203564
+		},
+		{
+			"avg_us": 2105637.0,
+			"n": 1,
+			"p95_us": 2105637.0,
+			"pct_total": 7.91634313781921,
+			"stage": "feature_seeding",
+			"total_us": 2105637,
+			"worst_us": 2105637
+		},
+		{
+			"avg_us": 93173.0,
+			"n": 1,
+			"p95_us": 93173.0,
+			"pct_total": 0.35029278037004,
+			"stage": "fs/bootstrap_perf_ready",
+			"total_us": 93173,
+			"worst_us": 93173
+		},
+		{
+			"avg_us": 12244.0,
+			"n": 1,
+			"p95_us": 12244.0,
+			"pct_total": 0.0460324858365703,
+			"stage": "fs/bootstrap_visual_textures",
+			"total_us": 12244,
+			"worst_us": 12244
+		},
+		{
+			"avg_us": 83858.0,
+			"n": 1,
+			"p95_us": 83858.0,
+			"pct_total": 0.31527214940241,
+			"stage": "fs/world_resolve_and_policy",
+			"total_us": 83858,
+			"worst_us": 83858
+		},
+		{
+			"avg_us": 108318.0,
+			"n": 1,
+			"p95_us": 108318.0,
+			"pct_total": 0.407231852404902,
+			"stage": "fs/registry_reset",
+			"total_us": 108318,
+			"worst_us": 108318
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/biome_initialization",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 42497.0,
+			"n": 1,
+			"p95_us": 42497.0,
+			"pct_total": 0.159771524877224,
+			"stage": "fs/town_generation",
+			"total_us": 42497,
+			"worst_us": 42497
+		},
+		{
+			"avg_us": 30780.0,
+			"n": 1,
+			"p95_us": 30780.0,
+			"pct_total": 0.115720345806079,
+			"stage": "fs/town_site_search",
+			"total_us": 30780,
+			"worst_us": 30780
+		},
+		{
+			"avg_us": 2405.0,
+			"n": 1,
+			"p95_us": 2405.0,
+			"pct_total": 0.00904182688965629,
+			"stage": "fs/town_ground_stamp",
+			"total_us": 2405,
+			"worst_us": 2405
+		},
+		{
+			"avg_us": 762.0,
+			"n": 1,
+			"p95_us": 762.0,
+			"pct_total": 0.00286481167979962,
+			"stage": "fs/road_generation",
+			"total_us": 762,
+			"worst_us": 762
+		},
+		{
+			"avg_us": 747.0,
+			"n": 1,
+			"p95_us": 747.0,
+			"pct_total": 0.00280841774909491,
+			"stage": "fs/resource_field_generation",
+			"total_us": 747,
+			"worst_us": 747
+		},
+		{
+			"avg_us": 10098.0,
+			"n": 1,
+			"p95_us": 10098.0,
+			"pct_total": 0.0379643941504155,
+			"stage": "fs/await_frame_after_town",
+			"total_us": 10098,
+			"worst_us": 10098
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/vegetation_placement",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/vegetation_baked_streamed",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 9510.0,
+			"n": 1,
+			"p95_us": 9510.0,
+			"pct_total": 0.0357537520667906,
+			"stage": "fs/ruin_generation",
+			"total_us": 9510,
+			"worst_us": 9510
+		},
+		{
+			"avg_us": 10975.0,
+			"n": 1,
+			"p95_us": 10975.0,
+			"pct_total": 0.0412615592989513,
+			"stage": "fs/await_frame_after_ruin",
+			"total_us": 10975,
+			"worst_us": 10975
+		},
+		{
+			"avg_us": 28187.0,
+			"n": 1,
+			"p95_us": 28187.0,
+			"pct_total": 0.105971714984924,
+			"stage": "fs/spawn_region_generation",
+			"total_us": 28187,
+			"worst_us": 28187
+		},
+		{
+			"avg_us": 28142.0,
+			"n": 1,
+			"p95_us": 28142.0,
+			"pct_total": 0.10580253319281,
+			"stage": "fs/spawn_animal_registry",
+			"total_us": 28142,
+			"worst_us": 28142
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/cave_feature_generation",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/navigation_generation",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/crystal_initialization",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/serialization",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/spatial_index_creation",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "fs/node_creation",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 2092467.0,
+			"n": 1,
+			"p95_us": 2092467.0,
+			"pct_total": 7.86682926666047,
+			"stage": "world_and_chunk_manager_init",
+			"total_us": 2092467,
+			"worst_us": 2092467
+		},
+		{
+			"avg_us": 1095176.0,
+			"n": 1,
+			"p95_us": 1095176.0,
+			"pct_total": 4.11741863023128,
+			"stage": "load_bake_index",
+			"total_us": 1095176,
+			"worst_us": 1095176
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"p95_us": 0.0,
+			"pct_total": 0.0,
+			"stage": "load_mesh_plan_cache",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 201864.0,
+			"n": 1,
+			"p95_us": 201864.0,
+			"pct_total": 0.758926961851799,
+			"stage": "service_handoff_on_chunks",
+			"total_us": 201864,
+			"worst_us": 201864
+		},
+		{
+			"avg_us": 299473.0,
+			"n": 1,
+			"p95_us": 299473.0,
+			"pct_total": 1.12589730732891,
+			"stage": "initial_chunk_stream",
+			"total_us": 299473,
+			"worst_us": 299473
+		},
+		{
+			"avg_us": 186704.0,
+			"n": 1,
+			"p95_us": 186704.0,
+			"pct_total": 0.701931495886232,
+			"stage": "visuals_commit",
+			"total_us": 186704,
+			"worst_us": 186704
+		},
+		{
+			"avg_us": 613270.0,
+			"n": 1,
+			"p95_us": 613270.0,
+			"pct_total": 2.30564705888545,
+			"stage": "first_frame_after_running",
+			"total_us": 613270,
+			"worst_us": 613270
+		}
+	],
+	"sum_stage_us": 9259691,
+	"wall_ms": 26598.607,
+	"wall_us": 26598607
+}

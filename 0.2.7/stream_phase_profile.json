@@ -1,0 +1,205 @@
+{
+	"chunk_count": 1,
+	"chunks": [
+		{
+			"coord_x": 0,
+			"coord_z": 0,
+			"stages": {
+				"baked_vegetation_install": 0,
+				"buffer_pack": 1026,
+				"chunk_data_alloc": 35,
+				"collision_creation": 0,
+				"column_stage_total": 1926,
+				"decompression": 0,
+				"deserialization": 249,
+				"gpu_synchronization": 1,
+				"main_thread_apply": 671,
+				"mesh_plan_lookup": 672,
+				"mesh_rebuild": 0,
+				"mesh_upload": 444,
+				"multimesh_creation": 220,
+				"package_file_read": 768,
+				"physics_registration": 0,
+				"scenetree_insert_view": 35,
+				"worker_snapshot_capture": 981,
+				"worldstate_overlay_apply": 1807
+			},
+			"t0": 15305963,
+			"wall_us": 101185
+		}
+	],
+	"chunks_ready_at_ics_end": 1,
+	"dominant_pct": 21.0730000116919,
+	"dominant_stage": "process_frame_wait",
+	"dominant_us": 108142,
+	"ics_frames_waited": 3,
+	"residual_pct": 74.8442061039249,
+	"residual_unattributed_ms": 384.084,
+	"residual_unattributed_us": 384084,
+	"stages": [
+		{
+			"avg_us": 108142.0,
+			"n": 1,
+			"pct_window": 21.0730000116919,
+			"stage": "process_frame_wait",
+			"total_us": 108142,
+			"worst_us": 108142
+		},
+		{
+			"avg_us": 2172.5,
+			"n": 2,
+			"pct_window": 0.846684776042621,
+			"stage": "buffer_pack",
+			"total_us": 4345,
+			"worst_us": 3319
+		},
+		{
+			"avg_us": 1872.5,
+			"n": 2,
+			"pct_window": 0.729766279926263,
+			"stage": "column_stage_total",
+			"total_us": 3745,
+			"worst_us": 1926
+		},
+		{
+			"avg_us": 1765.0,
+			"n": 2,
+			"pct_window": 0.687870485484569,
+			"stage": "worldstate_overlay_apply",
+			"total_us": 3530,
+			"worst_us": 1807
+		},
+		{
+			"avg_us": 1659.0,
+			"n": 2,
+			"pct_window": 0.646559283523456,
+			"stage": "worker_snapshot_capture",
+			"total_us": 3318,
+			"worst_us": 2337
+		},
+		{
+			"avg_us": 888.0,
+			"n": 2,
+			"pct_window": 0.346078748504418,
+			"stage": "package_file_read",
+			"total_us": 1776,
+			"worst_us": 1008
+		},
+		{
+			"avg_us": 862.5,
+			"n": 2,
+			"pct_window": 0.336140676334527,
+			"stage": "mesh_plan_lookup",
+			"total_us": 1725,
+			"worst_us": 1053
+		},
+		{
+			"avg_us": 524.0,
+			"n": 2,
+			"pct_window": 0.204217639883237,
+			"stage": "deserialization",
+			"total_us": 1048,
+			"worst_us": 799
+		},
+		{
+			"avg_us": 671.0,
+			"n": 1,
+			"pct_window": 0.130753851490126,
+			"stage": "main_thread_apply",
+			"total_us": 671,
+			"worst_us": 671
+		},
+		{
+			"avg_us": 444.0,
+			"n": 1,
+			"pct_window": 0.0865196871261044,
+			"stage": "mesh_upload",
+			"total_us": 444,
+			"worst_us": 444
+		},
+		{
+			"avg_us": 73.3333333333333,
+			"n": 3,
+			"pct_window": 0.0428701152426643,
+			"stage": "multimesh_creation",
+			"total_us": 220,
+			"worst_us": 137
+		},
+		{
+			"avg_us": 43.5,
+			"n": 2,
+			"pct_window": 0.0169531819368718,
+			"stage": "chunk_data_alloc",
+			"total_us": 87,
+			"worst_us": 52
+		},
+		{
+			"avg_us": 35.0,
+			"n": 1,
+			"pct_window": 0.00682024560678751,
+			"stage": "scenetree_insert_view",
+			"total_us": 35,
+			"worst_us": 35
+		},
+		{
+			"avg_us": 7.0,
+			"n": 1,
+			"pct_window": 0.0013640491213575,
+			"stage": "rendering_server_buffer_set",
+			"total_us": 7,
+			"worst_us": 7
+		},
+		{
+			"avg_us": 1.0,
+			"n": 1,
+			"pct_window": 0.000194864160193929,
+			"stage": "gpu_synchronization",
+			"total_us": 1,
+			"worst_us": 1
+		},
+		{
+			"avg_us": 0.0,
+			"n": 2,
+			"pct_window": 0.0,
+			"stage": "mesh_rebuild",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"pct_window": 0.0,
+			"stage": "collision_creation",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 1,
+			"pct_window": 0.0,
+			"stage": "physics_registration",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 2,
+			"pct_window": 0.0,
+			"stage": "baked_vegetation_install",
+			"total_us": 0,
+			"worst_us": 0
+		},
+		{
+			"avg_us": 0.0,
+			"n": 2,
+			"pct_window": 0.0,
+			"stage": "decompression",
+			"total_us": 0,
+			"worst_us": 0
+		}
+	],
+	"sum_measured_ms": 129.094,
+	"sum_measured_us": 129094,
+	"window_ms": 513.178,
+	"window_us": 513178
+}

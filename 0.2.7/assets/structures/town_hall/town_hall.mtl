@@ -1,0 +1,3 @@
+newmtl town_hall_mat
+Kd 1.00 1.00 1.00
+map_Kd town_hall_albedo.png

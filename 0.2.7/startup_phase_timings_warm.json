@@ -1,0 +1,1060 @@
+{
+	"after_60s_us": 0,
+	"bake": {
+		"boot_done": true,
+		"chunks_done": 0,
+		"chunks_total": 0,
+		"column_us": 0,
+		"disk_write_us": 0,
+		"frames_waited": 7,
+		"index_load_us": 981,
+		"mesh_plan_us": 0,
+		"mode": "loaded",
+		"save_index_us": 0,
+		"validate_us": 14661,
+		"vegetation_us": 0,
+		"yield_wait_us": 0
+	},
+	"engine_ms_before_session": 503,
+	"events": [
+		{
+			"extra": {
+				"engine_ms_already": 503,
+				"executable": "C:/users/cwith/Downloads/godot471/Godot_v4.7.1-stable_win64.exe",
+				"processor_count": 8,
+				"run": "warm",
+				"thread_name": 1,
+				"userdata": "C:/Users/cwith/AppData/Roaming/Godot/app_userdata/Crystalstorm"
+			},
+			"kind": "process_start",
+			"name": "session_begin",
+			"t_ms": 0.083,
+			"t_us": 82,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"engine_ms": 504,
+				"run": "warm",
+				"user_data": "C:/Users/cwith/AppData/Roaming/Godot/app_userdata/Crystalstorm"
+			},
+			"kind": "process_start",
+			"name": "profile_script.start",
+			"t_ms": 0.264,
+			"t_us": 264,
+			"thread": "main"
+		},
+		{
+			"kind": "resource_loading",
+			"name": "begin:PackedScene.load_main",
+			"t_ms": 1.603,
+			"t_us": 1603,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 4985.829
+			},
+			"kind": "resource_loading",
+			"name": "end:PackedScene.load_main",
+			"t_ms": 4987.41,
+			"t_us": 4987410,
+			"thread": "main"
+		},
+		{
+			"kind": "resource_loading",
+			"name": "begin:PackedScene.instantiate_main",
+			"t_ms": 4987.494,
+			"t_us": 4987494,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 17.399
+			},
+			"kind": "resource_loading",
+			"name": "end:PackedScene.instantiate_main",
+			"t_ms": 5004.924,
+			"t_us": 5004924,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"load_instantiate_us": 5100411
+			},
+			"kind": "scene_load",
+			"name": "main_scene.instantiated",
+			"t_ms": 5101.978,
+			"t_us": 5101977,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:VoxelFluidService._ready",
+			"t_ms": 5207.768,
+			"t_us": 5207768,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 83.548
+			},
+			"kind": "synchronous_main",
+			"name": "end:VoxelFluidService._ready",
+			"t_ms": 5291.332,
+			"t_us": 5291332,
+			"thread": "main"
+		},
+		{
+			"kind": "scene_load",
+			"name": "main._ready",
+			"t_ms": 5413.095,
+			"t_us": 5413094,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:boot_async",
+			"t_ms": 5496.897,
+			"t_us": 5496896,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:composition_root.boot_async",
+			"t_ms": 5590.131,
+			"t_us": 5590131,
+			"thread": "main"
+		},
+		{
+			"kind": "composition_root",
+			"name": "composition_root.boot_async.enter",
+			"t_ms": 5703.764,
+			"t_us": 5703762,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:scene_service_registration",
+			"t_ms": 5889.332,
+			"t_us": 5889331,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 110.93
+			},
+			"kind": "synchronous_main",
+			"name": "end:scene_service_registration",
+			"t_ms": 6000.272,
+			"t_us": 6000272,
+			"thread": "main"
+		},
+		{
+			"kind": "resource_loading",
+			"name": "begin:load_config",
+			"t_ms": 6201.419,
+			"t_us": 6201419,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 297.699
+			},
+			"kind": "resource_loading",
+			"name": "end:load_config",
+			"t_ms": 6499.163,
+			"t_us": 6499162,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 1097
+			},
+			"kind": "composition_root",
+			"name": "stage:CONFIGURED",
+			"t_ms": 6796.647,
+			"t_us": 6796646,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:quality_and_perf_policy",
+			"t_ms": 6998.521,
+			"t_us": 6998521,
+			"thread": "main"
+		},
+		{
+			"kind": "scene_load",
+			"name": "main_scene.added_to_tree",
+			"t_ms": 7201.113,
+			"t_us": 7201112,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:CrystalManager.bootstrap_when_ready",
+			"t_ms": 7418.257,
+			"t_us": 7418257,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1421.699
+			},
+			"kind": "synchronous_main",
+			"name": "end:quality_and_perf_policy",
+			"t_ms": 8420.271,
+			"t_us": 8420270,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 2999
+			},
+			"kind": "composition_root",
+			"name": "stage:QUALITY_APPLIED",
+			"t_ms": 8699.874,
+			"t_us": 8699874,
+			"thread": "main"
+		},
+		{
+			"kind": "resource_loading",
+			"name": "begin:shader_material_and_textures",
+			"t_ms": 8887.485,
+			"t_us": 8887484,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 110.426
+			},
+			"kind": "resource_loading",
+			"name": "end:shader_material_and_textures",
+			"t_ms": 8997.94,
+			"t_us": 8997939,
+			"thread": "main"
+		},
+		{
+			"kind": "feature_generation",
+			"name": "begin:feature_seeding",
+			"t_ms": 9293.359,
+			"t_us": 9293358,
+			"thread": "main"
+		},
+		{
+			"kind": "feature_generation",
+			"name": "begin:WorldFeatures.bootstrap_with_services",
+			"t_ms": 9388.073,
+			"t_us": 9388072,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1809.156
+			},
+			"kind": "feature_generation",
+			"name": "end:WorldFeatures.bootstrap_with_services",
+			"t_ms": 11197.271,
+			"t_us": 11197271,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1995.07
+			},
+			"kind": "feature_generation",
+			"name": "end:feature_seeding",
+			"t_ms": 11288.443,
+			"t_us": 11288442,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 5902
+			},
+			"kind": "composition_root",
+			"name": "stage:FEATURES_SEEDED",
+			"t_ms": 11608.206,
+			"t_us": 11608205,
+			"thread": "main"
+		},
+		{
+			"kind": "bake_package_loading",
+			"name": "begin:world_and_chunk_manager_init",
+			"t_ms": 11801.883,
+			"t_us": 11801883,
+			"thread": "main"
+		},
+		{
+			"kind": "bake_package_loading",
+			"name": "begin:VoxelWorld.create_chunk_manager_with_services",
+			"t_ms": 11895.033,
+			"t_us": 11895033,
+			"thread": "main"
+		},
+		{
+			"kind": "bake_package_loading",
+			"name": "begin:ChunkManager.bootstrap_world_bake_async",
+			"t_ms": 11988.545,
+			"t_us": 11988544,
+			"thread": "main"
+		},
+		{
+			"kind": "bake_package_loading",
+			"name": "begin:WorldBakeService.bootstrap_for_world_async",
+			"t_ms": 12192.893,
+			"t_us": 12192893,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"loaded": true,
+				"package_dir": "user://world_bakes/v4_s12349_full",
+				"seed": 12349,
+				"us": 995,
+				"valid": true,
+				"want_full": true
+			},
+			"kind": "disk_io",
+			"name": "bake.load_bake_for_seed",
+			"t_ms": 12300.54,
+			"t_us": 12300539,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"chunks": 16384,
+				"ok": true,
+				"reasons": [],
+				"us": 14668
+			},
+			"kind": "disk_io",
+			"name": "bake.validate_loaded_bake",
+			"t_ms": 12408.238,
+			"t_us": 12408238,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 893.599
+			},
+			"kind": "bake_package_loading",
+			"name": "end:WorldBakeService.bootstrap_for_world_async",
+			"t_ms": 13086.491,
+			"t_us": 13086491,
+			"thread": "main"
+		},
+		{
+			"kind": "bake_package_loading",
+			"name": "begin:ChunkManager.bootstrap_mesh_plan_cache",
+			"t_ms": 13194.11,
+			"t_us": 13194109,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 94.637
+			},
+			"kind": "bake_package_loading",
+			"name": "end:ChunkManager.bootstrap_mesh_plan_cache",
+			"t_ms": 13288.757,
+			"t_us": 13288757,
+			"thread": "main"
+		},
+		{
+			"kind": "chunk_streaming",
+			"name": "begin:ChunkManager.request_initial_stream",
+			"t_ms": 13398.762,
+			"t_us": 13398762,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 94.14
+			},
+			"kind": "chunk_streaming",
+			"name": "end:ChunkManager.request_initial_stream",
+			"t_ms": 13492.905,
+			"t_us": 13492905,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1610.599
+			},
+			"kind": "bake_package_loading",
+			"name": "end:ChunkManager.bootstrap_world_bake_async",
+			"t_ms": 13599.166,
+			"t_us": 13599165,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1796.395
+			},
+			"kind": "bake_package_loading",
+			"name": "end:VoxelWorld.create_chunk_manager_with_services",
+			"t_ms": 13691.444,
+			"t_us": 13691444,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 1989.378
+			},
+			"kind": "bake_package_loading",
+			"name": "end:world_and_chunk_manager_init",
+			"t_ms": 13791.265,
+			"t_us": 13791265,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:service_handoff_on_chunks",
+			"t_ms": 14099.196,
+			"t_us": 14099195,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 108.925
+			},
+			"kind": "synchronous_main",
+			"name": "end:service_handoff_on_chunks",
+			"t_ms": 14208.116,
+			"t_us": 14208116,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 8805
+			},
+			"kind": "composition_root",
+			"name": "stage:CHUNKS_CREATED",
+			"t_ms": 14488.601,
+			"t_us": 14488601,
+			"thread": "main"
+		},
+		{
+			"kind": "waiting_on_workers",
+			"name": "begin:initial_chunk_stream",
+			"t_ms": 14690.211,
+			"t_us": 14690211,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 218.311
+			},
+			"kind": "waiting_on_workers",
+			"name": "end:initial_chunk_stream",
+			"t_ms": 14908.525,
+			"t_us": 14908525,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"reason": "CompositionRoot.INITIAL_STREAM_READY (>=1 resident chunk; loading screen fades)",
+				"t_ms": 17697.6
+			},
+			"kind": "playable_gate",
+			"name": "PLAYABLE",
+			"t_ms": 17697.616,
+			"t_us": 17697616,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 12201
+			},
+			"kind": "composition_root",
+			"name": "stage:INITIAL_STREAM_READY",
+			"t_ms": 17898.632,
+			"t_us": 17898632,
+			"thread": "main"
+		},
+		{
+			"kind": "synchronous_main",
+			"name": "begin:visuals_commit",
+			"t_ms": 18100.273,
+			"t_us": 18100272,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 103.397
+			},
+			"kind": "synchronous_main",
+			"name": "end:visuals_commit",
+			"t_ms": 18203.673,
+			"t_us": 18203673,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 12807
+			},
+			"kind": "composition_root",
+			"name": "stage:VISUALS_COMMITTED",
+			"t_ms": 18491.547,
+			"t_us": 18491547,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 13200
+			},
+			"kind": "composition_root",
+			"name": "stage:RUNNING",
+			"t_ms": 18898.04,
+			"t_us": 18898039,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 11776.183
+			},
+			"kind": "synchronous_main",
+			"name": "end:CrystalManager.bootstrap_when_ready",
+			"t_ms": 19194.458,
+			"t_us": 19194457,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 13718.971
+			},
+			"kind": "synchronous_main",
+			"name": "end:composition_root.boot_async",
+			"t_ms": 19309.106,
+			"t_us": 19309106,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"elapsed_ms": 13807
+			},
+			"kind": "first_playable_frame",
+			"name": "composition_root.RUNNING",
+			"t_ms": 19396.885,
+			"t_us": 19396884,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"duration_ms": 26792.684
+			},
+			"kind": "synchronous_main",
+			"name": "end:boot_async",
+			"t_ms": 32289.567,
+			"t_us": 32289567,
+			"thread": "main"
+		},
+		{
+			"kind": "first_playable_frame",
+			"name": "main.boot_async_returned",
+			"t_ms": 32392.681,
+			"t_us": 32392680,
+			"thread": "main"
+		},
+		{
+			"extra": {
+				"boot_done": true,
+				"compose_elapsed_ms": 27486,
+				"compose_stage": "RUNNING",
+				"frames_waited": 7
+			},
+			"kind": "process_start",
+			"name": "profile_script.complete",
+			"t_ms": 33075.643,
+			"t_us": 33075643,
+			"thread": "main"
+		}
+	],
+	"first_60s_us": 33076151,
+	"gauges": {
+		"boot_done": true,
+		"frames_waited": 7,
+		"mode": "loaded"
+	},
+	"open_at_end": [],
+	"phase_order": [
+		"PackedScene.load_main",
+		"PackedScene.instantiate_main",
+		"VoxelFluidService._ready",
+		"boot_async",
+		"composition_root.boot_async",
+		"scene_service_registration",
+		"load_config",
+		"quality_and_perf_policy",
+		"CrystalManager.bootstrap_when_ready",
+		"shader_material_and_textures",
+		"feature_seeding",
+		"WorldFeatures.bootstrap_with_services",
+		"world_and_chunk_manager_init",
+		"VoxelWorld.create_chunk_manager_with_services",
+		"ChunkManager.bootstrap_world_bake_async",
+		"WorldBakeService.bootstrap_for_world_async",
+		"ChunkManager.bootstrap_mesh_plan_cache",
+		"ChunkManager.request_initial_stream",
+		"service_handoff_on_chunks",
+		"initial_chunk_stream",
+		"visuals_commit"
+	],
+	"phases": {
+		"ChunkManager.bootstrap_mesh_plan_cache": {
+			"duration_ms": 94.637,
+			"duration_us": 94637,
+			"end_us": 13288738,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "ChunkManager.bootstrap_mesh_plan_cache",
+			"start_us": 13194092,
+			"thread": "main"
+		},
+		"ChunkManager.bootstrap_world_bake_async": {
+			"duration_ms": 1610.599,
+			"duration_us": 1610599,
+			"end_us": 13599138,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "ChunkManager.bootstrap_world_bake_async",
+			"start_us": 11988525,
+			"thread": "main"
+		},
+		"ChunkManager.request_initial_stream": {
+			"duration_ms": 94.14,
+			"duration_us": 94140,
+			"end_us": 13492893,
+			"extra": {},
+			"kind": "chunk_streaming",
+			"n": 1,
+			"name": "ChunkManager.request_initial_stream",
+			"start_us": 13398748,
+			"thread": "main"
+		},
+		"CrystalManager.bootstrap_when_ready": {
+			"duration_ms": 11776.183,
+			"duration_us": 11776183,
+			"end_us": 19194440,
+			"extra": {
+				"bootstrap_ms": 11698,
+				"spawns": 8
+			},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "CrystalManager.bootstrap_when_ready",
+			"start_us": 7418246,
+			"thread": "main"
+		},
+		"PackedScene.instantiate_main": {
+			"duration_ms": 17.399,
+			"duration_us": 17399,
+			"end_us": 5004898,
+			"extra": {},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "PackedScene.instantiate_main",
+			"start_us": 4987487,
+			"thread": "main"
+		},
+		"PackedScene.load_main": {
+			"duration_ms": 4985.829,
+			"duration_us": 4985829,
+			"end_us": 4987395,
+			"extra": {
+				"ok": true
+			},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "PackedScene.load_main",
+			"start_us": 1555,
+			"thread": "main"
+		},
+		"VoxelFluidService._ready": {
+			"duration_ms": 83.548,
+			"duration_us": 83548,
+			"end_us": 5291316,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "VoxelFluidService._ready",
+			"start_us": 5207760,
+			"thread": "main"
+		},
+		"VoxelWorld.create_chunk_manager_with_services": {
+			"duration_ms": 1796.395,
+			"duration_us": 1796395,
+			"end_us": 13691419,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "VoxelWorld.create_chunk_manager_with_services",
+			"start_us": 11895011,
+			"thread": "main"
+		},
+		"WorldBakeService.bootstrap_for_world_async": {
+			"duration_ms": 893.599,
+			"duration_us": 893599,
+			"end_us": 13086479,
+			"extra": {
+				"mode": "loaded"
+			},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "WorldBakeService.bootstrap_for_world_async",
+			"start_us": 12192870,
+			"thread": "main"
+		},
+		"WorldFeatures.bootstrap_with_services": {
+			"duration_ms": 1809.156,
+			"duration_us": 1809156,
+			"end_us": 11197224,
+			"extra": {},
+			"kind": "feature_generation",
+			"n": 1,
+			"name": "WorldFeatures.bootstrap_with_services",
+			"start_us": 9388055,
+			"thread": "main"
+		},
+		"boot_async": {
+			"duration_ms": 26792.684,
+			"duration_us": 26792684,
+			"end_us": 32289552,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "boot_async",
+			"start_us": 5496859,
+			"thread": "main"
+		},
+		"composition_root.boot_async": {
+			"duration_ms": 13718.971,
+			"duration_us": 13718971,
+			"end_us": 19309093,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "composition_root.boot_async",
+			"start_us": 5590116,
+			"thread": "main"
+		},
+		"feature_seeding": {
+			"duration_ms": 1995.07,
+			"duration_us": 1995070,
+			"end_us": 11288422,
+			"extra": {},
+			"kind": "feature_generation",
+			"n": 1,
+			"name": "feature_seeding",
+			"start_us": 9293343,
+			"thread": "main"
+		},
+		"initial_chunk_stream": {
+			"duration_ms": 218.311,
+			"duration_us": 218311,
+			"end_us": 14908516,
+			"extra": {
+				"chunks_ready": 1,
+				"frames_waited": 3
+			},
+			"kind": "waiting_on_workers",
+			"n": 1,
+			"name": "initial_chunk_stream",
+			"start_us": 14690200,
+			"thread": "main"
+		},
+		"load_config": {
+			"duration_ms": 297.699,
+			"duration_us": 297699,
+			"end_us": 6499135,
+			"extra": {},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "load_config",
+			"start_us": 6201404,
+			"thread": "main"
+		},
+		"quality_and_perf_policy": {
+			"duration_ms": 1421.699,
+			"duration_us": 1421699,
+			"end_us": 8420224,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "quality_and_perf_policy",
+			"start_us": 6998506,
+			"thread": "main"
+		},
+		"scene_service_registration": {
+			"duration_ms": 110.93,
+			"duration_us": 110930,
+			"end_us": 6000243,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "scene_service_registration",
+			"start_us": 5889300,
+			"thread": "main"
+		},
+		"service_handoff_on_chunks": {
+			"duration_ms": 108.925,
+			"duration_us": 108925,
+			"end_us": 14208105,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "service_handoff_on_chunks",
+			"start_us": 14099175,
+			"thread": "main"
+		},
+		"shader_material_and_textures": {
+			"duration_ms": 110.426,
+			"duration_us": 110426,
+			"end_us": 8997909,
+			"extra": {},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "shader_material_and_textures",
+			"start_us": 8887467,
+			"thread": "main"
+		},
+		"visuals_commit": {
+			"duration_ms": 103.397,
+			"duration_us": 103397,
+			"end_us": 18203659,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "visuals_commit",
+			"start_us": 18100257,
+			"thread": "main"
+		},
+		"world_and_chunk_manager_init": {
+			"duration_ms": 1989.378,
+			"duration_us": 1989378,
+			"end_us": 13791254,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "world_and_chunk_manager_init",
+			"start_us": 11801869,
+			"thread": "main"
+		}
+	},
+	"playable_ms": 17697.6,
+	"playable_reason": "CompositionRoot.INITIAL_STREAM_READY (>=1 resident chunk; loading screen fades)",
+	"playable_us": 17697600,
+	"ranked": [
+		{
+			"duration_ms": 26792.684,
+			"duration_us": 26792684,
+			"end_us": 32289552,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "boot_async",
+			"pct_wall": 81.0030284358056,
+			"start_us": 5496859,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 13718.971,
+			"duration_us": 13718971,
+			"end_us": 19309093,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "composition_root.boot_async",
+			"pct_wall": 41.4769269858515,
+			"start_us": 5590116,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 11776.183,
+			"duration_us": 11776183,
+			"end_us": 19194440,
+			"extra": {
+				"bootstrap_ms": 11698,
+				"spawns": 8
+			},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "CrystalManager.bootstrap_when_ready",
+			"pct_wall": 35.6032447669017,
+			"start_us": 7418246,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 4985.829,
+			"duration_us": 4985829,
+			"end_us": 4987395,
+			"extra": {
+				"ok": true
+			},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "PackedScene.load_main",
+			"pct_wall": 15.0737883618925,
+			"start_us": 1555,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1995.07,
+			"duration_us": 1995070,
+			"end_us": 11288422,
+			"extra": {},
+			"kind": "feature_generation",
+			"n": 1,
+			"name": "feature_seeding",
+			"pct_wall": 6.03174776895897,
+			"start_us": 9293343,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1989.378,
+			"duration_us": 1989378,
+			"end_us": 13791254,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "world_and_chunk_manager_init",
+			"pct_wall": 6.01453899518115,
+			"start_us": 11801869,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1809.156,
+			"duration_us": 1809156,
+			"end_us": 11197224,
+			"extra": {},
+			"kind": "feature_generation",
+			"n": 1,
+			"name": "WorldFeatures.bootstrap_with_services",
+			"pct_wall": 5.469669067601,
+			"start_us": 9388055,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1796.395,
+			"duration_us": 1796395,
+			"end_us": 13691419,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "VoxelWorld.create_chunk_manager_with_services",
+			"pct_wall": 5.43108839961457,
+			"start_us": 11895011,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1610.599,
+			"duration_us": 1610599,
+			"end_us": 13599138,
+			"extra": {},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "ChunkManager.bootstrap_world_bake_async",
+			"pct_wall": 4.86936645076992,
+			"start_us": 11988525,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 1421.699,
+			"duration_us": 1421699,
+			"end_us": 8420224,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "quality_and_perf_policy",
+			"pct_wall": 4.29826009682928,
+			"start_us": 6998506,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 893.599,
+			"duration_us": 893599,
+			"end_us": 13086479,
+			"extra": {
+				"mode": "loaded"
+			},
+			"kind": "bake_package_loading",
+			"n": 1,
+			"name": "WorldBakeService.bootstrap_for_world_async",
+			"pct_wall": 2.70164143343039,
+			"start_us": 12192870,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 297.699,
+			"duration_us": 297699,
+			"end_us": 6499135,
+			"extra": {},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "load_config",
+			"pct_wall": 0.900041241195204,
+			"start_us": 6201404,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 218.311,
+			"duration_us": 218311,
+			"end_us": 14908516,
+			"extra": {
+				"chunks_ready": 1,
+				"frames_waited": 3
+			},
+			"kind": "waiting_on_workers",
+			"n": 1,
+			"name": "initial_chunk_stream",
+			"pct_wall": 0.660025406220935,
+			"start_us": 14690200,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 110.93,
+			"duration_us": 110930,
+			"end_us": 6000243,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "scene_service_registration",
+			"pct_wall": 0.335377595778904,
+			"start_us": 5889300,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 110.426,
+			"duration_us": 110426,
+			"end_us": 8997909,
+			"extra": {},
+			"kind": "resource_loading",
+			"n": 1,
+			"name": "shader_material_and_textures",
+			"pct_wall": 0.33385383928136,
+			"start_us": 8887467,
+			"thread": "main"
+		},
+		{
+			"duration_ms": 108.925,
+			"duration_us": 108925,
+			"end_us": 14208105,
+			"extra": {},
+			"kind": "synchronous_main",
+			"n": 1,
+			"name": "service_handoff_on_chunks",
+			"pct_wall": 0.329315826378952,
+			"start_us": 14099175,
+			"thread": "main"
+		}
+	],
+	"run": "warm",
+	"snapshot_60s": {},
+	"wall_ms": 33076.151,
+	"wall_s": 33.076151,
+	"wall_us": 33076151
+}

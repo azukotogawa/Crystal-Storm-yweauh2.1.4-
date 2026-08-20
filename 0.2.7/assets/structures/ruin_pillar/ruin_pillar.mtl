@@ -1,0 +1,3 @@
+newmtl ruin_pillar_mat
+Kd 1.00 1.00 1.00
+map_Kd ruin_pillar_albedo.png

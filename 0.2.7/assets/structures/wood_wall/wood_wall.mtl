@@ -1,0 +1,3 @@
+newmtl wood_wall_mat
+Kd 1.00 1.00 1.00
+map_Kd wood_wall_albedo.png

@@ -1,0 +1,81 @@
+{
+	"generated": "2026-08-15",
+	"godot": "4.7.1.stable",
+	"machine": {
+		"os": "Windows",
+		"processor_count": 8,
+		"user_data": "C:/Users/cwith/AppData/Roaming/Godot/app_userdata/Crystalstorm"
+	},
+	"playable_definition": {
+		"event": "CompositionRoot.INITIAL_STREAM_READY",
+		"meaning": ">=1 resident streamed chunk; loading screen begins fade. Gameplay input is then available while remaining boot stages finish.",
+		"not_playable_until": "WorldBakeService.bootstrap_for_world_async returns (full 128x128 bake on cold, index load on warm)"
+	},
+	"preexisting_disk_state": {
+		"dir": "user://world_bakes/v4_s12349_full",
+		"found_before_cold": {
+			"chunk_files": 8592,
+			"expected_chunks": 16384,
+			"had_world_index": false,
+			"note": "Previous bake was interrupted. Production treats missing index as miss and rebuilds all 16384 packages."
+		}
+	},
+	"cold": {
+		"source": "startup_phase_timings_cold.json",
+		"wall_s": 2226.64,
+		"playable_s": 2211.641,
+		"first_60s_s": 60.061,
+		"after_60s_s": 2166.572,
+		"mode": "baked",
+		"chunks_done": 16384,
+		"chunks_total": 16384,
+		"leaf_breakdown_s": {
+			"bake.chunk_loop": 2183.639,
+			"mesh_plan_us": 905.946,
+			"column_sample_us": 818.114,
+			"disk_write_us": 283.183,
+			"yield_wait_us": 69.720,
+			"PackedScene.load_main": 7.903,
+			"bake.save_index": 6.750,
+			"CrystalManager.bootstrap_when_ready_overlap": 9.254,
+			"bake.vegetation_scatter": 2.112,
+			"feature_seeding": 2.100,
+			"initial_chunk_stream": 0.200
+		},
+		"call_chain_largest": [
+			"main._ready",
+			"CompositionRoot.boot_async",
+			"stage FEATURES_SEEDED",
+			"VoxelWorld.create_chunk_manager_with_services",
+			"ChunkManager.bootstrap_world_bake_async",
+			"WorldBakeService.bootstrap_for_world_async",
+			"load_bake_for_seed -> miss (no world.index)",
+			"bake_world_async",
+			"bake.chunk_loop x16384 (MAIN THREAD): get_surface_height_worker/get_tile_type_worker + ChunkManager._build_mesh + _write_chunk_package"
+		]
+	},
+	"warm": {
+		"source": "startup_phase_timings_warm.json",
+		"wall_s": 33.10,
+		"playable_s": 17.698,
+		"mode": "loaded",
+		"index_load_us": 981,
+		"validate_us": 14661,
+		"world_and_chunk_manager_init_s": 2.092,
+		"feature_seeding_s": 2.106,
+		"initial_chunk_stream_s": 0.300,
+		"PackedScene.load_main_s": 4.987
+	},
+	"classification": {
+		"bake.chunk_loop": "synchronous main-thread world generation + mesh plan + disk I/O (not worker jobs)",
+		"column_sample": "synchronous main-thread world generation (InfiniteNoiseWorld worker-safe noise, but invoked on main)",
+		"mesh_plan": "synchronous main-thread mesh generation (ChunkManager._build_mesh / greedy plan)",
+		"disk_write": "disk I/O (16384 .chk package writes)",
+		"yield_wait": "synchronization / waiting on SceneTree.process_frame (UI cooperative yield every 4 chunks)",
+		"save_index": "disk I/O (write world.index, then reread every .chk to sum sizes)",
+		"vegetation_scatter": "synchronous main-thread vegetation generation (12000 attempts)",
+		"feature_seeding": "synchronous main-thread towns/ruins/spawns (runtime veg scatter skipped)",
+		"initial_chunk_stream": "worker-thread chunk apply + waiting on workers (tiny after bake)",
+		"crystal": "synchronous main, waits for spawn_area_ready; overlaps bake on cold"
+	}
+}

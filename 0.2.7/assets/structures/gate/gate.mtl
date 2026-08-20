@@ -1,0 +1,3 @@
+newmtl gate_mat
+Kd 1.00 1.00 1.00
+map_Kd gate_albedo.png

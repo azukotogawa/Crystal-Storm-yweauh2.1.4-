@@ -1,0 +1,32 @@
+Plains
+	Top block: Grass
+	Base block: Dirt
+
+	Terrain description: Dune like hills, literally just what a sand dune looks like but flatter and with grass
+
+Steppe
+	Top block: Grass
+	Base block: Stone
+	
+	Terrarin description: Think iceland. Relitivly flat with jagged outcrops and hills 
+
+Forest	
+	Top block: Grass
+	Base block: Dirt
+		
+	Terrain description: Overall flatter than plains and steppe but with sudden, steeper but small mounds and divets
+
+Marsh
+	Top block: Water/Grass
+	Base block: Mud/Dirt
+
+	Terrain description: Completely flat with large amounts of ponds/streams
+
+Mountians
+
+	Top block: Grass/Stone
+	Base block: Stone
+
+	Terrarin description: Full of steep hills and holes. Make these hills and holes highly angled. Current mountains are more like plains.
+
+Remember that all these biomes should have the same average height
