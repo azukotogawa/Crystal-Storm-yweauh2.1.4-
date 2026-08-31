@@ -91,6 +91,7 @@ SUITES=(
 	"res://scripts/verify_frame_budget.gd"
 	"res://scripts/verify_ruin_expedition.gd"
 	"res://scripts/verify_crystal_terrain_routing.gd"
+	"res://scripts/verify_crystal_wet_crawl.gd"
 	"res://scripts/verify_crystal_grid_align.gd"
 	"res://scripts/verify_crystal_renderer_structural.gd"
 	"res://scripts/verify_entity_death_signal.gd"

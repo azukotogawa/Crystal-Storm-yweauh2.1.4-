@@ -513,6 +513,9 @@ func _update_game_hud() -> void:
 	var bearing := _crystal_bearing_bit()
 	if bearing != "":
 		crystal_bit = "%s · %s" % [crystal_bit, bearing]
+	var wet_bit := _wet_crawl_bit()
+	if wet_bit != "":
+		crystal_bit = "%s · %s" % [crystal_bit, wet_bit]
 	var prog: Dictionary = _crystal.get_spawn_progress() if _crystal.has_method("get_spawn_progress") else {}
 	var spawns_line := "%d/%d spawns" % [int(prog.get("active", 0)), int(prog.get("total", 0))]
 	var relic_line := ""
@@ -563,6 +566,19 @@ func _update_game_hud() -> void:
 		"%s  |  %s%s  |  %s%s%s%s%s  |  %s"
 		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]
 	)
+
+
+func _wet_crawl_bit() -> String:
+	if _crystal == null or not _crystal.has_method("count_wet_crystal_near"):
+		return ""
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null or not player.has_method("get_voxel_position"):
+		return ""
+	var pv: Vector3 = player.get_voxel_position()
+	var info: Dictionary = _crystal.count_wet_crystal_near(floori(pv.x), floori(pv.z), 5)
+	if int(info.get("wet", 0)) <= 0:
+		return ""
+	return "wet crawl"
 
 
 func _crystal_bearing_bit() -> String:

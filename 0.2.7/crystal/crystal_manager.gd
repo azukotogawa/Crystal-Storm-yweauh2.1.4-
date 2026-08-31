@@ -386,9 +386,6 @@ func configure_evolution() -> void:
 	if cfg_svc and cfg_svc.game_config and cfg_svc.game_config.absorption_unlocks.size() > 0:
 		table = cfg_svc.game_config.absorption_unlocks
 	evolution.configure(table)
-	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
-	if not evolution.is_unlocked(&"crystal_mite"):
-		evolution.unlocked_enemies.append(&"crystal_mite")
 	if evolution.has_signal("enemy_unlocked") and not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
 		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
 
@@ -1862,6 +1859,25 @@ func _check_player_contact() -> void:
 
 func get_depth_at(wx: int, wz: int) -> float:
 	return _sim.get_depth_at(wx, wz) if _sim else 0.0
+
+
+## Nearby crystal sitting on water/channels — HUD "wet crawl" read.
+func count_wet_crystal_near(wx: int, wz: int, radius: int = 5) -> Dictionary:
+	var crystal_n := 0
+	var wet_n := 0
+	if _sim == null:
+		return {"crystal": 0, "wet": 0}
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	for dx in range(-radius, radius + 1):
+		for dz in range(-radius, radius + 1):
+			var pos := Vector2i(wx + dx, wz + dz)
+			if float(_sim.depth.get(pos, 0.0)) < min_d:
+				continue
+			crystal_n += 1
+			if _terrain_query and _terrain_query.has_method("get_standing_water_level"):
+				if float(_terrain_query.get_standing_water_level(pos)) >= 0.05:
+					wet_n += 1
+	return {"crystal": crystal_n, "wet": wet_n}
 
 
 func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:

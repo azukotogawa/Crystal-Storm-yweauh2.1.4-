@@ -134,6 +134,10 @@ func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 	if cell.is_frontier:
 		frontier_boost = 1.38
 		footprint_mul = 1.16
+	# Wet ground: crystal reads as a low crawl, not a tall front.
+	if cell.is_wet:
+		frontier_boost *= 0.58
+		footprint_mul *= 0.92
 	var visual_depth := maxf(depth, layer_h * 0.55) * frontier_boost
 	var chunk_origin_x: float = ws.column_to_world(float(chunk_coord.x * ChunkData.SIZE))
 	var chunk_origin_z: float = ws.column_to_world(float(chunk_coord.y * ChunkData.SIZE))
