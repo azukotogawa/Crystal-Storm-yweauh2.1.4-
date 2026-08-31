@@ -44,6 +44,7 @@ SUITES=(
 	"res://scripts/verify_voxel_fluid_engine.gd"
 	"res://scripts/verify_water_sprint.gd"
 	"res://scripts/verify_water_body.gd"
+	"res://scripts/verify_dig_flood_water_block.gd"
 	"res://scripts/verify_water_active_region.gd"
 	"res://scripts/verify_building_orientation.gd"
 	"res://scripts/verify_edit_mesh_stream.gd"

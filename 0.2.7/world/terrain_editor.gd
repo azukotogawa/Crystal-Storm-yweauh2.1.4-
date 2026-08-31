@@ -159,6 +159,9 @@ func try_dig(world_pos: Vector3) -> bool:
 		inv = player.inventory
 	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
+	# Digging beside water creates a water block in the new indentation.
+	if _flood_dig_with_water_block(wx, wz):
+		_invalidate_and_rebuild(wx, wz)
 	# Immediate water response so trenches redirect/fill without waiting a tick.
 	_notify_water_reflow(wx, wz, true)
 	terrain_edited.emit(wx, wz, &"dig")
@@ -327,6 +330,8 @@ func try_fill(world_pos: Vector3, inventory, tile_id: int = -1) -> bool:
 	if not inventory.consume_item(paid, 1):
 		last_fail_reason = "Need 1 %s" % paid
 		return false
+	# Filling a flooded dig must remove the stamped water block / channel.
+	_clear_flood_water_block(wx, wz)
 	if not _TerrainEdits.build_wall(wx, wz, use_tile):
 		inventory.add_item(paid, 1)
 		last_fail_reason = "Stack full"
@@ -710,7 +715,50 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 				return true
 			if _ChannelRegistry.is_channel(wx + dx, wz + dz):
 				return true
+			if _ChannelRegistry.has_fluid(wx + dx, wz + dz, _ChannelRegistry.FLUID_WATER):
+				return true
 	return false
+
+
+## After dig: if a neighbor is water, stamp this cell as a water block (tile + channel).
+func _flood_dig_with_water_block(wx: int, wz: int) -> bool:
+	if world == null:
+		return false
+	if not _has_adjacent_water(wx, wz):
+		return false
+	if _is_water_source_column(wx, wz):
+		return false
+	var tile: int = VoxelTypes.WATER
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			if dx == 0 and dz == 0:
+				continue
+			var nt: int = world.get_tile_type(float(wx + dx), float(wz + dz))
+			if nt in [VoxelTypes.RIVER, VoxelTypes.OCEAN, VoxelTypes.OCEAN2, VoxelTypes.OCEAN3]:
+				tile = VoxelTypes.RIVER
+				break
+		if tile == VoxelTypes.RIVER:
+			break
+	var flow_dir := _ChannelRegistry.compute_downhill_dir(world, wx, wz)
+	_ChannelRegistry.register_channel(wx, wz, flow_dir, 0.85)
+	_FeatureRegistry.set_tile_override(wx, wz, tile)
+	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
+		"channel": true,
+		"flow_dir": [flow_dir.x, flow_dir.y],
+		"water_level": 0.85,
+		"flood_from_dig": true,
+	})
+	return true
+
+
+func _clear_flood_water_block(wx: int, wz: int) -> void:
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	var is_flood := bool(feat.get("flood_from_dig", false)) or bool(feat.get("channel", false))
+	if _is_water_source_column(wx, wz) or is_flood or _ChannelRegistry.is_channel(wx, wz):
+		_FeatureRegistry.clear_tile_override(wx, wz)
+		if is_flood or _ChannelRegistry.is_channel(wx, wz):
+			_ChannelRegistry.unregister_channel(wx, wz)
+			_FeatureRegistry.clear_feature(wx, wz)
 
 
 static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
