@@ -71,6 +71,7 @@ SUITES=(
 	"res://scripts/verify_manual_checklist_corroboration.gd"
 	"res://scripts/verify_perf_preset_boot.gd"
 	"res://scripts/verify_weapon_attack.gd"
+	"res://scripts/verify_sword_no_terrain_subtract.gd"
 	"res://scripts/verify_combat_entity_hit.gd"
 	"res://scripts/verify_combat_crystal_damage.gd"
 	"res://scripts/verify_item_icons.gd"
