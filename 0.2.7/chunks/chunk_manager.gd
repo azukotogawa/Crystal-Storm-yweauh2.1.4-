@@ -992,10 +992,13 @@ func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int, for_top: bool =
 	if data != null and not data._mesh_job_micro_skip.is_empty() \
 			and data._mesh_job_micro_skip.has(Vector2i(x, z)):
 		return true
-	# Flooded indent: water lid replaces the dirt top so the hole reads as water.
+	# Flooded indent: water lid on the dug bed replaces the dirt top.
 	if for_top and data != null and data._worker_water_lid.has(Vector2i(x, z)):
 		var lid_y: float = float(data._worker_water_lid[Vector2i(x, z)])
-		if lid_y > _surface_y_at(data, x, z) + 0.05:
+		var bed: float = _surface_y_at(data, x, z)
+		var layer: float = _WorldSettings.get_active().layer_height()
+		# Only skip dirt when a water lid will actually emit (waterline above this voxel).
+		if lid_y > bed + layer + 0.05:
 			return true
 	if not data.has_ramp(x, z):
 		return false
@@ -1964,10 +1967,13 @@ func _emit_water_lids_region(
 			if sy <= 0.01:
 				continue
 			var bed: float = _surface_y_at(data, x, z)
+			# Need open volume above the dug bed (indent). Flat ground stays dry.
 			if sy <= bed + layer + 0.05:
 				continue
+			# Sit the water voxel on the dug bed so the pool reads inside the hole,
+			# not flush with surrounding ground (sy - layer == undug surface_map).
 			_append_voxel_face(
-				out_quads, float(x), sy - layer, float(z),
+				out_quads, float(x), bed, float(z),
 				1.0, 1.0, 1.0, 1.0, 1.0, VoxelTypes.WATER, FACE_TOP
 			)
 
