@@ -142,6 +142,23 @@ func try_dig(world_pos: Vector3) -> bool:
 	if _is_water_source_column(wx, wz):
 		last_fail_reason = "Can't dig water"
 		return false
+	var inv = null
+	var player := get_tree().get_first_node_in_group("player")
+	if player and "inventory" in player:
+		inv = player.inventory
+	# Next to water: replace this block with water — do not dig a cavity and
+	# do not region-flood neighbors into water lids.
+	if _has_adjacent_water(wx, wz):
+		_grant_dig_loot(wx, wz, inv)
+		if not _replace_cell_with_water_block(wx, wz):
+			last_fail_reason = "Can't place water here"
+			return false
+		var profiler_w = get_node_or_null("/root/PerfProfiler")
+		if profiler_w and profiler_w.has_method("inc_frame"):
+			profiler_w.inc_frame("terrain_edits")
+		_invalidate_and_rebuild(wx, wz)
+		terrain_edited.emit(wx, wz, &"dig")
+		return true
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
 	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
 	if edited_h <= min_h:
@@ -153,16 +170,8 @@ func try_dig(world_pos: Vector3) -> bool:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("inc_frame"):
 		profiler.inc_frame("terrain_edits")
-	var inv = null
-	var player := get_tree().get_first_node_in_group("player")
-	if player and "inventory" in player:
-		inv = player.inventory
 	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
-	# Digging beside water creates a water block in the new indentation.
-	if _flood_dig_with_water_block(wx, wz):
-		_invalidate_and_rebuild(wx, wz)
-	# Immediate water response so trenches redirect/fill without waiting a tick.
 	_notify_water_reflow(wx, wz, true)
 	terrain_edited.emit(wx, wz, &"dig")
 	return true
@@ -720,11 +729,9 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 	return false
 
 
-## After dig: if a neighbor is water, stamp this cell as a water block (tile + channel).
-func _flood_dig_with_water_block(wx: int, wz: int) -> bool:
+## Replace this land cell with a water/river tile (no dig, no neighbor flood).
+func _replace_cell_with_water_block(wx: int, wz: int) -> bool:
 	if world == null:
-		return false
-	if not _has_adjacent_water(wx, wz):
 		return false
 	if _is_water_source_column(wx, wz):
 		return false
@@ -739,26 +746,20 @@ func _flood_dig_with_water_block(wx: int, wz: int) -> bool:
 				break
 		if tile == VoxelTypes.RIVER:
 			break
-	var flow_dir := _ChannelRegistry.compute_downhill_dir(world, wx, wz)
-	_ChannelRegistry.register_channel(wx, wz, flow_dir, 0.85)
 	_FeatureRegistry.set_tile_override(wx, wz, tile)
 	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
-		"channel": true,
-		"flow_dir": [flow_dir.x, flow_dir.y],
-		"water_level": 0.85,
 		"flood_from_dig": true,
+		"water_tile": tile,
 	})
 	return true
 
 
 func _clear_flood_water_block(wx: int, wz: int) -> void:
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
-	var is_flood := bool(feat.get("flood_from_dig", false)) or bool(feat.get("channel", false))
-	if _is_water_source_column(wx, wz) or is_flood or _ChannelRegistry.is_channel(wx, wz):
-		_FeatureRegistry.clear_tile_override(wx, wz)
-		if is_flood or _ChannelRegistry.is_channel(wx, wz):
-			_ChannelRegistry.unregister_channel(wx, wz)
-			_FeatureRegistry.clear_feature(wx, wz)
+	if not bool(feat.get("flood_from_dig", false)):
+		return
+	_FeatureRegistry.clear_tile_override(wx, wz)
+	_FeatureRegistry.clear_feature(wx, wz)
 
 
 static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
