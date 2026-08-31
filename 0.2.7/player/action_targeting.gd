@@ -7,6 +7,9 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
+## Dig/build/remove/place reach in columns (INPUT_CONTRACT). Combat weapons keep item ranges.
+const INTERACTION_RANGE := 8.0
+
 
 static func _camera_yaw_degrees(player: Node3D) -> float:
 	if player == null:

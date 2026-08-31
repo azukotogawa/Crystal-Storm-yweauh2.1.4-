@@ -155,7 +155,7 @@ func _try_remove_at_cursor() -> bool:
 		_bind_terrain_editor()
 	if _terrain_editor == null or inventory == null:
 		return false
-	var target := _resolve_terrain_target(3.0)
+	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
 	if target == Vector3.ZERO:
 		return false
 	if not _terrain_editor.has_method("can_remove") or not _terrain_editor.can_remove(target):
@@ -412,7 +412,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	if _terrain_editor == null:
 		push_warning("WeaponController: terrain_editor not found for dig")
 		return
-	var range_v: float = float(def.get("range", 2.0))
+	var range_v: float = _ActionTargeting.INTERACTION_RANGE
 	if Input.is_key_pressed(KEY_SHIFT) or Input.is_key_pressed(KEY_CTRL):
 		_try_channel_water_at_target(range_v)
 		return
@@ -481,7 +481,7 @@ func _try_dig_tool_or_fill_remove() -> void:
 		_bind_terrain_editor()
 	if _terrain_editor == null:
 		return
-	var target := _resolve_terrain_target(3.0)
+	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
 	if target == Vector3.ZERO:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
@@ -506,7 +506,7 @@ func _try_place_selected() -> void:
 	var game_manager := get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
 		return
-	var target := _resolve_terrain_target(3.0)
+	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
 	if target == Vector3.ZERO:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
@@ -629,7 +629,7 @@ func _try_plant() -> void:
 
 
 func _try_channel_water() -> void:
-	_try_channel_water_at_target(2.0)
+	_try_channel_water_at_target(_ActionTargeting.INTERACTION_RANGE)
 
 
 func _try_channel_water_at_target(range_v: float) -> void:
