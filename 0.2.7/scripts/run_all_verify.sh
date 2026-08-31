@@ -94,6 +94,7 @@ SUITES=(
 	"res://scripts/verify_crystal_grid_align.gd"
 	"res://scripts/verify_crystal_renderer_structural.gd"
 	"res://scripts/verify_entity_death_signal.gd"
+	"res://scripts/verify_combat_rewards.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
 	"res://scripts/verify_topographical_map.gd"
 	"res://scripts/verify_vegetation_perf.gd"
