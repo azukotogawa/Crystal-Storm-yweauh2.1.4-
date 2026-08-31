@@ -17,6 +17,9 @@ func _init() -> void:
 func _run() -> void:
 	var failed := false
 	var src := (_TerrainEditor as GDScript).source_code
+	if 'terrain_edited.emit(wx, wz, &"water")' not in src:
+		push_error("water-replace must emit terrain_edited kind water")
+		failed = true
 	if "_replace_cell_with_water_block" not in src:
 		push_error("try_dig must use _replace_cell_with_water_block beside water")
 		failed = true

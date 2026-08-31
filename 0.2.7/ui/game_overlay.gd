@@ -175,6 +175,8 @@ func _on_terrain_edited_near_crystal(wx: int, wz: int, kind: StringName) -> void
 	var k := str(kind)
 	if k == "dig":
 		_show_toast("Trench cut — purple front follows lower ground")
+	elif k == "water":
+		_show_toast("Bank to water — crystal slows on wet ground")
 	elif k == "gate":
 		_show_toast("Gate holds a crawl path — crystal slows, you pass")
 	elif k == "bridge":
@@ -529,21 +531,26 @@ func _update_game_hud() -> void:
 		var rl: String = str(_living_world.get_ruins_hud_line())
 		if rl != "":
 			ruins_line = "  |  %s" % rl
-	var tool_line := "Pick dig · RMB wall · LMB fight · M map · I inv"
+	var tool_line := "WASD move · Space jump · LMB break · RMB place · Tab cycle"
 	var weapon = null
 	var player = get_tree().get_first_node_in_group("player")
 	if player:
 		weapon = player.get_node_or_null("WeaponController")
+	var place_name := "Fill"
+	if weapon and weapon.has_method("get_place_label"):
+		place_name = str(weapon.get_place_label())
 	if weapon and weapon.has_method("get_active_item"):
 		var slot = weapon.get_active_item()
 		if slot != null:
 			var sid := str(slot.id)
-			if sid == "stone_pick":
-				tool_line = "DIG · LMB carve · RMB wall · Shift gate · Ctrl bridge"
-			elif sid == "stone" or sid == "wood":
-				tool_line = "BUILD · RMB wall · Shift gate · Ctrl bridge"
-			elif sid == "wooden_sword" or sid == "shortbow":
-				tool_line = "FIGHT · LMB attack · RMB build"
+			if sid == "wooden_sword" or sid == "shortbow":
+				tool_line = "FIGHT · LMB attack · RMB place %s · Tab cycle" % place_name
+			else:
+				tool_line = "LMB remove · RMB %s · Tab cycle" % place_name
+		else:
+			tool_line = "LMB remove · RMB %s · Tab cycle" % place_name
+	else:
+		tool_line = "LMB remove · RMB %s · Tab cycle" % place_name
 	var phase_tag := "MAZE"
 	if _game_manager.phase == _GameManager.Phase.ASSAULT:
 		phase_tag = "ASSAULT"

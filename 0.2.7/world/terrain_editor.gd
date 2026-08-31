@@ -157,7 +157,7 @@ func try_dig(world_pos: Vector3) -> bool:
 		if profiler_w and profiler_w.has_method("inc_frame"):
 			profiler_w.inc_frame("terrain_edits")
 		_invalidate_and_rebuild(wx, wz)
-		terrain_edited.emit(wx, wz, &"dig")
+		terrain_edited.emit(wx, wz, &"water")
 		return true
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
 	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
