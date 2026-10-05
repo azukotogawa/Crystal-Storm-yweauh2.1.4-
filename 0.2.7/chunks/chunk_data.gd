@@ -53,6 +53,10 @@ var _mesh_job_micro_skip: Dictionary = {}
 var preserve_column_maps: bool = false
 ## Skip MeshPlanCache so a preserved-map remesh cannot reuse stale quads.
 var skip_mesh_plan_cache: bool = false
+## Deep copy of surface/tile maps taken when a yard stamp must survive an in-flight regen.
+var _preserve_surface_snapshot: Array = []
+var _preserve_tile_snapshot: Array = []
+var _has_preserve_map_snapshot: bool = false
 ## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
 ## Natural (pre-overlay) halo heights — baked base when available; used to recompose on dirty.
@@ -118,6 +122,7 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_macro_ramp_flags_dirty = false
 	_maps_resident = false
 	last_micro_examined = 0
+	clear_preserve_map_snapshot()
 
 ## Rebind zero-copy surface view after snapshot restore (outside timers).
 func touch_macro_view_pointers() -> void:
@@ -814,10 +819,54 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 				_halo_surface[ix][iz] = -9999.0
 
 
+func snapshot_resident_maps() -> void:
+	if surface_map.is_empty() or tile_map.is_empty():
+		return
+	_preserve_surface_snapshot = surface_map.duplicate(true)
+	_preserve_tile_snapshot = tile_map.duplicate(true)
+	_has_preserve_map_snapshot = true
+
+
+func has_preserve_map_snapshot() -> bool:
+	return _has_preserve_map_snapshot
+
+
+func clear_preserve_map_snapshot() -> void:
+	_has_preserve_map_snapshot = false
+	_preserve_surface_snapshot.clear()
+	_preserve_tile_snapshot.clear()
+
+
+## Copy the yard/debug stamp back into the live maps. In-flight column regen
+## writes this same array; the snapshot is the authority until the remesh applies.
+func restore_resident_map_snapshot() -> void:
+	if not _has_preserve_map_snapshot:
+		return
+	_ensure_surface_map_storage()
+	for x in mini(SIZE, _preserve_surface_snapshot.size()):
+		var src_h: Array = _preserve_surface_snapshot[x]
+		var src_t: Array = _preserve_tile_snapshot[x] if x < _preserve_tile_snapshot.size() else []
+		if src_h == null or surface_map[x] == null:
+			continue
+		var n: int = mini(SIZE, mini(src_h.size(), surface_map[x].size()))
+		for z in n:
+			surface_map[x][z] = src_h[z]
+			if src_t != null and z < src_t.size() and tile_map[x] != null and z < tile_map[x].size():
+				tile_map[x][z] = src_t[z]
+	_maps_resident = true
+
+
 func _compute_column_maps(use_uncached: bool = true):
 	# Local capture avoids mid-loop use of a field cleared by another thread/path.
 	var w = world
 	if w == null:
+		return
+	# A yard stamp landed while this regen was already queued. Do not overwrite it.
+	if preserve_column_maps or _has_preserve_map_snapshot:
+		restore_resident_map_snapshot()
+		preserve_column_maps = false
+		if _has_halo_surface:
+			_refresh_halo_interior_from_maps()
 		return
 
 	_ensure_surface_map_storage()

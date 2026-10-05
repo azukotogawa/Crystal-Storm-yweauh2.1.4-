@@ -827,7 +827,13 @@ func _enqueue_chunk_mesh_work(
 	if world == null:
 		return
 	if pending.has(coord) or _chunk_tasks.has(coord):
-		_merge_patch_pending(coord, dirty_local, full_rebuild)
+		# A resident remesh sets preserve_column_maps before enqueue. If this
+		# chunk is still in flight, the flush that set the flag returns here
+		# and used to record a fresh patch with preserve_maps=false. The
+		# follow-up then recaptured bake columns and MeshPlanCache-hit quads
+		# with no FACE_RAMP, while ramp_map from the preserved pass stayed.
+		var preserve_maps := _chunk_wants_preserved_maps(coord)
+		_merge_patch_pending(coord, dirty_local, full_rebuild, preserve_maps)
 		_schedule_rebuild_flush()
 		return
 
@@ -866,6 +872,12 @@ func _enqueue_chunk_mesh_work(
 				prior_surface_cache = _TerrainSurfaceCache.duplicate_cache(
 					_TerrainSurfaceCache.cache_from_payload(view.mesh_data)
 				)
+		# Step tests prefer halo over surface_map. Capture leaves the interior
+		# unset (fallback works) but the border halo is world-gen height, so a
+		# stamp on the far side of a chunk edge never becomes a FACE_RAMP.
+		# Freeze resident columns, including loaded neighbors, before the worker.
+		if data.preserve_column_maps:
+			_refresh_preserve_halo(data)
 
 	pending[coord] = true
 	var token: int = int(_chunk_gen_tokens.get(coord, 0)) + 1
@@ -2732,6 +2744,7 @@ func _on_chunk_ready(
 			if profiler and profiler.has_method("begin_func"):
 				profiler.begin_func("ChunkView::setup")
 			existing.setup(data, packed_quad_data)
+			_clear_preserve_snapshot_after_apply(data, packed_quad_data)
 			if profiler and profiler.has_method("end_func"):
 				profiler.end_func("ChunkView::setup")
 			if profiler and profiler.has_method("record_us"):
@@ -2769,6 +2782,7 @@ func _on_chunk_ready(
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("ChunkView::setup")
 	view.setup(data, packed_quad_data)
+	_clear_preserve_snapshot_after_apply(data, packed_quad_data)
 	if profiler and profiler.has_method("end_func"):
 		profiler.end_func("ChunkView::setup")
 	if profiler and profiler.has_method("record_us"):
@@ -3056,15 +3070,20 @@ func _on_chunk_task_complete(
 	# Reap pool task id first (wait_for_task_completion). Must not only erase.
 	_reap_chunk_task(coord)
 	if _shutting_down or is_mesh_job_stale(coord, data, token):
+		var token_stale := token >= 0 and int(_chunk_gen_tokens.get(coord, -1)) != token
 		var stamp_stale := (
 			data != null
 			and token >= 0
-			and int(_chunk_gen_tokens.get(coord, -1)) == token
+			and not token_stale
 			and data.has_method("is_overlay_mesh_stamp_current")
 			and not data.is_overlay_mesh_stamp_current()
 		)
 		if data != null and _telemetry_trigger in ["stream", "movement"]:
 			_ChunkDataPool.release(data)
+		# A resident remesh bumps the token while this job is in flight. Leaving
+		# pending set blocks the follow-up forever, so the stamped maps never remesh.
+		if token_stale and not _chunk_tasks.has(coord):
+			pending.erase(coord)
 		if stamp_stale and not _shutting_down:
 			pending.erase(coord)
 			call_deferred("rebuild_chunk", coord)
@@ -3177,15 +3196,14 @@ func remesh_resident_maps_at_world(wx: float, wz: float) -> void:
 		return
 	view.chunk_data.preserve_column_maps = true
 	view.chunk_data.skip_mesh_plan_cache = true
+	view.chunk_data.snapshot_resident_maps()
 	# A second remesh on a busy chunk used to merge as a normal full rebuild.
 	# That follow-up recaptured bake columns and MeshPlanCache-hit the baked
 	# quads, dropping FACE_RAMP while leftover ramp_map stayed true.
+	# Bump the token so an in-flight generate cannot apply that mesh after the stamp.
 	if pending.has(key) or _chunk_tasks.has(key):
-		_merge_patch_pending(key, [], true)
-		if _patch_pending.has(key):
-			var entry: Dictionary = _patch_pending[key]
-			entry["preserve_maps"] = true
-			_patch_pending[key] = entry
+		_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
+		_merge_patch_pending(key, [], true, true)
 		_schedule_rebuild_flush()
 		return
 	rebuild_chunk(key)
@@ -3214,6 +3232,12 @@ func invalidate_columns_at_world(wx: int, wz: int) -> void:
 		var coord: Vector2i = coord_variant
 		var local_cells: Array = by_chunk[coord]
 		var full := _TerrainDirtyScope.should_full_rebuild(local_cells)
+		# Gameplay edits must regenerate from WorldState, not a yard stamp snapshot.
+		if chunks.has(coord):
+			var edit_view: ChunkView = chunks[coord] as ChunkView
+			if edit_view and edit_view.chunk_data:
+				edit_view.chunk_data.clear_preserve_map_snapshot()
+				edit_view.chunk_data.preserve_column_maps = false
 		_merge_patch_pending(coord, local_cells, full)
 	_schedule_rebuild_flush()
 
@@ -3222,7 +3246,24 @@ func rebuild_region_at_world(wx: float, wz: float, _ring: int = 1) -> void:
 	invalidate_columns_at_world(int(wx), int(wz))
 
 
-func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool) -> void:
+func _clear_preserve_snapshot_after_apply(data: ChunkData, payload: Dictionary) -> void:
+	if data == null or not data.has_preserve_map_snapshot():
+		return
+	# Only drop the stamp once a remesh that kept it has been uploaded.
+	if str(payload.get("column_source", "")) == "resident":
+		data.clear_preserve_map_snapshot()
+
+
+func _chunk_wants_preserved_maps(coord: Vector2i) -> bool:
+	if not chunks.has(coord):
+		return false
+	var view: ChunkView = chunks[coord] as ChunkView
+	if view == null or view.chunk_data == null:
+		return false
+	return view.chunk_data.preserve_column_maps or view.chunk_data.has_preserve_map_snapshot()
+
+
+func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool, preserve_maps: bool = false) -> void:
 	if _patch_pending.has(coord):
 		var entry: Dictionary = _patch_pending[coord]
 		var bucket: Array = entry.get("local", [])
@@ -3232,13 +3273,59 @@ func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool) -> vo
 				bucket.append(cell)
 		entry["local"] = bucket
 		entry["full"] = bool(entry.get("full", false)) or full
+		entry["preserve_maps"] = bool(entry.get("preserve_maps", false)) or preserve_maps
 		_patch_pending[coord] = entry
 	else:
 		_patch_pending[coord] = {
 			"local": local_cells.duplicate(),
 			"full": full,
-			"preserve_maps": false,
+			"preserve_maps": preserve_maps,
 		}
+
+
+## Resident remesh authority: halo must match stamped surface maps.
+## _sample_height prefers a populated halo cell, and capture_worker_snapshot
+## fills the border from world gen, so a neighbor-chunk stamp would not emit
+## FACE_RAMP until that border is copied from the loaded chunk.
+func _refresh_preserve_halo(data: ChunkData) -> void:
+	if data == null:
+		return
+	data._refresh_halo_interior_from_maps()
+	if not data._has_halo_surface:
+		return
+	var size := ChunkData.SIZE
+	var halo := ChunkData.HALO
+	var dim := size + halo * 2
+	for ix in dim:
+		for iz in dim:
+			var lx := ix - halo
+			var lz := iz - halo
+			if lx >= 0 and lx < size and lz >= 0 and lz < size:
+				continue
+			var wx := data.position.x * size + lx
+			var wz := data.position.y * size + lz
+			var ncoord := world_to_chunk_coord(wx, wz)
+			if not chunks.has(ncoord):
+				continue
+			var nview: ChunkView = chunks[ncoord] as ChunkView
+			if nview == null or nview.chunk_data == null:
+				continue
+			var nd: ChunkData = nview.chunk_data
+			var nlx := wx - ncoord.x * size
+			var nlz := wz - ncoord.y * size
+			if nlx < 0 or nlz < 0 or nlx >= size or nlz >= size:
+				continue
+			if nd.surface_map.size() <= nlx:
+				continue
+			var row_v = nd.surface_map[nlx]
+			if row_v == null or not (row_v is Array) or (row_v as Array).size() <= nlz:
+				continue
+			var row: Array = row_v
+			if ix >= data._halo_surface.size() or data._halo_surface[ix] == null:
+				continue
+			if iz >= data._halo_surface[ix].size():
+				continue
+			data._halo_surface[ix][iz] = float(row[nlz])
 
 
 func _rebuild_high_priority(coord: Vector2i) -> bool:

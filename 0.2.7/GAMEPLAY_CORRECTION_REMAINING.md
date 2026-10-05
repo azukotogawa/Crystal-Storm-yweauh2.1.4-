@@ -31,7 +31,9 @@ Yard stamps on dry land `(40,8)`…`(49,8)`:
 
 Walk uses `ramp_map`. The uploaded column quads for those landings are FACE_TOP only. North’s chunk has **zero** ramp MultiMesh instances — walkable slope with no wedge. East never became a ramp (surround heights were not a single isolated step).
 
-Headless `_build_mesh` on a flat 10 / approach 8 map **does** emit FACE_RAMP. The live miss is the **resident remesh / surface-mesh payload** path, not the emit math.
+Headless `_build_mesh` on a flat 10 / approach 8 map **does** emit FACE_RAMP. The live miss was the **resident remesh / surface-mesh payload** path, not the emit math.
+
+**Remesh path (headless, not a new camera pass):** a chunk-edge step stayed hidden because `_sample_height` prefers the halo, and the halo border was still the pre-stamp world-gen height. A same-chunk yard stamp could also lose the race to an in-flight column regen: the follow-up was recorded without `preserve_maps`, or the token bump left `pending` set so the preserve remesh never ran. Resident remesh now snapshots the stamped maps, copies loaded neighbor surfaces into the halo border, and uploads that mesh. `verify_ramp_resident_mesh.gd` (main scene, four compass stamps) reports `column_source=resident` and one `FACE_RAMP` quad per landing. `verify_ramp_landing.gd` covers the cross-chunk halo case. The F4 photos above are still the last camera evidence; this does not replace them.
 
 ### 2. Camera vs pin (harness)
 
@@ -49,4 +51,4 @@ Raised wall columns list both POS and NEG side codes (`[0,6,4,3,4,5,6]`). That i
 
 - Do not add per-voxel bodies or authored assets.
 - Do not treat `verify_ramp_landing` as camera proof of live wedges.
-- Next ramp fix should start from `ChunkData.preserve_column_maps` remesh → `mesh_data.quads` / `ramp_count` on the **live** ChunkView for `(49,8)`.
+- Do not treat `verify_ramp_resident_mesh.gd` as a substitute for a windowed F4 photo of `(49,8)`.
