@@ -10,9 +10,9 @@ Iterative debugging **did** bury the simplest shape of several systems under ext
 
 - Terrain height is not one number. A column’s height is recomputed from noise, a surface cache, `WorldState.height_delta`, a baked base, per-chunk `surface_map`, an optional macro grid, an optional micro grid, a one-cell halo, a worker snapshot, and `ramp_map`. `chunks/chunk_manager.gd` is 3,565 lines. `chunks/chunk_data.gd` is 1,216. Comments in those files still argue with each other: the chunk path says the mesh is a one-voxel-thick heightfield, while `InfiniteNoiseWorld.get_voxel` is described as the volumetric source of truth.
 - `ChunkData.set_voxel` is an empty `pass`. There is no hidden Minecraft voxel editor that debugging turned off. Free 3D placement was never the runtime model (`studio/design/GAMEPLAY.md` says the same thing).
-- Ramps grew a second vocabulary on top of “one-layer step.” Cardinal wedges, approach cells, corner prisms, concave side prisms, a 28% placement roll, border-forced ramps, and a height cap at Y=88. `ChunkData.set_ramp_side` has no callers. About 197 `verify_*.gd` files exist; 178 are in `scripts/run_all_verify.sh`. Several ramp probes sit outside the suite. That is a debugging scar, not a second game.
-- Crystal flow and water flow are two engines (`CrystalFluidSim` and `VoxelFluidEngine`) that share terrain-query math and do not share state. `studio/wiki/Crystal.md` still says crystal runs on `VoxelFluidEngine`. It does not. `CrystalManager._tick_absorption` is defined and never called; live absorption is `CrystalSimulation._tick_absorption_progress`.
-- `shaders/crystal_procedural.gdshader` is not bound. Live crystals use `StandardMaterial3D` in `CrystalManager._setup_materials`.
+- Ramps grew a second vocabulary on top of “one-layer step.” Cardinal wedges, approach cells, corner prisms, concave side prisms, a 28% placement roll, border-forced ramps, and a height cap at Y=88. The unused `ChunkData.set_ramp_side` helper is removed in the height cut. About 197 `verify_*.gd` files exist; the suite is the debugging scar, not a second game.
+- Crystal flow and water flow are two engines (`CrystalFluidSim` and `VoxelFluidEngine`) that share terrain-query math and do not share state. The wiki used to say crystal runs on `VoxelFluidEngine`. It does not. The uncalled `CrystalManager` absorption ticks are removed; live absorption is `CrystalSimulation._tick_absorption_progress`.
+- `shaders/crystal_procedural.gdshader` was not bound. It is deleted. Live crystals use `StandardMaterial3D` in `CrystalManager._setup_materials`.
 - Character sizes ignored the voxel knob. With `voxel_scale` 2, a column is 2 world units tall and a crystal cell is 1.76, but the player body was `0.4` layers (0.8 units) and wildlife fallback capsules were a hardcoded 0.55. The floor probe used a separate radius of 0.22.
 
 What the diagnosis gets wrong: the **core loop is still simple**, and the performance work is not the obfuscation.
@@ -145,7 +145,7 @@ Local single-player. Save schema reserves an authority field and does not sync a
 | `assets/player/player.png` | Player box albedo. Was a tiny figure in a white field. | Re-authored this change as a 32×48 voxel scout (`author_player.gd`), nearest-filtered |
 | `assets/tiles/new_tile_set.tres` | TileSet resource | Not the 3D terrain path |
 | `shaders/ChunkView.gdshader`, `ChunkSurfaceMesh.gdshader` | Bound terrain materials | Live |
-| `shaders/crystal_procedural.gdshader` | Fresnel crystal shader | Dead file |
+| `shaders/crystal_procedural.gdshader` | Was an unused fresnel shader | Deleted |
 | `scenes/main.tscn`, `frontend.tscn`, `ChunkView.tscn`, `world_object.tscn` | Play, menu, chunk, structure | Live |
 | `scenes/world_viewer.tscn` | 2D map tool | Tool, not the game |
 | `systems/crystal_texture_generator.gd` | Runtime PNGs for entities, plants, items, combat bursts | The only art those systems have. Not on disk. |
@@ -189,4 +189,12 @@ This pass:
 - Puts the player, the floor probe, wildlife fallback bodies, and crystal-mite bodies on the voxel unit. Streaming, surface meshes, and crystal flow caps are untouched.
 - Replaces the player albedo with a small voxel scout and filters it nearest, matching the block art.
 
-Next, if Cole wants the obfuscation cut for real: one height authority for the mesh (drop the unread copies), delete `set_ramp_side` and the uncalled crystal absorption tick, either bind or delete `crystal_procedural.gdshader`, and wire `channel_fluid_changed` to a visible water level. Free voxel tunnels are a new editor, not a cleanup.
+## Height, water, and atlas cut
+
+Interior mesh height is the resident `surface_map`. The halo stays, and it is only the neighbor ring the worker snapshots. `ramp_map` is rebuilt from the quads the chunk actually draws, so a cached or clipped mesh cannot leave a slope the player walks with no wedge. Streaming budgets, the surface mesh, worker snapshots, and crystal flow caps are unchanged.
+
+Deleted: `ChunkData.set_ramp_side`, the uncalled `CrystalManager` absorption ticks (live absorption stays on `CrystalSimulation`), and `shaders/crystal_procedural.gdshader`. The wiki no longer says crystal runs on `VoxelFluidEngine`.
+
+`channel_fluid_changed` draws a nearest-filtered fill. Its thickness is the 0–1 water level times one voxel layer. `Cube.png` is authored 4×4 voxel bricks on the same 7×10 grid. Hit rings, the boss ring, and spawn-marker fallbacks are expressed in `voxel_scale`.
+
+Freeform 3D tunnels are still a follow-up. Dig and build remain one layer on a column. A dig brush that carves a volume would be a new editor, not this cleanup.

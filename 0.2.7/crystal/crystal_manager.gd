@@ -12,8 +12,6 @@ const _CrystalPresentation = preload("res://crystal/crystal_presentation.gd")
 const _CrystalSimSnapshot = preload("res://crystal/crystal_sim_snapshot.gd")
 const _CrystalSimEvents = preload("res://crystal/crystal_sim_events.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
-const _PlantableRegistry = preload("res://world/plantable_registry.gd")
-const _PlantableDef = preload("res://config/plantable_def.gd")
 const _SpawnPointRegistry = preload("res://config/spawn_point_registry.gd")
 const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
@@ -1805,7 +1803,8 @@ func _refresh_spawn_markers() -> void:
 	for spawn in _spawn_points:
 		if not spawn.active:
 			continue
-		var marker_size: float = 2.4 if spawn.is_boss else 1.6
+		var vs: float = _WorldSettings.get_active().voxel_scale
+		var marker_size: float = vs * (1.2 if spawn.is_boss else 0.8)
 
 		var anchor := Node3D.new()
 		anchor.name = "SpawnMarker_%d" % spawn.id
@@ -1813,7 +1812,7 @@ func _refresh_spawn_markers() -> void:
 		var marker := Sprite3D.new()
 		marker.name = "Sprite"
 		marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-		marker.pixel_size = 0.022 if spawn.is_boss else 0.028
+		marker.pixel_size = vs * (0.011 if spawn.is_boss else 0.014)
 		marker.modulate = Color(1.0, 0.92, 1.0, 0.95) if spawn.is_boss else Color(0.88, 0.78, 1.0, 0.88)
 		var vis = get_tree().get_first_node_in_group("game_visual_registry")
 		var has_tex := false
@@ -2063,70 +2062,6 @@ func _is_frontier_cell(pos: Vector2i, min_d: float) -> bool:
 	return false
 
 
-func _tick_absorption(delta: float) -> void:
-	if _sim == null or _sim.depth.is_empty():
-		return
-	var cells: Array = _sim.depth.keys()
-	if cells.is_empty():
-		return
-	var completed: Array[Vector2i] = []
-	var scanned := 0
-	var start := _absorption_scan_offset % cells.size()
-	while scanned < _absorption_cells_per_tick and scanned < cells.size():
-		var pos: Vector2i = cells[(start + scanned) % cells.size()]
-		scanned += 1
-		if not _is_cell_sim_active(pos):
-			continue
-		var depth: float = float(_sim.depth.get(pos, 0.0))
-		if depth < sim_config.min_depth:
-			continue
-		var tile_id := _tile_at(pos)
-		if not _is_absorbable_tile(tile_id):
-			continue
-		var rate: float = _absorption_rate_for(pos, tile_id)
-		var progress: float = float(_absorption.get(pos, 0.0)) + delta * rate * depth
-		if progress >= 1.0:
-			completed.append(pos)
-		else:
-			_absorption[pos] = progress
-	_absorption_scan_offset += scanned
-	for pos in completed:
-		_complete_absorption(pos)
-
-
-func _is_absorbable_tile(tile_id: int) -> bool:
-	return tile_id in [
-		VoxelTypes.GRASS_TUFT,
-		VoxelTypes.BUSH,
-		VoxelTypes.TREE_TRUNK,
-		VoxelTypes.FARMLAND,
-	]
-
-
-func _absorption_rate_for(pos: Vector2i, tile_id: int) -> float:
-	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
-	if feat.has("plant_id"):
-		var def = _PlantableRegistry.get_def(StringName(str(feat.plant_id))) as _PlantableDef
-		if def:
-			var stage: int = int(feat.get("growth_stage", def.mature_stage()))
-			return def.absorb_rate_for_stage(stage)
-	return _absorption_rate(tile_id)
-
-
-func _absorption_rate(tile_id: int) -> float:
-	match tile_id:
-		VoxelTypes.GRASS_TUFT:
-			return sim_config.grass_absorb_rate
-		VoxelTypes.BUSH:
-			return sim_config.bush_absorb_rate
-		VoxelTypes.TREE_TRUNK:
-			return sim_config.tree_absorb_rate
-		VoxelTypes.FARMLAND:
-			return sim_config.farmland_absorb_rate
-		_:
-			return 0.08
-
-
 func _relic_flow_mult() -> float:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
@@ -2209,54 +2144,6 @@ func _absorption_source_for(tile_id: int, feat: Dictionary) -> StringName:
 			return &"bush"
 		_:
 			return &"grass"
-
-
-func _tick_animal_absorption(delta: float) -> void:
-	if _sim == null or _sim.depth.is_empty():
-		return
-	var cells: Array = _sim.depth.keys()
-	var scanned := 0
-	var start := _absorption_scan_offset % maxi(cells.size(), 1)
-	while scanned < _absorption_cells_per_tick and scanned < cells.size():
-		var pos: Vector2i = cells[(start + scanned) % cells.size()]
-		scanned += 1
-		if not _is_cell_sim_active(pos):
-			continue
-		if float(_sim.depth.get(pos, 0.0)) < sim_config.min_depth:
-			continue
-		var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
-		if not feat.has("kind") or int(feat.kind) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
-			continue
-		var progress: float = float(_absorption.get(pos, 0.0)) + delta * 0.25
-		if progress >= 1.0:
-			_complete_absorption(pos)
-		else:
-			_absorption[pos] = progress
-
-
-func _tick_ruin_absorption(delta: float) -> void:
-	if _sim == null:
-		return
-	for center in _FeatureRegistry.get_ruin_centers():
-		if _absorbed_ruin_centers.has(center):
-			continue
-		if not _is_cell_sim_active(center):
-			continue
-		if float(_sim.depth.get(center, 0.0)) < sim_config.min_depth:
-			continue
-		var progress: float = float(_ruin_absorption.get(center, 0.0)) + delta * 0.12
-		if progress >= 1.0:
-			_absorbed_ruin_centers[center] = true
-			_ruin_absorption.erase(center)
-			_add_power(18.0)
-			if evolution:
-				var unlock: Dictionary = evolution.record_absorption(&"ruin")
-				if unlock.has("bonus_power"):
-					_add_power(float(unlock.bonus_power))
-			absorption_completed.emit(&"ruin", center)
-			_clear_ruin_at(center)
-		else:
-			_ruin_absorption[center] = progress
 
 
 func _clear_ruin_at(center: Vector2i) -> void:

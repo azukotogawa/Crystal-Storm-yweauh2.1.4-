@@ -1,195 +1,167 @@
 #!/usr/bin/env python3
-"""Regenerate assets/tiles/Cube.png — Minecraft-style 7x10 atlas with subtle pixel variation."""
+"""Author assets/tiles/Cube.png as 4px voxel bricks, scout-style outlines.
+
+Grid stays 7x10 x 32. Voxel IDs and ATLAS_COORDS are not remapped.
+Also writes assets/tiles/water_surface.png for the channel fill overlay.
+"""
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "assets" / "tiles" / "Cube.png"
+WATER = ROOT / "assets" / "tiles" / "water_surface.png"
 COLS, ROWS, TW = 7, 10, 32
-RNG = random.Random(0xC17A)
 
 
 def clamp(c: int) -> int:
     return max(0, min(255, c))
 
 
-def blend(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
-    return tuple(clamp(int(a[i] + (b[i] - a[i]) * t)) for i in range(3))
+def shade(rgb: tuple[int, int, int], t: float) -> tuple[int, int, int]:
+    return tuple(clamp(int(c * t)) for c in rgb)
 
 
-def fill_tile(img: Image.Image, col: int, row: int, base: tuple[int, int, int], accents: list[tuple[int, int, int]], density: float = 0.08) -> None:
+def paint_brick(img: Image.Image, x: int, y: int, fill: tuple[int, int, int]) -> None:
+    outline = shade(fill, 0.45)
+    edge = shade(fill, 0.78)
+    for py in range(4):
+        for px in range(4):
+            c = fill
+            if px == 0 or py == 0:
+                c = outline
+            elif px == 3 or py == 3:
+                c = edge
+            img.putpixel((x + px, y + py), c + (255,))
+
+
+def paint_tile(img: Image.Image, col: int, row: int, a: tuple[int, int, int], b: tuple[int, int, int] | None = None) -> None:
     ox, oy = col * TW, row * TW
-    for py in range(TW):
-        for px in range(TW):
-            img.putpixel((ox + px, oy + py), base)
-    speckles = max(1, int(TW * TW * density))
-    for _ in range(speckles):
-        px = RNG.randrange(TW)
-        py = RNG.randrange(TW)
-        accent = accents[RNG.randrange(len(accents))]
-        img.putpixel((ox + px, oy + py), accent)
+    alt = b if b is not None else a
+    for gy in range(8):
+        for gx in range(8):
+            use = alt if (gx + gy) % 5 == 0 else a
+            paint_brick(img, ox + gx * 4, oy + gy * 4, use)
 
 
-def fill_grass_top(img: Image.Image, col: int, row: int, base: tuple[int, int, int], dark: tuple[int, int, int], light: tuple[int, int, int]) -> None:
-    """Grass block top — short blade strokes, not random noise."""
-    ox, oy = col * TW, row * TW
-    for py in range(TW):
-        for px in range(TW):
-            img.putpixel((ox + px, oy + py), base)
-    for _ in range(22):
-        px = RNG.randrange(2, TW - 2)
-        py = RNG.randrange(2, TW - 2)
-        blade_h = RNG.randrange(2, 5)
-        col_c = dark if RNG.random() < 0.55 else light
-        for dy in range(blade_h):
-            y = py - dy
-            if 0 <= y < TW:
-                img.putpixel((ox + px, oy + y), col_c)
-                if px + 1 < TW and RNG.random() < 0.35:
-                    img.putpixel((ox + px + 1, oy + y), blend(col_c, base, 0.4))
+def fill_river_tile(img: Image.Image, col: int, row: int) -> None:
+    paint_tile(img, col, row, (64, 156, 196), (96, 188, 214))
 
 
-def fill_stone_tile(img: Image.Image, col: int, row: int, base: tuple[int, int, int]) -> None:
-    """Stone — cracked plates with mortar gaps."""
-    ox, oy = col * TW, row * TW
-    mortar = blend(base, (40, 40, 40), 0.35)
-    for py in range(TW):
-        for px in range(TW):
-            img.putpixel((ox + px, oy + py), base)
-    for gy in range(0, TW, 8):
-        for gx in range(0, TW):
-            img.putpixel((ox + gx, oy + gy), mortar)
-    for gx in range(0, TW, 10):
-        for gy in range(0, TW):
-            img.putpixel((ox + gx, oy + gy), mortar)
-    for _ in range(14):
-        x0 = RNG.randrange(1, TW - 4)
-        y0 = RNG.randrange(1, TW - 4)
-        crack_c = blend(base, (30, 30, 30), 0.5)
-        for _s in range(RNG.randrange(3, 8)):
-            img.putpixel((ox + x0, oy + y0), crack_c)
-            x0 += RNG.choice([-1, 0, 1])
-            y0 += RNG.choice([-1, 0, 1])
+def fill_marsh_grass(img: Image.Image, col: int, row: int) -> None:
+    paint_tile(img, col, row, (42, 78, 36), (58, 96, 40))
 
 
-def fill_dirt_tile(img: Image.Image, col: int, row: int, base: tuple[int, int, int]) -> None:
-    """Dirt — horizontal strata bands."""
-    ox, oy = col * TW, row * TW
-    for py in range(TW):
-        band_t = (py % 6) / 6.0
-        row_c = blend(base, (base[0] - 18, base[1] - 14, base[2] - 10), band_t * 0.45)
-        for px in range(TW):
-            img.putpixel((ox + px, oy + py), row_c)
-    for _ in range(10):
-        px = RNG.randrange(TW)
-        py = RNG.randrange(TW)
-        img.putpixel((ox + px, oy + py), blend(base, (90, 60, 38), 0.35))
+def fill_sparse_grass(img: Image.Image, col: int, row: int, dry: tuple[int, int, int], tuft: tuple[int, int, int]) -> None:
+    paint_tile(img, col, row, dry, tuft)
 
 
-def fill_grass_side(img: Image.Image, col: int, row: int, dirt: tuple[int, int, int], grass: tuple[int, int, int]) -> None:
-    ox, oy = col * TW, row * TW
-    for py in range(TW):
-        for px in range(TW):
-            c = grass if py < 4 else dirt
-            img.putpixel((ox + px, oy + py), c)
-    for px in range(TW):
-        if RNG.random() < 0.15:
-            img.putpixel((ox + px, oy + 3), blend(grass, dirt, 0.5))
-
-
-def fill_ocean(img: Image.Image, col: int, row: int, shallow: bool = False) -> None:
-    base = (38, 84, 138) if shallow else (18, 44, 92)
-    accents = [(28, 68, 118), (48, 98, 158)] if shallow else [(12, 32, 72), (32, 58, 108)]
-    fill_tile(img, col, row, base, accents, 0.05)
+def fill_ocean(img: Image.Image, col: int, row: int, deep: bool) -> None:
+    if deep:
+        paint_tile(img, col, row, (16, 42, 84), (22, 58, 108))
+    else:
+        paint_tile(img, col, row, (28, 78, 138), (40, 102, 168))
 
 
 def main() -> None:
     img = Image.new("RGBA", (COLS * TW, ROWS * TW), (0, 0, 0, 255))
 
-    # Row 0 — water
-    for c in range(COLS):
-        fill_ocean(img, c, 0, shallow=c > 0)
+    # Row 0 — water. (1,0) is the river / WATER slot and must read lighter than ocean (0,0).
+    fill_ocean(img, 0, 0, True)
+    fill_river_tile(img, 1, 0)
+    for c in range(2, COLS):
+        fill_ocean(img, c, 0, c >= 5)
 
-    # Row 1 — beach
+    # Row 1 — beach, with the live steppe / farmland / path slots kept distinct.
     sands = [
-        (218, 198, 140),
-        (210, 186, 128),
-        (226, 206, 150),
-        (204, 180, 122),
-        (232, 214, 158),
-        (196, 172, 116),
-        (214, 192, 134),
+        (214, 190, 128),
+        (196, 170, 112),
+        (224, 202, 142),
+        (78, 70, 34),  # (3,1) GRASSLAND4 steppe — darker than plains
+        (186, 154, 64),  # (4,1) FARMLAND
+        (132, 118, 96),  # (5,1) TOWN_PATH
+        (208, 184, 122),
     ]
     for c, base in enumerate(sands):
-        fill_tile(img, c, 1, base, [(base[0] - 18, base[1] - 16, base[2] - 10), (base[0] + 12, base[1] + 10, base[2] + 8)], 0.07)
+        if c == 3:
+            fill_sparse_grass(img, c, 1, base, (148, 132, 58))
+        else:
+            paint_tile(img, c, 1, base, shade(base, 0.86))
 
-    # Row 2 — grass biomes + dirt column
-    grasses = [
-        (88, 142, 48),
-        (96, 150, 54),
-        (104, 158, 60),
-        (140, 154, 72),
-        (168, 146, 64),
-        (72, 128, 44),
-        (118, 168, 78),
-    ]
-    for c, base in enumerate(grasses):
-        dark = (base[0] - 16, base[1] - 20, base[2] - 10)
-        light = (base[0] + 12, base[1] + 14, base[2] + 8)
-        fill_grass_top(img, c, 2, base, dark, light)
-    fill_grass_side(img, 3, 2, (118, 86, 52), grasses[3])
+    # Row 2 — grass. (0,2) marsh must stay darker than plains (2,2). (3,2) is DIRT.
+    fill_marsh_grass(img, 0, 2)
+    paint_tile(img, 1, 2, (72, 132, 48), (88, 150, 56))
+    paint_tile(img, 2, 2, (96, 168, 62), (118, 186, 74))  # plains
+    paint_tile(img, 3, 2, (118, 84, 52), (96, 68, 40))  # dirt
+    fill_sparse_grass(img, 4, 2, (214, 168, 64), (186, 140, 48))  # savanna, lighter than steppe
+    paint_tile(img, 5, 2, (78, 156, 52), (96, 176, 64))  # grass tuft
+    paint_tile(img, 6, 2, (146, 84, 196), (176, 120, 220))  # crystal
 
-    # Row 3 — forest
-    forest = [(52, 102, 44), (44, 92, 38), (60, 112, 50), (72, 118, 56), (40, 84, 34)]
-    for c, base in enumerate(forest):
-        fill_tile(img, c, 3, base, [(base[0] - 10, base[1] - 14, base[2] - 6), (base[0] + 8, base[1] + 10, base[2] + 4)], 0.08)
-    fill_tile(img, 2, 3, (92, 68, 44), [(78, 56, 34), (104, 78, 52)], 0.06)
+    # Row 3 — forest / trunk / bush
+    paint_tile(img, 0, 3, (46, 92, 40), (36, 74, 32))
+    paint_tile(img, 1, 3, (40, 84, 36), (52, 102, 44))
+    paint_tile(img, 2, 3, (102, 72, 44), (78, 54, 32))  # trunk
+    paint_tile(img, 3, 3, (54, 108, 46), (42, 86, 36))
+    paint_tile(img, 4, 3, (36, 78, 32), (48, 96, 40))
+    paint_tile(img, 5, 3, (48, 110, 42), (32, 82, 28))  # bush
+    paint_tile(img, 6, 3, (44, 88, 38), (58, 104, 46))
 
-    # Row 4 — stone / mountain
+    # Row 4 — stone. (0,4) needs visible cracks, not one flat gray.
     stones = [
-        (108, 108, 108),
-        (98, 98, 98),
-        (118, 118, 118),
-        (88, 88, 88),
-        (128, 128, 128),
-        (102, 102, 102),
-        (112, 112, 112),
+        (112, 112, 116),
+        (96, 98, 102),
+        (128, 126, 122),
+        (84, 86, 90),
+        (104, 100, 96),
+        (120, 118, 114),
+        (90, 94, 98),
     ]
     for c, base in enumerate(stones):
-        fill_stone_tile(img, c, 4, base)
+        paint_tile(img, c, 4, base, shade(base, 0.62))
 
-    # Row 5 — snow
-    snows = [(228, 236, 244), (220, 228, 238), (236, 242, 250)]
+    # Row 5 — snow, plus the mountain3 slot at (3,5)
+    snows = [
+        (232, 238, 244),
+        (214, 222, 230),
+        (240, 244, 248),
+        (100, 104, 108),
+        (220, 226, 232),
+        (206, 214, 222),
+        (228, 234, 240),
+    ]
     for c, base in enumerate(snows):
-        fill_tile(img, c, 5, base, [(210, 218, 228), (244, 248, 252)], 0.05)
+        paint_tile(img, c, 5, base, shade(base, 0.9))
 
-    # Row 6 — valley / dirt
-    dirts = [(108, 82, 54), (98, 74, 48), (118, 90, 60)]
-    for c, base in enumerate(dirts):
-        fill_dirt_tile(img, c, 6, base)
+    # Row 6 — valley / dirt2
+    valleys = [(108, 82, 54), (96, 72, 46), (120, 92, 62), (88, 66, 42), (114, 86, 58), (100, 76, 50), (92, 70, 44)]
+    for c, base in enumerate(valleys):
+        paint_tile(img, c, 6, base, shade(base, 0.8))
 
     # Row 7 — desert
-    deserts = [(196, 162, 98), (186, 150, 88), (206, 172, 108)]
+    deserts = [(198, 164, 98), (184, 148, 86), (210, 176, 112), (176, 142, 78), (204, 168, 102), (190, 156, 92), (168, 136, 74)]
     for c, base in enumerate(deserts):
-        fill_tile(img, c, 7, base, [(base[0] - 14, base[1] - 12, base[2] - 10), (base[0] + 12, base[1] + 10, base[2] + 8)], 0.07)
+        paint_tile(img, c, 7, base, shade(base, 0.84))
 
     # Row 8 — tundra
-    tundras = [(168, 176, 182), (158, 166, 174), (178, 184, 190)]
+    tundras = [(168, 176, 184), (154, 162, 170), (180, 186, 192), (148, 156, 164), (172, 178, 186), (160, 168, 176), (140, 148, 156)]
     for c, base in enumerate(tundras):
-        fill_tile(img, c, 8, base, [(150, 158, 166), (188, 194, 200)], 0.06)
+        paint_tile(img, c, 8, base, shade(base, 0.86))
 
     # Row 9 — basin
-    basins = [(142, 128, 108), (132, 118, 98), (152, 138, 118)]
+    basins = [(142, 126, 106), (128, 114, 96), (154, 138, 116), (118, 106, 90), (136, 122, 104), (148, 132, 112), (124, 110, 94)]
     for c, base in enumerate(basins):
-        fill_tile(img, c, 9, base, [(base[0] - 12, base[1] - 10, base[2] - 8), (base[0] + 10, base[1] + 8, base[2] + 6)], 0.07)
+        paint_tile(img, c, 9, base, shade(base, 0.82))
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
     img.save(OUT)
     print(f"Wrote {OUT} ({img.size[0]}x{img.size[1]})")
+
+    water = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    paint_tile(water, 0, 0, (48, 140, 186), (88, 186, 214))
+    water.save(WATER)
+    print(f"Wrote {WATER}")
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ Not simulation. Every frame the service:
 4. Ran gravity on the copy
 5. Did this up to 3 times per hitch
 
-`is_cell_active` only skipped *flow* on unloaded cells. Visuals were not the cost: `channel_fluid_changed` still has **0 listeners**.
+`is_cell_active` only skipped *flow* on unloaded cells. Visuals were not the cost when this profile was taken: `channel_fluid_changed` had **0 listeners**. A later cut connects that signal to a per-cell water fill so a passive level change draws.
 
 ## Live breakdown (current shipped path)
 

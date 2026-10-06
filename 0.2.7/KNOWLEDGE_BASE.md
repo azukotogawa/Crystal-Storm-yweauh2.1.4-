@@ -1014,7 +1014,7 @@ Terrain:
 
 Crystal:
 
-- `shaders/crystal_procedural.gdshader`
+- Live material is `StandardMaterial3D` from `CrystalManager._setup_materials`. The unused `shaders/crystal_procedural.gdshader` was removed.
 - `CrystalManager` creates a material with generated amethyst texture if possible.
 - Glow color roughly `(0.62, 0.22, 1.0)`.
 - Glow strength 1.15.

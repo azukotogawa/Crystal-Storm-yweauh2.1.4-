@@ -943,7 +943,9 @@ func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
 
 
 func _build_mesh(data: ChunkData) -> Dictionary:
-	return _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
+	var built := _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
+	sync_ramp_map_to_mesh(data, built.get("quads", []))
+	return built
 
 
 func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false) -> Dictionary:
@@ -2524,12 +2526,14 @@ func _player_column_pos() -> Vector2:
 
 
 func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
+	# One height inside the chunk: the resident surface map (tops, ramps, walls).
+	# The halo is only the neighbor ring frozen for the worker. It must not
+	# override an interior column the walk mesh was built from.
+	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
+		return _surface_y_at(data, lx, lz)
 	var halo_h: float = data.get_halo_surface_y(lx, lz)
 	if halo_h > -9000.0:
 		return halo_h
-	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
-		return _surface_y_at(data, lx, lz)
-	# Worker path: rely on halo snapshot only (see capture_worker_snapshot).
 	return 0.0
 
 
@@ -3142,6 +3146,70 @@ func _on_chunk_task_complete(
 		profiler.end_func("ChunkManager::_on_chunk_task_complete")
 	if profiler and profiler.has_method("end"):
 		profiler.end("chunk_task_complete")
+
+## ramp_map is the walk slope. It is rebuilt from the quads that will be drawn,
+## so a cached or clipped mesh cannot leave a slope the player walks but cannot see.
+func sync_ramp_map_to_mesh(data: ChunkData, quads: Array) -> void:
+	if data == null:
+		return
+	var owned: Dictionary = {}
+	for q_v in quads:
+		var q: Dictionary = q_v
+		var fc: int = int(q.get("face_code", FACE_TOP))
+		if fc < FACE_RAMP:
+			continue
+		var x: int = int(floor(float(q.get("x", 0.0))))
+		var z: int = int(floor(float(q.get("z", 0.0))))
+		if x < 0 or z < 0 or x >= ChunkData.SIZE or z >= ChunkData.SIZE:
+			continue
+		var dir := Vector2i(int(q.get("ramp_dir_x", 0)), int(q.get("ramp_dir_z", 0)))
+		var dir2 := Vector2i(int(q.get("ramp_dir2_x", 0)), int(q.get("ramp_dir2_z", 0)))
+		var cell := Vector2i(x, z)
+		if fc == FACE_RAMP_CORNER:
+			owned[cell] = {"corner": true, "side": false, "dir": dir, "dir2": dir2}
+		elif fc == FACE_RAMP_SIDE:
+			owned[cell] = {
+				"concave": true,
+				"side": true,
+				"corner": false,
+				"dir": dir,
+				"dir2": dir2,
+				"surface_h": float(q.get("y", 0.0)),
+			}
+		else:
+			owned[cell] = {
+				"corner": false,
+				"side": false,
+				"approach": false,
+				"dir": dir,
+				"dir2": Vector2i.ZERO,
+			}
+	var approaches: Dictionary = {}
+	for cell_v in owned.keys():
+		var cell: Vector2i = cell_v
+		var entry: Dictionary = owned[cell]
+		if bool(entry.get("corner", false)) or bool(entry.get("approach", false)) or bool(entry.get("concave", false)):
+			continue
+		var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
+		if dir == Vector2i.ZERO:
+			continue
+		var approach := Vector2i(cell.x + dir.x, cell.y + dir.y)
+		if approach.x < 0 or approach.y < 0 or approach.x >= ChunkData.SIZE or approach.y >= ChunkData.SIZE:
+			continue
+		if owned.has(approach):
+			continue
+		approaches[approach] = {
+			"corner": false,
+			"side": false,
+			"approach": true,
+			"dir": Vector2i(-dir.x, -dir.y),
+			"dir2": Vector2i.ZERO,
+		}
+	for cell_v in approaches.keys():
+		owned[cell_v] = approaches[cell_v]
+	data.ramp_map = owned
+	data.finalize_macro_metadata(true)
+
 
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 	var entry := get_ramp_entry_at_world(wx, wz)
