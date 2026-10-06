@@ -97,6 +97,29 @@ func _run() -> void:
 			_ok("architecture audit present")
 		else:
 			_fail("architecture audit missing")
+		layer.panel_open = true
+		layer.pin_cell = Vector2i(4, 5)
+		var status_a := str(layer._status.text) if layer._status else ""
+		if status_a != "PINNED 4,5":
+			_fail("pin did not refresh before the next frame: %s" % status_a)
+		elif int(layer.last_snapshot.get("wx", -1)) != 4 or int(layer.last_snapshot.get("wz", -1)) != 5:
+			_fail("pin snapshot mismatch %s" % str(layer.last_snapshot.get("wx")))
+		else:
+			_ok("pin refreshes label immediately")
+		layer.pin_cell = Vector2i(6, 5)
+		var status_b := str(layer._status.text) if layer._status else ""
+		if status_b != "PINNED 6,5":
+			_fail("pin leftover from previous cell: %s" % status_b)
+		elif layer._shown_cell != Vector2i(6, 5):
+			_fail("shown cell leftover %s" % str(layer._shown_cell))
+		else:
+			_ok("pin replace drops previous cell before next frame")
+		await process_frame
+		var status_c := str(layer._status.text) if layer._status else ""
+		if status_c != "PINNED 6,5":
+			_fail("process frame reverted pin to %s" % status_c)
+		else:
+			_ok("pin holds across the next process frame")
 
 	_finish()
 
