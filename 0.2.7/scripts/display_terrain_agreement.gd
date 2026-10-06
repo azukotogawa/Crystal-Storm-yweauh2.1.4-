@@ -61,6 +61,9 @@ func _run() -> void:
 		_look(c.x, c.y)
 		if insp:
 			insp.pin_cell = c
+		# Camera snap is immediate; the viewport texture still holds the
+		# previous cell until this pin has been drawn.
+		await process_frame
 		await process_frame
 		await process_frame
 		var snap: Dictionary = _LiveWorldQuery.inspect_cell(self, c.x, c.y)
@@ -81,7 +84,7 @@ func _run() -> void:
 			"collision_kind": snap.get("collision_kind", ""),
 			"tile": snap.get("tile", -1),
 		}
-		_shot(scratch, "ta_%s_%d_%d" % [key, c.x, c.y])
+		await _shot(scratch, "ta_%s_%d_%d" % [key, c.x, c.y])
 	var editor = get_first_node_in_group("terrain_editor")
 	var edits: Array = []
 	if editor and cells.has("dig_one"):
@@ -107,7 +110,8 @@ func _run() -> void:
 		if insp:
 			insp.pin_cell = d
 		await process_frame
-		_shot(scratch, "ta_edit_dig_%d_%d" % [d.x, d.y])
+		await process_frame
+		await _shot(scratch, "ta_edit_dig_%d_%d" % [d.x, d.y])
 	var ramps_ok := true
 	var missing: Array = []
 	for key in ["ramp_east", "ramp_west", "ramp_south", "ramp_north"]:
@@ -181,6 +185,9 @@ func _look(wx: int, wz: int) -> void:
 func _shot(scratch: String, name: String) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
+	# process_frame resumes before the draw, so get_image() there is the
+	# previous cell. Capture after this frame's draw instead.
+	await RenderingServer.frame_post_draw
 	var tex: Texture2D = root.get_texture()
 	if tex == null:
 		return

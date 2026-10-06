@@ -37,7 +37,7 @@ Headless `_build_mesh` on a flat 10 / approach 8 map **does** emit FACE_RAMP. Th
 
 ### 2. Camera vs pin (harness)
 
-Some PNG names (`ta_wood_wall_…`) still show F4 pinned to a nearby ramp from the previous frame. Snap is better than lerp; one extra settle frame is still needed for a 1:1 filename↔cell photo.
+Some PNG names (`ta_wood_wall_…`) showed F4 pinned to a nearby ramp from the previous frame. The pin write invalidated the panel and waited for a later `_process`, and `get_texture()` at `process_frame` time is still the previous draw. The inspector now refreshes the label when the pin changes, and `display_terrain_agreement.gd` waits one more frame plus `frame_post_draw` before saving the PNG. No new windowed photo was taken in that change.
 
 ### 3. Collision model (unchanged, by design)
 
