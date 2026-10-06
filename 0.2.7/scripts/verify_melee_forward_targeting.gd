@@ -25,7 +25,8 @@ func _run() -> void:
 		print("OK weapon melee uses resolve_action attack")
 
 	var targeting_src := (load("res://player/action_targeting.gd") as GDScript).source_code
-	if '&"dig", &"build", &"attack", &"ranged"' not in targeting_src or "mouse_only = false" not in targeting_src:
+	# Off-screen mouse returns no column; target_column then walks _target_column_forward.
+	if "_target_column_forward" not in targeting_src or '&"attack", &"ranged"' not in targeting_src:
 		push_error("action_targeting must forward-fallback tool modes without mouse")
 		failed = true
 	else:
