@@ -44,31 +44,34 @@ func _run() -> void:
 	else:
 		print("OK cohesive crystal mesh center=%s size=%s" % [str(center), str(aabb.size)])
 
-	var layer := _CrystalChunkLayer.new()
-	layer.setup(Vector2i(0, 0), StandardMaterial3D.new())
 	var shallow := CrystalCell.new(Vector2i(2, 2), 10.0, 0.15, 0)
-	layer.rebuild([shallow], _CrystalClusterMesh.LOD_FULL)
-	var mm: MultiMesh = (layer.get_node("CrystalFluid") as MultiMeshInstance3D).multimesh
-	var shallow_scale := mm.get_instance_transform(0).basis.get_scale().x
 	var deep := CrystalCell.new(Vector2i(2, 2), 10.0, ws.layer_height(), 0)
-	layer.rebuild([deep], _CrystalClusterMesh.LOD_FULL)
-	var deep_scale := mm.get_instance_transform(0).basis.get_scale().x
-	if shallow_scale >= 0.7 or deep_scale <= 0.95 or deep_scale < shallow_scale * 1.5:
-		push_error("crystal should swell with depth, shallow=%f deep=%f" % [shallow_scale, deep_scale])
+	var shallow_g := _CrystalChunkLayer.visual_growth(shallow)
+	var deep_g := _CrystalChunkLayer.visual_growth(deep)
+	if shallow_g.x >= 0.7 or deep_g.x <= 0.95 or deep_g.x < shallow_g.x * 1.5:
+		push_error("crystal should swell with depth, shallow=%f deep=%f" % [shallow_g.x, deep_g.x])
+		failed = true
+	elif shallow_g.y > 0.4 or deep_g.y < ws.layer_height() * 0.9:
+		push_error("shallow cells must stay short, shallow_h=%f deep_h=%f" % [shallow_g.y, deep_g.y])
 		failed = true
 	else:
-		print("OK liquid swell shallow=%f deep=%f" % [shallow_scale, deep_scale])
+		print("OK liquid swell shallow=%f deep=%f" % [shallow_g.x, deep_g.x])
 
 	var frontier := CrystalCell.new(Vector2i(2, 2), 10.0, ws.layer_height(), 0)
 	frontier.is_frontier = true
 	frontier.neighbor_mask = 2
+	var front_g := _CrystalChunkLayer.visual_growth(frontier)
+	var layer := _CrystalChunkLayer.new()
+	layer.setup(Vector2i(0, 0), StandardMaterial3D.new())
 	layer.rebuild([frontier], _CrystalClusterMesh.LOD_FULL)
-	var front_scale := mm.get_instance_transform(0).basis.get_scale().x
-	if front_scale <= deep_scale:
-		push_error("frontier cell should read wider than an interior-less mature cell")
+	if front_g.x <= deep_g.x or front_g.z <= 1.0:
+		push_error("frontier cell should read wider, footprint=%f boost=%f" % [front_g.x, front_g.z])
+		failed = true
+	elif not is_equal_approx(layer.get_applied_terrain_y(Vector2i(2, 2)), 10.0):
+		push_error("growth path should still record terrain_y")
 		failed = true
 	else:
-		print("OK frontier footprint %f > mature %f" % [front_scale, deep_scale])
+		print("OK frontier footprint %f > mature %f" % [front_g.x, deep_g.x])
 
 	var vfx := CombatVisualFeedback.new()
 	root.add_child(vfx)

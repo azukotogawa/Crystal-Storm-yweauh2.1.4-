@@ -123,25 +123,35 @@ func _ensure_mesh_for_mode(mm: MultiMesh) -> void:
 		mm.mesh = _CrystalClusterMesh.get_mesh_for_lod(lod_tier)
 
 
-func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
+## Footprint, visual depth, and frontier_boost for one cell.
+## x = horizontal scale, y = height in world units, z = frontier_boost.
+static func visual_growth(cell: CrystalCell) -> Vector3:
 	var ws = _WorldSettings.get_active()
-	var voxel_s: float = ws.voxel_scale
 	var depth := maxf(cell.depth, 0.08)
 	var layer_h: float = ws.layer_height()
 	# Smoothstep swell: a new cell is a small bead; a full layer overlaps its neighbors
 	# so the cluster reads as one crystal instead of a stack of full-size cubes.
 	var depth_n := clampf(depth / maxf(layer_h, 0.001), 0.0, 1.0)
 	var swell := clampf(depth_n * depth_n * (3.0 - 2.0 * depth_n), 0.18, 1.0)
-	var footprint := lerpf(0.36, 1.06, swell)
+	var footprint := lerpf(0.34, 1.14, swell)
 	var frontier_boost: float = 1.0
 	var visual_depth := maxf(depth, 0.1)
 	if (cell.neighbor_mask & 15) == 15:
-		footprint = maxf(footprint, 0.92) * 1.08
+		footprint = maxf(footprint, 0.95) * 1.10
 		visual_depth = maxf(visual_depth, layer_h * 0.42) * 0.78
 	elif cell.is_frontier:
 		frontier_boost = 1.28
 		visual_depth *= frontier_boost
-		footprint *= 1.12
+		footprint *= 1.10
+	return Vector3(footprint, visual_depth, frontier_boost)
+
+
+func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
+	var ws = _WorldSettings.get_active()
+	var voxel_s: float = ws.voxel_scale
+	var growth := visual_growth(cell)
+	var footprint := growth.x
+	var visual_depth := growth.y
 	var chunk_origin_x: float = ws.column_to_world(float(chunk_coord.x * ChunkData.SIZE))
 	var chunk_origin_z: float = ws.column_to_world(float(chunk_coord.y * ChunkData.SIZE))
 	var local_x: float = ws.column_to_world(float(cell.world_pos.x) + 0.5) - chunk_origin_x

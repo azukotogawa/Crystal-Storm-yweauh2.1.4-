@@ -134,7 +134,7 @@ static func _facet_specs(s: float) -> Array:
 	var natural_h := s * 0.88
 	var y0 := -natural_h * 0.5
 	return [
-		{"base": Vector3(0.0, y0, 0.0), "half": s * 0.52, "height": natural_h * 0.62},
+		{"base": Vector3(0.0, y0, 0.0), "half": s * 0.64, "height": natural_h * 0.70},
 		{"base": Vector3(0.0, y0 + natural_h * 0.28, 0.0), "half": s * 0.20, "height": natural_h * 0.72},
 		{"base": Vector3(s * 0.14, y0 + natural_h * 0.20, s * 0.08), "half": s * 0.13, "height": natural_h * 0.46},
 		{"base": Vector3(-s * 0.12, y0 + natural_h * 0.18, -s * 0.07), "half": s * 0.12, "height": natural_h * 0.40},
