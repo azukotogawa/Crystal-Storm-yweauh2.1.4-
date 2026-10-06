@@ -149,7 +149,7 @@ func _ws():
 
 
 func _rebuild_probe_offsets() -> void:
-	var r: float = _ws().player_floor_probe_radius
+	var r: float = _ws().player_radius()
 	_probe_offsets = [
 		Vector2(0.0, 0.0),
 		Vector2(r, 0.0),

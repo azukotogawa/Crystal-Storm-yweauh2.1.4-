@@ -35,7 +35,7 @@ var _patrol_anchor: Vector2i = Vector2i.ZERO
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
 var _base_tint: Color = Color(0.72, 0.2, 0.95)
-var _mesh_radius: float = 0.28
+var _mesh_radius: float = 0.22
 
 
 func _ready() -> void:
@@ -92,7 +92,7 @@ func refresh_visual() -> void:
 		_setup_visual(_base_tint, _mesh_radius)
 
 
-func _setup_visual(tint: Color, radius: float = 0.28, height: float = 0.7) -> void:
+func _setup_visual(tint: Color, radius: float = 0.22, height: float = 0.70) -> void:
 	_base_tint = tint
 	_mesh_radius = radius
 	if not is_inside_tree():
@@ -161,7 +161,7 @@ func _setup_sprite(registry, tex: Texture2D, tint: Color, height: float) -> void
 	if _voxel_prop:
 		_voxel_prop.visible = false
 	_sprite.visible = true
-	_sprite.position.y = height * 0.55
+	_sprite.position.y = height * WorldSettings.get_active().voxel_scale * 0.55
 	if registry.has_method("apply_to_sprite3d"):
 		registry.apply_to_sprite3d(_sprite, tex, tint)
 	elif registry.has_method("configure_sprite3d"):
@@ -171,7 +171,7 @@ func _setup_sprite(registry, tex: Texture2D, tint: Color, height: float) -> void
 		_sprite.modulate = tint
 
 
-func _setup_mesh(tint: Color, radius: float = 0.28, height: float = 0.7) -> void:
+func _setup_mesh(tint: Color, radius: float = 0.22, height: float = 0.70) -> void:
 	if _sprite:
 		_sprite.visible = false
 	if _voxel_prop:
@@ -181,11 +181,12 @@ func _setup_mesh(tint: Color, radius: float = 0.28, height: float = 0.7) -> void
 		_mesh.name = "MeshInstance3D"
 		add_child(_mesh)
 	_mesh.visible = true
+	var vs: float = WorldSettings.get_active().voxel_scale
 	var mesh := CapsuleMesh.new()
-	mesh.radius = radius
-	mesh.height = height
+	mesh.radius = radius * vs
+	mesh.height = height * vs
 	_mesh.mesh = mesh
-	_mesh.position.y = height * 0.55
+	_mesh.position.y = mesh.height * 0.55
 	if _mesh.material_override == null:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = tint
@@ -212,9 +213,10 @@ func get_combat_center() -> Vector3:
 
 
 func get_combat_radius() -> float:
+	var voxels := _mesh_radius * 1.2
 	if spawn_def:
-		return spawn_def.hit_radius
-	return maxf(_mesh_radius * 1.2, 0.35)
+		voxels = spawn_def.hit_radius
+	return maxf(voxels, 0.2) * WorldSettings.get_active().voxel_scale
 
 
 ## Register or refresh spatial index at the current world position.

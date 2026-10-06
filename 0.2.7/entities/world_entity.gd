@@ -198,10 +198,11 @@ func _ensure_mesh(tint: Color) -> void:
 		_mesh = MeshInstance3D.new()
 		_mesh.name = "MeshInstance3D"
 		var mesh := CapsuleMesh.new()
-		mesh.radius = 0.22
-		mesh.height = 0.55
+		var ws = WorldSettings.get_active()
+		mesh.radius = ws.small_creature_radius()
+		mesh.height = ws.small_creature_height()
 		_mesh.mesh = mesh
-		_mesh.position.y = 0.35
+		_mesh.position.y = mesh.height * 0.5
 		add_child(_mesh)
 	_mesh.visible = true
 	if _mesh.material_override == null:
@@ -217,12 +218,14 @@ func get_combat_center() -> Vector3:
 		if h > 0.01:
 			center.y += h * 0.42
 	elif _mesh and is_instance_valid(_mesh):
-		center.y += 0.35
+		center.y += WorldSettings.get_active().small_creature_height() * 0.5
 	return center
 
 
 func get_combat_radius() -> float:
-	return config.hit_radius if config else 0.35
+	## Brain hit_radius is authored at voxel_scale 2. It tracks the world knob.
+	var authored := config.hit_radius if config else 0.35
+	return authored * (WorldSettings.get_active().voxel_scale / 2.0)
 
 
 func get_combat_defense() -> float:
@@ -294,7 +297,7 @@ func _physics_process(delta: float) -> void:
 			_player.get_voxel_position() if _player.has_method("get_voxel_position")
 			else _player.global_position
 		)
-		if global_position.distance_to(player_pos) <= 1.6:
+		if global_position.distance_to(player_pos) <= WorldSettings.get_active().creature_contact_range():
 			if _player.has_method("take_damage"):
 				_player.take_damage(config.contact_damage)
 			attacked_player.emit(config.contact_damage)

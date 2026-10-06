@@ -91,7 +91,7 @@ func _process(delta: float):
 		_apply_edge_scroll(delta)
 	_smooth_yaw(delta)
 
-	var anchor: Vector3 = target.global_position + _scroll_lead
+	var anchor: Vector3 = _frame_anchor()
 	var desired_pos = anchor + get_offset_from_rotation()
 
 	if use_smoothing:
@@ -116,6 +116,12 @@ func _apply_hold_rotate(delta: float) -> void:
 	if is_zero_approx(dir):
 		return
 	yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
+
+
+func _frame_anchor() -> Vector3:
+	var anchor: Vector3 = target.global_position + _scroll_lead
+	anchor.y += WorldSettings.get_active().player_height() * 0.5
+	return anchor
 
 
 func _smooth_yaw(delta: float) -> void:
