@@ -248,12 +248,18 @@ static func _target_column_forward(
 	var forward := attack_forward(player)
 	if forward.length_squared() < 0.0001:
 		forward = Vector3(1.0, 0.0, 0.0)
+	# The column under the player is solid, so a march from distance 0 always
+	# returns the feet cell and never reaches a crystal or dig target ahead.
+	var stand := Vector2i(floori(player.voxel_position.x), floori(player.voxel_position.z))
 	var dist := 0.0
 	var last_in_range := Vector3.ZERO
 	while dist <= range_v + 0.01:
 		var probe: Vector3 = player.voxel_position + forward * dist
 		var wx := floori(probe.x)
 		var wz := floori(probe.z)
+		if wx == stand.x and wz == stand.y:
+			dist += 0.35
+			continue
 		if _column_in_range(player, wx, wz, range_v):
 			last_in_range = Vector3(float(wx) + 0.5, player.voxel_position.y, float(wz) + 0.5)
 			if _is_solid_column(world, chunk_manager, wx, wz):

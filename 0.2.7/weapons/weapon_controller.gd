@@ -515,7 +515,10 @@ func _flash_dig_feedback(target: Vector3) -> void:
 
 
 func _player_damage_mult(stat_id: StringName) -> float:
-	if player and player.has_method("get_stat"):
+	# A player whose stat sheet is not ready yet has no multipliers. Item damage stands.
+	if player == null or player.get("stat_component") == null:
+		return 1.0
+	if player.has_method("get_stat"):
 		return player.get_stat(stat_id)
 	return 1.0
 
