@@ -132,32 +132,81 @@ static func _stamp_generated_step_maps(
 	tree: SceneTree, landing: Vector2i, toward_low: Vector2i, remesh: Dictionary
 ) -> void:
 	var cm = tree.get_first_node_in_group("chunk_manager")
-	if cm == null:
+	if cm == null or toward_low == Vector2i.ZERO:
 		return
 	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
+	var landing_h := _resident_surface(cm, landing)
+	if landing_h < -9000.0:
+		return
+	# Subtracting one layer from whatever is already there is not a step when
+	# the approach is a cliff or a corner (two high neighbors). Write the
+	# isolated pattern the cardinal emit expects: landing ring at landing_h,
+	# approach and its sides one layer down.
+	var low_h := landing_h - layer
 	var approach := landing + toward_low
-	for cell in [landing, approach]:
-		var coord := Vector2i(
-			int(floor(float(cell.x) / float(16))),
-			int(floor(float(cell.y) / float(16)))
-		)
-		if not cm.chunks.has(coord):
+	_write_resident_surface(cm, approach, low_h, remesh)
+	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if dir == toward_low:
 			continue
-		var data = cm.chunks[coord].chunk_data
-		if data == null:
-			continue
-		var lx: int = cell.x - coord.x * 16
-		var lz: int = cell.y - coord.y * 16
-		if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
-			continue
-		if cell == approach:
-			# Set before the write so a column regen that has not entered its
-			# loop keeps this stamp. Snapshot so one already inside the loop
-			# can be restored on the preserve remesh.
-			data.preserve_column_maps = true
-			data.surface_map[lx][lz] = float(data.surface_map[lx][lz]) - layer
-			data.snapshot_resident_maps()
-		remesh[cell] = true
+		_write_resident_surface(cm, landing + dir, landing_h, remesh)
+	var perp_a := Vector2i(-toward_low.y, toward_low.x)
+	var perp_b := Vector2i(toward_low.y, -toward_low.x)
+	_write_resident_surface(cm, approach + perp_a, low_h, remesh)
+	_write_resident_surface(cm, approach + perp_b, low_h, remesh)
+	remesh[landing] = true
+
+
+static func _resident_surface(cm, cell: Vector2i) -> float:
+	var data = _resident_chunk_data(cm, cell)
+	if data == null:
+		return -9999.0
+	var lx: int = cell.x - data.position.x * 16
+	var lz: int = cell.y - data.position.y * 16
+	if data.surface_map.size() <= lx or data.surface_map[lx] == null:
+		return -9999.0
+	if data.surface_map[lx].size() <= lz:
+		return -9999.0
+	return float(data.surface_map[lx][lz])
+
+
+static func _write_resident_surface(cm, cell: Vector2i, height: float, remesh: Dictionary) -> void:
+	var data = _resident_chunk_data(cm, cell)
+	if data == null:
+		return
+	var lx: int = cell.x - data.position.x * 16
+	var lz: int = cell.y - data.position.y * 16
+	if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
+		return
+	if data.surface_map.size() <= lx or data.surface_map[lx] == null:
+		return
+	if data.surface_map[lx].size() <= lz:
+		return
+	# Player walls and digs live in the worker snapshot. Leave them alone.
+	if data.get_worker_build_tile(lx, lz) >= 0:
+		return
+	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
+	if absf(data.get_worker_height_delta(lx, lz)) > layer * 0.08:
+		return
+	# Set before the write so a column regen that has not entered its loop
+	# keeps this stamp. Snapshot so one already inside the loop can be
+	# restored on the preserve remesh.
+	data.preserve_column_maps = true
+	data.surface_map[lx][lz] = height
+	data.snapshot_resident_maps()
+	remesh[cell] = true
+
+
+static func _resident_chunk_data(cm, cell: Vector2i):
+	var coord := Vector2i(
+		int(floor(float(cell.x) / 16.0)),
+		int(floor(float(cell.y) / 16.0))
+	)
+	if not cm.chunks.has(coord):
+		return null
+	var view = cm.chunks[coord]
+	if view == null:
+		return null
+	return view.chunk_data
 
 
 static func _seed_crystal(tree: SceneTree, cell: Vector2i) -> void:

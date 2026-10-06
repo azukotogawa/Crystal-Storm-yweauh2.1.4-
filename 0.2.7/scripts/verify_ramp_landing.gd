@@ -201,6 +201,56 @@ func _run() -> void:
 	border_view.free()
 	neighbor_view.free()
 
+	# East yard failure: approach already a two-layer cliff, sides still high.
+	# Subtracting another layer never becomes one cardinal step. The stamp
+	# must write landing_h - layer and drop the approach sides.
+	var cliff := _ChunkData.new(Vector2i(0, 0), world)
+	cliff.capture_worker_snapshot()
+	_init_maps(cliff)
+	var land_c := Vector2i(8, 8)
+	var approach_c := Vector2i(9, 8)
+	for x3 in _ChunkData.SIZE:
+		for z3 in _ChunkData.SIZE:
+			cliff.surface_map[x3][z3] = 10.0
+	cliff.surface_map[approach_c.x][approach_c.y] = 10.0 - layer * 2.0
+	var before_cliff: Array = cm._build_mesh(cliff).get("quads", [])
+	if _ramp_quads_at(before_cliff, land_c.x, land_c.y) != 0:
+		push_error("two-layer cliff should not emit a cardinal ramp")
+		failed = true
+	else:
+		print("OK two-layer cliff emits no cardinal ramp")
+	var cliff_view := ChunkView.new()
+	cliff_view.chunk_data = cliff
+	cm.chunks[cliff.position] = cliff_view
+	cm.defer_world_bake_bootstrap = true
+	root.add_child(cm)
+	var yard_script = load("res://world/validation_yard.gd")
+	var remesh := {}
+	yard_script._stamp_generated_step_maps(self, land_c, Vector2i(1, 0), remesh)
+	var stamped_approach := float(cliff.surface_map[approach_c.x][approach_c.y])
+	var stamped_side := float(cliff.surface_map[approach_c.x][approach_c.y + 1])
+	if not is_equal_approx(stamped_approach, 10.0 - layer) or not is_equal_approx(stamped_side, 10.0 - layer):
+		push_error("isolated stamp want approach/side %.2f, got approach %.2f side %.2f" % [
+			10.0 - layer, stamped_approach, stamped_side
+		])
+		failed = true
+	else:
+		print("OK yard stamp writes an isolated one-layer step")
+	var after_cliff: Array = cm._build_mesh(cliff).get("quads", [])
+	var cliff_dir := Vector2i.ZERO
+	for cq in after_cliff:
+		if int(cq.get("face_code", -1)) != FACE_RAMP:
+			continue
+		if int(cq.get("x", -1)) != land_c.x or int(cq.get("z", -1)) != land_c.y:
+			continue
+		cliff_dir = Vector2i(int(cq.get("ramp_dir_x", 0)), int(cq.get("ramp_dir_z", 0)))
+	if cliff_dir != Vector2i(1, 0):
+		push_error("isolated yard step want FACE_RAMP dir (1, 0), got %s" % str(cliff_dir))
+		failed = true
+	else:
+		print("OK isolated yard step emits FACE_RAMP")
+	cliff_view.free()
+
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()
 

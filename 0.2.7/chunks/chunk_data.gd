@@ -833,8 +833,9 @@ func has_preserve_map_snapshot() -> bool:
 
 func clear_preserve_map_snapshot() -> void:
 	_has_preserve_map_snapshot = false
-	_preserve_surface_snapshot.clear()
-	_preserve_tile_snapshot.clear()
+	# Drop the reference. clear() in place races a worker that is indexing it.
+	_preserve_surface_snapshot = []
+	_preserve_tile_snapshot = []
 
 
 ## Copy the yard/debug stamp back into the live maps. In-flight column regen
@@ -842,17 +843,36 @@ func clear_preserve_map_snapshot() -> void:
 func restore_resident_map_snapshot() -> void:
 	if not _has_preserve_map_snapshot:
 		return
+	# One read of the field. Later main-thread snapshots replace the field
+	# instead of mutating this array.
+	var snap_h: Array = _preserve_surface_snapshot
+	var snap_t: Array = _preserve_tile_snapshot
+	if snap_h.is_empty():
+		return
 	_ensure_surface_map_storage()
-	for x in mini(SIZE, _preserve_surface_snapshot.size()):
-		var src_h: Array = _preserve_surface_snapshot[x]
-		var src_t: Array = _preserve_tile_snapshot[x] if x < _preserve_tile_snapshot.size() else []
-		if src_h == null or surface_map[x] == null:
+	var x_count: int = mini(SIZE, mini(snap_h.size(), surface_map.size()))
+	for x in x_count:
+		if x >= snap_h.size() or x >= surface_map.size():
+			break
+		var src_h = snap_h[x]
+		var dst = surface_map[x]
+		if src_h == null or dst == null or not (src_h is Array) or not (dst is Array):
 			continue
-		var n: int = mini(SIZE, mini(src_h.size(), surface_map[x].size()))
+		var row: Array = src_h
+		var dst_row: Array = dst
+		var src_t: Array = []
+		if x < snap_t.size() and snap_t[x] is Array:
+			src_t = snap_t[x]
+		var dst_t: Array = []
+		if x < tile_map.size() and tile_map[x] is Array:
+			dst_t = tile_map[x]
+		var n: int = mini(SIZE, mini(row.size(), dst_row.size()))
 		for z in n:
-			surface_map[x][z] = src_h[z]
-			if src_t != null and z < src_t.size() and tile_map[x] != null and z < tile_map[x].size():
-				tile_map[x][z] = src_t[z]
+			if z >= row.size() or z >= dst_row.size():
+				break
+			dst_row[z] = row[z]
+			if z < src_t.size() and z < dst_t.size():
+				dst_t[z] = src_t[z]
 	_maps_resident = true
 
 
