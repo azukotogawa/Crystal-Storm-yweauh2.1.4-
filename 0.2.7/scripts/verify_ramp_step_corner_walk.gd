@@ -54,52 +54,44 @@ func _run() -> void:
 	var probe := _VoxelFloorProbe.new()
 	probe.configure(world, cm, null)
 
-	var low_start := Vector3(float(cx) + 0.5, low_h + layer, float(cz) + 0.5)
-	var x_mid := Vector3(float(cx + 1) + 0.25, 0.0, float(cz) + 0.5)
-	x_mid.y = probe.walkable_height_at(x_mid.x, x_mid.z)
-	var x_top := Vector3(float(cx + 1) + 0.75, 0.0, float(cz) + 0.5)
-	x_top.y = probe.walkable_height_at(x_top.x, x_top.z)
-	var z_mid := Vector3(float(cx) + 0.5, 0.0, float(cz + 1) + 0.25)
-	z_mid.y = probe.walkable_height_at(z_mid.x, z_mid.z)
-	var z_top := Vector3(float(cx) + 0.5, 0.0, float(cz + 1) + 0.75)
-	z_top.y = probe.walkable_height_at(z_top.x, z_top.z)
-
-	if not data.has_ramp(cx + 1, cz):
-		push_error("expected +X landing ramp")
-		failed = true
-	elif not data.has_ramp(cx, cz + 1):
-		push_error("expected +Z landing ramp")
+	if not data.is_ramp_corner(cx, cz):
+		push_error("L-step low cell must be a corner ramp")
 		failed = true
 	else:
-		print("OK L-step emits +X and +Z landing ramps")
+		print("OK L-step corner ramp on low cell")
 
-	if not probe.can_step_to(low_start, x_mid, ph, pr, max_step):
-		push_error("should step from low flat onto +X ramp mid")
+	# The prism owns the low cell. Landings that only step into that prism are not a second wedge.
+	var outer := Vector3(float(cx) + 0.28, 0.0, float(cz) + 0.28)
+	outer.y = probe.walkable_height_at(outer.x, outer.z)
+	var inner := Vector3(float(cx) + 0.72, 0.0, float(cz) + 0.72)
+	inner.y = probe.walkable_height_at(inner.x, inner.z)
+	if inner.y < outer.y + layer * 0.25:
+		push_error("corner prism must rise toward the landings, outer=%.2f inner=%.2f" % [outer.y, inner.y])
+		failed = true
+	elif not probe.can_step_to(outer, inner, ph, pr, max_step):
+		push_error("should step up the corner prism")
 		failed = true
 	else:
-		print("OK step low -> +X ramp mid")
+		print("OK step up corner prism %.2f -> %.2f" % [outer.y, inner.y])
 
-	if not probe.can_step_to(x_mid, x_top, ph, pr, max_step):
-		push_error("should step along +X ramp to landing interior")
+	var x_land := Vector3(float(cx + 1) + 0.5, 0.0, float(cz) + 0.35)
+	x_land.y = probe.walkable_height_at(x_land.x, x_land.z)
+	if not probe.can_step_to(inner, x_land, ph, pr, max_step):
+		push_error("should step from prism onto +X landing")
 		failed = true
 	else:
-		print("OK step +X ramp mid -> interior")
+		print("OK step prism -> +X landing")
 
-	if not probe.can_step_to(low_start, z_mid, ph, pr, max_step):
-		push_error("should step from low flat onto +Z ramp mid")
+	var z_land := Vector3(float(cx) + 0.35, 0.0, float(cz + 1) + 0.5)
+	z_land.y = probe.walkable_height_at(z_land.x, z_land.z)
+	if not probe.can_step_to(inner, z_land, ph, pr, max_step):
+		push_error("should step from prism onto +Z landing")
 		failed = true
 	else:
-		print("OK step low -> +Z ramp mid")
+		print("OK step prism -> +Z landing")
 
-	if not probe.can_step_to(z_mid, z_top, ph, pr, max_step):
-		push_error("should step along +Z ramp to landing interior")
-		failed = true
-	else:
-		print("OK step +Z ramp mid -> interior")
-
-	var corner_xz := Vector2(float(cx) + 0.5, float(cz) + 0.5)
-	var center_h: float = probe.walkable_height_at(corner_xz.x, corner_xz.y)
-	var corner_feet: float = probe.sample_walkable_feet(corner_xz.x, corner_xz.y)
+	var center_h: float = probe.walkable_height_at(float(cx) + 0.5, float(cz) + 0.5)
+	var corner_feet: float = probe.sample_walkable_feet(inner.x, inner.z)
 	if corner_feet < center_h - layer * 0.25:
 		push_error("step-corner feet %.2f below center walkable %.2f" % [corner_feet, center_h])
 		failed = true

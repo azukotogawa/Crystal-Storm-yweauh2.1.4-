@@ -309,6 +309,123 @@ static func try_forward_arc_melee_damage(
 	}
 
 
+## Production floor probe: an L of one-layer landings is a corner prism you can step up.
+static func audit_ramp_step_corner_walk(floor_probe) -> Dictionary:
+	var result := {
+		"ok": false,
+		"reason": "no floor probe",
+		"corner_feet": 0.0,
+		"center_h": 0.0,
+		"steps": 0,
+	}
+	if floor_probe == null or not floor_probe.has_method("can_step_to"):
+		return result
+	var cm = floor_probe.get("chunk_manager")
+	if cm == null or not ("chunks" in cm) or (cm.chunks as Dictionary).is_empty():
+		result.reason = "no loaded chunks"
+		return result
+	var _TerrainRamps = load("res://helpers/terrain_ramps.gd")
+	var _WorldBorder = load("res://helpers/world_border.gd")
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var old_chance: int = int(_TerrainRamps.placement_chance)
+	var old_cm_chance: int = int(cm.ramp_placement_chance) if "ramp_placement_chance" in cm else old_chance
+	_TerrainRamps.placement_chance = 100
+	if "ramp_placement_chance" in cm:
+		cm.ramp_placement_chance = 100
+	var stamped := false
+	for coord in cm.chunks.keys():
+		var view = cm.chunks[coord]
+		var data: ChunkData = view.chunk_data if view != null else null
+		if data == null or not data._has_resident_column_maps():
+			continue
+		var origin := Vector2i(coord.x * ChunkData.SIZE, coord.y * ChunkData.SIZE)
+		var pad := _step_corner_pad(cm, data, origin)
+		if pad == Vector2i(-1, -1):
+			continue
+		if not _WorldBorder.is_playable(float(origin.x + pad.x), float(origin.y + pad.y)):
+			continue
+		_stamp_step_corner(data, pad.x, pad.y, layer)
+		if data.has_method("_refresh_halo_interior_from_maps"):
+			data._refresh_halo_interior_from_maps()
+		if cm.has_method("_build_mesh"):
+			cm._build_mesh(data)
+		if floor_probe.has_method("reset_measure"):
+			floor_probe.reset_measure()
+		stamped = true
+		var wx: int = origin.x + pad.x
+		var wz: int = origin.y + pad.y
+		if not data.is_ramp_corner(pad.x, pad.y):
+			result.reason = "L low cell (%d,%d) is not a corner ramp" % [wx, wz]
+			break
+		var ph: float = ws.player_height()
+		var pr: float = ws.player_radius()
+		var max_step: float = ws.max_step_up_walk()
+		var outer := Vector3(float(wx) + 0.28, 0.0, float(wz) + 0.28)
+		outer.y = float(floor_probe.walkable_height_at(outer.x, outer.z))
+		var inner := Vector3(float(wx) + 0.72, 0.0, float(wz) + 0.72)
+		inner.y = float(floor_probe.walkable_height_at(inner.x, inner.z))
+		var steps := 0
+		if inner.y >= outer.y + layer * 0.25 and floor_probe.can_step_to(outer, inner, ph, pr, max_step, false):
+			steps += 1
+		var land_x := Vector3(float(wx + 1) + 0.5, 0.0, float(wz) + 0.35)
+		land_x.y = float(floor_probe.walkable_height_at(land_x.x, land_x.z))
+		if floor_probe.can_step_to(inner, land_x, ph, pr, max_step, false):
+			steps += 1
+		var land_z := Vector3(float(wx) + 0.35, 0.0, float(wz + 1) + 0.5)
+		land_z.y = float(floor_probe.walkable_height_at(land_z.x, land_z.z))
+		if floor_probe.can_step_to(inner, land_z, ph, pr, max_step, false):
+			steps += 1
+		var center_h: float = float(floor_probe.walkable_height_at(float(wx) + 0.5, float(wz) + 0.5))
+		var corner_feet: float = float(floor_probe.sample_walkable_feet(inner.x, inner.z))
+		result.corner_feet = corner_feet
+		result.center_h = center_h
+		result.steps = steps
+		if steps < 1:
+			result.reason = "cannot step up corner prism at (%d,%d)" % [wx, wz]
+			break
+		if corner_feet < center_h - layer * 0.25:
+			result.reason = "feet %.2f below center %.2f" % [corner_feet, center_h]
+			break
+		result.ok = true
+		result.reason = ""
+		break
+	_TerrainRamps.placement_chance = old_chance
+	if "ramp_placement_chance" in cm:
+		cm.ramp_placement_chance = old_cm_chance
+	if not stamped and result.reason == "no floor probe":
+		result.reason = "no clear loaded pad for an L step"
+	elif not stamped and result.reason == "":
+		result.reason = "no clear loaded pad for an L step"
+	return result
+
+
+static func _step_corner_pad(cm, data: ChunkData, _origin: Vector2i) -> Vector2i:
+	var margin := 2
+	for x in range(margin, ChunkData.SIZE - margin):
+		for z in range(margin, ChunkData.SIZE - margin):
+			var clear := true
+			for dx in range(-1, 3):
+				for dz in range(-1, 3):
+					if cm.has_method("_has_player_build_at") and cm._has_player_build_at(data, x + dx, z + dz):
+						clear = false
+						break
+				if not clear:
+					break
+			if clear:
+				return Vector2i(x, z)
+	return Vector2i(-1, -1)
+
+
+static func _stamp_step_corner(data: ChunkData, cx: int, cz: int, layer: float) -> void:
+	var low_h: float = float(data.surface_map[cx][cz])
+	for dx in range(-1, 3):
+		for dz in range(-1, 3):
+			data.surface_map[cx + dx][cz + dz] = low_h
+	data.surface_map[cx + 1][cz] = low_h + layer
+	data.surface_map[cx][cz + 1] = low_h + layer
+
+
 static func session_seconds() -> float:
 	var raw := OS.get_environment("SMOKE_SESSION_SEC").strip_edges()
 	if raw.is_empty():

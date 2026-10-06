@@ -54,6 +54,8 @@ SUITES=(
 	"res://scripts/verify_chunk_atlas.gd"
 	"res://scripts/verify_ramp_concave.gd"
 	"res://scripts/verify_ramp_corner.gd"
+	"res://scripts/verify_ramp_step_corner_walk.gd"
+	"res://scripts/verify_ramp_step_corner_main.gd"
 	"res://scripts/verify_ramp_landing.gd"
 	"res://scripts/verify_ramp_cell_exclusive.gd"
 	"res://scripts/verify_ramp_slope.gd"
@@ -189,6 +191,7 @@ declare -A ABRUPT_OK_MARKER=(
 	["res://scripts/verify_melee_forward_targeting.gd"]="All melee forward targeting tests OK"
 	["res://scripts/verify_built_wall_collision_main.gd"]="All built wall collision main tests OK"
 	["res://scripts/verify_ramp_resident_mesh.gd"]="All ramp resident mesh tests OK"
+	["res://scripts/verify_ramp_step_corner_main.gd"]="All ramp step-corner main tests OK"
 	["res://scripts/verify_save_transaction.gd"]="All save transaction tests OK"
 	["res://scripts/verify_composition_boot.gd"]="All composition boot tests OK"
 )
