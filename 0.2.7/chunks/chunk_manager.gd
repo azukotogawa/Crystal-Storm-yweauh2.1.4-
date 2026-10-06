@@ -3183,6 +3183,7 @@ func sync_ramp_map_to_mesh(data: ChunkData, quads: Array) -> void:
 				"approach": false,
 				"dir": dir,
 				"dir2": Vector2i.ZERO,
+				"surface_h": float(q.get("y", 0.0)),
 			}
 	var approaches: Dictionary = {}
 	for cell_v in owned.keys():
@@ -3204,6 +3205,7 @@ func sync_ramp_map_to_mesh(data: ChunkData, quads: Array) -> void:
 			"approach": true,
 			"dir": Vector2i(-dir.x, -dir.y),
 			"dir2": Vector2i.ZERO,
+			"surface_h": float(entry.get("surface_h", 0.0)),
 		}
 	for cell_v in approaches.keys():
 		owned[cell_v] = approaches[cell_v]

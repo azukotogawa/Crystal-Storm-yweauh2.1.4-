@@ -577,7 +577,9 @@ func get_presentation():
 func _setup_materials() -> void:
 	_crystal_material = StandardMaterial3D.new()
 	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# Scissor keeps the mass solid enough to cast and receive shadows.
+	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	_crystal_material.alpha_scissor_threshold = 0.35
 	# Brighter mass so the purple front is readable in the first minute (presentation only).
 	_crystal_material.albedo_color = Color(0.72, 0.28, 1.0, 0.88)
 	_crystal_material.emission_enabled = true

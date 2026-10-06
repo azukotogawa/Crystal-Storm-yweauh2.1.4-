@@ -68,6 +68,35 @@ func _run() -> void:
 	if not sloped:
 		push_error("no cardinal ramp quad produced a sloped walk height")
 		failed = true
+	else:
+		for q_v in quads:
+			var q: Dictionary = q_v
+			if int(q.get("face_code", 0)) != _ChunkManager.FACE_RAMP:
+				continue
+			var qy: float = float(q.get("y", 0.0))
+			var dir := Vector2i(int(q.get("ramp_dir_x", 0)), int(q.get("ramp_dir_z", 0)))
+			if dir == Vector2i.ZERO:
+				continue
+			var low_edge: float = qy
+			var high_edge: float = qy + layer
+			if dir.x < 0:
+				low_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.02, float(q.get("z", 0.0)) + 0.5, qy, dir)
+				high_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.98, float(q.get("z", 0.0)) + 0.5, qy, dir)
+			elif dir.x > 0:
+				low_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.98, float(q.get("z", 0.0)) + 0.5, qy, dir)
+				high_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.02, float(q.get("z", 0.0)) + 0.5, qy, dir)
+			elif dir.y < 0:
+				low_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.5, float(q.get("z", 0.0)) + 0.02, qy, dir)
+				high_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.5, float(q.get("z", 0.0)) + 0.98, qy, dir)
+			else:
+				low_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.5, float(q.get("z", 0.0)) + 0.98, qy, dir)
+				high_edge = TerrainRamps.surface_height_on_ramp(float(q.get("x", 0.0)) + 0.5, float(q.get("z", 0.0)) + 0.02, qy, dir)
+			if absf(low_edge - qy) > layer * 0.15 or absf(high_edge - (qy + layer)) > layer * 0.15:
+				push_error("wedge walk low=%.2f high=%.2f, surface %.2f layer %.2f" % [low_edge, high_edge, qy, layer])
+				failed = true
+			else:
+				print("OK landing wedge meets the low shelf and the high top")
+			break
 
 	data.ramp_map[Vector2i(1, 1)] = {"dir": Vector2i(1, 0), "corner": false, "side": false}
 	cm.sync_ramp_map_to_mesh(data, quads)

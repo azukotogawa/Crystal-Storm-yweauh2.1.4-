@@ -26,16 +26,16 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK concave mesh rev 3")
-	if "WEDGE_MESH_REV := 6" not in ramp_src:
-		push_error("terrain_ramps must use landing-anchored wedge rev 6")
+	if "WEDGE_MESH_REV := 7" not in ramp_src:
+		push_error("terrain_ramps must use landing-anchored wedge rev 7")
 		failed = true
 	else:
-		print("OK wedge mesh rev 6")
-	if "CORNER_STEP_MESH_REV := 1" not in ramp_src:
-		push_error("terrain_ramps must define corner step mesh rev 1")
+		print("OK wedge mesh rev 7")
+	if "CORNER_STEP_MESH_REV := 2" not in ramp_src:
+		push_error("terrain_ramps must define corner step mesh rev 2")
 		failed = true
 	else:
-		print("OK corner step mesh rev 1")
+		print("OK corner step mesh rev 2")
 
 	var old_chance: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 100

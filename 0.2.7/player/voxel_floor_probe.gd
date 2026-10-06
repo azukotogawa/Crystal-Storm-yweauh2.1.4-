@@ -149,7 +149,8 @@ func _ws():
 
 
 func _rebuild_probe_offsets() -> void:
-	var r: float = _ws().player_radius()
+	# Probe XZ is in column units. player_radius() is world units (voxel_scale wide).
+	var r: float = _ws().player_radius() / maxf(_ws().voxel_scale, 0.001)
 	_probe_offsets = [
 		Vector2(0.0, 0.0),
 		Vector2(r, 0.0),
@@ -316,7 +317,8 @@ func is_blocked_at(
 
 	if world.has_method("get_solid"):
 		var head_y := pos.y + player_height
-		var pr := player_radius
+		# Horizontal extent is columns; the body radius is authored in world units.
+		var pr: float = player_radius / maxf(_ws().voxel_scale, 0.001)
 		var player_min := pos - Vector3(pr, 0.0, pr)
 		var player_max := pos + Vector3(pr, 0.0, pr)
 		for x_world in range(floori(player_min.x), floori(player_max.x) + 1):

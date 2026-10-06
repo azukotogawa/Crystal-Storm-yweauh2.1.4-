@@ -16,8 +16,8 @@ static var _concave_mesh: ArrayMesh
 static var _corner_step_mesh: ArrayMesh
 static var _mesh_scale_key: float = -1.0
 const CONCAVE_MESH_REV := 3
-const WEDGE_MESH_REV := 6
-const CORNER_STEP_MESH_REV := 1
+const WEDGE_MESH_REV := 7
+const CORNER_STEP_MESH_REV := 2
 static var _concave_mesh_rev: int = -1
 static var _wedge_mesh_rev: int = -1
 static var _corner_step_mesh_rev: int = -1
@@ -95,15 +95,22 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Landing-anchored wedge spanning landing + approach columns (2 cells along slope axis).
-	# Only sloped walkable face + underside — no vertical box walls.
+	# Local +X is the high side of the landing. The slope covers that one cell
+	# (local x -0.5..0.5). The approach cell is a flat shelf at the low height
+	# (local x -1.5..-0.5) so the removed approach box is not a hole or a second slope.
+	var slope_n := Vector3(-1.0, 1.0, 0.0).normalized()
 	_add_quad_uv(st,
-		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
-		Vector3(0, 0.70710678, 0.70710678),
+		Vector3(-1.5, -1, -0.5) * s, Vector3(-0.5, -1, -0.5) * s, Vector3(-0.5, -1, 0.5) * s, Vector3(-1.5, -1, 0.5) * s,
+		Vector3.UP,
+		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
+	)
+	_add_quad_uv(st,
+		Vector3(-0.5, -1, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-0.5, -1, 0.5) * s,
+		slope_n,
 		Vector2(0, 0), Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)
 	)
 	_add_quad_uv(st,
-		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, -1, -0.5) * s, Vector3(0.5, -1, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
+		Vector3(-1.5, -1, -0.5) * s, Vector3(0.5, -1, -0.5) * s, Vector3(0.5, -1, 0.5) * s, Vector3(-1.5, -1, 0.5) * s,
 		Vector3.DOWN,
 		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
 	)
@@ -147,13 +154,17 @@ static func get_corner_step_mesh() -> ArrayMesh:
 	var c0 := Vector3.ZERO
 	var a0 := Vector3(s, 0.0, 0.0)
 	var b0 := Vector3(0.0, 0.0, s)
+	# Outer corner stays at one layer. The two landing edges rise another layer
+	# so the walkable hip matches max(axis_t) instead of a flat cap.
 	var c1 := Vector3(0.0, s, 0.0)
-	var a1 := Vector3(s, s, 0.0)
-	var b1 := Vector3(0.0, s, s)
-	var d1 := Vector3(s, s, s)
+	var a1 := Vector3(s, s * 2.0, 0.0)
+	var b1 := Vector3(0.0, s * 2.0, s)
+	var d1 := Vector3(s, s * 2.0, s)
+	var slope_x := Vector3(-1.0, 1.0, 0.0).normalized()
+	var slope_z := Vector3(0.0, 1.0, -1.0).normalized()
 	_add_tri_uv(st, c0, a0, b0, Vector3.DOWN, Vector2(0, 0), Vector2(1, 0), Vector2(0, 1))
-	_add_tri_uv(st, c1, a1, d1, Vector3.UP, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
-	_add_tri_uv(st, c1, d1, b1, Vector3.UP, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
+	_add_tri_uv(st, c1, a1, d1, slope_x, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
+	_add_tri_uv(st, c1, d1, b1, slope_z, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
 	_add_quad_uv(st, a0, c0, c1, a1, Vector3(0, 0, -1), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
 	_add_quad_uv(st, b0, c0, c1, b1, Vector3(-1, 0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
 	_add_quad_uv(st, a0, b0, b1, a1, Vector3(0.70710678, 0.0, 0.70710678), Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1))
@@ -241,11 +252,11 @@ static func walkable_height_from_entry(
 		var t: float = maxf(axis_t(wx, wz, dir), axis_t(wx, wz, dir2))
 		return voxel_top_y(base) + t * layer
 	if entry.get("approach", false) and dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
-		var layer_a: float = _ws().layer_height()
-		var t_a: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
-		return voxel_top_y(base) + t_a * layer_a
+		# The approach is the flat shelf at this column's own top, not a second slope.
+		return voxel_top_y(base)
 	if dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
-		return surface_height_on_ramp(wx, wz, base, dir)
+		var landing_surface_c: float = float(entry.get("surface_h", base))
+		return surface_height_on_ramp(wx, wz, landing_surface_c, dir)
 	if entry.get("side", false) and dir != Vector2i.ZERO:
 		return surface_height_on_ramp(wx, wz, base, entry.get("dir2", dir))
 	return voxel_top_y(base)

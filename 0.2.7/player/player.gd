@@ -247,7 +247,7 @@ func _ready():
 	player_mesh.mesh = box
 
 	player_material = StandardMaterial3D.new()
-	player_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	player_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	player_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	player_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	player_material.alpha_scissor_threshold = 0.5
@@ -256,6 +256,7 @@ func _ready():
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 
 	player_mesh.material_override = player_material
+	player_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	player_mesh.position.y = ph / 2.0
 
 	var spawn_x := float(spawn_col.x) + 0.5

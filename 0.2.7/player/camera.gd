@@ -57,6 +57,10 @@ var _scroll_lead: Vector3 = Vector3.ZERO
 func _ready():
 	projection = Camera3D.PROJECTION_ORTHOGONAL
 	size = zoom_level
+	# The rig sits ~170 units off the player. A near plane at the camera and a
+	# short shadow distance leave the ground outside the shadow frustum.
+	near = 40.0
+	far = 340.0
 	
 	target = get_tree().get_first_node_in_group("player")
 	player = target
