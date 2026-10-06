@@ -87,6 +87,7 @@ SUITES=(
 	"res://scripts/verify_crystal_terrain_routing.gd"
 	"res://scripts/verify_crystal_grid_align.gd"
 	"res://scripts/verify_crystal_renderer_structural.gd"
+	"res://scripts/verify_crystal_cohesion.gd"
 	"res://scripts/verify_entity_death_signal.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
 	"res://scripts/verify_topographical_map.gd"

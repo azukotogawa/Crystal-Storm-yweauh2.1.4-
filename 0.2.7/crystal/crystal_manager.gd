@@ -585,8 +585,16 @@ func _setup_materials() -> void:
 	_crystal_material.emission_enabled = true
 	_crystal_material.emission = Color(0.55, 0.18, 0.95)
 	_crystal_material.emission_energy_multiplier = 2.15
-	_crystal_material.roughness = 0.14
-	_crystal_material.metallic = 0.28
+	_crystal_material.roughness = 0.08
+	_crystal_material.metallic = 0.42
+	_crystal_material.rim_enabled = true
+	_crystal_material.rim = 0.42
+	_crystal_material.rim_tint = 0.65
+	_crystal_material.clearcoat_enabled = true
+	_crystal_material.clearcoat = 0.35
+	_crystal_material.clearcoat_roughness = 0.12
+	# Overlapping cell facets stay visible from either side of the mass.
+	_crystal_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
