@@ -253,31 +253,25 @@ func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.0))
 	var origin := _attack_origin(0.5)
-	var target_col := _ActionTargeting.target_column(player, range_v)
+	var chunk_manager: ChunkManager = get_tree().get_first_node_in_group("chunk_manager") as ChunkManager if is_inside_tree() else null
+	# Same column the attack highlight uses (forward fallback when the mouse is off-screen).
+	var aim: Dictionary = _ActionTargeting.resolve_action(
+		player, world, chunk_manager, range_v, false, &"attack"
+	)
+	var target_col: Vector3 = aim.get("column", Vector3.ZERO)
+	if target_col == Vector3.ZERO:
+		target_col = _ActionTargeting.target_column(player, range_v)
 	var forward := _ActionTargeting.attack_toward_column(player, range_v)
 	var hit_pos := Vector3(target_col.x, origin.y, target_col.z)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 
 	var range_w := _range_world(range_v)
-	var targets := _CombatHitResolver.query_melee(
-		self,
-		origin,
-		forward,
-		range_w,
-		_combat_def,
-		melee_arc_degrees
-	)
-	# Adjacent hostiles: if the 70° mouse/camera arc missed, retry a half-circle
-	# at the same range so a mite on-camera next to the player is hittable.
-	if targets.is_empty() and forward.length_squared() > 0.0001:
-		targets = _CombatHitResolver.query_melee(
-			self,
-			origin,
-			forward,
-			range_w,
-			_combat_def,
-			180.0
-		)
+	var targets := _query_melee_facing(origin, forward, range_w)
+	# Highlight/column aim can face a different cell than the camera-forward column
+	# the sword highlight treats as the swing. Retry that facing when the arc is empty.
+	var cam_fwd := _attack_forward()
+	if targets.is_empty() and cam_fwd.length_squared() > 0.0001:
+		targets = _query_melee_facing(origin, cam_fwd, range_w)
 	if targets.is_empty() and player and player.is_inside_tree():
 		for node in player.get_tree().get_nodes_in_group("crystal_enemy"):
 			if not is_instance_valid(node) or not (node is Node3D):
@@ -305,6 +299,31 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 		_CombatLog.push("melee %s — no entity hit" % item_id)
 
 	attacked.emit(item_id, hit_pos)
+
+
+func _query_melee_facing(origin: Vector3, forward: Vector3, range_w: float) -> Array[Node]:
+	if forward.length_squared() < 0.0001:
+		return []
+	var targets := _CombatHitResolver.query_melee(
+		self,
+		origin,
+		forward,
+		range_w,
+		_combat_def,
+		melee_arc_degrees
+	)
+	# Adjacent hostiles: if the 70° arc missed, retry a half-circle
+	# at the same range so a mite on-camera next to the player is hittable.
+	if targets.is_empty():
+		targets = _CombatHitResolver.query_melee(
+			self,
+			origin,
+			forward,
+			range_w,
+			_combat_def,
+			180.0
+		)
+	return targets
 
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
