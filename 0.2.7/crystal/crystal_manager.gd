@@ -593,6 +593,10 @@ func _setup_materials() -> void:
 	_crystal_material.clearcoat_roughness = 0.12
 	# Overlapping cell facets stay visible from either side of the mass.
 	_crystal_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var facet := load("res://assets/art/crystal/facet.png") as Texture2D
+	if facet != null:
+		_crystal_material.albedo_texture = facet
+		_crystal_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

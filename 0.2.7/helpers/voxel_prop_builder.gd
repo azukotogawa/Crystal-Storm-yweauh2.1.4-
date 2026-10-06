@@ -2,6 +2,15 @@ class_name VoxelPropBuilder
 extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _BRICK_PATH := "res://assets/art/voxel_brick.png"
+
+static var _brick_tex: Texture2D
+
+
+static func _brick_texture() -> Texture2D:
+	if _brick_tex == null:
+		_brick_tex = load(_BRICK_PATH) as Texture2D
+	return _brick_tex
 
 
 static func unit(voxel_scale: float = -1.0) -> float:
@@ -53,6 +62,7 @@ static func _box_instance(center: Vector3, size: Vector3, color: Color) -> MeshI
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
+	mat.albedo_texture = _brick_texture()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	mat.roughness = 0.92

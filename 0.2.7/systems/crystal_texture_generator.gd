@@ -107,6 +107,9 @@ func generate_image(
 		var ck := str(category)
 		_trace_generate_image_by_category[ck] = int(_trace_generate_image_by_category.get(ck, 0)) + 1
 	var dim := size if size > 0 else config.default_texture_size
+	var authored := _load_authored_image(_authored_folder(category), str(variant_id), dim)
+	if authored != null:
+		return authored
 	var palette := _resolve_palette(category, variant_id)
 	var seed_val := config.master_seed + seed_offset + _category_seed_bias(category)
 	var image := Image.create(dim, dim, false, Image.FORMAT_RGBA8)
@@ -179,6 +182,9 @@ func generate_game_visual_bundle() -> Dictionary:
 
 
 func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
+	var authored := _load_authored_image("items", str(item_id), size)
+	if authored != null:
+		return ImageTexture.create_from_image(authored)
 	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
 	var px := maxi(size / 8, 2)
@@ -207,6 +213,44 @@ func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
 		_:
 			_paint_voxel_rect(image, 10, 10, 22, 22, Color(0.7, 0.7, 0.75))
 	return ImageTexture.create_from_image(image)
+
+
+func _authored_folder(category: Category) -> String:
+	match category:
+		Category.PARTICLE:
+			return "particle"
+		Category.ENTITY:
+			return "entity"
+		Category.VEGETATION:
+			return "vegetation"
+		Category.BUILDING:
+			return "building"
+		Category.CRYSTAL:
+			return "crystal"
+		_:
+			return ""
+
+
+## On-disk scout bricks win over the procedural fill. Missing files keep the old painter.
+func _load_authored_image(folder: String, variant_id: String, size: int) -> Image:
+	if folder.is_empty() or variant_id.is_empty():
+		return null
+	var path := "res://assets/art/%s/%s.png" % [folder, variant_id]
+	var image: Image = null
+	if ResourceLoader.exists(path):
+		var tex := load(path) as Texture2D
+		if tex != null:
+			image = tex.get_image()
+	if image == null:
+		var abs_path := ProjectSettings.globalize_path(path)
+		if FileAccess.file_exists(abs_path):
+			image = Image.load_from_file(abs_path)
+	if image == null or image.is_empty():
+		return null
+	if size > 0 and (image.get_width() != size or image.get_height() != size):
+		image = image.duplicate()
+		image.resize(size, size, Image.INTERPOLATE_NEAREST)
+	return image
 
 
 func _paint_voxel_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) -> void:
