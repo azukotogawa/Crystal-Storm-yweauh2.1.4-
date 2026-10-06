@@ -53,6 +53,8 @@ func _run() -> void:
 
 	var probe := _VoxelFloorProbe.new()
 	probe.configure(world, cm, null)
+	# Hint at the surface so a default of 0 does not sample the cave floor instead of the prism.
+	probe.feet_height_hint = world.get_surface_height(float(cx) + 0.5, float(cz) + 0.5) + layer
 
 	if not data.is_ramp_corner(cx, cz):
 		push_error("L-step low cell must be a corner ramp")

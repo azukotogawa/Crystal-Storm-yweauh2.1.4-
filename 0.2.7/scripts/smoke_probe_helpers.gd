@@ -352,6 +352,9 @@ static func audit_ramp_step_corner_walk(floor_probe) -> Dictionary:
 			cm._build_mesh(data)
 		if floor_probe.has_method("reset_measure"):
 			floor_probe.reset_measure()
+		var world = floor_probe.get("world")
+		if world != null and world.has_method("get_surface_height"):
+			floor_probe.feet_height_hint = float(world.get_surface_height(float(origin.x + pad.x) + 0.5, float(origin.y + pad.y) + 0.5)) + layer
 		stamped = true
 		var wx: int = origin.x + pad.x
 		var wz: int = origin.y + pad.y
