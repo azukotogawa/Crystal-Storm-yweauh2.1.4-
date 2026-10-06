@@ -151,7 +151,12 @@ static func _stamp_generated_step_maps(
 		if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
 			continue
 		if cell == approach:
+			# Set before the write so a column regen that has not entered its
+			# loop keeps this stamp. Snapshot so one already inside the loop
+			# can be restored on the preserve remesh.
+			data.preserve_column_maps = true
 			data.surface_map[lx][lz] = float(data.surface_map[lx][lz]) - layer
+			data.snapshot_resident_maps()
 		remesh[cell] = true
 
 

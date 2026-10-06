@@ -44,11 +44,16 @@ static func run_column_stage(
 	var column_source := "none"
 	if data == null or not data.has_worker_overlay_snapshot():
 		return {"examined": 0, "column_us": 0, "ok": false, "column_source": column_source}
-	if data.preserve_column_maps:
+	if data.preserve_column_maps or data.has_preserve_map_snapshot():
 		data.preserve_column_maps = false
 		data.skip_mesh_plan_cache = true
+		data.restore_resident_map_snapshot()
 		if data.has_method("_bind_macro_surface_if_needed"):
 			data._bind_macro_surface_if_needed()
+		if data.has_method("_refresh_halo_interior_from_maps"):
+			data._refresh_halo_interior_from_maps()
+		if host != null and host.has_method("_refresh_preserve_halo"):
+			host._refresh_preserve_halo(data)
 		column_source = "resident"
 		examined = ChunkData.SIZE * ChunkData.SIZE
 		var preserve_us := Time.get_ticks_usec() - t0

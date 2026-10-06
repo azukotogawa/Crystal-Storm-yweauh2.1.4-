@@ -148,6 +148,59 @@ func _run() -> void:
 	else:
 		print("OK terrace landing FACE_RAMP not stolen as approach")
 
+	# Approach column is in the +X neighbor. A capture halo still holding the
+	# pre-stamp border height hides the step; resident remesh must copy it.
+	var border := _ChunkData.new(Vector2i(0, 0), world)
+	border.capture_worker_snapshot()
+	_init_maps(border)
+	var neighbor := _ChunkData.new(Vector2i(1, 0), world)
+	neighbor.capture_worker_snapshot()
+	_init_maps(neighbor)
+	var border_h := 10.0
+	for bx in _ChunkData.SIZE:
+		for bz in _ChunkData.SIZE:
+			border.surface_map[bx][bz] = border_h
+			border.tile_map[bx][bz] = _VoxelTypes.GRASSLAND
+			neighbor.surface_map[bx][bz] = border_h
+			neighbor.tile_map[bx][bz] = _VoxelTypes.GRASSLAND
+	var edge_lx := _ChunkData.SIZE - 1
+	var edge_lz := 8
+	neighbor.surface_map[0][edge_lz] = border_h - layer
+	var halo_ix := edge_lx + 1 + _ChunkData.HALO
+	var halo_iz := edge_lz + _ChunkData.HALO
+	border._halo_surface[halo_ix][halo_iz] = border_h
+	var hidden: Array = cm._build_mesh(border).get("quads", [])
+	if _ramp_quads_at(hidden, edge_lx, edge_lz) != 0:
+		push_error("pre-stamp halo border should hide the neighbor step")
+		failed = true
+	else:
+		print("OK cross-chunk step hidden while halo border is pre-stamp")
+	var border_view := ChunkView.new()
+	border_view.chunk_data = border
+	var neighbor_view := ChunkView.new()
+	neighbor_view.chunk_data = neighbor
+	cm.chunks[border.position] = border_view
+	cm.chunks[neighbor.position] = neighbor_view
+	border.preserve_column_maps = true
+	cm._refresh_preserve_halo(border)
+	var revealed: Array = cm._build_mesh(border).get("quads", [])
+	var edge_dir := Vector2i.ZERO
+	for rq in revealed:
+		if int(rq.get("face_code", -1)) != FACE_RAMP:
+			continue
+		if int(rq.get("x", -1)) != edge_lx or int(rq.get("z", -1)) != edge_lz:
+			continue
+		edge_dir = Vector2i(int(rq.get("ramp_dir_x", 0)), int(rq.get("ramp_dir_z", 0)))
+	if edge_dir != Vector2i(1, 0):
+		push_error("cross-chunk landing ramp want dir (1, 0), got %s (halo=%s)" % [
+			str(edge_dir), str(border.get_halo_surface_y(edge_lx + 1, edge_lz))
+		])
+		failed = true
+	else:
+		print("OK cross-chunk FACE_RAMP after preserve halo refresh")
+	border_view.free()
+	neighbor_view.free()
+
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()
 
@@ -157,6 +210,16 @@ func _run() -> void:
 		return
 	print("All ramp landing tests OK")
 	quit(0)
+
+
+func _ramp_quads_at(quads: Array, lx: int, lz: int) -> int:
+	var n := 0
+	for q in quads:
+		if int(q.get("face_code", -1)) != FACE_RAMP:
+			continue
+		if int(q.get("x", -1)) == lx and int(q.get("z", -1)) == lz:
+			n += 1
+	return n
 
 
 func _init_maps(data: ChunkData) -> void:
