@@ -262,7 +262,8 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	if target_col == Vector3.ZERO:
 		target_col = _ActionTargeting.target_column(player, range_v)
 	var forward := _ActionTargeting.attack_toward_column(player, range_v)
-	var hit_pos := Vector3(target_col.x, origin.y, target_col.z)
+	var ws = _WorldSettings.get_active()
+	var hit_pos := Vector3(ws.column_to_world(target_col.x), origin.y, ws.column_to_world(target_col.z))
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 
 	var range_w := _range_world(range_v)
@@ -330,7 +331,7 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 12.0))
-	var hit_pos := origin + forward * range_v
+	var hit_pos := origin + forward * _range_world(range_v)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.RANGED_DAMAGE)
 
 	var target := _CombatHitResolver.query_ranged(self, origin, forward, range_v, _combat_def)

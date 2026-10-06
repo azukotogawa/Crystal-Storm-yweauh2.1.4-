@@ -299,8 +299,8 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 	var life: float = 0.28
 	var vel := Vector3(0.0, 1.2, 0.0)
 	if build_id == &"dig":
-		life = 0.18
-		vel = Vector3(0.0, 0.6, 0.0)
+		life = 0.32
+		vel = Vector3(0.0, 0.8, 0.0)
 	elif build_id == &"crystal_front":
 		life = 0.55
 		vel = Vector3(0.0, 0.35, 0.0)
@@ -317,6 +317,83 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 		"mesh": mesh_i,
 		"tag": tag,
 	})
+	if build_id == &"dig":
+		_spawn_break_shards(anchor.global_position, color, 3)
+
+
+## Short ring at a world-space impact. Radius matches the combat hitbox when known.
+func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), radius: float = 0.45) -> void:
+	if not enabled:
+		return
+	_ensure_visual_roots()
+	if _bursts.size() >= _quality.max_burst_sprites:
+		return
+	var anchor := Node3D.new()
+	anchor.name = "HitMarker"
+	_burst_root.add_child(anchor)
+	anchor.global_position = world_pos + Vector3(0.0, 0.08, 0.0)
+	var mesh_i := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	var r := maxf(radius, 0.2)
+	torus.inner_radius = r * 0.72
+	torus.outer_radius = r
+	torus.rings = 6
+	torus.ring_segments = 10
+	mesh_i.mesh = torus
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.75)
+	mat.emission_enabled = true
+	mat.emission = tint
+	mat.emission_energy_multiplier = 2.2
+	mat.no_depth_test = true
+	mesh_i.material_override = mat
+	anchor.add_child(mesh_i)
+	_bursts.append({
+		"anchor": anchor,
+		"sprite": null,
+		"vel": Vector3.ZERO,
+		"life": 0.24,
+		"place": true,
+		"mesh": mesh_i,
+		"hit_marker": true,
+	})
+
+
+func _spawn_break_shards(world_pos: Vector3, tint: Color, count: int) -> void:
+	var chip: float = _WorldSettings.get_active().voxel_scale * 0.22
+	for i in count:
+		if _bursts.size() >= _quality.max_burst_sprites:
+			return
+		var anchor := Node3D.new()
+		anchor.name = "BreakShard"
+		_burst_root.add_child(anchor)
+		var spread := float(i) - float(count - 1) * 0.5
+		anchor.global_position = world_pos + Vector3(spread * chip * 0.35, chip * 0.15, 0.0)
+		var mesh_i := MeshInstance3D.new()
+		var box := BoxMesh.new()
+		box.size = Vector3(chip, chip * 0.7, chip * 0.85)
+		mesh_i.mesh = box
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.92)
+		mat.emission_enabled = true
+		mat.emission = tint
+		mat.emission_energy_multiplier = 1.4
+		mesh_i.material_override = mat
+		anchor.add_child(mesh_i)
+		_bursts.append({
+			"anchor": anchor,
+			"sprite": null,
+			"vel": Vector3(spread * 1.6, 1.8 + float(i) * 0.25, spread * 0.4),
+			"life": 0.45,
+			"place": false,
+			"mesh": mesh_i,
+			"break_shard": true,
+			"spin": 4.0 + float(i),
+		})
 
 
 func show_damage_column(col_pos: Vector3, amount: float, color: Color = Color(1.0, 0.9, 0.5)) -> void:
@@ -386,11 +463,6 @@ func _spawn_burst(world_pos: Vector3, tint: Color, count: int = -1) -> void:
 		})
 
 
-func _column_to_world(col: Vector3) -> Vector3:
-	var ws = _WorldSettings.get_active()
-	return Vector3(ws.column_to_world(col.x), col.y, ws.column_to_world(col.z))
-
-
 func _on_entity_spawned(entity: Node) -> void:
 	_bind_entity_death(entity)
 
@@ -419,22 +491,28 @@ func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
 	var kind := int(def.get("weapon_kind", _ItemTypes.WeaponKind.MELEE))
 	match kind:
 		_ItemTypes.WeaponKind.MELEE, _ItemTypes.WeaponKind.DIG:
+			show_hit_marker(hit_pos + Vector3(0.0, 0.15, 0.0), Color(1.0, 0.88, 0.45), 0.42)
 			_spawn_burst(hit_pos + Vector3(0.0, 0.35, 0.0), Color(1.0, 0.88, 0.45), 2)
 		_ItemTypes.WeaponKind.RANGED:
+			show_hit_marker(hit_pos + Vector3(0.0, 0.2, 0.0), Color(0.65, 0.82, 1.0), 0.36)
 			_spawn_burst(hit_pos + Vector3(0.0, 0.45, 0.0), Color(0.65, 0.82, 1.0), 1)
 
 
 func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 	if target == null:
 		return
-	var col: Vector3 = target.global_position
+	var world_pos: Vector3 = target.global_position
 	if target.has_method("get_combat_center"):
-		col = target.get_combat_center()
-	show_damage_column(col, damage, Color(1.0, 0.55, 0.45))
+		world_pos = target.get_combat_center()
+	var radius := 0.45
+	if target.has_method("get_combat_radius"):
+		radius = maxf(float(target.get_combat_radius()), 0.25)
+	_show_damage_at(world_pos + Vector3(0.0, 0.6, 0.0), damage, Color(1.0, 0.55, 0.45))
+	show_hit_marker(world_pos, Color(1.0, 0.45, 0.35), radius)
 	if target.has_method("_flash_hit"):
 		target._flash_hit()
 	if "health" in target and float(target.health) <= 0.0 and target.is_in_group("crystal_enemy"):
-		_spawn_burst(_column_to_world(col) + Vector3(0.0, 0.5, 0.0), Color(1.0, 0.55, 0.95), 3)
+		_spawn_burst(world_pos + Vector3(0.0, 0.5, 0.0), Color(1.0, 0.55, 0.95), 3)
 
 
 func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:
@@ -566,6 +644,15 @@ func _update_bursts(delta: float) -> void:
 			var mat := mesh_i.material_override as StandardMaterial3D
 			mat.albedo_color.a = 0.55 * fade
 			mat.emission_energy_multiplier = 1.6 * fade
+		if bool(b.get("break_shard", false)) and is_instance_valid(mesh_i):
+			var spin := float(b.get("spin", 4.0))
+			mesh_i.rotate_y(spin * delta)
+			mesh_i.rotate_x(spin * 0.55 * delta)
+			var shrink := clampf(life / 0.45, 0.2, 1.0)
+			mesh_i.scale = Vector3.ONE * shrink
+		if bool(b.get("hit_marker", false)) and is_instance_valid(mesh_i):
+			var grow := 1.0 + (1.0 - clampf(life / 0.24, 0.0, 1.0)) * 0.35
+			mesh_i.scale = Vector3(grow, 1.0, grow)
 		var tag: Label3D = b.get("tag")
 		if is_instance_valid(tag):
 			tag.modulate.a = fade
