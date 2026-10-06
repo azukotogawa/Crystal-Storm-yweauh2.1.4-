@@ -144,7 +144,7 @@ func _run() -> void:
 		push_error("attack must resolve via forward fallback with mouse off-screen")
 		failed = true
 	else:
-		print("OK attack resolves without mouse at cells=%s" % resolve_cells.keys())
+		print("OK attack resolves without mouse at cells=%s" % str(resolve_cells.keys()))
 
 	# Production melee must damage a spawned entity ahead along attack_forward (not co-located).
 	var entity_mgr = get_first_node_in_group("entity_manager")

@@ -217,6 +217,98 @@ static func combat_vfx_active(combat_vfx: Node) -> Dictionary:
 	return {"damage_labels": damage_labels, "burst_sprites": burst_sprites, "ok": ok}
 
 
+## Live floor probe: a 1-layer build can be stepped; a 2-layer stack blocks.
+static func check_built_wall_collision(
+	floor_probe,
+	wx: int,
+	wz: int,
+	expect_step: bool,
+	expect_blocks: bool
+) -> Dictionary:
+	if floor_probe == null or not floor_probe.has_method("can_step_to"):
+		return {"ok": false, "reason": "no floor probe", "raise": 0.0, "can_step": false}
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var wall_feet: float = float(floor_probe.walkable_height_at(float(wx) + 0.5, float(wz) + 0.5))
+	var approach := Vector2i(wx - 1, wz)
+	var approach_feet := wall_feet
+	var found := false
+	for dir in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var n := Vector2i(wx + dir.x, wz + dir.y)
+		var feet: float = float(floor_probe.walkable_height_at(float(n.x) + 0.5, float(n.y) + 0.5))
+		if feet >= wall_feet - layer * 0.15:
+			continue
+		if not found or feet > approach_feet:
+			found = true
+			approach = n
+			approach_feet = feet
+	if not found:
+		approach_feet = float(floor_probe.walkable_height_at(float(approach.x) + 0.5, float(approach.y) + 0.5))
+	var raise: float = wall_feet - approach_feet
+	var from_pos := Vector3(float(approach.x) + 0.5, approach_feet, float(approach.y) + 0.5)
+	var to_pos := Vector3(float(wx) + 0.5, approach_feet, float(wz) + 0.5)
+	var can_step: bool = bool(floor_probe.can_step_to(
+		from_pos,
+		to_pos,
+		ws.player_height(),
+		ws.player_radius(),
+		ws.max_step_up_walk(),
+		false
+	))
+	var blocks := not can_step
+	var ok := can_step == expect_step and blocks == expect_blocks
+	var reason := ""
+	if not ok:
+		reason = "step=%s want %s block=%s want %s raise=%.2f from %s" % [
+			str(can_step), str(expect_step), str(blocks), str(expect_blocks), raise, str(approach)
+		]
+	return {"ok": ok, "reason": reason, "raise": raise, "can_step": can_step}
+
+
+## Production melee swing at an entity already standing on the aimed column.
+static func try_forward_arc_melee_damage(
+	player: Node,
+	_world,
+	_chunk_manager,
+	weapon: Node,
+	entity: Node,
+	item_id: String,
+	def: Dictionary
+) -> Dictionary:
+	if player == null or weapon == null or entity == null or not weapon.has_method("_do_melee_attack"):
+		return {"ok": false, "reason": "missing melee nodes", "dist_cells": 0.0, "hp_before": 0.0, "hp_after": 0.0, "player_cell": Vector2i.ZERO, "pre_hits": 0}
+	var voxel: Vector3 = player.get("voxel_position")
+	var player_cell := Vector2i(floori(voxel.x), floori(voxel.z))
+	var home: Vector2i = entity.get("home_cell") if "home_cell" in entity else Vector2i.ZERO
+	var dist_cells: float = Vector2(float(player_cell.x - home.x), float(player_cell.y - home.y)).length()
+	var hp_before: float = float(entity.get("health"))
+	var pre_hits := 0
+	if weapon.has_method("_attack_origin") and weapon.has_method("_attack_forward"):
+		var origin: Vector3 = weapon.call("_attack_origin", 0.5)
+		var forward: Vector3 = weapon.call("_attack_forward")
+		var range_v: float = float(def.get("range", 2.0))
+		var range_w: float = range_v * _WorldSettings.get_active().voxel_scale
+		var seen: Array = CombatHitResolver.query_melee(weapon, origin, forward, range_w, null, 180.0)
+		for node in seen:
+			if node == entity:
+				pre_hits += 1
+	weapon.call("_do_melee_attack", item_id, def)
+	var hp_after: float = float(entity.get("health"))
+	var ok := hp_after < hp_before - 0.01
+	var reason := ""
+	if not ok:
+		reason = "no damage" if pre_hits > 0 else "arc missed"
+	return {
+		"ok": ok,
+		"reason": reason,
+		"dist_cells": dist_cells,
+		"hp_before": hp_before,
+		"hp_after": hp_after,
+		"player_cell": player_cell,
+		"pre_hits": pre_hits,
+	}
+
+
 static func session_seconds() -> float:
 	var raw := OS.get_environment("SMOKE_SESSION_SEC").strip_edges()
 	if raw.is_empty():
