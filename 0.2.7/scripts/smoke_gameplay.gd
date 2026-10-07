@@ -101,7 +101,8 @@ func _run() -> void:
 	# --- Pickaxe via WeaponController (production dig path) ---
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging (WeaponController)")
-	player.set("voxel_position", Vector3(2.5, player.get("voxel_position").y, 4.5))
+	var dig_anchor := _solid_probe_near_player(player, world, chunk_manager)
+	player.set("voxel_position", Vector3(float(dig_anchor.x) + 0.5, player.get("voxel_position").y, float(dig_anchor.y) + 0.5))
 	if player.has_method("_sync_global_from_voxel"):
 		player.call("_sync_global_from_voxel")
 
@@ -117,7 +118,7 @@ func _run() -> void:
 		if weapon.has_method("set_active_hotbar_index"):
 			weapon.set_active_hotbar_index(1)
 		var range_v: float = float(pick_def.get("range", 2.0))
-		_ActionTargeting.warp_mouse_to_column(player, world, 3.5, 5.5)
+		_ActionTargeting.warp_mouse_to_column(player, world, float(dig_anchor.x) + 0.5, float(dig_anchor.y) + 0.5)
 		for _w in 8:
 			await process_frame
 		var dig_pick: Vector2i = _ActionTargeting.target_cell(player, range_v)
@@ -273,7 +274,13 @@ func _run() -> void:
 	lines.append("## P0 — Chunk streaming")
 	var chunks_before: int = chunk_manager.chunks.size()
 	var start_col: Vector3 = player.get("voxel_position")
-	player.set("voxel_position", start_col + Vector3(64.0, 0.0, 0.0))
+	# Step toward the map centre. A fixed +X step from a corner spawn walks off the border.
+	var inward := Vector3(
+		-48.0 if start_col.x >= 0.0 else 48.0,
+		0.0,
+		-48.0 if start_col.z >= 0.0 else 48.0
+	)
+	player.set("voxel_position", start_col + inward)
 	if player.has_method("_sync_global_from_voxel"):
 		player.call("_sync_global_from_voxel")
 	for _w in 240:
@@ -282,7 +289,7 @@ func _run() -> void:
 	var stream_audit := _SmokeProbeHelpers.audit_loaded_chunks(chunk_manager)
 	if chunks_after >= chunks_before and stream_audit.ok:
 		lines.append(
-			"- **Streaming OK**: chunks %d→%d after +64 column move; %d loaded views with mesh instances, no holes."
+			"- **Streaming OK**: chunks %d→%d after inward column move; %d loaded views with mesh instances, no holes."
 			% [chunks_before, chunks_after, stream_audit.total]
 		)
 	else:
@@ -299,6 +306,21 @@ func _run() -> void:
 	lines.append("")
 	lines.append("## P1 — Jump while moving")
 	var probe = player.get("_floor_probe")
+	var jump_pos: Vector3 = player.get("voxel_position")
+	if absf(jump_pos.x) > 900.0:
+		jump_pos.x -= 80.0 * signf(jump_pos.x)
+	if absf(jump_pos.z) > 900.0:
+		jump_pos.z -= 80.0 * signf(jump_pos.z)
+	player.set("voxel_position", jump_pos)
+	if player.has_method("_sync_global_from_voxel"):
+		player.call("_sync_global_from_voxel")
+	if chunk_manager.has_method("update_stream"):
+		chunk_manager.update_stream(
+			floori(jump_pos.x / 16.0),
+			floori(jump_pos.z / 16.0)
+		)
+	for _w in 40:
+		await process_frame
 	var start_x: float = float(player.get("voxel_position").x)
 	var jump_ok := false
 	if player.has_method("_snap_to_ground"):
@@ -510,6 +532,19 @@ func _run() -> void:
 	lines.append("- Dict roundtrip: `verify_save_terrain.gd`.")
 
 	await _finish(lines, failed)
+
+
+func _solid_probe_near_player(player: Node, world: InfiniteNoiseWorld, chunk_manager: ChunkManager) -> Vector2i:
+	var start := Vector2i(2, 4)
+	if player != null and player.get("voxel_position") is Vector3:
+		var vp: Vector3 = player.get("voxel_position")
+		start = Vector2i(floori(vp.x), floori(vp.z))
+	for radius in range(0, 18):
+		for gx in range(start.x - radius, start.x + radius + 1):
+			for gz in range(start.y - radius, start.y + radius + 1):
+				if _ActionTargeting._is_solid_column(world, chunk_manager, gx, gz):
+					return Vector2i(gx, gz)
+	return start
 
 
 func _finish(lines: PackedStringArray, failed: bool) -> void:

@@ -8,7 +8,7 @@ The player is the active agent for movement, terrain editing, combat, inventory 
 
 ## Current loop
 
-1. Player moves through streamed terrain.
+1. Player spawns on dry land near the corner crystal heart. Chunk streaming follows that column before the body is marked ready, then the player moves through streamed terrain.
 2. Camera rotates/zooms around an isometric view.
 3. Targeting resolves the intended action cell.
 4. Hotbar item determines attack/build/dig behavior.

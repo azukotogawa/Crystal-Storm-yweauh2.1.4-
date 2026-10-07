@@ -17,7 +17,9 @@ func _run() -> void:
 	var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if scratch.is_empty():
 		scratch = "C:/Users/cwith/AppData/Local/Temp/grok-goal-961aca94c53e/implementer"
-	DirAccess.make_dir_recursive_absolute(scratch)
+	if DirAccess.make_dir_recursive_absolute(scratch) != OK:
+		scratch = "/tmp/crystalstorm-probe"
+		DirAccess.make_dir_recursive_absolute(scratch)
 	var path := scratch.path_join("test_player_settings.json")
 	_PS.settings_path = path
 	_PS.save_settings({

@@ -178,6 +178,16 @@ func _test_town_stream_reseed(em) -> void:
 		_fail("chunk_manager required for stream reseed test")
 		return
 	var coord: Vector2i = cm.world_to_chunk_coord(center.x, center.y)
+	# Corner crystal start streams the heart, not every town. The reseed contract
+	# is "chunk_ready while the chunk is resident" — load this town chunk first.
+	if cm.has_method("update_stream"):
+		cm.update_stream(coord.x, coord.y)
+	if cm.has_method("request_chunk"):
+		cm.request_chunk(coord, true)
+	for _i in 300:
+		await process_frame
+		if cm.chunks.has(coord):
+			break
 	# Simulate stream unload wipe of town chunk bodies.
 	if em.has_method("_despawn_entities_in_chunk"):
 		em._despawn_entities_in_chunk(coord)

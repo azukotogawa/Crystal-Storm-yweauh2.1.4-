@@ -234,9 +234,22 @@ func _ready():
 		await crystal_manager.ensure_ready()
 
 	var spawn_col := _resolve_spawn_column()
+	# Publish the spawn column before the stream wait. ChunkManager follows
+	# voxel_position; leaving it at the origin loads the map centre while the
+	# crystal heart (and this body) sit in a corner.
+	var spawn_x := float(spawn_col.x) + 0.5
+	var spawn_z := float(spawn_col.y) + 0.5
+	voxel_position = Vector3(spawn_x, _ws().layer_height() * 4.0, spawn_z)
+	_sync_global_from_voxel()
 	_ensure_spawn_chunks_loaded(spawn_col)
-	for _warmup in 180:
-		if chunk_manager.spawn_area_ready(spawn_col.x, spawn_col.y):
+	var spawn_chunk := Vector2i(
+		floori(float(spawn_col.x) / float(_ChunkData.SIZE)),
+		floori(float(spawn_col.y) / float(_ChunkData.SIZE))
+	)
+	if chunk_manager.has_method("update_stream"):
+		chunk_manager.update_stream(spawn_chunk.x, spawn_chunk.y)
+	for _warmup in 360:
+		if chunk_manager.spawn_area_ready(spawn_chunk.x, spawn_chunk.y):
 			break
 		await get_tree().process_frame
 
@@ -259,8 +272,6 @@ func _ready():
 	player_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	player_mesh.position.y = ph / 2.0
 
-	var spawn_x := float(spawn_col.x) + 0.5
-	var spawn_z := float(spawn_col.y) + 0.5
 	_floor_probe.feet_height_hint = _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
