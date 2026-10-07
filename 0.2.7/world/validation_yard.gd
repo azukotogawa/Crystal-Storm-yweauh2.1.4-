@@ -131,28 +131,10 @@ static func _stamp_build(cell: Vector2i, build_id: String, raise: bool) -> void:
 static func _stamp_generated_step_maps(
 	tree: SceneTree, landing: Vector2i, toward_low: Vector2i, remesh: Dictionary
 ) -> void:
-	var cm = tree.get_first_node_in_group("chunk_manager")
-	if cm == null:
-		return
-	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
 	var approach := landing + toward_low
-	for cell in [landing, approach]:
-		var coord := Vector2i(
-			int(floor(float(cell.x) / float(16))),
-			int(floor(float(cell.y) / float(16)))
-		)
-		if not cm.chunks.has(coord):
-			continue
-		var data = cm.chunks[coord].chunk_data
-		if data == null:
-			continue
-		var lx: int = cell.x - coord.x * 16
-		var lz: int = cell.y - coord.y * 16
-		if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
-			continue
-		if cell == approach:
-			data.surface_map[lx][lz] = float(data.surface_map[lx][lz]) - layer
-		remesh[cell] = true
+	_TerrainEdits.dig(approach.x, approach.y, 1)
+	remesh[landing] = true
+	remesh[approach] = true
 
 
 static func _seed_crystal(tree: SceneTree, cell: Vector2i) -> void:

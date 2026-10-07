@@ -19,7 +19,7 @@ Author into **existing** `Cube.png` slots. 32×32, nearest, seamless, top + fami
 
 Then hue-shift (same side tile): GRASSLAND, GRASSLAND2, GRASSLAND5, HILLS2. **Done — Batch 02** (`TERRAIN_BATCH_02_REPORT.md`).
 
-P1 veg stamps already on the mesh (`GRASS_TUFT` shares GRASSLAND2, `BUSH` shares HILLS4) — they come along with those tops until cells are unshared.
+P1 veg stamps on the mesh: `GRASS_TUFT` and `BUSH` have own cells as of Batch 05.
 
 ## Next (P1)
 
@@ -43,7 +43,7 @@ Still shared (split later):
 
 ## Do not author (P3)
 
-AIR, OCEAN3, BEACH2/3, MOUNTAIN, MOUNTAIN4–7, SNOW3, VALLEY*, DESERT*, TUNDRA*, BASIN2/3, GRASS_TUFT, BUSH.
+AIR, OCEAN3, BEACH2/3, MOUNTAIN, MOUNTAIN4–7, SNOW3, VALLEY*, DESERT*, TUNDRA*, BASIN2/3. (GRASS_TUFT / BUSH authored in Batch 05.)
 
 ## Resolution / layout (repeat)
 

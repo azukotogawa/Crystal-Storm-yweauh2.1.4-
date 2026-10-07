@@ -4,10 +4,12 @@ extends RefCounted
 ## Preferred on full column rebuild when WorldState mesh overlays are pristine
 ## for the chunk. Dig/build/feature/crystal terrain overlays force regenerate.
 
-const PLAN_VERSION: int = 2
+const PLAN_VERSION: int = 3
 const MAGIC: String = "CSMP"
 const CELLS: int = 16
 const FLAG_FULL_WORLD: int = 1
+const FACE_RAMP := 7
+const FACE_RAMP_CORNER := 8
 
 static var _active = null
 
@@ -381,9 +383,10 @@ func _load_plans_file(file_path: String, seed: int) -> bool:
 		f.close()
 		return false
 	var ver: int = int(f.get_32())
-	if ver != 1 and ver != PLAN_VERSION:
+	if ver != PLAN_VERSION:
 		last_error = "load_plans: version mismatch got=%d" % ver
 		valid = false
+		_plans.clear()
 		f.close()
 		return false
 	var file_seed: int = int(f.get_64())
@@ -395,26 +398,15 @@ func _load_plans_file(file_path: String, seed: int) -> bool:
 	var count: int = 0
 	var checksum: int = 0
 	_plans.clear()
-	if ver == 1:
-		var file_radius: int = int(f.get_32())
-		count = int(f.get_32())
-		min_cx = -file_radius
-		max_cx = file_radius
-		min_cz = -file_radius
-		max_cz = file_radius
-		radius = file_radius
-		full_world = false
-		checksum = 1 ^ file_seed ^ file_radius ^ count
-	else:
-		min_cx = int(f.get_32())
-		max_cx = int(f.get_32())
-		min_cz = int(f.get_32())
-		max_cz = int(f.get_32())
-		var flags: int = int(f.get_32())
-		full_world = (flags & FLAG_FULL_WORLD) != 0
-		radius = maxi(absi(min_cx), absi(max_cx))
-		count = int(f.get_32())
-		checksum = PLAN_VERSION ^ file_seed ^ min_cx ^ max_cx ^ min_cz ^ max_cz ^ flags ^ count
+	min_cx = int(f.get_32())
+	max_cx = int(f.get_32())
+	min_cz = int(f.get_32())
+	max_cz = int(f.get_32())
+	var flags: int = int(f.get_32())
+	full_world = (flags & FLAG_FULL_WORLD) != 0
+	radius = maxi(absi(min_cx), absi(max_cx))
+	count = int(f.get_32())
+	checksum = PLAN_VERSION ^ file_seed ^ min_cx ^ max_cx ^ min_cz ^ max_cz ^ flags ^ count
 	if count <= 0 or count > 500000:
 		last_error = "load_plans: bad count"
 		valid = false
@@ -559,6 +551,11 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 		_fill_plan_presence(dec, bake, coord)
 		_finish_decision(dec, apply_stats, false, 0)
 		return dec
+	if not _plan_matches_current_ramp_schema(plan):
+		dec["rebuild_reason"] = REASON_VERSION
+		dec["detail"] = "ramp_schema_mismatch"
+		_finish_decision(dec, apply_stats, false, 0)
+		return dec
 
 	var out: Array = []
 	out.resize(plan.size())
@@ -577,6 +574,22 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 	dec["mesh_plan_loaded"] = true
 	_finish_decision(dec, apply_stats, true, us)
 	return dec
+
+
+func _plan_matches_current_ramp_schema(plan: Array) -> bool:
+	for q_variant in plan:
+		if not (q_variant is Dictionary):
+			return false
+		var q: Dictionary = q_variant
+		var fc: int = int(q.get("face_code", -1))
+		if fc != FACE_RAMP and fc != FACE_RAMP_CORNER:
+			continue
+		if not q.has("ramp_dir_x") or not q.has("ramp_dir_z") \
+				or not q.has("ramp_dir2_x") or not q.has("ramp_dir2_z"):
+			return false
+		if fc == FACE_RAMP and (not q.has("flank_a") or not q.has("flank_b")):
+			return false
+	return true
 
 
 func _fill_plan_presence(dec: Dictionary, bake, coord: Vector2i) -> void:

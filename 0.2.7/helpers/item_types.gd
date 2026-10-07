@@ -1,10 +1,15 @@
 class_name ItemTypes
 extends RefCounted
+## Compatibility façade over ItemDef. Dict lookups stay stable for weapons/HUD.
+
+const _ItemDef = preload("res://config/item_def.gd")
 
 enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC }
 enum WeaponKind { MELEE, RANGED, DIG }
 
 const MAX_STACK := 99
+
+static var _defs: Dictionary = {}
 
 const ITEMS: Dictionary = {
 	"wooden_sword": {
@@ -61,12 +66,45 @@ const ITEMS: Dictionary = {
 }
 
 
+static func reset() -> void:
+	_defs.clear()
+
+
+static func ensure_builtins() -> void:
+	if not _defs.is_empty():
+		return
+	for item_id in ITEMS:
+		register(_ItemDef.from_legacy(str(item_id), ITEMS[item_id]))
+
+
+static func register(def) -> void:
+	if def == null:
+		return
+	_defs[str(def.id)] = def
+
+
+static func register_all(defs: Array) -> void:
+	for entry in defs:
+		if entry is _ItemDef:
+			register(entry)
+
+
+static func get_item_def(item_id: String):
+	ensure_builtins()
+	return _defs.get(item_id)
+
+
 static func get_def(item_id: String) -> Dictionary:
+	ensure_builtins()
+	var def = _defs.get(item_id)
+	if def:
+		return def.to_lookup()
 	return ITEMS.get(item_id, {})
 
 
 static func is_valid(item_id: String) -> bool:
-	return ITEMS.has(item_id)
+	ensure_builtins()
+	return _defs.has(item_id) or ITEMS.has(item_id)
 
 
 static func is_weapon(item_id: String) -> bool:

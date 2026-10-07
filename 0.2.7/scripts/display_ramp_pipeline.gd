@@ -89,12 +89,85 @@ func _run() -> void:
 			snaps[key]["column_source"] = str(md.get("column_source", ""))
 			snaps[key]["ramp_count"] = int(md.get("ramp_count", 0))
 		_shot(scratch, "ramp_%s_%d_%d" % [key, c.x, c.y])
+		var toward: Vector2i = {
+			"ramp_east": Vector2i(1, 0),
+			"ramp_west": Vector2i(-1, 0),
+			"ramp_south": Vector2i(0, 1),
+			"ramp_north": Vector2i(0, -1),
+		}[key]
+		var approach: Vector2i = c + toward
+		_look(approach.x, approach.y)
+		await process_frame
+		var ap: Dictionary = _LiveWorldQuery.inspect_cell(self, approach.x, approach.y)
+		snaps[key]["approach"] = {
+			"wx": approach.x, "wz": approach.y,
+			"covered": ap.get("column_mesh_covered", false),
+			"faces": ap.get("column_face_codes", []),
+			"has_ramp": ap.get("has_ramp", false),
+			"walk": ap.get("walkable_height", 0.0),
+			"surf": ap.get("surface_height", 0.0),
+			"disc": ap.get("discrepancies", []),
+		}
+		_shot(scratch, "approach_%s_%d_%d" % [key, approach.x, approach.y])
+		if not bool(ap.get("column_mesh_covered", false)):
+			push_error("approach floor missing for %s at %s" % [key, approach])
+			_ProbeExit.finish_tree(self, 1, "RAMP PIPELINE LIVE FAILED")
+			return
+		print("OK approach floor %s covered faces=%s" % [key, str(ap.get("column_face_codes", []))])
+	# Interior dig must not punch a hole several cells away.
+	var editor = get_first_node_in_group("terrain_editor")
+	var player = get_first_node_in_group("player")
+	if editor and player and player.inventory:
+		player.inventory.add_item("stone", 8)
+		var dig_c: Vector2i = origin + Vector2i(2, 2)
+		var far_c: Vector2i = origin + Vector2i(2, 8)
+		var far_before: Dictionary = _LiveWorldQuery.inspect_cell(self, far_c.x, far_c.y)
+		var y0: float = world.get_surface_height(float(dig_c.x), float(dig_c.y))
+		editor.try_dig(Vector3(float(dig_c.x) + 0.5, y0, float(dig_c.y) + 0.5))
+		if cm.has_method("await_rebuild_idle"):
+			await cm.await_rebuild_idle(90)
+		for _wd in 4:
+			await process_frame
+		_look(dig_c.x, dig_c.y)
+		await process_frame
+		_shot(scratch, "dig_local_%d_%d" % [dig_c.x, dig_c.y])
+		_look(far_c.x, far_c.y)
+		await process_frame
+		_shot(scratch, "dig_far_%d_%d" % [far_c.x, far_c.y])
+		var far_after: Dictionary = _LiveWorldQuery.inspect_cell(self, far_c.x, far_c.y)
+		if bool(far_before.get("column_mesh_covered", false)) and not bool(far_after.get("column_mesh_covered", false)):
+			push_error("dig at %s uncovered far cell %s" % [dig_c, far_c])
+			_ProbeExit.finish_tree(self, 1, "RAMP PIPELINE LIVE FAILED")
+			return
+		print("OK interior dig did not uncover far cell %s" % str(far_c))
 	var f := FileAccess.open(scratch.path_join("ramp_pipeline_live.json"), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"origin": [origin.x, origin.y], "cells": snaps}, "\t"))
 		f.close()
 	print("RAMP_PIPELINE_LIVE %s" % str(snaps.keys()))
 	_ProbeExit.finish_tree(self, 0, "RAMP PIPELINE LIVE OK")
+
+
+func _walk_slope_gap(world, cm, landing: Vector2i, toward_low: Vector2i) -> String:
+	var _TerrainRamps = load("res://helpers/terrain_ramps.gd")
+	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
+	var ax := float(landing.x + toward_low.x) + 0.5
+	var az := float(landing.y + toward_low.y) + 0.5
+	var lx := float(landing.x) + 0.5
+	var lz := float(landing.y) + 0.5
+	var prev := -9999.0
+	for i in 11:
+		var t: float = float(i) / 10.0
+		var wx: float = lerpf(ax, lx, t)
+		var wz: float = lerpf(az, lz, t)
+		var h: float = _TerrainRamps.walkable_height(world, wx, wz)
+		if cm and cm.has_method("get_ramp_entry_at_world"):
+			h = _TerrainRamps.walkable_height_from_entry(world, wx, wz, cm.get_ramp_entry_at_world(wx, wz))
+		if prev > -9000.0 and (prev - h) > layer * 0.55:
+			return "walk gap %.2f→%.2f at t=%.1f landing=%s" % [prev, h, t, landing]
+		prev = h
+	print("OK slope walk %s Δh continuous" % str(landing))
+	return ""
 
 
 func _find_dry_origin(world, cm) -> Vector2i:

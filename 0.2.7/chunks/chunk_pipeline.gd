@@ -49,6 +49,8 @@ static func run_column_stage(
 		data.skip_mesh_plan_cache = true
 		if data.has_method("_bind_macro_surface_if_needed"):
 			data._bind_macro_surface_if_needed()
+		if data.has_method("_refresh_halo_interior_from_maps"):
+			data._refresh_halo_interior_from_maps()
 		column_source = "resident"
 		examined = ChunkData.SIZE * ChunkData.SIZE
 		var preserve_us := Time.get_ticks_usec() - t0
@@ -149,6 +151,8 @@ static func run_mesh_stage(
 				count = quads.size()
 				mesh_source = "cache"
 				rebuild_reason = "hit"
+				if host.has_method("_rehydrate_ramp_map_from_quads"):
+					host._rehydrate_ramp_map_from_quads(data, quads)
 			else:
 				rebuild_reason = str(plan_decision.get("rebuild_reason", "other"))
 		plan_lookup_us = Time.get_ticks_usec() - t_plan

@@ -17,10 +17,10 @@ static func build_mesh_payload(
 	data: ChunkData,
 	quads: Array,
 	use_surface_mesh: bool = false,
-	prior_surface_cache: Dictionary = {},
-	incremental: bool = false,
-	keep_quads: Array = [],
-	patch_quads: Array = []
+	_prior_surface_cache: Dictionary = {},
+	_incremental: bool = false,
+	_keep_quads: Array = [],
+	_patch_quads: Array = []
 ) -> Dictionary:
 	var terrain_quads: Array = []
 	var ramp_quads: Array = []
@@ -51,18 +51,12 @@ static func build_mesh_payload(
 		"diagonal_count": diagonal_quads.size(),
 	}
 	payload["representation"] = "surface_mesh" if use_surface_mesh else "multimesh_legacy"
-	if use_surface_mesh and incremental and not prior_surface_cache.is_empty():
+	if use_surface_mesh:
+		# Always rebuild the ArrayMesh from the merged quad list (including ramps).
+		# Incremental vertex-slice reuse keyed by pre-clip greedy dim_x/dim_z
+		# dropped the rest of the chunk after a one-cell dig.
 		payload["terrain_buffer"] = PackedFloat32Array()
-		var cache: Dictionary = prior_surface_cache
-		if _TerrainSurfaceCache.incremental_patch_needed(prior_surface_cache, patch_quads, keep_quads):
-			cache = _TerrainSurfaceCache.patch_region(
-				prior_surface_cache, data, patch_quads, keep_quads
-			)
-		# Defer ArrayMesh build to main-thread surface upload drain.
-		_TerrainSurfaceCache.attach_to_payload(cache, payload, false)
-	elif use_surface_mesh:
-		payload["terrain_buffer"] = PackedFloat32Array()
-		var cache_full := _TerrainSurfaceCache.build_from_quads(data, terrain_quads)
+		var cache_full := _TerrainSurfaceCache.build_from_quads(data, quads)
 		_TerrainSurfaceCache.attach_to_payload(cache_full, payload, true)
 	else:
 		payload["terrain_buffer"] = _build_box_buffer(data, terrain_quads)

@@ -85,10 +85,20 @@ func _process(delta: float) -> void:
 	_auto_timer += delta
 	if _auto_timer >= cfg.auto_save_interval_sec:
 		_auto_timer = 0.0
-		save_slot(cfg.default_slot, true)
+		_autosave_now()
 
 
 func _post_boot() -> void:
+	var compose = get_tree().get_first_node_in_group("composition_root") if is_inside_tree() else null
+	var frames := 0
+	while compose != null and int(compose.stage) < 5 and frames < 3600:
+		await get_tree().process_frame
+		frames += 1
+	var WM = load("res://systems/world_manager.gd")
+	if WM and bool(WM.pending_resume) and str(WM.active_world_id) != "":
+		WM.pending_resume = false
+		await load_world_id(str(WM.active_world_id))
+		return
 	if pending_load_slot >= 0:
 		var slot := pending_load_slot
 		pending_load_slot = -1
@@ -108,12 +118,31 @@ func _connect_autosave_hooks() -> void:
 
 func _on_enemy_unlocked(_enemy_id: StringName) -> void:
 	if _cfg().auto_save_on_enemy_unlock:
-		save_slot(_cfg().default_slot, true)
+		_autosave_now()
 
 
 func _on_town_state_changed(_name: String, state: int, _center: Vector2i) -> void:
 	if _cfg().auto_save_on_town_besieged and state == 2:
+		_autosave_now()
+
+
+func _autosave_now() -> void:
+	var WM = load("res://systems/world_manager.gd")
+	if WM and str(WM.active_world_id) != "":
+		save_world_id(str(WM.active_world_id), true)
+	else:
 		save_slot(_cfg().default_slot, true)
+
+
+static func world_save_path(world_id: String) -> String:
+	if world_id.strip_edges().is_empty():
+		return ""
+	return "user://saves/world_%s.json" % world_id.strip_edges()
+
+
+static func has_world_save(world_id: String) -> bool:
+	var path := world_save_path(world_id)
+	return path != "" and FileAccess.file_exists(path)
 
 
 func slot_path(slot: int) -> String:
@@ -126,6 +155,55 @@ func is_transaction_active() -> bool:
 
 func get_transaction_stage() -> String:
 	return _transaction_stage
+
+
+func save_world_id(world_id: String, silent: bool = false) -> Error:
+	if world_id.strip_edges().is_empty() or _transaction_active:
+		return ERR_BUSY if _transaction_active else ERR_INVALID_PARAMETER
+	var snapshot := collect_snapshot()
+	snapshot["world_id"] = world_id
+	var check: Dictionary = _SaveSchema.validate_and_migrate(_SaveSchema.attach_integrity(snapshot))
+	if not bool(check.get("ok", false)):
+		save_failed.emit(-1, "validate_failed_%s" % str(check.get("reason", "?")))
+		return ERR_INVALID_DATA
+	var sealed: Dictionary = _SaveSchema.attach_integrity(check.get("data", {}))
+	var path := world_save_path(world_id)
+	var err := _write_text_atomic(path, JSON.stringify(sealed, "\t"))
+	if err == OK:
+		_last_save_label = path
+		save_completed.emit(-1, path)
+		if not silent:
+			print("[SaveGame] Saved world %s -> %s" % [world_id, path])
+	else:
+		save_failed.emit(-1, "write_error_%d" % err)
+	return err
+
+
+func load_world_id(world_id: String) -> bool:
+	var path := world_save_path(world_id)
+	if path.is_empty() or not FileAccess.file_exists(path):
+		save_failed.emit(-1, "missing_world_save")
+		return false
+	return await load_path(path)
+
+
+func load_path(path: String) -> bool:
+	if _transaction_active:
+		save_failed.emit(-1, "transaction_busy")
+		return false
+	if not FileAccess.file_exists(path):
+		save_failed.emit(-1, "missing_file")
+		return false
+	var text := FileAccess.get_file_as_string(path)
+	if text.strip_edges().is_empty():
+		save_failed.emit(-1, "empty_file")
+		return false
+	var parsed = JSON.parse_string(text)
+	var ok: bool = await apply_snapshot_transactional(parsed)
+	if ok:
+		load_completed.emit(-1)
+		print("[SaveGame] Loaded %s" % path)
+	return ok
 
 
 func save_slot(slot: int = -1, silent: bool = false) -> Error:

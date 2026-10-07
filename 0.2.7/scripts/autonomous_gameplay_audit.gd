@@ -339,23 +339,14 @@ func _do_build(editor, cm, insp, inv, name: String, cell: Vector2i, build_id: St
 
 
 func _do_remove(editor, cm, feat_layer, insp, name: String, cell: Vector2i) -> void:
-	var feat: Dictionary = _FeatureRegistry.get_feature(cell.x, cell.y)
-	var raised: bool = bool(feat.get("raises_terrain", false)) and not bool(feat.get("is_bridge", false))
-	_FeatureRegistry.clear_feature(cell.x, cell.y)
-	_FeatureRegistry.clear_tile_override(cell.x, cell.y)
-	var ws = _WorldState.get_active()
-	var key := Vector2i(cell.x, cell.y)
-	if ws and "build_tile" in ws and ws.build_tile.has(key):
-		ws.build_tile.erase(key)
-		if ws.has_method("bump"):
-			ws.bump(_WorldState.DOMAIN_TERRAIN)
-	if raised and _TerrainEdits.get_height_delta(cell.x, cell.y) > 0.01:
-		_TerrainEdits.dig(cell.x, cell.y, 1)
-	if editor and editor.has_method("_invalidate_and_rebuild"):
-		editor._invalidate_and_rebuild(cell.x, cell.y)
-	if feat_layer and feat_layer.has_method("refresh_cell"):
-		feat_layer.refresh_cell(cell.x, cell.y)
-	_actions.append({"op": name, "cell": [cell.x, cell.y]})
+	var world = get_first_node_in_group("world")
+	var y: float = world.get_surface_height(float(cell.x), float(cell.y)) if world else 0.0
+	var ok := false
+	if editor and editor.has_method("try_remove"):
+		ok = editor.try_remove(Vector3(float(cell.x) + 0.5, y, float(cell.y) + 0.5))
+	_actions.append({"op": name, "ok": ok, "cell": [cell.x, cell.y], "reason": editor.last_fail_reason if editor else ""})
+	if not ok:
+		_note("bug", "%s try_remove failed: %s" % [name, editor.last_fail_reason if editor else ""])
 	await _idle(cm)
 	if insp:
 		insp.pin_cell = cell

@@ -45,7 +45,7 @@ No voxel IDs, mesh, shader, or atlas **size** change. The pipeline stays:
 | 38 | WATER | **(1,0)** | top+side | town port puddles — **shares RIVER** |
 | 39 | STONE | **(0,4)** | top+side | mountain border, cave mouths, stone-wall fill, dig strata |
 | 40 | STONE2 | **(2,4)** | top+side | ruin 3×3, snow sides, some cave mouths |
-| 41 | DIRT | **(3,2)** | top+side | grass **sides**, wood/gate/bridge fill — **shares steppe + farmland** |
+| 41 | DIRT | **(3,2)** | top+side | grass **sides**, wood/gate/bridge fill — **Batch 03 steppe/farm unshared** |
 | 42 | DIRT2 | (0,6) | top+side when meshed | dig strata **under a DIRT top** (2+ layers); unused bottoms |
 | 43 | CAVE_STONE | (4,4) | only if MESH_CAVES | deep stone |
 | 44 | CRYSTAL | (6,2) | unused on terrain | crystal is off-atlas |

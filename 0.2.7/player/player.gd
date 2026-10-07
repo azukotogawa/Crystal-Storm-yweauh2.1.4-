@@ -315,13 +315,13 @@ func _physics_process(delta: float) -> void:
 	t0 = Time.get_ticks_usec() if measure else 0
 	var input_dir := Vector2.ZERO
 	if not _GameplayInput.blocks_actions():
-		if Input.is_action_pressed("ui_right"):
+		if Input.is_action_pressed("move_right") or Input.is_action_pressed("ui_right"):
 			input_dir.x += 1
-		if Input.is_action_pressed("ui_left"):
+		if Input.is_action_pressed("move_left") or Input.is_action_pressed("ui_left"):
 			input_dir.x -= 1
-		if Input.is_action_pressed("ui_down"):
+		if Input.is_action_pressed("move_back") or Input.is_action_pressed("ui_down"):
 			input_dir.y += 1
-		if Input.is_action_pressed("ui_up"):
+		if Input.is_action_pressed("move_forward") or Input.is_action_pressed("ui_up"):
 			input_dir.y -= 1
 		input_dir = input_dir.normalized()
 	if measure:
@@ -337,15 +337,11 @@ func _physics_process(delta: float) -> void:
 	if measure:
 		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
-	if input_dir != Vector2.ZERO:
-		if not is_input_locked:
-			if camera and "yaw_degrees" in camera:
-				locked_yaw_degrees = float(camera.yaw_degrees)
-			elif camera:
-				locked_yaw_degrees = 45.0 + float(camera.orbit_rotation) * 90.0
-			is_input_locked = true
-	else:
-		is_input_locked = false
+	if camera and "yaw_degrees" in camera:
+		locked_yaw_degrees = float(camera.yaw_degrees)
+	elif camera:
+		locked_yaw_degrees = 45.0 + float(camera.orbit_rotation) * 90.0
+	is_input_locked = input_dir != Vector2.ZERO
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed

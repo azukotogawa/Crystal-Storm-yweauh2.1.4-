@@ -143,12 +143,15 @@ func _ensure_markers() -> void:
 		_marker.name = "LiveInspectorMarker"
 		var box := BoxMesh.new()
 		var vs: float = _WorldVisualCoords.voxel_scale()
-		box.size = Vector3(vs * 1.02, 0.08, vs * 1.02)
+		# Wire-thin slab. A full-cell BoxMesh with failed alpha reads as a
+		# black voxel top and was mistaken for missing terrain.
+		box.size = Vector3(vs * 0.92, 0.04, vs * 0.92)
 		_marker.mesh = box
 		var mat := StandardMaterial3D.new()
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = Color(0.2, 0.95, 1.0, 0.55)
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(0.15, 1.0, 0.95, 1.0)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		_marker.material_override = mat
 		game.add_child(_marker)
 	if _im_inst == null or not is_instance_valid(_im_inst):
@@ -281,7 +284,8 @@ func _update_marker() -> void:
 	if not bool(s.get("ok", false)):
 		_marker.visible = false
 		return
-	_marker.visible = true
+	# Do not draw a filled cell slab — it reads as a black voxel top on camera.
+	_marker.visible = false
 	var p: Vector3 = s.get("world_pos", Vector3.ZERO)
 	_marker.global_position = p
 

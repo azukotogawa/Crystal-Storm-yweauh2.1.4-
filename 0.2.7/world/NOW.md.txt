@@ -1,0 +1,7 @@
+# World System
+
+Terrain edits invalidate chunks and trigger fluid/mesh updates.
+
+Terrain state is authoritative.
+
+Do not use terrain mutation as a workaround for rendering or mesh bugs.

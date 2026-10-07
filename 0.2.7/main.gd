@@ -87,6 +87,10 @@ func _apply_catalog_launch() -> void:
 
 
 func return_to_world_select() -> void:
+	var save = get_tree().get_first_node_in_group("save_game_service")
+	var world_id := str(_WorldManager.active_world_id)
+	if save and world_id != "" and save.has_method("save_world_id"):
+		save.save_world_id(world_id, true)
 	_WorldManager.request_return_to_select()
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake != null and bake.has_method("_clear_job_queue"):

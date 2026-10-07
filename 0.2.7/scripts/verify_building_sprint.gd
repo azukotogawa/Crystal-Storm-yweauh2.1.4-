@@ -39,6 +39,7 @@ func _run() -> void:
 	_test_gate()
 	_test_bridge()
 	_test_crystal_baffle()
+	_test_remove()
 	_test_weapon_paths()
 
 	if _failed == 0:
@@ -58,9 +59,12 @@ func _test_builtins() -> void:
 	var gate = _BuildingRegistry.get_def(&"gate")
 	if gate.raises_terrain or not gate.is_passage:
 		_fail("gate must be passage without raising terrain")
+	var wall = _BuildingRegistry.get_def(&"stone_wall")
+	if wall.raises_terrain:
+		_fail("stone_wall must be WorldObject-only (no terrain voxel)")
 	var bridge = _BuildingRegistry.get_def(&"bridge")
-	if not bridge.raises_terrain or not bridge.is_bridge:
-		_fail("bridge must raise terrain and be marked is_bridge")
+	if bridge.raises_terrain or not bridge.is_bridge:
+		_fail("bridge must be WorldObject-only and marked is_bridge")
 	else:
 		print("OK buildable builtins wall/gate/bridge")
 
@@ -92,9 +96,10 @@ func _test_instant_wall() -> void:
 		_fail("instant wall place failed")
 	else:
 		var us: int = Time.get_ticks_usec() - t0
-		var layer: float = _WorldSettings.get_active().layer_height()
-		if not is_equal_approx(_TerrainEdits.get_height_delta(10, 12), layer):
-			_fail("wall height not applied")
+		if not is_equal_approx(_TerrainEdits.get_height_delta(10, 12), 0.0):
+			_fail("wall must not raise a terrain voxel (delta=%.3f)" % _TerrainEdits.get_height_delta(10, 12))
+		elif _FeatureRegistry.get_feature(10, 12).get("build_id", "") != "stone_wall":
+			_fail("wall feature missing")
 		elif us > 50_000:
 			_fail("wall place took too long %dus (not instant)" % us)
 		elif inv.count_item("stone") != 5:
@@ -172,14 +177,13 @@ func _test_bridge() -> void:
 		_fail("bridge place failed: %s" % editor.last_fail_reason)
 	else:
 		var after: float = _TerrainEdits.get_height_delta(8, 8)
-		var layer: float = _WorldSettings.get_active().layer_height()
-		if after < dug_delta + layer * 0.5:
-			_fail("bridge should raise height after dig dug=%.3f after=%.3f" % [dug_delta, after])
+		if not is_equal_approx(after, dug_delta):
+			_fail("bridge must not fill the trench with a voxel dug=%.3f after=%.3f" % [dug_delta, after])
 		var feat: Dictionary = _FeatureRegistry.get_feature(8, 8)
 		if not bool(feat.get("is_bridge", false)):
 			_fail("bridge feature missing is_bridge")
 		else:
-			print("OK bridge spans dig delta %.3f→%.3f" % [dug_delta, after])
+			print("OK bridge WorldObject over dig delta %.3f" % dug_delta)
 	holder.queue_free()
 
 
@@ -214,15 +218,99 @@ func _test_crystal_baffle() -> void:
 		print("OK crystal baffle open=%.3f gate=%.3f" % [open_f, gate_f])
 
 
+func _test_remove() -> void:
+	const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+	_TerrainEdits.reset()
+	_FeatureRegistry.reset()
+	var holder := Node.new()
+	root.add_child(holder)
+	var world = load("res://world/InfiniteNoiseWorld.gd").new()
+	world.world_seed = 99
+	holder.add_child(world)
+	var cm := _ChunkManager.new()
+	var editor := _TerrainEditor.new()
+	holder.add_child(editor)
+	editor.world = world
+	editor.bind_chunk_manager(cm)
+
+	var inv := _Inventory.new()
+	inv.add_item("stone", 6)
+	inv.add_item("wood", 4)
+	var natural: float = world.get_surface_height(11.0, 13.0)
+	var wall_pos := Vector3(11.5, natural, 13.5)
+	var h_before_wall: float = _TerrainEdits.get_height_delta(11, 13)
+	if not editor.try_build_wall(wall_pos, inv, true):
+		_fail("remove setup: wall place failed")
+		holder.queue_free()
+		return
+	if editor.try_build_wall(wall_pos, inv, true):
+		_fail("second wall on same cell should be refused")
+		holder.queue_free()
+		return
+	if inv.count_item("stone") != 5:
+		_fail("remove setup: expected 5 stone after one wall")
+	if not editor.try_remove(wall_pos, inv):
+		_fail("try_remove wall failed: %s" % editor.last_fail_reason)
+	else:
+		if not is_equal_approx(_TerrainEdits.get_height_delta(11, 13), h_before_wall):
+			_fail("wall remove must not change supporting terrain height")
+		elif _TerrainEdits.get_build_tile(11, 13) >= 0:
+			_fail("wall remove should clear build_tile")
+		elif not _FeatureRegistry.get_feature(11, 13).is_empty():
+			_fail("wall remove should clear feature")
+		elif inv.count_item("stone") != 6:
+			_fail("wall remove should refund 1 stone got %d" % inv.count_item("stone"))
+		else:
+			print("OK try_remove wall WorldObject without terrain damage")
+
+	var h_gate: float = world.get_surface_height(5.0, 9.0)
+	if not editor.try_build_gate(Vector3(5.5, h_gate, 9.5), inv):
+		_fail("remove setup: gate place failed: %s" % editor.last_fail_reason)
+	elif not editor.try_remove(Vector3(5.5, h_gate, 9.5), inv):
+		_fail("try_remove gate failed: %s" % editor.last_fail_reason)
+	elif not _FeatureRegistry.get_feature(5, 9).is_empty():
+		_fail("gate remove should clear feature")
+	elif _TerrainEdits.get_build_tile(5, 9) >= 0:
+		_fail("gate remove should clear build_tile")
+	else:
+		print("OK try_remove gate clears passage")
+
+	_FeatureRegistry.register_feature(20, 21, _WorldFeatureTypes.FeatureKind.RUIN, {
+		"center": Vector2i(20, 21),
+	})
+	_FeatureRegistry.register_feature(22, 23, _WorldFeatureTypes.FeatureKind.TOWN, {
+		"center": Vector2i(22, 23),
+	})
+	if editor.try_remove(Vector3(20.5, 0.0, 21.5), inv):
+		_fail("try_remove must refuse ruins")
+	elif editor.last_fail_reason != "Nothing to remove":
+		_fail("ruin refuse reason expected Nothing to remove got %s" % editor.last_fail_reason)
+	elif editor.try_remove(Vector3(22.5, 0.0, 23.5), inv):
+		_fail("try_remove must refuse towns")
+	elif _FeatureRegistry.get_feature(20, 21).is_empty() or _FeatureRegistry.get_feature(22, 23).is_empty():
+		_fail("refuse must not clear ruin/town features")
+	else:
+		print("OK try_remove refuses ruin/town")
+	holder.queue_free()
+
+
 func _test_weapon_paths() -> void:
 	var weapon_src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
 	if "_resolve_buildable_id" not in weapon_src:
 		_fail("weapon must resolve gate/bridge buildables")
 	if "get_build_delay" not in weapon_src:
 		_fail("weapon must use get_build_delay for instant place")
-	if "try_build_gate" not in weapon_src or "try_build_bridge" not in weapon_src:
-		_fail("weapon must call try_build_gate/bridge")
+	if "try_place_selected" not in weapon_src:
+		_fail("weapon must place the selected catalog item")
+	if "place_cycle" not in weapon_src:
+		_fail("weapon must cycle place tools")
+	if "try_remove" not in weapon_src:
+		_fail("weapon must call try_remove")
+	if "can_remove" not in weapon_src:
+		_fail("weapon LMB must subtract via can_remove")
+	if "KEY_ALT" in weapon_src:
+		_fail("build/remove must not use Alt chords")
 	if "structure_built" not in weapon_src:
 		_fail("weapon must emit structure_built for feedback")
 	else:
-		print("OK weapon build paths gate/bridge/instant")
+		print("OK weapon build paths gate/bridge/instant/remove")

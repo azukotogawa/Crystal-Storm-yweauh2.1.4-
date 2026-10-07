@@ -139,9 +139,9 @@ func _check_multi_layer_dig_parity(
 		return false
 
 	var off_tops: Array = _top_ys_at_column(off_quads, lx, lz)
-	if off_tops.size() < 2:
+	if off_tops.size() != 1:
 		push_error(
-			"micro-off %d-layer dig at (%d,%d) expected >=2 FACE_TOP ys got %s"
+			"micro-off %d-layer dig at (%d,%d) expected 1 FACE_TOP at edited height got %s"
 			% [layers, dig_wx, dig_wz, str(off_tops)]
 		)
 		return false

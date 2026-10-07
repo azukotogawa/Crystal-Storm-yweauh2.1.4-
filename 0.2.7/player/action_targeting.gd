@@ -4,6 +4,7 @@ extends RefCounted
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
@@ -14,10 +15,6 @@ const INTERACTION_RANGE := 8.0
 static func _camera_yaw_degrees(player: Node3D) -> float:
 	if player == null:
 		return 45.0
-	if bool(player.get("is_input_locked")):
-		if "locked_yaw_degrees" in player:
-			return float(player.get("locked_yaw_degrees"))
-		return 45.0 + float(int(player.get("locked_rotation"))) * 90.0
 	var cam = player.get("camera")
 	if cam != null and "yaw_degrees" in cam:
 		return float(cam.yaw_degrees)
@@ -131,6 +128,15 @@ static func _walkable_top(
 ) -> float:
 	if world == null:
 		return _WorldSettings.get_active().layer_height()
+	var wx: int = floori(col_x)
+	var wz: int = floori(col_z)
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if bool(feat.get("is_bridge", false)) or str(feat.get("build_id", "")) == "bridge":
+		var ws = _WorldSettings.get_active()
+		var surf: float = world.get_surface_height(float(wx), float(wz))
+		var delta: float = _TerrainEdits.get_height_delta(wx, wz)
+		var deck: float = surf - delta if delta < -0.01 else surf
+		return deck + ws.layer_height()
 	var entry: Dictionary = {}
 	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
 		entry = chunk_manager.get_ramp_entry_at_world(col_x, col_z)

@@ -38,6 +38,81 @@ func _ok(msg: String) -> void:
 	print("OK %s" % msg)
 
 
+func _find_ramp_plan_coord(cache, bake, radius: int) -> Vector2i:
+	for cz in range(-radius, radius + 1):
+		for cx in range(-radius, radius + 1):
+			var coord := Vector2i(cx, cz)
+			var plan: Array = []
+			if cache != null and bool(cache.streamed_from_bake) and bake != null:
+				plan = bake.get_mesh_plan(coord)
+			elif cache != null and cache.get("_plans") is Dictionary:
+				plan = cache.get("_plans").get(coord, [])
+			if not _ramp_summary(plan).is_empty():
+				return coord
+	return Vector2i(-999999, -999999)
+
+
+func _ramp_summary(quads: Array) -> Array:
+	var out: Array = []
+	for q_variant in quads:
+		if not (q_variant is Dictionary):
+			continue
+		var q: Dictionary = q_variant
+		var fc: int = int(q.get("face_code", -1))
+		if fc != 7 and fc != 8:
+			continue
+		out.append({
+			"x": int(q.get("x", -1)),
+			"z": int(q.get("z", -1)),
+			"face": fc,
+			"dir_x": int(q.get("ramp_dir_x", 0)),
+			"dir_z": int(q.get("ramp_dir_z", 0)),
+			"dir2_x": int(q.get("ramp_dir2_x", 0)),
+			"dir2_z": int(q.get("ramp_dir2_z", 0)),
+			"flank_a": int(q.get("flank_a", 0)),
+			"flank_b": int(q.get("flank_b", 0)),
+		})
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a.x) != int(b.x):
+			return int(a.x) < int(b.x)
+		if int(a.z) != int(b.z):
+			return int(a.z) < int(b.z)
+		return int(a.face) < int(b.face)
+	)
+	return out
+
+
+func _ramp_quads_have_current_metadata(quads: Array) -> bool:
+	for q_variant in quads:
+		if not (q_variant is Dictionary):
+			continue
+		var q: Dictionary = q_variant
+		var fc: int = int(q.get("face_code", -1))
+		if fc != 7 and fc != 8:
+			continue
+		if not q.has("ramp_dir_x") or not q.has("ramp_dir_z") \
+				or not q.has("ramp_dir2_x") or not q.has("ramp_dir2_z"):
+			return false
+		if fc == 7 and (not q.has("flank_a") or not q.has("flank_b")):
+			return false
+	return true
+
+
+func _landing_ramp_entries(data, quads: Array) -> int:
+	var count := 0
+	for q_variant in quads:
+		if not (q_variant is Dictionary):
+			continue
+		var q: Dictionary = q_variant
+		var fc: int = int(q.get("face_code", -1))
+		if fc != 7 and fc != 8:
+			continue
+		var entry: Dictionary = data.get_ramp_entry(int(q.get("x", -1)), int(q.get("z", -1)))
+		if not entry.is_empty() and not bool(entry.get("approach", false)):
+			count += 1
+	return count
+
+
 func _run() -> void:
 	_WorldState.replace_active()
 	_WorldBakeService.clear_active()
@@ -202,6 +277,51 @@ func _run() -> void:
 		_fail("prefer path mesh_source want cache got=%s" % str(job.get("mesh_source")))
 	else:
 		_ok("prefer path mesh_source=cache mesh_us=%d" % int(job.get("build_mesh_us", 0)))
+
+	# Cached initial path must match fresh ramp geometry/metadata before any edit.
+	var ramp_coord: Vector2i = _find_ramp_plan_coord(cache2, bake, RADIUS)
+	if ramp_coord.x < -900000:
+		_fail("test seed/radius must include at least one cached FACE_RAMP")
+	else:
+		_WorldState.replace_active()
+		var d_initial = _ChunkData.new(ramp_coord, world)
+		d_initial.capture_worker_snapshot()
+		var job_initial: Dictionary = _ChunkPipeline.run_worker_job(
+			mgr, d_initial, true, [], Rect2i(0, 0, _ChunkData.SIZE, _ChunkData.SIZE), [], {}, true, true
+		)
+		var initial_quads: Array = job_initial.get("payload", {}).get("quads", [])
+		var initial_ramps: Array = _ramp_summary(initial_quads)
+		if str(job_initial.get("mesh_source", "")) != "cache":
+			_fail("initial ramp parity path must use cache got=%s" % str(job_initial.get("mesh_source")))
+		elif initial_ramps.is_empty():
+			_fail("initial cached mesh must include ramp quads")
+		elif not _ramp_quads_have_current_metadata(initial_quads):
+			_fail("initial cached ramp quads missing current metadata")
+		elif _landing_ramp_entries(d_initial, initial_quads) <= 0:
+			_fail("initial cached path must rehydrate ramp_map")
+		else:
+			_ok("initial cached ramp quads metadata and ramp_map ready coord=%s" % str(ramp_coord))
+
+		OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "0")
+		_WorldState.replace_active()
+		var d_fresh = _ChunkData.new(ramp_coord, world)
+		d_fresh.capture_worker_snapshot()
+		var job_fresh: Dictionary = _ChunkPipeline.run_worker_job(
+			mgr, d_fresh, true, [], Rect2i(0, 0, _ChunkData.SIZE, _ChunkData.SIZE), [], {}, true, true
+		)
+		OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "1")
+		var fresh_quads: Array = job_fresh.get("payload", {}).get("quads", [])
+		var fresh_ramps: Array = _ramp_summary(fresh_quads)
+		if str(job_fresh.get("mesh_source", "")) != "generate":
+			_fail("fresh comparison path must generate got=%s" % str(job_fresh.get("mesh_source")))
+		elif JSON.stringify(initial_ramps) != JSON.stringify(fresh_ramps):
+			_fail("cached/fresh ramp metadata mismatch cache=%s fresh=%s" % [
+				JSON.stringify(initial_ramps), JSON.stringify(fresh_ramps)
+			])
+		elif _landing_ramp_entries(d_initial, initial_quads) != _landing_ramp_entries(d_fresh, fresh_quads):
+			_fail("cached/fresh ramp_map landing count mismatch")
+		else:
+			_ok("cached initial ramps match fresh generate ramps n=%d" % initial_ramps.size())
 
 	# Dig invalidation → generate
 	_WorldState.replace_active()

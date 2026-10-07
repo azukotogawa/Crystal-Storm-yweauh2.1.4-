@@ -13,8 +13,8 @@ var follow_target: Vector3
 @export var distance := 100.0
 @export var height_offset := 101.0   # Fine-tune this for best cube look
 
-## Edge scroll: pan look-at when the mouse sits near the screen border.
-@export var edge_scroll_enabled: bool = true
+## Disabled: mouse at the screen edge must not pan or rotate the camera. Q/E yaw.
+@export var edge_scroll_enabled: bool = false
 @export var edge_scroll_margin_px: float = 28.0
 @export var edge_scroll_speed: float = 42.0
 @export var edge_scroll_max_lead: float = 48.0

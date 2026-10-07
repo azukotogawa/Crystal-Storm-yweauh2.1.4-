@@ -1,0 +1,13 @@
+# Chunk System
+
+## Relevant
+Ramp geometry is emitted during chunk mesh generation.
+
+MeshPlanCache stores raw quad dictionaries.
+
+Cache schema is currently version 3.
+
+Cached ramp quads must contain current ramp metadata and rehydrate
+ramp state on cache hit.
+
+Initial and fresh mesh paths must produce equivalent ramp geometry.

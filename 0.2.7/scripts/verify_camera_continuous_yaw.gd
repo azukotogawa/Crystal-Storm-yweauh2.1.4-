@@ -106,6 +106,12 @@ func _run() -> void:
 		_fail("get_offset_from_rotation still has even/odd orbit branches")
 	else:
 		_ok("single isometric offset (no even/odd)")
+	if "edge_scroll_enabled: bool = true" in src:
+		_fail("mouse at screen edge must not pan/rotate the camera")
+	else:
+		_ok("edge scroll disabled; Q/E rotate")
+	if bool(cam.get("edge_scroll_enabled")):
+		_fail("live camera edge_scroll_enabled must be false")
 	var off22: Vector3 = cam.get_offset_from_rotation()
 	cam.snap_yaw_degrees(45.0)
 	var off45: Vector3 = cam.get_offset_from_rotation()

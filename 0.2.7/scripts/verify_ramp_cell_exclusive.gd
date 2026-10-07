@@ -1,5 +1,5 @@
 extends SceneTree
-## Ramp landing cell must not emit terrain box faces in the wedge layer (only ramp mesh).
+## Cardinal landing replaces only the lid; approach and isolated L keep floors.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -23,82 +23,107 @@ func _run() -> void:
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	var data := _ChunkData.new(Vector2i(0, 0), world)
 	data.capture_worker_snapshot()
-	for x in _ChunkData.SIZE:
-		data.surface_map.append([]); data.tile_map.append([])
-		data.surface_map[x].resize(_ChunkData.SIZE); data.tile_map[x].resize(_ChunkData.SIZE)
-		for z in _ChunkData.SIZE:
-			data.surface_map[x][z] = 8.0; data.tile_map[x][z] = _VoxelTypes.GRASSLAND
-	var hx := 6; var hz := 5
+	_fill(data, 10.0)
+	var hx := 6
+	var hz := 5
 	var low_h := 10.0
+	var high_h := low_h + layer
 	data.surface_map[5][5] = low_h
-	data.surface_map[hx][hz] = low_h + layer
+	for x in range(hx, hx + 3):
+		for z in range(hz - 1, hz + 2):
+			data.surface_map[x][z] = high_h
+			data.tile_map[x][z] = _VoxelTypes.GRASSLAND
 	var cm := _ChunkManager.new()
 	cm.ramp_placement_chance = 100
-	var terrain_on_ramp := 0
+	var lid_on_ramp := 0
+	var ramp_faces := 0
 	for q in cm._build_mesh(data).get("quads", []):
-		if int(q.get("x", -1)) != hx or int(q.get("z", -1)) != hz:
+		if not _covers(q, hx, hz):
 			continue
 		var fc := int(q.get("face_code", -1))
 		if fc == FACE_RAMP:
-			continue
-		if fc == FACE_TOP:
-			terrain_on_ramp += 1
-		elif fc in [3, 4, 5, 6]:
-			terrain_on_ramp += 1
-	if terrain_on_ramp > 0:
-		push_error("ramp cell (%d,%d) has %d terrain box faces besides ramp" % [hx, hz, terrain_on_ramp])
+			ramp_faces += 1
+		elif fc == FACE_TOP:
+			lid_on_ramp += 1
+	if ramp_faces < 1:
+		push_error("landing (%d,%d) missing FACE_RAMP" % [hx, hz])
+		failed = true
+	elif lid_on_ramp > 0:
+		push_error("ramp landing (%d,%d) must not keep FACE_TOP lid, tops=%d" % [hx, hz, lid_on_ramp])
 		failed = true
 	else:
-		print("OK ramp cell exclusive mesh")
+		print("OK ramp landing lid replaced by slope")
 	var ax := 5
 	var az := 5
-	var terrain_on_approach := 0
+	var approach_top := 0
+	var approach_ramp := 0
 	for q in cm._build_mesh(data).get("quads", []):
-		if int(q.get("x", -1)) != ax or int(q.get("z", -1)) != az:
+		if not _covers(q, ax, az):
 			continue
 		var fc := int(q.get("face_code", -1))
 		if fc == FACE_RAMP:
-			continue
-		if fc == FACE_TOP or fc in [3, 4, 5, 6]:
-			terrain_on_approach += 1
-	if terrain_on_approach > 0:
-		push_error("approach cell (%d,%d) has %d terrain box faces under ramp" % [ax, az, terrain_on_approach])
+			approach_ramp += 1
+		elif fc == FACE_TOP:
+			approach_top += 1
+	if approach_ramp > 0:
+		push_error("approach (%d,%d) must not be a second slope, ramps=%d" % [ax, az, approach_ramp])
+		failed = true
+	elif approach_top < 1:
+		push_error("approach cell (%d,%d) must keep floor FACE_TOP, got %d" % [ax, az, approach_top])
 		failed = true
 	else:
-		print("OK approach cell has no terrain box under ramp")
-	# Corner L-step low cell: flat FACE_TOP at base must not coexist with corner prism.
+		print("OK approach cell floor tops=%d" % approach_top)
+	# Isolated two-pillar L on a flat shelf (no inner diagonal) is not a corner.
 	var data2 := _ChunkData.new(Vector2i(0, 0), world)
 	data2.capture_worker_snapshot()
-	for x in _ChunkData.SIZE:
-		data2.surface_map.append([]); data2.tile_map.append([])
-		data2.surface_map[x].resize(_ChunkData.SIZE); data2.tile_map[x].resize(_ChunkData.SIZE)
-		for z in _ChunkData.SIZE:
-			data2.surface_map[x][z] = 8.0; data2.tile_map[x][z] = _VoxelTypes.GRASSLAND
-	var cx := 6; var cz := 6
+	_fill(data2, low_h)
+	var cx := 6
+	var cz := 6
 	data2.surface_map[cx][cz] = low_h
 	for d in [Vector2i(1, 0), Vector2i(0, 1)]:
-		data2.surface_map[cx + d.x][cz + d.y] = low_h + layer
+		data2.surface_map[cx + d.x][cz + d.y] = high_h
 	var tops_at_base := 0
 	var corner_prism := 0
 	for q in cm._build_mesh(data2).get("quads", []):
-		if int(q.get("x", -1)) != cx or int(q.get("z", -1)) != cz:
+		if not _covers(q, cx, cz):
 			continue
 		var fc := int(q.get("face_code", -1))
 		if fc == 8:
 			corner_prism += 1
 		elif fc == FACE_TOP and is_equal_approx(float(q.get("y", -1)), low_h):
 			tops_at_base += 1
-	if corner_prism < 1:
-		push_error("corner prism missing")
+	if corner_prism > 0:
+		push_error("isolated L without diagonal must not emit corner, got %d" % corner_prism)
 		failed = true
-	elif tops_at_base > 0:
-		push_error("corner cell has flat top at base y=%.2f (block under prism), tops=%d" % [low_h, tops_at_base])
+	elif tops_at_base < 1:
+		push_error("isolated L cell must keep floor FACE_TOP, tops=%d" % tops_at_base)
 		failed = true
 	else:
-		print("OK corner cell no flat base top under prism")
+		print("OK isolated L is a floor, not a corner prism")
 
 	if failed:
 		quit(1)
 	else:
 		print("All ramp cell exclusive tests OK")
 		quit(0)
+
+
+func _covers(q: Dictionary, x: int, z: int) -> bool:
+	var qx := int(q.get("x", -999))
+	var qz := int(q.get("z", -999))
+	var dx := maxi(1, int(round(float(q.get("dim_x", 1.0)))))
+	var dz := maxi(1, int(round(float(q.get("dim_z", 1.0)))))
+	return x >= qx and x < qx + dx and z >= qz and z < qz + dz
+
+
+func _fill(data: ChunkData, h: float) -> void:
+	data.surface_map.resize(_ChunkData.SIZE)
+	data.tile_map.resize(_ChunkData.SIZE)
+	for x in _ChunkData.SIZE:
+		data.surface_map[x] = []
+		data.tile_map[x] = []
+		data.surface_map[x].resize(_ChunkData.SIZE)
+		data.tile_map[x].resize(_ChunkData.SIZE)
+		for z in _ChunkData.SIZE:
+			data.surface_map[x][z] = h
+			data.tile_map[x][z] = _VoxelTypes.GRASSLAND
