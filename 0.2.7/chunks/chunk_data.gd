@@ -56,6 +56,9 @@ var skip_mesh_plan_cache: bool = false
 ## Deep copy of surface/tile maps taken when a yard stamp must survive an in-flight regen.
 var _preserve_surface_snapshot: Array = []
 var _preserve_tile_snapshot: Array = []
+## Previous snapshot, kept so a worker still indexing it is not left with a freed array.
+var _preserve_surface_hold: Array = []
+var _preserve_tile_hold: Array = []
 var _has_preserve_map_snapshot: bool = false
 ## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
@@ -822,6 +825,9 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 func snapshot_resident_maps() -> void:
 	if surface_map.is_empty() or tile_map.is_empty():
 		return
+	# Retain the array a worker may already be reading, then publish a new one.
+	_preserve_surface_hold = _preserve_surface_snapshot
+	_preserve_tile_hold = _preserve_tile_snapshot
 	_preserve_surface_snapshot = surface_map.duplicate(true)
 	_preserve_tile_snapshot = tile_map.duplicate(true)
 	_has_preserve_map_snapshot = true
@@ -834,6 +840,9 @@ func has_preserve_map_snapshot() -> bool:
 func clear_preserve_map_snapshot() -> void:
 	_has_preserve_map_snapshot = false
 	# Drop the reference. clear() in place races a worker that is indexing it.
+	# The hold keeps that array alive until the next snapshot replaces it.
+	_preserve_surface_hold = _preserve_surface_snapshot
+	_preserve_tile_hold = _preserve_tile_snapshot
 	_preserve_surface_snapshot = []
 	_preserve_tile_snapshot = []
 
