@@ -216,6 +216,8 @@ func _connect_signals() -> void:
 			_crystal.spawn_destroyed.connect(_on_spawn_destroyed)
 		if _crystal.has_signal("spawn_damaged") and not _crystal.spawn_damaged.is_connected(_on_spawn_damaged):
 			_crystal.spawn_damaged.connect(_on_spawn_damaged)
+		if _crystal.has_signal("crystal_mass_hit") and not _crystal.crystal_mass_hit.is_connected(_on_crystal_mass_hit):
+			_crystal.crystal_mass_hit.connect(_on_crystal_mass_hit)
 
 	if _game_manager:
 		if _game_manager.has_signal("phase_changed") and not _game_manager.phase_changed.is_connected(_on_phase_changed):
@@ -520,6 +522,34 @@ func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 		target._flash_hit()
 	if "health" in target and float(target.health) <= 0.0 and target.is_in_group("crystal_enemy"):
 		_spawn_burst(world_pos + Vector3(0.0, _vox(0.25), 0.0), Color(1.0, 0.55, 0.95), 3)
+
+
+func _on_crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool) -> void:
+	if not enabled:
+		return
+	var tint := Color(0.78, 0.35, 1.0)
+	# Depth chips are fractions of a layer. Integer damage numbers would read as 0.
+	var text := "BREAK" if broken else "-%.1f" % amount
+	_show_text_at(world_pos + Vector3(0.0, _vox(0.35), 0.0), text, tint)
+	show_hit_marker(world_pos, tint, _vox(0.28))
+	if broken:
+		_spawn_break_shards(world_pos, Color(0.9, 0.45, 1.0), 5)
+		_spawn_burst(world_pos + Vector3(0.0, _vox(0.2), 0.0), tint, 4)
+	else:
+		_spawn_burst(world_pos + Vector3(0.0, _vox(0.15), 0.0), tint, 2)
+
+
+func _show_text_at(world_pos: Vector3, text: String, color: Color) -> void:
+	for i in _label_slots.size():
+		if _label_slots[i].active:
+			continue
+		var label: Label3D = _label_pool[i]
+		label.text = text
+		label.modulate = color
+		label.global_position = world_pos
+		label.visible = true
+		_label_slots[i] = {"active": true, "time": _quality.damage_number_lifetime}
+		return
 
 
 func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:

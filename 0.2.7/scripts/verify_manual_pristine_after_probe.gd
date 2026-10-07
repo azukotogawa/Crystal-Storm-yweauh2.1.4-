@@ -32,7 +32,7 @@ func _run() -> void:
 	var output: Array = []
 	var exit_code := OS.execute(
 		"bash",
-		["-c", "SMOKE_SESSION_SEC=10 %s" % wrapper],
+		["-c", "SMOKE_SESSION_SEC=10 bash \"%s\"" % wrapper],
 		output,
 		true,
 		false

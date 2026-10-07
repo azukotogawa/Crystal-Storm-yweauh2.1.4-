@@ -290,11 +290,13 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 			entity_hit.emit(target, dealt, item_id)
 
 	if crystal_manager:
+		var mass_cell := _crystal_target_cell(range_v)
 		crystal_manager.damage_spawn_at_world(
-			_crystal_target_cell(range_v),
+			mass_cell,
 			_crystal_hit_damage(def),
 			range_v
 		)
+		_try_break_crystal_mass(mass_cell, def)
 
 	if _combat_def.log_hits_to_console and targets.is_empty():
 		_CombatLog.push("melee %s — no entity hit" % item_id)
@@ -343,11 +345,13 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 		_CombatLog.push("ranged %s — no entity hit" % item_id)
 
 	if crystal_manager:
+		var mass_cell := _crystal_target_cell(range_v)
 		crystal_manager.damage_spawn_at_world(
-			_crystal_target_cell(range_v),
+			mass_cell,
 			_crystal_hit_damage(def, _StatIds.RANGED_DAMAGE),
 			2.5
 		)
+		_try_break_crystal_mass(mass_cell, def)
 
 	attacked.emit(item_id, hit_pos)
 
@@ -382,6 +386,22 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		_try_channel_water_at_target(range_v)
 		return
 	var forward := _attack_forward()
+	var crystal_cell := _crystal_target_cell(range_v)
+	if _try_break_crystal_mass(crystal_cell, def):
+		if crystal_manager:
+			crystal_manager.damage_spawn_at_world(
+				crystal_cell,
+				_crystal_hit_damage(def),
+				1.8
+			)
+		_cooldown_timer = maxf(float(def.get("cooldown", 0.1)), 0.08)
+		var ws_hit = _WorldSettings.get_active()
+		attacked.emit(item_id, Vector3(
+			ws_hit.column_to_world(float(crystal_cell.x) + 0.5),
+			player.voxel_position.y if player else 0.0,
+			ws_hit.column_to_world(float(crystal_cell.y) + 0.5)
+		))
+		return
 	var target := _resolve_terrain_target(range_v)
 	if target == Vector3.ZERO:
 		_notify_terrain_fail()
@@ -532,6 +552,19 @@ func _entity_hit_damage(def: Dictionary, weapon_stat: StringName) -> float:
 func _crystal_hit_damage(def: Dictionary, weapon_stat: StringName = _StatIds.MELEE_DAMAGE) -> float:
 	var base := float(def.get("damage", 5.0))
 	return base * _player_damage_mult(weapon_stat) * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)
+
+
+## Depth removed from the crystal mass. Pick is strong; sword and bow are weak.
+func _crystal_mass_damage(def: Dictionary) -> float:
+	var base := float(def.get("crystal_damage", 0.2))
+	return base * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)
+
+
+func _try_break_crystal_mass(cell: Vector2i, def: Dictionary) -> bool:
+	if crystal_manager == null or not crystal_manager.has_method("damage_crystal_at"):
+		return false
+	var hit: Dictionary = crystal_manager.damage_crystal_at(cell, _crystal_mass_damage(def))
+	return bool(hit.get("hit", false))
 
 
 func _try_plant() -> void:

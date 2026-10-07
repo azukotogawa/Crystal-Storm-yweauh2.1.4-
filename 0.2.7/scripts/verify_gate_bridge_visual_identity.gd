@@ -238,9 +238,10 @@ func _tex_avg_rgb(tex: Texture2D) -> Vector3:
 		return Vector3.ZERO
 	var sum := Vector3.ZERO
 	var n := 0
-	var step := maxi(1, img.get_width() / 12)
-	for y in range(0, img.get_height(), step):
-		for x in range(0, img.get_width(), step):
+	# These sprites are 48 px with a dark outline. A coarse stride lands only on that
+	# outline, so the average has to visit every opaque pixel.
+	for y in range(0, img.get_height()):
+		for x in range(0, img.get_width()):
 			var c := img.get_pixel(x, y)
 			if c.a < 0.1:
 				continue

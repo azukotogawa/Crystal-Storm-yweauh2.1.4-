@@ -17,11 +17,18 @@ signal run_state_changed(new_state: RunState)
 @export var maze_min_distance: float = 72.0
 @export var max_crystal_coverage: float = 0.72
 @export var crystal_damage_per_second: float = 28.0
+## Fallen towns are a penalty, not a loss. This much crystal power is added once.
+@export var town_fall_power_surge: float = 40.0
 
 var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
 ## Last terminal loss reason for UI / verifies (empty while playing or after win).
 var last_loss_reason: String = ""
+## How many settlements have fallen this run (penalty already applied).
+var fallen_towns: int = 0
+## Last town-fall penalty line for the HUD and probes.
+var last_town_penalty: String = ""
+var _town_penalty_bound: bool = false
 
 var _player: Node3D
 ## Duck-typed crystal façade (CrystalManager in production; stubs in verifies).
@@ -45,6 +52,8 @@ func apply_game_config(cfg: _GameConfig) -> void:
 		town_defense.fall_depth = cfg.town_fall_depth
 	if cfg.crystal_sim:
 		max_crystal_coverage = cfg.crystal_sim.max_coverage_ratio
+	if "town_fall_power_surge" in cfg:
+		town_fall_power_surge = float(cfg.town_fall_power_surge)
 
 
 func _bind() -> void:
@@ -66,9 +75,10 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("game_manager")
+	if not _town_penalty_bound:
+		_bind_town_penalty()
 	_update_phase()
 	_check_crystal_overrun()
-	_check_towns_lost()
 	if _player and _crystal:
 		_apply_crystal_damage(delta)
 	if profiler and profiler.has_method("end"):
@@ -104,7 +114,7 @@ func _distance_to_crystal_pressure() -> float:
 		var d: float = float(_crystal.get_nearest_crystal_distance(from))
 		if d < INF * 0.5:
 			return d
-	# No fluid yet: distance to origin boss doorstep (map center / relocated origin).
+	# No fluid yet: distance to the origin boss (a map corner, relocated onto land).
 	if _crystal != null and _crystal.has_method("get_active_spawns"):
 		for spawn in _crystal.get_active_spawns():
 			if spawn != null and bool(spawn.get("is_boss")):
@@ -120,11 +130,33 @@ func _check_crystal_overrun() -> void:
 		_set_lost("The crystal consumed the map.")
 
 
-func _check_towns_lost() -> void:
+func _bind_town_penalty() -> void:
 	var town_defense = get_tree().get_first_node_in_group("town_defense_manager")
-	if town_defense and town_defense.has_method("is_any_town_fallen"):
-		if town_defense.is_any_town_fallen():
-			_set_lost("A settlement fell to the crystal.")
+	if town_defense == null or not town_defense.has_signal("town_fallen"):
+		return
+	if not town_defense.town_fallen.is_connected(_on_town_fallen):
+		town_defense.town_fallen.connect(_on_town_fallen)
+	_town_penalty_bound = true
+
+
+## A fallen town is expected. The crystal surges and that town's defenders are gone.
+## The run continues until coverage or death.
+func _on_town_fallen(town_name: String, center: Vector2i) -> void:
+	if run_state != RunState.PLAYING:
+		return
+	fallen_towns += 1
+	var surge := maxf(town_fall_power_surge, 0.0)
+	if _crystal and _crystal.has_method("grant_feed_power"):
+		_crystal.grant_feed_power(surge)
+	var lost := 0
+	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
+	if entity_mgr and entity_mgr.has_method("dismiss_town_defenders"):
+		lost = int(entity_mgr.dismiss_town_defenders(center))
+	last_town_penalty = "%s fell — crystal +%.0f power, %d defenders lost" % [town_name, surge, lost]
+	print("[Game] Town penalty: ", last_town_penalty)
+	var overlay = get_tree().get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("_show_toast"):
+		overlay.call("_show_toast", last_town_penalty)
 
 
 func _apply_crystal_damage(delta: float) -> void:

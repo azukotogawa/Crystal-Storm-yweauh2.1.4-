@@ -8,13 +8,14 @@ The player is the active agent for movement, terrain editing, combat, inventory 
 
 ## Current loop
 
-1. Player moves through streamed terrain.
+1. Player spawns on dry land near the corner crystal heart. Chunk streaming follows that column before the body is marked ready, then the player moves through streamed terrain.
 2. Camera rotates/zooms around an isometric view.
 3. Targeting resolves the intended action cell.
 4. Hotbar item determines attack/build/dig behavior.
 5. Player digs, builds, channels, plants, or attacks.
 6. Crystal/enemies/towns update run pressure.
-7. Player wins by destroying all crystal spawns or loses by death/overrun/town fall.
+7. Player wins by destroying all crystal spawns, or loses by death or crystal coverage. A fallen town is a power-surge penalty, not a loss.
+8. Jump is Space. Enter still confirms UI.
 
 ## Connected systems
 

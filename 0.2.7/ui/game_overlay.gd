@@ -28,6 +28,12 @@ var _terrain_crystal_toast_cd: float = 0.0
 var _phase_label_pulse: float = 0.0
 var _phase_label_base_mod: Color = Color.WHITE
 var _bake_chip: Label = null
+var _objective_panel: PanelContainer = null
+var _objective_phase: Label = null
+var _objective_spawns: Label = null
+var _objective_coverage: Label = null
+var _objective_bearing: Label = null
+var _objective_arrow: Label = null
 
 
 func _ready() -> void:
@@ -56,6 +62,7 @@ func _ready() -> void:
 		_phase_label_base_mod = _phase_label.modulate
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
+	_ensure_objective_hud()
 
 
 func _ensure_bake_chip() -> void:
@@ -474,6 +481,7 @@ func _process(delta: float) -> void:
 	if _crystal == null:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_update_game_hud()
+	_update_objective_hud()
 	_update_bake_chip()
 	if _GameplayInput.blocks_actions():
 		if profiler and profiler.has_method("end_func"):
@@ -529,7 +537,7 @@ func _update_game_hud() -> void:
 		var rl: String = str(_living_world.get_ruins_hud_line())
 		if rl != "":
 			ruins_line = "  |  %s" % rl
-	var tool_line := "Pick dig · RMB wall · LMB fight · M map · I inv"
+	var tool_line := "Pick dig · RMB wall · LMB fight · Space jump · U map · I inv"
 	var weapon = null
 	var player = get_tree().get_first_node_in_group("player")
 	if player:
@@ -556,6 +564,183 @@ func _update_game_hud() -> void:
 		"%s  |  %s%s  |  %s%s%s%s%s  |  %s"
 		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]
 	)
+
+
+func _ensure_objective_hud() -> void:
+	if _objective_panel != null:
+		return
+	_objective_panel = PanelContainer.new()
+	_objective_panel.name = "ObjectiveHud"
+	_objective_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_objective_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_objective_panel.offset_left = 12.0
+	_objective_panel.offset_top = 12.0
+	_objective_panel.offset_right = 340.0
+	_objective_panel.offset_bottom = 148.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.06, 0.04, 0.1, 0.78)
+	panel_style.border_color = Color(0.62, 0.32, 0.9, 0.9)
+	panel_style.set_border_width_all(1)
+	panel_style.set_content_margin_all(8)
+	_objective_panel.add_theme_stylebox_override("panel", panel_style)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
+	_objective_panel.add_child(box)
+	var title := Label.new()
+	title.text = "OBJECTIVE"
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.78, 0.62, 1.0))
+	box.add_child(title)
+	_objective_phase = _objective_line(box, "Phase: Maze")
+	_objective_spawns = _objective_line(box, "Spawns: — remaining")
+	_objective_coverage = _objective_line(box, "Crystal: 0.00%")
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	_objective_arrow = Label.new()
+	_objective_arrow.name = "SpawnArrow"
+	_objective_arrow.text = "▲"
+	_objective_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_objective_arrow.custom_minimum_size = Vector2(28, 28)
+	_objective_arrow.pivot_offset = Vector2(14, 14)
+	_objective_arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_objective_arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_objective_arrow.add_theme_font_size_override("font_size", 20)
+	_objective_arrow.add_theme_color_override("font_color", Color(0.95, 0.75, 1.0))
+	row.add_child(_objective_arrow)
+	_objective_bearing = _objective_line(row, "Nearest spawn")
+	add_child(_objective_panel)
+
+
+func _objective_line(parent: Node, text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", Color(0.94, 0.92, 0.98))
+	parent.add_child(label)
+	return label
+
+
+func _update_objective_hud() -> void:
+	if _objective_panel == null:
+		_ensure_objective_hud()
+	if _objective_panel == null:
+		return
+	_objective_panel.visible = true
+	var phase_name := "Maze"
+	var playing := true
+	if _game_manager:
+		playing = _game_manager.run_state == _GameManager.RunState.PLAYING
+		if _game_manager.run_state == _GameManager.RunState.WON:
+			phase_name = "Victory"
+		elif _game_manager.run_state == _GameManager.RunState.LOST:
+			phase_name = "Defeat"
+		elif _game_manager.phase == _GameManager.Phase.ASSAULT:
+			phase_name = "Assault"
+		elif _game_manager.phase == _GameManager.Phase.VICTORY:
+			phase_name = "Victory"
+	var active := 0
+	var total := 0
+	if _crystal and _crystal.has_method("get_spawn_progress"):
+		var prog: Dictionary = _crystal.get_spawn_progress()
+		active = int(prog.get("active", 0))
+		total = int(prog.get("total", 0))
+	var coverage := 0.0
+	var tiles := 0
+	if _crystal and _crystal.has_method("get_coverage_ratio"):
+		coverage = float(_crystal.get_coverage_ratio())
+	if _crystal and "covered_cells" in _crystal:
+		tiles = int(_crystal.covered_cells)
+	var bearing := _nearest_spawn_bearing()
+	var lines := build_objective_lines(phase_name, active, total, coverage, tiles, bearing.text)
+	var parts := lines.split("\n")
+	if parts.size() >= 4:
+		_objective_phase.text = parts[0]
+		_objective_spawns.text = parts[1]
+		_objective_coverage.text = parts[2]
+		_objective_bearing.text = parts[3]
+	if _objective_arrow:
+		_objective_arrow.rotation = bearing.rotation
+		_objective_arrow.modulate = Color(0.95, 0.75, 1.0) if playing else Color(0.7, 0.7, 0.75)
+
+
+static func build_objective_lines(
+	phase_name: String,
+	spawns_remaining: int,
+	spawns_total: int,
+	coverage_ratio: float,
+	tiles: int,
+	bearing_text: String
+) -> String:
+	var pct := coverage_ratio * 100.0
+	var cov := "Crystal: %.2f%%" % pct
+	if tiles > 0:
+		cov = "%s · %d tiles" % [cov, tiles]
+	var spawns := "Spawns: %d remaining" % spawns_remaining
+	if spawns_total > 0:
+		spawns = "%s (%d/%d)" % [spawns, spawns_remaining, spawns_total]
+	var bearing := bearing_text if bearing_text != "" else "Nearest spawn: —"
+	return "Phase: %s\n%s\n%s\n%s" % [phase_name, spawns, cov, bearing]
+
+
+static func compass_from_delta(dx: float, dz: float) -> String:
+	var dist := Vector2(dx, dz).length()
+	if dist < 6.0:
+		return "Nearest spawn: here"
+	var deg := rad_to_deg(atan2(dx, -dz))
+	if deg < 0.0:
+		deg += 360.0
+	var dirs: PackedStringArray = PackedStringArray(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
+	var idx := int(round(deg / 45.0)) % 8
+	return "Nearest spawn: %s  %.0fc" % [dirs[idx], dist]
+
+
+static func arrow_rotation(world_delta: Vector2, cam_forward: Vector2, cam_right: Vector2) -> float:
+	if world_delta.length_squared() < 0.25:
+		return 0.0
+	var d := world_delta.normalized()
+	var f := cam_forward
+	if f.length_squared() < 0.0001:
+		return 0.0
+	f = f.normalized()
+	var r := cam_right
+	if r.length_squared() < 0.0001:
+		r = Vector2(f.y, -f.x)
+	else:
+		r = r.normalized()
+	return atan2(d.dot(r), d.dot(f))
+
+
+func _nearest_spawn_bearing() -> Dictionary:
+	var empty := {"text": "Nearest spawn: —", "rotation": 0.0}
+	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if player == null or not player.has_method("get_voxel_position"):
+		return empty
+	var pv: Vector3 = player.get_voxel_position()
+	var cell := Vector2i(999999, 999999)
+	if _crystal and _crystal.has_method("get_nearest_active_spawn"):
+		var info: Dictionary = _crystal.get_nearest_active_spawn(Vector2(pv.x, pv.z))
+		if info.is_empty():
+			return empty
+		cell = info.get("cell", cell)
+	elif _crystal and _crystal.has_method("get_origin_cell"):
+		cell = _crystal.get_origin_cell()
+	if cell.x == 999999:
+		return empty
+	var dx := float(cell.x) + 0.5 - pv.x
+	var dz := float(cell.y) + 0.5 - pv.z
+	var text := compass_from_delta(dx, dz)
+	var rotation := 0.0
+	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	if cam:
+		var fwd := -cam.global_transform.basis.z
+		var right := cam.global_transform.basis.x
+		rotation = arrow_rotation(Vector2(dx, dz), Vector2(fwd.x, fwd.z), Vector2(right.x, right.z))
+	return {"text": text, "rotation": rotation}
 
 
 func _crystal_bearing_bit() -> String:

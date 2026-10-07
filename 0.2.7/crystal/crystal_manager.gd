@@ -29,6 +29,8 @@ signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
 signal all_spawns_destroyed
 signal crystal_touched_player
 signal absorption_completed(source_id: StringName, world_pos: Vector2i)
+## Player broke into the crystal mass. broken=true when the cell is removed.
+signal crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool)
 
 @export var expansion_enabled: bool = true
 @export var flow_substeps: int = 2
@@ -330,9 +332,13 @@ func _bootstrap_when_ready() -> void:
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] _bootstrap_when_ready ENTER t_ms=%d (started by CrystalManager._ready call_deferred)" % t_boot0)
 	while world == null:
+		if not is_inside_tree():
+			return
 		world = get_tree().get_first_node_in_group("world")
 		await get_tree().process_frame
 	while chunk_manager == null:
+		if not is_inside_tree():
+			return
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 		await get_tree().process_frame
 	if _crystal_measure_enabled():
@@ -744,18 +750,73 @@ func pick_origin_spawn_cell() -> Vector2i:
 func get_origin_cell() -> Vector2i:
 	if _spawn_points.size() > 0:
 		return _spawn_points[0].world_pos
-	# Map-center threat before spawn init. Relocated land (e.g. (−10,10))
-	# still sits in chunk (−1,0), covered by origin ±1 stream extras.
-	return Vector2i.ZERO
+	# Corner threat before spawn init. Stream extras keep that corner resident.
+	return _resolve_origin_spawn_position()
+
+
+## Inset from the playable edge so the heart sits in a corner, not on the border wall.
+const _ORIGIN_CORNER_INSET := 72
+
+
+## Same seed always picks the same corner (NW, NE, SW, SE).
+func origin_corner_for_seed(seed_value: int) -> Vector2i:
+	var half_x := _WorldBorder.PLAYABLE_HALF_X - _ORIGIN_CORNER_INSET
+	var half_z := _WorldBorder.PLAYABLE_HALF_Z - _ORIGIN_CORNER_INSET
+	var corners: Array[Vector2i] = [
+		Vector2i(-half_x, -half_z),
+		Vector2i(half_x, -half_z),
+		Vector2i(-half_x, half_z),
+		Vector2i(half_x, half_z),
+	]
+	return corners[posmod(seed_value, 4)]
+
+
+func _preferred_origin_corner() -> Vector2i:
+	var seed_value := 1
+	if world != null and "world_seed" in world:
+		seed_value = int(world.world_seed)
+	return origin_corner_for_seed(seed_value)
 
 
 func _resolve_origin_spawn_position() -> Vector2i:
-	var preferred := Vector2i.ZERO
-	if _origin_cell_unsuitable(preferred):
-		var land := _pick_nearest_land_spawn(preferred)
-		if land != preferred:
-			print("[Crystal] Origin relocated %s → %s (avoid water at map center)" % [preferred, land])
-		return land
+	var preferred := _preferred_origin_corner()
+	if world == null:
+		return preferred
+	var land := _find_corner_land(preferred)
+	if land != preferred:
+		print("[Crystal] Origin corner %s → land %s" % [preferred, land])
+	return land
+
+
+## Walk from the chosen corner toward the map center until the cell is dry land.
+## Search stays inside that corner so the heart cannot drift back to the center.
+func _find_corner_land(preferred: Vector2i) -> Vector2i:
+	if not _origin_cell_unsuitable(preferred):
+		return preferred
+	var sign_x := -1 if preferred.x < 0 else 1
+	var sign_z := -1 if preferred.y < 0 else 1
+	var min_abs := int(float(mini(_WorldBorder.PLAYABLE_HALF_X, _WorldBorder.PLAYABLE_HALF_Z)) * 0.58)
+	var offsets: Array[Vector2i] = [
+		Vector2i.ZERO,
+		Vector2i(4, 0), Vector2i(-4, 0), Vector2i(0, 4), Vector2i(0, -4),
+		Vector2i(8, 8), Vector2i(-8, 8), Vector2i(8, -8), Vector2i(-8, -8),
+		Vector2i(16, 0), Vector2i(0, 16), Vector2i(-16, 0), Vector2i(0, -16),
+	]
+	var step := 0
+	while step <= 420:
+		var base := Vector2i(preferred.x - sign_x * step, preferred.y - sign_z * step)
+		if absi(base.x) < min_abs or absi(base.y) < min_abs:
+			break
+		for off in offsets:
+			var pos: Vector2i = base + off
+			if absi(pos.x) < min_abs or absi(pos.y) < min_abs:
+				continue
+			if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
+				continue
+			if not _origin_cell_unsuitable(pos):
+				return pos
+		step += 16
+	push_warning("[Crystal] No dry land in corner %s — keeping the corner cell" % preferred)
 	return preferred
 
 
@@ -1856,8 +1917,65 @@ func _refresh_spawn_markers() -> void:
 			walkable + marker_size * 0.5 + 0.12,
 			col_z
 		)
+		_attach_spawn_hp_bar(anchor, spawn, marker_size)
 		_marker_root.add_child(anchor)
 		_spawn_markers[spawn.id] = anchor
+
+
+func _attach_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint, marker_size: float) -> void:
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	var width := vs * (1.45 if spawn.is_boss else 1.1)
+	var height := vs * 0.14
+	var bg := MeshInstance3D.new()
+	bg.name = "HpBarBg"
+	var bg_mesh := BoxMesh.new()
+	bg_mesh.size = Vector3(width, height, vs * 0.08)
+	bg.mesh = bg_mesh
+	var bg_mat := StandardMaterial3D.new()
+	bg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bg_mat.albedo_color = Color(0.08, 0.05, 0.12, 0.92)
+	bg.material_override = bg_mat
+	bg.position = Vector3(0.0, marker_size * 1.25, 0.0)
+	anchor.add_child(bg)
+
+	var fill := MeshInstance3D.new()
+	fill.name = "HpFill"
+	var fill_mesh := BoxMesh.new()
+	fill_mesh.size = Vector3(width * 0.92, height * 0.62, vs * 0.1)
+	fill.mesh = fill_mesh
+	var fill_mat := StandardMaterial3D.new()
+	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fill_mat.albedo_color = Color(1.0, 0.35, 0.55) if spawn.is_boss else Color(0.82, 0.28, 1.0)
+	fill.material_override = fill_mat
+	fill.position = Vector3(0.0, marker_size * 1.25, vs * 0.02)
+	fill.set_meta("bar_width", width * 0.92)
+	anchor.add_child(fill)
+	_apply_spawn_hp_bar(anchor, spawn)
+
+
+func _apply_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint) -> void:
+	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
+	if fill == null:
+		return
+	var ratio := 0.0
+	if spawn.max_health > 0.0:
+		ratio = clampf(spawn.health / spawn.max_health, 0.0, 1.0)
+	fill.visible = spawn.active and ratio > 0.001
+	var bg := anchor.get_node_or_null("HpBarBg")
+	if bg:
+		bg.visible = spawn.active
+	var full_w := float(fill.get_meta("bar_width", 1.0))
+	fill.scale = Vector3(maxf(ratio, 0.001), 1.0, 1.0)
+	# Shrink toward the left edge so the bar reads as draining, not compressing in place.
+	fill.position.x = -full_w * (1.0 - ratio) * 0.5
+	if fill.material_override is StandardMaterial3D:
+		var mat := fill.material_override as StandardMaterial3D
+		if ratio <= 0.3:
+			mat.albedo_color = Color(1.0, 0.28, 0.22)
+		elif spawn.is_boss:
+			mat.albedo_color = Color(1.0, 0.35, 0.55)
+		else:
+			mat.albedo_color = Color(0.82, 0.28, 1.0)
 
 
 func _check_player_contact() -> void:
@@ -1968,8 +2086,90 @@ func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) ->
 	return _spawn_ctrl.damage_spawn_at_world(pos, amount, radius)
 
 
+## Reduce crystal depth on one cell. Removes the cell when depth falls under min_depth.
+## Returns hit/broken/shards so weapons and probes can read the result without signals.
+func damage_crystal_at(cell: Vector2i, amount: float) -> Dictionary:
+	var result := {
+		"hit": false,
+		"broken": false,
+		"depth_before": 0.0,
+		"depth_after": 0.0,
+		"shards": 0,
+		"shards_stored": 0,
+	}
+	if amount <= 0.0 or _sim == null:
+		return result
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	var before := get_depth_at(cell.x, cell.y)
+	if before < min_d:
+		return result
+	var after := before - amount
+	var broken := after < min_d
+	var spawn_id := int(_sim.spawn_id_by_cell.get(cell, -1))
+	if _simulation:
+		_simulation.set_depth(cell, 0.0 if broken else after, spawn_id, false)
+	else:
+		_sim.set_depth(cell, 0.0 if broken else after, spawn_id, false)
+	if broken:
+		_on_sim_depth_cleared(cell)
+	else:
+		_on_sim_depth_changed(cell)
+	_flush_dirty_chunks()
+	_recalc_stats()
+	var shards := 1
+	if broken:
+		shards += 1
+	var stored := _grant_crystal_shards(shards)
+	var floor_y := _terrain_at(cell)
+	var hit_pos := Vector3(float(cell.x) + 0.5, floor_y + maxf(before, 0.2) * 0.5, float(cell.y) + 0.5)
+	crystal_mass_hit.emit(hit_pos, amount, broken)
+	result.hit = true
+	result.broken = broken
+	result.depth_before = before
+	result.depth_after = 0.0 if broken else get_depth_at(cell.x, cell.y)
+	result.shards = shards
+	result.shards_stored = stored
+	return result
+
+
+func _grant_crystal_shards(count: int) -> int:
+	if count <= 0 or not is_inside_tree():
+		return 0
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null or not ("inventory" in player):
+		return 0
+	var inv = player.inventory
+	if inv == null or not inv.has_method("add_item"):
+		return 0
+	var leftover: int = int(inv.add_item("crystal_shard", count))
+	return count - leftover
+
+
+func get_nearest_active_spawn(from_xz: Vector2) -> Dictionary:
+	var best: CrystalSpawnPoint = null
+	var best_d := INF
+	for spawn in get_active_spawns():
+		var d := from_xz.distance_to(Vector2(float(spawn.world_pos.x) + 0.5, float(spawn.world_pos.y) + 0.5))
+		if d < best_d:
+			best_d = d
+			best = spawn
+	if best == null:
+		return {}
+	return {
+		"cell": best.world_pos,
+		"distance": best_d,
+		"name": best.display_name,
+		"is_boss": best.is_boss,
+		"health": best.health,
+		"max_health": best.max_health,
+	}
+
+
 func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:
 	spawn_damaged.emit(spawn, amount)
+	var marker = _spawn_markers.get(spawn.id)
+	if marker and is_instance_valid(marker):
+		_apply_spawn_hp_bar(marker, spawn)
 
 
 func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:

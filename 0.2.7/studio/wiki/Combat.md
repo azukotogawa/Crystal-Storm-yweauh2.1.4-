@@ -11,8 +11,10 @@ The current combat loop is:
 3. `WeaponController` performs melee or ranged attack.
 4. `CombatHitResolver` finds `world_entity` and `crystal_enemy` targets.
 5. Targets receive damage through `take_damage`.
-6. Crystal spawn points can also be damaged by attacks near their world cell.
-7. Destroying all crystal spawn points wins the run.
+6. Attacks also reduce crystal depth on the aimed cell. `crystal_damage` on the item is separate from spawn HP damage: the stone pick is strong, the wooden sword is weak.
+7. Breaking a crystal cell drops crystal shards into the inventory. Hit numbers, a hit marker, and break shards use the same combat feedback as other hits.
+8. Crystal spawn points can also be damaged by attacks near their world cell. Spawn markers show an HP bar.
+9. Destroying all crystal spawn points wins the run.
 
 ## Connected systems
 

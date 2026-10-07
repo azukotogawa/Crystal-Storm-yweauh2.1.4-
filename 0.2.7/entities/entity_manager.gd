@@ -22,6 +22,8 @@ var crystal_manager: CrystalManager
 var _entities: Array[Node3D] = []
 var _spawned_cells: Dictionary = {}
 var _defenders_by_town: Dictionary = {}
+## Towns whose militia were dismissed after the settlement fell.
+var _dismissed_towns: Dictionary = {}
 var physics_skip_frames: int = 0
 ## Stream hitch isolation: spawn wildlife/townfolk off chunk_ready hot path.
 var _pending_stream_coords: Array = []
@@ -136,6 +138,8 @@ const STANDING_MILITIA_PER_TOWN: int = 2
 
 func spawn_town_defenders(town: Dictionary, count: int) -> void:
 	var center: Vector2i = town.get("center", Vector2i.ZERO)
+	if _town_defenders_lost(center):
+		return
 	var radius: int = int(town.get("radius", 12))
 	# Always reconcile with live agents — stream unload can wipe bodies while the map stayed stale.
 	_defenders_by_town[center] = _count_town_role(center, &"town_militia")
@@ -159,6 +163,37 @@ func spawn_town_defenders(town: Dictionary, count: int) -> void:
 		var wz := center.y + int(round(sin(angle) * dist))
 		_spawn_world_entity(wx, wz, brain_cfg, center, Color(0.55, 0.58, 0.72))
 		_defenders_by_town[center] = int(_defenders_by_town.get(center, 0)) + 1
+
+
+## Remove this town's militia and refuse to replace them. Returns how many were removed.
+func dismiss_town_defenders(center: Vector2i) -> int:
+	_dismissed_towns[center] = true
+	var removed := 0
+	for entity in _entities.duplicate():
+		if not is_instance_valid(entity):
+			continue
+		if str(entity.get("entity_kind")) != "town_militia":
+			continue
+		if _entity_defend_center(entity) != center:
+			continue
+		_entities.erase(entity)
+		_note_entity_removed(entity)
+		entity_despawned.emit(entity)
+		entity.queue_free()
+		removed += 1
+	_defenders_by_town[center] = 0
+	return removed
+
+
+func _town_defenders_lost(center: Vector2i) -> bool:
+	if bool(_dismissed_towns.get(center, false)):
+		return true
+	if not is_inside_tree():
+		return false
+	var td = get_tree().get_first_node_in_group("town_defense_manager")
+	if td and td.has_method("is_town_fallen"):
+		return bool(td.is_town_fallen(center))
+	return false
 
 
 func _seed_animal_spawns() -> void:
@@ -197,11 +232,12 @@ func ensure_town_population(town: Dictionary) -> void:
 	var need_v := maxi(0, villagers_per_town - villagers_live)
 	if need_v > 0:
 		spawn_town_villagers(town, need_v)
-	var militia_live := _count_town_role(center, &"town_militia")
-	_defenders_by_town[center] = militia_live
-	var need_m := maxi(0, STANDING_MILITIA_PER_TOWN - militia_live)
-	if need_m > 0:
-		spawn_town_defenders(town, need_m)
+	if not _town_defenders_lost(center):
+		var militia_live := _count_town_role(center, &"town_militia")
+		_defenders_by_town[center] = militia_live
+		var need_m := maxi(0, STANDING_MILITIA_PER_TOWN - militia_live)
+		if need_m > 0:
+			spawn_town_defenders(town, need_m)
 
 
 ## Peaceful townsfolk — Living World “worth defending” agents.
@@ -516,6 +552,7 @@ func _clear_runtime_entities() -> void:
 	_entities.clear()
 	_spawned_cells.clear()
 	_defenders_by_town.clear()
+	_dismissed_towns.clear()
 
 
 func _spawn_from_save(data: Dictionary) -> void:

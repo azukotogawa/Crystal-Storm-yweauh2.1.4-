@@ -27,7 +27,8 @@ The current item loop is:
 - `shortbow`: ranged combat.
 - `stone`: material for walls/channels.
 - `wood`: material/fallback for walls.
-- `herb`: valid consumable item, but no visible use loop.
+- `herb`: consumable that heals when used from the hotbar.
+- `crystal_shard`: material dropped when the player breaks crystal.
 
 ## Incomplete loops
 
