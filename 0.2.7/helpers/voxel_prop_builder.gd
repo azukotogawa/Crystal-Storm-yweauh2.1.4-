@@ -98,6 +98,56 @@ static func _entity_boxes(entity_id: StringName, u: float, tint: Color) -> Array
 				{"center": Vector3(0, u * 1.2, 0), "size": Vector3(u * 2.6, u * 1.8, u * 3.2), "color": body},
 				{"center": Vector3(0, u * 2.0, u * 1.4), "size": Vector3(u * 1.8, u * 1.4, u * 1.6), "color": body.darkened(0.12)},
 			]
+		"crystal_mite":
+			return [
+				{"center": Vector3(0, u * 0.7, 0), "size": Vector3(u * 1.4, u * 0.7, u * 1.6), "color": Color(0.55, 0.22, 0.82)},
+				{"center": Vector3(0, u * 1.35, u * 0.35), "size": Vector3(u * 0.9, u * 0.7, u * 0.9), "color": Color(0.78, 0.45, 1.0)},
+				{"center": Vector3(-u * 0.35, u * 1.9, u * 0.2), "size": Vector3(u * 0.28, u * 0.55, u * 0.28), "color": Color(0.9, 0.7, 1.0)},
+				{"center": Vector3(u * 0.35, u * 1.9, u * 0.2), "size": Vector3(u * 0.28, u * 0.55, u * 0.28), "color": Color(0.9, 0.7, 1.0)},
+			]
+		"thornling":
+			return [
+				{"center": Vector3(0, u * 1.3, 0), "size": Vector3(u * 0.7, u * 2.4, u * 0.7), "color": Color(0.32, 0.55, 0.28)},
+				{"center": Vector3(-u * 0.45, u * 2.2, 0), "size": Vector3(u * 0.35, u * 1.3, u * 0.35), "color": Color(0.62, 0.28, 0.85)},
+				{"center": Vector3(u * 0.5, u * 2.6, u * 0.1), "size": Vector3(u * 0.32, u * 1.6, u * 0.32), "color": Color(0.78, 0.4, 0.95)},
+				{"center": Vector3(0, u * 3.4, 0), "size": Vector3(u * 0.4, u * 1.5, u * 0.4), "color": Color(0.9, 0.65, 1.0)},
+			]
+		"shard_guard":
+			return [
+				{"center": Vector3(0, u * 1.6, 0), "size": Vector3(u * 1.8, u * 2.6, u * 1.4), "color": Color(0.42, 0.18, 0.68)},
+				{"center": Vector3(0, u * 3.3, 0), "size": Vector3(u * 1.2, u * 1.1, u * 1.2), "color": Color(0.72, 0.4, 0.95)},
+				{"center": Vector3(-u * 0.7, u * 2.4, 0), "size": Vector3(u * 0.45, u * 1.8, u * 0.45), "color": Color(0.85, 0.55, 1.0)},
+				{"center": Vector3(u * 0.15, u * 4.4, 0), "size": Vector3(u * 0.4, u * 1.6, u * 0.4), "color": Color(0.95, 0.75, 1.0)},
+			]
+		"farm_bomber":
+			return [
+				{"center": Vector3(0, u * 1.1, 0), "size": Vector3(u * 2.0, u * 1.6, u * 2.0), "color": Color(0.48, 0.22, 0.62)},
+				{"center": Vector3(0, u * 2.1, u * 0.2), "size": Vector3(u * 1.3, u * 1.0, u * 1.3), "color": Color(0.7, 0.35, 0.9)},
+				{"center": Vector3(0, u * 3.2, 0), "size": Vector3(u * 0.35, u * 1.4, u * 0.35), "color": Color(0.95, 0.8, 0.4)},
+				{"center": Vector3(0, u * 4.0, 0), "size": Vector3(u * 0.55, u * 0.55, u * 0.55), "color": Color(1.0, 0.45, 0.25)},
+			]
+		"crystal_stag":
+			body = Color(0.58, 0.28, 0.88)
+			return [
+				{"center": Vector3(0, u * 1.5, 0), "size": Vector3(u * 2.0, u * 2.0, u * 3.4), "color": body},
+				{"center": Vector3(0, u * 2.9, u * 1.15), "size": Vector3(u * 1.2, u * 1.4, u * 1.3), "color": body.lightened(0.12)},
+				{"center": Vector3(-u * 0.4, u * 4.2, u * 0.9), "size": Vector3(u * 0.28, u * 1.6, u * 0.28), "color": Color(0.9, 0.6, 1.0)},
+				{"center": Vector3(u * 0.4, u * 4.3, u * 0.9), "size": Vector3(u * 0.28, u * 1.7, u * 0.28), "color": Color(0.85, 0.5, 1.0)},
+			]
+		"corrupted_beast":
+			body = Color(0.4, 0.16, 0.55)
+			return [
+				{"center": Vector3(0, u * 1.3, 0), "size": Vector3(u * 2.8, u * 1.8, u * 3.4), "color": body},
+				{"center": Vector3(0, u * 2.2, u * 1.5), "size": Vector3(u * 1.8, u * 1.4, u * 1.5), "color": body.lightened(0.1)},
+				{"center": Vector3(-u * 0.55, u * 3.6, u * 1.2), "size": Vector3(u * 0.4, u * 1.5, u * 0.4), "color": Color(0.8, 0.4, 1.0)},
+				{"center": Vector3(u * 0.55, u * 3.8, u * 1.2), "size": Vector3(u * 0.4, u * 1.6, u * 0.4), "color": Color(0.9, 0.55, 1.0)},
+			]
+		"crystal_wisp":
+			return [
+				{"center": Vector3(0, u * 2.2, 0), "size": Vector3(u * 1.1, u * 1.1, u * 1.1), "color": Color(0.72, 0.45, 1.0)},
+				{"center": Vector3(0, u * 3.15, 0), "size": Vector3(u * 0.45, u * 0.9, u * 0.45), "color": Color(0.92, 0.75, 1.0)},
+				{"center": Vector3(0, u * 1.35, 0), "size": Vector3(u * 0.35, u * 0.7, u * 0.35), "color": Color(0.4, 0.16, 0.62)},
+			]
 		"bird":
 			body = Color(0.55, 0.65, 0.82)
 			return [
@@ -174,6 +224,28 @@ static func _plant_boxes(plant_id: String, u: float, growth: float, _tint: Color
 				{"center": Vector3(0, r * 0.55, 0), "size": Vector3(r * 1.6, r * 1.1, r * 1.5), "color": Color(0.28, 0.58, 0.28)},
 				{"center": Vector3(-r * 0.35, r * 0.85, r * 0.2), "size": Vector3(r * 0.9, r * 0.8, r * 0.9), "color": Color(0.38, 0.72, 0.32)},
 				{"center": Vector3(r * 0.3, r * 0.75, -r * 0.15), "size": Vector3(r * 0.85, r * 0.75, r * 0.85), "color": Color(0.32, 0.68, 0.3)},
+			]
+		"crystal_grass":
+			var ch := u * (1.3 + growth * 1.6)
+			return [
+				{"center": Vector3(-u * 0.28, ch * 0.5, 0), "size": Vector3(u * 0.28, ch, u * 0.28), "color": Color(0.62, 0.32, 0.92)},
+				{"center": Vector3(u * 0.18, ch * 0.62, u * 0.1), "size": Vector3(u * 0.24, ch * 1.15, u * 0.24), "color": Color(0.78, 0.48, 1.0)},
+				{"center": Vector3(0, ch * 0.4, -u * 0.16), "size": Vector3(u * 0.22, ch * 0.8, u * 0.22), "color": Color(0.42, 0.18, 0.68)},
+			]
+		"crystal_bush":
+			var cr := u * (0.9 + growth * 0.7)
+			return [
+				{"center": Vector3(0, cr * 0.55, 0), "size": Vector3(cr * 1.5, cr * 1.0, cr * 1.4), "color": Color(0.48, 0.22, 0.78)},
+				{"center": Vector3(-cr * 0.3, cr * 0.9, cr * 0.15), "size": Vector3(cr * 0.7, cr * 0.7, cr * 0.7), "color": Color(0.72, 0.4, 0.95)},
+				{"center": Vector3(cr * 0.28, cr * 0.75, -cr * 0.1), "size": Vector3(cr * 0.45, cr * 0.9, cr * 0.45), "color": Color(0.9, 0.7, 1.0)},
+			]
+		"shard_tree":
+			var sh := u * (2.0 + growth * 1.6)
+			return [
+				{"center": Vector3(0, sh * 0.45, 0), "size": Vector3(u * 0.7, sh, u * 0.7), "color": Color(0.55, 0.28, 0.82)},
+				{"center": Vector3(0, sh + u * 0.8, 0), "size": Vector3(u * 1.8, u * 1.6, u * 1.8), "color": Color(0.42, 0.16, 0.7)},
+				{"center": Vector3(-u * 0.4, sh + u * 1.5, 0), "size": Vector3(u * 0.35, u * 1.1, u * 0.35), "color": Color(0.85, 0.55, 1.0)},
+				{"center": Vector3(u * 0.45, sh + u * 1.35, u * 0.1), "size": Vector3(u * 0.3, u * 0.9, u * 0.3), "color": Color(0.78, 0.42, 0.95)},
 			]
 		"tree":
 			var trunk_h := u * (2.2 + growth * 1.8)

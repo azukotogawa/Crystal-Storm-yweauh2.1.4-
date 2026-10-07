@@ -38,6 +38,7 @@ static func ensure_builtins() -> void:
 	_register(_enemy_brain(&"crystal_stag", "Crystal Stag", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 14.0, 22.0, 24.0))
 	_register(_enemy_brain(&"thornling", "Thornling", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 7.0, 8.0, 20.0, 14.0))
 	_register(_enemy_brain(&"corrupted_beast", "Corrupted Beast", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 9.0, 12.0, 30.0, 26.0))
+	_register(_enemy_brain(&"crystal_wisp", "Crystal Wisp", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 13.0, 18.0, 12.0, 10.0))
 	var guard := _enemy_brain(&"shard_guard", "Shard Guard", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 8.0, 6.0, 16.0, 18.0)
 	guard.patrol_radius = 10.0
 	guard.max_health = 55.0

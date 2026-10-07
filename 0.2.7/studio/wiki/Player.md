@@ -35,7 +35,7 @@ The player has stat and relic support, but few complete progression sources. Sta
 ## Incomplete loops
 
 - No full equipment upgrade path.
-- No clear relic acquisition path.
+- Relics are gained by destroying crystal spawn points and by exploring ruins.
 - No consumable-use loop.
 - No explicit player leveling or skill progression.
 - No strong post-objective reward flow.

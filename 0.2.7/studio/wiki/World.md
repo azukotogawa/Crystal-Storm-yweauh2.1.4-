@@ -29,7 +29,8 @@ The current world loop is:
 
 World features feed both player strategy and crystal progression:
 
-- vegetation/farmland/ruins become crystal absorption targets,
+- vegetation and farmland the crystal absorbs become crystal ground and corrupted plants, then scar and regrow after the player breaks that crystal,
+- ruins stay explorable and can grant relics,
 - towns create protection/loss pressure,
 - terrain shape defines maze-building strategy,
 - rivers/water/channels affect growth and flow,

@@ -18,6 +18,7 @@ static func ensure_builtins() -> void:
 	_register(_make(&"crystal_stag", &"crystal_stag", 14.0, 24.0, Color(0.55, 0.25, 0.9), 1.1))
 	_register(_make(&"thornling", &"thornling", 7.0, 14.0, Color(0.3, 0.75, 0.35), 0.9))
 	_register(_make(&"corrupted_beast", &"corrupted_beast", 9.0, 26.0, Color(0.45, 0.18, 0.55), 1.0))
+	_register(_make(&"crystal_wisp", &"crystal_wisp", 13.0, 10.0, Color(0.75, 0.45, 1.0), 0.7))
 	_register(_make(&"shard_guard", &"shard_guard", 8.0, 18.0, Color(0.82, 0.35, 1.0), 0.8, 1))
 
 

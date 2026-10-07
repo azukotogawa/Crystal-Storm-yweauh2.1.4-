@@ -47,6 +47,9 @@ const DIRT := 41
 const DIRT2 := 42
 const CAVE_STONE := 43
 const CRYSTAL := 44
+const CRYSTAL_VEIN := 50
+const CRYSTAL_SHARD_GROUND := 51
+const CRYSTAL_SCAR := 52
 const GRASS_TUFT := 45
 const BUSH := 46
 const TREE_TRUNK := 47
@@ -238,6 +241,9 @@ const ATLAS_COORDS = {
 	VoxelTypes.CAVE_STONE: Vector2i(4,4),
 
 	VoxelTypes.CRYSTAL: Vector2i(6,2),
+	VoxelTypes.CRYSTAL_VEIN: Vector2i(6,1),
+	VoxelTypes.CRYSTAL_SHARD_GROUND: Vector2i(6,3),
+	VoxelTypes.CRYSTAL_SCAR: Vector2i(6,5),
 
 	VoxelTypes.GRASS_TUFT: Vector2i(5,2),  # unshared from GRASSLAND2 (1,2) — Batch 05
 	VoxelTypes.BUSH: Vector2i(5,3),        # unshared from HILLS4 (4,3) — Batch 05

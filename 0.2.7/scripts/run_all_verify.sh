@@ -75,6 +75,7 @@ SUITES=(
 	"res://scripts/verify_built_wall_collision_main.gd"
 	"res://scripts/verify_combat_crystal_damage.gd"
 	"res://scripts/verify_crystal_breaking.gd"
+	"res://scripts/verify_corruption.gd"
 	"res://scripts/verify_item_icons.gd"
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_visual_perf.gd"
