@@ -102,6 +102,10 @@ func is_any_town_fallen() -> bool:
 	return false
 
 
+func is_town_fallen(center: Vector2i) -> bool:
+	return int(_town_states.get(center, TownState.SAFE)) == TownState.FALLEN
+
+
 func get_status_summary() -> Array:
 	var out: Array = []
 	for town in _FeatureRegistry.get_towns():

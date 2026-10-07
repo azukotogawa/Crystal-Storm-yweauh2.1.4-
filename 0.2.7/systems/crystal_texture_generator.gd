@@ -176,7 +176,7 @@ func generate_game_visual_bundle() -> Dictionary:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
 	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar", &"gate", &"bridge"]:
 		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
-	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb"]:
+	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb", "crystal_shard"]:
 		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id))
 	return bundle
 
@@ -210,6 +210,10 @@ func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
 			_paint_voxel_rect(image, 14, 18, 18, 24, Color(0.32, 0.58, 0.28))
 			_paint_voxel_rect(image, 10, 8, 14, 18, Color(0.42, 0.72, 0.35))
 			_paint_voxel_rect(image, 18, 10, 22, 20, Color(0.38, 0.68, 0.32))
+		"crystal_shard":
+			_paint_voxel_rect(image, 12, 6, 20, 14, Color(0.72, 0.38, 0.95))
+			_paint_voxel_rect(image, 8, 14, 24, 22, Color(0.55, 0.22, 0.82))
+			_paint_voxel_rect(image, 14, 20, 18, 26, Color(0.85, 0.55, 1.0))
 		_:
 			_paint_voxel_rect(image, 10, 10, 22, 22, Color(0.7, 0.7, 0.75))
 	return ImageTexture.create_from_image(image)

@@ -208,6 +208,10 @@ def items() -> None:
             (3, 1, LEAF), (2, 2, LEAF_DK), (4, 2, LEAF),
             (3, 3, LEAF), (3, 4, WOOD), (3, 5, WOOD_DK),
         ],
+        "crystal_shard": [
+            (3, 1, PURPLE), (2, 2, PURPLE_DK), (4, 2, PURPLE),
+            (3, 3, WHITE), (2, 4, PURPLE), (4, 4, PURPLE_DK),
+        ],
     }
     for name, cells in specs.items():
         save(figure(cells, 32), "items", name)

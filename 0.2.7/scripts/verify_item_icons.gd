@@ -11,7 +11,7 @@ func _run() -> void:
 	var gen_scr = load("res://systems/crystal_texture_generator.gd")
 	var gen = gen_scr.new()
 	var bundle: Dictionary = gen.generate_game_visual_bundle()
-	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb"]:
+	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb", "crystal_shard"]:
 		var key := "item_%s" % item_id
 		var tex: Texture2D = bundle.get(key)
 		if tex == null:

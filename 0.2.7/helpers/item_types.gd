@@ -13,6 +13,7 @@ const ITEMS: Dictionary = {
 		"weapon_kind": WeaponKind.MELEE,
 		"damage": 12.0,
 		"entity_damage": 12.0,
+		"crystal_damage": 0.35,
 		"range": 2.8,
 		"cooldown": 0.45,
 		"stackable": false,
@@ -24,6 +25,7 @@ const ITEMS: Dictionary = {
 		"weapon_kind": WeaponKind.DIG,
 		"damage": 6.0,
 		"entity_damage": 5.0,
+		"crystal_damage": 2.4,
 		"range": 3.0,
 		"cooldown": 0.1,
 		"stackable": false,
@@ -34,6 +36,7 @@ const ITEMS: Dictionary = {
 		"category": Category.WEAPON,
 		"weapon_kind": WeaponKind.RANGED,
 		"damage": 10.0,
+		"crystal_damage": 0.55,
 		"range": 14.0,
 		"cooldown": 0.8,
 		"stackable": false,
@@ -57,6 +60,12 @@ const ITEMS: Dictionary = {
 		"stackable": true,
 		"max_stack": MAX_STACK,
 		"heal_amount": 28.0,
+	},
+	"crystal_shard": {
+		"name": "Crystal Shard",
+		"category": Category.MATERIAL,
+		"stackable": true,
+		"max_stack": MAX_STACK,
 	},
 }
 
