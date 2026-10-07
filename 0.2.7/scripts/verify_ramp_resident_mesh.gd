@@ -95,7 +95,9 @@ func _run() -> void:
 	var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if scratch.is_empty():
 		scratch = "C:/Users/cwith/AppData/Local/Temp/grok-goal-58b4c9b1d20d/implementer"
-	DirAccess.make_dir_recursive_absolute(scratch)
+	if DirAccess.make_dir_recursive_absolute(scratch) != OK:
+		scratch = "/tmp/crystalstorm-probe"
+		DirAccess.make_dir_recursive_absolute(scratch)
 	var f := FileAccess.open(scratch.path_join("ramp_resident_dump.json"), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({
@@ -222,23 +224,38 @@ func _dump_cell(cm, world, landing: Vector2i, toward_low: Vector2i) -> Dictionar
 func _find_dry_origin(world, cm) -> Vector2i:
 	if world == null:
 		return Vector2i(8, 8)
-	for oz in range(8, 40, 4):
-		for ox in range(8, 40, 4):
-			var wet := false
-			for dx in range(0, 16):
-				for dz in range(0, 4):
-					var tile: int = int(world.get_tile_type(float(ox + dx), float(oz + dz)))
-					if tile in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3, _VoxelTypes.RIVER, _VoxelTypes.WATER]:
-						wet = true
-						break
-					if cm and not _ActionTargeting._is_solid_column(world, cm, ox + dx, oz + dz):
-						wet = true
-						break
-				if wet:
-					break
-			if not wet:
-				return Vector2i(ox, oz)
+	# The crystal heart is in a corner, so the loaded disk is no longer around (8, 8).
+	for anchor in _loaded_anchors(cm):
+		for oz in range(anchor.y - 16, anchor.y + 17, 4):
+			for ox in range(anchor.x - 16, anchor.x + 17, 4):
+				if _pad_is_dry(world, cm, ox, oz, 16, 4):
+					return Vector2i(ox, oz)
 	return Vector2i(8, 8)
+
+
+func _loaded_anchors(cm) -> Array[Vector2i]:
+	var anchors: Array[Vector2i] = []
+	var player = get_first_node_in_group("player")
+	if player != null and "voxel_position" in player:
+		var p: Vector3 = player.voxel_position
+		anchors.append(Vector2i(int(floor(p.x)), int(floor(p.z))))
+	if cm != null and "chunks" in cm:
+		for key_v in cm.chunks.keys():
+			var key: Vector2i = key_v
+			anchors.append(Vector2i(key.x * 16 + 8, key.y * 16 + 8))
+	anchors.append(Vector2i(8, 8))
+	return anchors
+
+
+func _pad_is_dry(world, cm, ox: int, oz: int, width: int, depth: int) -> bool:
+	for dx in range(0, width):
+		for dz in range(0, depth):
+			var tile: int = int(world.get_tile_type(float(ox + dx), float(oz + dz)))
+			if tile in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3, _VoxelTypes.RIVER, _VoxelTypes.WATER]:
+				return false
+			if cm and not _ActionTargeting._is_solid_column(world, cm, ox + dx, oz + dz):
+				return false
+	return true
 
 
 func _finish() -> void:

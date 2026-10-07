@@ -47,7 +47,9 @@ func _run() -> void:
 	_scratch = OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if _scratch.is_empty():
 		_scratch = "C:/Users/cwith/AppData/Local/Temp/grok-goal-9b036d757eb7/implementer"
-	DirAccess.make_dir_recursive_absolute(_scratch)
+	if DirAccess.make_dir_recursive_absolute(_scratch) != OK:
+		_scratch = "/tmp/crystalstorm-probe"
+		DirAccess.make_dir_recursive_absolute(_scratch)
 	_windowed = DisplayServer.get_name() != "headless"
 	print("EDIT_MESH_STREAM_START windowed=%s scratch=%s" % [str(_windowed), _scratch])
 
@@ -467,22 +469,34 @@ func _vec_dict(d: Dictionary) -> Dictionary:
 func _find_dry_origin(world, cm) -> Vector2i:
 	if world == null:
 		return Vector2i(8, 8)
-	for oz in range(8, 40, 4):
-		for ox in range(8, 40, 4):
-			var wet := false
-			for dx in range(0, 16):
-				for dz in range(0, 8):
-					var tile: int = int(world.get_tile_type(float(ox + dx), float(oz + dz)))
-					if tile in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3, _VoxelTypes.RIVER, _VoxelTypes.WATER]:
-						wet = true
+	# The crystal heart is in a corner, so the loaded disk is no longer around (8, 8).
+	var anchors: Array[Vector2i] = []
+	var player = get_first_node_in_group("player")
+	if player != null and "voxel_position" in player:
+		var p: Vector3 = player.voxel_position
+		anchors.append(Vector2i(int(floor(p.x)), int(floor(p.z))))
+	if cm != null and "chunks" in cm:
+		for key_v in cm.chunks.keys():
+			var key: Vector2i = key_v
+			anchors.append(Vector2i(key.x * 16 + 8, key.y * 16 + 8))
+	anchors.append(Vector2i(8, 8))
+	for anchor in anchors:
+		for oz in range(anchor.y - 16, anchor.y + 17, 4):
+			for ox in range(anchor.x - 16, anchor.x + 17, 4):
+				var wet := false
+				for dx in range(0, 16):
+					for dz in range(0, 8):
+						var tile: int = int(world.get_tile_type(float(ox + dx), float(oz + dz)))
+						if tile in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3, _VoxelTypes.RIVER, _VoxelTypes.WATER]:
+							wet = true
+							break
+						if cm and not _ActionTargeting._is_solid_column(world, cm, ox + dx, oz + dz):
+							wet = true
+							break
+					if wet:
 						break
-					if cm and not _ActionTargeting._is_solid_column(world, cm, ox + dx, oz + dz):
-						wet = true
-						break
-				if wet:
-					break
-			if not wet:
-				return Vector2i(ox, oz)
+				if not wet:
+					return Vector2i(ox, oz)
 	return Vector2i(8, 8)
 
 
