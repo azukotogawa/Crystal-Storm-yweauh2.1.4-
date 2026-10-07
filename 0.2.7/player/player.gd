@@ -252,6 +252,7 @@ func _ready():
 	player_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	player_material.alpha_scissor_threshold = 0.5
 	player_material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
+	player_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 
 	player_mesh.material_override = player_material
@@ -443,7 +444,7 @@ func _slope_speed_multiplier() -> float:
 	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
 	var excess: float = _floor_probe.slope_excess_at(voxel_position.x, voxel_position.z)
 	var layer: float = _ws().layer_height()
-	var radius: float = _ws().player_floor_probe_radius
+	var radius: float = _ws().player_radius()
 	var slope_limit: float = tan(deg_to_rad(_ws().player_slope_limit_degrees)) * radius
 	if excess <= slope_limit * 1.35:
 		return 1.0

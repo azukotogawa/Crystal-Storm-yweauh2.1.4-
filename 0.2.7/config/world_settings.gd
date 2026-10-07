@@ -103,12 +103,28 @@ func chunk_world_size() -> float:
 	return float(chunk_size_voxels) * voxel_scale
 
 
+## One voxel column is layer_height() world units. A person is 1.6 voxels tall
+## (about a Minecraft player). Radius is the body half-width in the same unit.
 func player_height() -> float:
-	return layer_height() * 0.4
+	return layer_height() * 1.6
 
 
 func player_radius() -> float:
-	return layer_height() * 0.2
+	return layer_height() * 0.28
+
+
+## Wildlife fallback body. Shorter than the player, about half a voxel.
+func small_creature_height() -> float:
+	return layer_height() * 0.55
+
+
+func small_creature_radius() -> float:
+	return layer_height() * 0.18
+
+
+## Melee contact reach: both bodies plus a short gap, in world units.
+func creature_contact_range() -> float:
+	return player_radius() + small_creature_radius() + layer_height() * 0.45
 
 
 func floor_snap_distance() -> float:
@@ -129,8 +145,6 @@ func max_step_up_jump() -> float:
 var player_gravity_scale: float = 1.0
 @export_range(0.5, 2.0, 0.05)
 var player_jump_scale: float = 1.0
-@export_range(0.05, 0.5, 0.01)
-var player_floor_probe_radius: float = 0.22
 @export_range(20.0, 60.0, 1.0)
 var player_slope_limit_degrees: float = 48.0
 @export_range(0.01, 0.2, 0.01)

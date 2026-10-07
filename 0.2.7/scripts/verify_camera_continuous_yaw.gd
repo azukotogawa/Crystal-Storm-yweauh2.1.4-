@@ -56,8 +56,13 @@ func _run() -> void:
 		_fail("start region not ready")
 		_finish()
 		return
-	for _w in 6:
+	# Loading fade keeps world_loading set for ~0.35s after the stream is ready.
+	# Rotate checks have to run after that, or hold-to-yaw never moves.
+	var _GI = load("res://helpers/gameplay_input.gd")
+	for _w in 90:
 		await process_frame
+		if _GI and not _GI.blocks_actions():
+			break
 
 	var player = get_first_node_in_group("player")
 	var cam: Camera3D = player.get("camera") if player else null
