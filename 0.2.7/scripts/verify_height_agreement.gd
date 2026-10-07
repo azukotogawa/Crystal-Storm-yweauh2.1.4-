@@ -22,10 +22,14 @@ func _run() -> void:
 	data.capture_worker_snapshot()
 	data._compute_column_maps(true)
 	var base_h := 8.0
-	for x in range(2, 8):
-		for z in range(2, 8):
-			var h := base_h + layer if x == 5 and z == 4 else base_h
-			data.patch_local_column(x, z, h, _VoxelTypes.GRASSLAND3)
+	for x in _ChunkData.SIZE:
+		for z in _ChunkData.SIZE:
+			data.patch_local_column(x, z, base_h, _VoxelTypes.GRASSLAND3)
+	# Terrace, not a one-cell spike. Model A emits a cardinal only when the
+	# landing has plateau behind it and the next 8 cells downhill stay low.
+	for x in range(8, 12):
+		for z in range(6, 10):
+			data.patch_local_column(x, z, base_h + layer, _VoxelTypes.GRASSLAND3)
 	# A stale interior halo must not win over the map the wedge is built from.
 	if data._has_halo_surface:
 		data._halo_surface[4 + _ChunkData.HALO][4 + _ChunkData.HALO] = 40.0
@@ -125,10 +129,7 @@ func _ramp_maps_match_quads(data: ChunkData, quads: Array) -> bool:
 			continue
 		var cell := Vector2i(int(floor(float(q.get("x", 0.0)))), int(floor(float(q.get("z", 0.0)))))
 		visual[cell] = true
-		var dir := Vector2i(int(q.get("ramp_dir_x", 0)), int(q.get("ramp_dir_z", 0)))
-		var fc: int = int(q.get("face_code", 0))
-		if fc == _ChunkManager.FACE_RAMP and dir != Vector2i.ZERO:
-			visual[cell + dir] = true
+		# Model A: the approach cell keeps a flat top and is not a ramp_map entry.
 	for key_v in data.ramp_map.keys():
 		if not visual.has(key_v):
 			return false

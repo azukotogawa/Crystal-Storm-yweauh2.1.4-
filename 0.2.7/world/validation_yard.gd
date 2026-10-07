@@ -24,10 +24,11 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	var cells := {
 		"flat": Vector2i(ox, oz),
 		"raised": Vector2i(ox + 2, oz),
-		"ramp_east": Vector2i(ox + 4, oz),
-		"ramp_west": Vector2i(ox + 7, oz),
-		"ramp_south": Vector2i(ox + 10, oz),
-		"ramp_north": Vector2i(ox + 13, oz),
+		# Spaced so each 8-cell downhill terrace does not climb back onto the next landing.
+		"ramp_east": Vector2i(ox, oz + 1),
+		"ramp_west": Vector2i(ox + 15, oz + 1),
+		"ramp_south": Vector2i(ox + 4, oz + 8),
+		"ramp_north": Vector2i(ox + 13, oz + 8),
 		"wood_wall": Vector2i(ox, oz + 3),
 		"stone_wall": Vector2i(ox + 2, oz + 3),
 		"gate": Vector2i(ox + 4, oz + 3),
@@ -138,21 +139,21 @@ static func _stamp_generated_step_maps(
 	var landing_h := _resident_surface(cm, landing)
 	if landing_h < -9000.0:
 		return
-	# Subtracting one layer from whatever is already there is not a step when
-	# the approach is a cliff or a corner (two high neighbors). Write the
-	# isolated pattern the cardinal emit expects: landing ring at landing_h,
-	# approach and its sides one layer down.
+	# Model A draws a cardinal on a terrace: plateau behind the landing, and
+	# eight cells downhill that stay one layer lower (a one-cell ditch is a V
+	# or an inner corner and emits nothing). The strip is three cells wide so
+	# the approach has a single high neighbor.
 	var low_h := landing_h - layer
-	var approach := landing + toward_low
-	_write_resident_surface(cm, approach, low_h, remesh)
 	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		if dir == toward_low:
 			continue
 		_write_resident_surface(cm, landing + dir, landing_h, remesh)
-	var perp_a := Vector2i(-toward_low.y, toward_low.x)
-	var perp_b := Vector2i(toward_low.y, -toward_low.x)
-	_write_resident_surface(cm, approach + perp_a, low_h, remesh)
-	_write_resident_surface(cm, approach + perp_b, low_h, remesh)
+	var perp := Vector2i(-toward_low.y, toward_low.x)
+	for step_i in range(1, 9):
+		var center: Vector2i = landing + toward_low * step_i
+		_write_resident_surface(cm, center, low_h, remesh)
+		_write_resident_surface(cm, center + perp, low_h, remesh)
+		_write_resident_surface(cm, center - perp, low_h, remesh)
 	remesh[landing] = true
 
 
@@ -192,6 +193,12 @@ static func _write_resident_surface(cm, cell: Vector2i, height: float, remesh: D
 	# restored on the preserve remesh.
 	data.preserve_column_maps = true
 	data.surface_map[lx][lz] = height
+	# A water tile on the approach blocks the cardinal. The terrace is dry ground.
+	if lx < data.tile_map.size() and data.tile_map[lx] is Array and lz < data.tile_map[lx].size():
+		var tile: int = int(data.tile_map[lx][lz])
+		if tile == _VoxelTypes.WATER or tile == _VoxelTypes.RIVER \
+				or tile == _VoxelTypes.OCEAN or tile == _VoxelTypes.OCEAN2 or tile == _VoxelTypes.OCEAN3:
+			data.tile_map[lx][lz] = _VoxelTypes.GRASSLAND
 	data.snapshot_resident_maps()
 	remesh[cell] = true
 

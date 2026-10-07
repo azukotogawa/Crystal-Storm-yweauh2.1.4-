@@ -171,10 +171,10 @@ func _run() -> void:
 
 	# Generated ramps (existing helper, not a new mechanic).
 	var ramp_cells: Dictionary = {
-		"ramp_east": origin + Vector2i(12, 2),
-		"ramp_west": origin + Vector2i(15, 2),
-		"ramp_south": origin + Vector2i(18, 2),
-		"ramp_north": origin + Vector2i(21, 2),
+		"ramp_east": origin + Vector2i(0, 1),
+		"ramp_west": origin + Vector2i(15, 1),
+		"ramp_south": origin + Vector2i(4, 8),
+		"ramp_north": origin + Vector2i(13, 8),
 	}
 	_ValidationYard.apply_generated_ramps(self, ramp_cells)
 	await _idle(cm)

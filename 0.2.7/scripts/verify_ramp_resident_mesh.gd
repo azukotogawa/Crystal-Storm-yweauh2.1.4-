@@ -59,10 +59,10 @@ func _run() -> void:
 		return
 	var origin := _find_dry_origin(world, cm)
 	var cells := {
-		"ramp_east": origin + Vector2i(4, 0),
-		"ramp_west": origin + Vector2i(7, 0),
-		"ramp_south": origin + Vector2i(10, 0),
-		"ramp_north": origin + Vector2i(13, 0),
+		"ramp_east": origin + Vector2i(0, 1),
+		"ramp_west": origin + Vector2i(15, 1),
+		"ramp_south": origin + Vector2i(4, 8),
+		"ramp_north": origin + Vector2i(13, 8),
 	}
 	var dirs := {
 		"ramp_east": Vector2i(1, 0),

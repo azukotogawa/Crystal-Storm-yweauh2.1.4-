@@ -210,7 +210,12 @@ func _run() -> void:
 			neighbor.tile_map[bx][bz] = _VoxelTypes.GRASSLAND
 	var edge_lx := _ChunkData.SIZE - 1
 	var edge_lz := 8
-	neighbor.surface_map[0][edge_lz] = border_h - layer
+	# A one-cell notch is an inner corner (high flanks), so model A draws no
+	# cardinal. The neighbor terrace stays low across the border strip; the
+	# pre-stamp halo below still hides that step until refresh.
+	for nx in range(0, 8):
+		for nz in _ChunkData.SIZE:
+			neighbor.surface_map[nx][nz] = border_h - layer
 	var halo_ix := edge_lx + 1 + _ChunkData.HALO
 	var halo_iz := edge_lz + _ChunkData.HALO
 	border._halo_surface[halo_ix][halo_iz] = border_h
@@ -252,8 +257,9 @@ func _run() -> void:
 	var cliff := _ChunkData.new(Vector2i(0, 0), world)
 	cliff.capture_worker_snapshot()
 	_init_maps(cliff)
-	var land_c := Vector2i(8, 8)
-	var approach_c := Vector2i(9, 8)
+	# Landing sits far enough inside the chunk that an 8-cell terrace stays on this map.
+	var land_c := Vector2i(4, 8)
+	var approach_c := Vector2i(5, 8)
 	for x3 in _ChunkData.SIZE:
 		for z3 in _ChunkData.SIZE:
 			cliff.surface_map[x3][z3] = 10.0
