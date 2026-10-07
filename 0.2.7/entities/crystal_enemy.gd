@@ -7,10 +7,12 @@ const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
+const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
 signal combat_damaged(amount: float, remaining_health: float, source: StringName)
+signal killed(enemy_id: StringName, world_pos: Vector2i, player_killed: bool)
 
 @export var move_speed: float = 10.0
 @export var contact_damage: float = 22.0
@@ -128,11 +130,18 @@ func _on_registry_visuals_ready() -> void:
 func _resolve_enemy_texture(registry) -> Texture2D:
 	if registry == null:
 		return null
+	var look_id: StringName = _visual_lookup_id()
 	if registry.has_method("get_sprite_texture"):
-		return registry.get_sprite_texture(str(enemy_id))
+		return registry.get_sprite_texture(str(look_id))
 	if registry.has_method("get_enemy_texture"):
-		return registry.get_enemy_texture(enemy_id)
+		return registry.get_enemy_texture(look_id)
 	return null
+
+
+func _visual_lookup_id() -> StringName:
+	if spawn_def:
+		return spawn_def.resolved_visual_id()
+	return enemy_id
 
 
 func _setup_voxel(tint: Color) -> void:
@@ -143,7 +152,7 @@ func _setup_voxel(tint: Color) -> void:
 	if _voxel_prop == null or not is_instance_valid(_voxel_prop):
 		if _voxel_prop:
 			_voxel_prop.queue_free()
-		_voxel_prop = _VoxelPropBuilder.build_entity(enemy_id, tint)
+		_voxel_prop = _VoxelPropBuilder.build_entity(_visual_lookup_id(), tint)
 		_voxel_prop.name = "VoxelProp"
 		add_child(_voxel_prop)
 	else:
@@ -341,7 +350,12 @@ func _flash_hit() -> void:
 
 func _on_killed() -> void:
 	var label := spawn_def.display_name if spawn_def else str(enemy_id)
+	var cell := _EntityNavigation.column_pos(global_position)
+	var player_killed := _last_damage_source != &""
 	_CombatLog.push("%s killed" % label)
+	killed.emit(enemy_id, cell, player_killed)
+	if player_killed and is_inside_tree():
+		_CombatRewards.grant_player_kill(get_tree(), enemy_id, label)
 	queue_free()
 
 

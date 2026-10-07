@@ -9,6 +9,8 @@ var spawn_id: int = -1
 var neighbor_mask: int = 0
 ## Visual-only: true when at least one cardinal neighbor lacks crystal (active front).
 var is_frontier: bool = false
+## Visual-only: crystal sitting on standing water / river (slower crawl read).
+var is_wet: bool = false
 
 
 func _init(p_pos: Vector2i, p_terrain: float, p_depth: float, p_spawn_id: int = -1) -> void:

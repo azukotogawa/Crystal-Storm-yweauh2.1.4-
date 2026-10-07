@@ -59,7 +59,7 @@ static func _box_instance(center: Vector3, size: Vector3, color: Color) -> MeshI
 	box.size = size
 	mi.mesh = box
 	mi.position = center
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.albedo_texture = _brick_texture()

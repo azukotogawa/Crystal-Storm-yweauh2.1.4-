@@ -427,6 +427,7 @@ static func _stamp_step_corner(data: ChunkData, cx: int, cz: int, layer: float) 
 			data.surface_map[cx + dx][cz + dz] = low_h
 	data.surface_map[cx + 1][cz] = low_h + layer
 	data.surface_map[cx][cz + 1] = low_h + layer
+	data.surface_map[cx + 1][cz + 1] = low_h + layer
 
 
 static func session_seconds() -> float:

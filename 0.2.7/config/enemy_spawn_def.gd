@@ -25,7 +25,13 @@ var defense: float = 0.0
 @export var absorption_tag: StringName = &"crystal_enemy"
 
 @export_group("Visual")
+## Voxel/billboard key. Empty means `id` (reuse another enemy's authored visual).
+@export var visual_id: StringName = &""
 @export var tint: Color = Color(0.72, 0.2, 0.95, 1.0)
 ## Body size in voxels (one voxel = voxel_scale world units).
 @export var mesh_radius: float = 0.22
 @export var mesh_height: float = 0.70
+
+
+func resolved_visual_id() -> StringName:
+	return visual_id if visual_id != &"" else id

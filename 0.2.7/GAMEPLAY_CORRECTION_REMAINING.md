@@ -18,24 +18,13 @@ Previous screenshots were **invalid**: the iso camera lerps, so every shot was o
 
 ## Remaining discrepancies (do not treat as fixed)
 
-### 1. Ramp visual vs ramp_map (P0 leftover)
+### 1. Ramp visual vs ramp_map — **fixed 2026-08-21**
 
-Yard stamps on dry land `(40,8)`…`(49,8)`:
+Cause: `_sample_height` preferred stale in-chunk halo over patched `surface_map`, so preserve remesh never saw the stamped step. Halo interior is now ignored for in-chunk samples; preserve remesh refreshes halo from maps; yard stamps use `patch_local_column`.
 
-| Cell | has_ramp | walk vs surf | FACE_RAMP in column quads | chunk `ramp_count` |
-|---|---|---|---|---|
-| east `(40,8)` | **false** | 8 vs 6 (no slope) | — | 11 |
-| west `(43,8)` | true | 7 vs 6 | **no** (`RAMP_VISUAL`) | 11 |
-| south `(46,8)` | true | 7 vs 6 | **no** | 11 |
-| north `(49,8)` | true | 7 vs 6 | **no** | **0** |
+Walk uses `ramp_map`, rebuilt from the quads the terrain mesh draws (model A: one-cell landing wedge and a triangle corner cap). Interior samples use the resident surface map; the halo is only the neighbor ring.
 
-Walk uses `ramp_map`. The uploaded column quads for those landings are FACE_TOP only. North’s chunk has **zero** ramp MultiMesh instances — walkable slope with no wedge. East never became a ramp (surround heights were not a single isolated step).
-
-**East stamp:** `display_terrain_agreement.gd` on the dry yard still reported `ramp_east` missing after the resident remesh fix. World-gen height at `(40,8)` and its approach were the same, but the chunk map’s approach was already a cliff/corner, so subtracting one more layer did not satisfy the cardinal step. The yard stamp now writes an isolated step: approach and its sides at `landing − layer`, the other landing neighbors level with the landing. Headless agreement should report all four `has_ramp`. That is still not a new F4 photo.
-
-Headless `_build_mesh` on a flat 10 / approach 8 map **does** emit FACE_RAMP. The live miss was the **resident remesh / surface-mesh payload** path, not the emit math.
-
-**Remesh path (headless, not a new camera pass):** a chunk-edge step stayed hidden because `_sample_height` prefers the halo, and the halo border was still the pre-stamp world-gen height. A same-chunk yard stamp could also lose the race to an in-flight column regen: the follow-up was recorded without `preserve_maps`, or the token bump left `pending` set so the preserve remesh never ran. Resident remesh now snapshots the stamped maps, copies loaded neighbor surfaces into the halo border, and uploads that mesh. `verify_ramp_resident_mesh.gd` (main scene, four compass stamps) reports `column_source=resident` and one `FACE_RAMP` quad per landing. `verify_ramp_landing.gd` covers the cross-chunk halo case. The F4 photos above are still the last camera evidence; this does not replace them.
+The yard stamp writes an isolated one-layer step so a cliff or corner surround still becomes a cardinal. Resident remesh snapshots the stamped maps and copies loaded neighbor surfaces into the halo border. `verify_ramp_landing.gd` covers the cross-chunk halo case, the isolated yard step, and the no-V valley. `verify_ramp_resident_mesh.gd` checks all four compass stamps after rebuild.
 
 ### 2. Camera vs pin (harness)
 

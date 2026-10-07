@@ -11,8 +11,9 @@ var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 
 ## Extra range when previewing build via RMB (build_place) while another tool is selected.
-const BUILD_PREVIEW_RANGE := 2.8
-## Hover pick distance (screen-follow); actions still clamp to tool range.
+## Matches ActionTargeting.INTERACTION_RANGE (INPUT_CONTRACT: 8 voxels).
+const BUILD_PREVIEW_RANGE := 8.0
+## Hover pick distance (screen-follow); actions still clamp to tool/interaction range.
 const HOVER_PICK_RANGE := 14.0
 const DISPLAY_SNAP_SPEED := 64.0
 const HOVER_PULSE_HZ := 2.4
@@ -267,11 +268,17 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 func _active_range() -> float:
 	var weapon := player.get_node_or_null("WeaponController")
 	if weapon == null or not weapon.has_method("get_active_item"):
-		return 2.0
+		return _ActionTargeting.INTERACTION_RANGE
 	var slot = weapon.get_active_item()
 	if slot == null:
-		return 2.0
+		return _ActionTargeting.INTERACTION_RANGE
 	var def := _ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
-		return 2.0
-	return float(def.get("range", 2.0))
+		return _ActionTargeting.INTERACTION_RANGE
+	var category := int(def.get("category", -1))
+	var kind := int(def.get("weapon_kind", -1))
+	# Combat weapons keep authored item range; dig/build/remove use interaction reach.
+	if category == _ItemTypes.Category.WEAPON \
+			and (kind == _ItemTypes.WeaponKind.MELEE or kind == _ItemTypes.WeaponKind.RANGED):
+		return float(def.get("range", 2.0))
+	return _ActionTargeting.INTERACTION_RANGE

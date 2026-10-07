@@ -13,6 +13,7 @@ const _PerformanceService = preload("res://systems/performance_service.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _ConfigJsonIO = preload("res://systems/config_json_io.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
 
 signal config_loaded
 
@@ -43,6 +44,7 @@ func _ready() -> void:
 	_EnemySpawnRegistry.ensure_builtins()
 	_SpawnPointRegistry.ensure_builtins()
 	_RelicRegistry.ensure_builtins()
+	_ItemTypes.ensure_builtins()
 	if game_config.buildables.size() > 0:
 		_BuildingRegistry.register_all(game_config.buildables)
 	if game_config.plantables.size() > 0:
@@ -55,6 +57,8 @@ func _ready() -> void:
 		_SpawnPointRegistry.register_all(game_config.spawn_points)
 	if game_config.relics.size() > 0:
 		_RelicRegistry.register_all(game_config.relics)
+	if game_config.items.size() > 0:
+		_ItemTypes.register_all(game_config.items)
 	config_loaded.emit()
 	_push_to_systems()
 	if auto_export_json_on_ready:

@@ -1,6 +1,6 @@
 shader_type spatial;
 
-render_mode cull_disabled, depth_draw_opaque, diffuse_lambert;
+render_mode unshaded, cull_disabled, depth_draw_opaque;
 
 uniform sampler2D texture_atlas : source_color, filter_nearest;	
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
@@ -86,7 +86,8 @@ void fragment() {
 
     ALBEDO = tex_color.rgb;
 
-    // Face-based pixel-art shading layered under scene lighting.
+    // Face-based pixel-art shading. Do not rely on Lambert for side faces —
+    // the iso camera leaves them nearly black under a single key light.
     if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) {
         ALBEDO *= 0.68;
     }

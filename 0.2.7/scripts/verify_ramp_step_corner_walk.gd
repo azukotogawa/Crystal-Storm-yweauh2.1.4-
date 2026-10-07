@@ -37,10 +37,10 @@ func _run() -> void:
 	var high_h := low_h + layer
 	data.surface_map[cx][cz] = low_h
 	data.tile_map[cx][cz] = _VoxelTypes.GRASSLAND
-	data.surface_map[cx + 1][cz] = high_h
-	data.tile_map[cx + 1][cz] = _VoxelTypes.GRASSLAND
-	data.surface_map[cx][cz + 1] = high_h
-	data.tile_map[cx][cz + 1] = _VoxelTypes.GRASSLAND
+	# Model A corner needs the inner plateau (both landings and the diagonal).
+	for d in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		data.surface_map[cx + d.x][cz + d.y] = high_h
+		data.tile_map[cx + d.x][cz + d.y] = _VoxelTypes.GRASSLAND
 
 	var cm := _ChunkManager.new()
 	cm.world = world

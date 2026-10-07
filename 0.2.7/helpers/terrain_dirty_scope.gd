@@ -6,7 +6,7 @@ const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
 
 const DIRTY_HALO := 1
-const MESH_MARGIN := 2
+const MESH_MARGIN := 1
 
 
 static func dirty_world_columns(wx: int, wz: int) -> Array:

@@ -52,7 +52,7 @@ func rebuild(cells: Array, p_lod_tier: int = _CrystalClusterMesh.LOD_FULL) -> vo
 	if _mm_instance == null:
 		_mm_instance = MultiMeshInstance3D.new()
 		_mm_instance.name = "CrystalFluid"
-		_mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		_mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(_mm_instance)
 
 	var mm := _mm_instance.multimesh
@@ -144,6 +144,11 @@ static func visual_growth(cell: CrystalCell) -> Vector3:
 		frontier_boost = 1.28
 		visual_depth *= frontier_boost
 		footprint *= 1.10
+	# Wet ground: the same swell, pulled into a low crawl.
+	if cell.is_wet:
+		frontier_boost *= 0.58
+		footprint *= 0.92
+		visual_depth *= 0.58
 	return Vector3(footprint, visual_depth, frontier_boost)
 
 

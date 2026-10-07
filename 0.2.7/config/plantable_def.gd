@@ -5,6 +5,8 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
 @export var id: StringName = &"grass_tuft"
 @export var display_name: String = "Grass Tuft"
+## Authored plant visual key. Empty means `id`.
+@export var visual_id: StringName = &""
 @export var tile_id: int = VoxelTypes.GRASS_TUFT
 @export var feature_kind: int = _WorldFeatureTypes.FeatureKind.GRASS_PATCH
 @export var material_id: String = "herb"
@@ -47,3 +49,7 @@ func absorb_rate_for_stage(stage: int) -> float:
 
 func mature_stage() -> int:
 	return maxi(growth_stage_count - 1, 0)
+
+
+func resolved_visual_id() -> StringName:
+	return visual_id if visual_id != &"" else id

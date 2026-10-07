@@ -70,6 +70,9 @@ static func persist_yaw_neighborhood(wx: int, wz: int) -> void:
 
 
 static func visual_id_from_feature(feat: Dictionary) -> String:
+	var explicit := str(feat.get("visual_id", "")).strip_edges()
+	if explicit != "":
+		return explicit
 	var build_id := str(feat.get("build_id", "")).strip_edges()
 	if bool(feat.get("is_passage", false)) or build_id == "gate":
 		return "gate"

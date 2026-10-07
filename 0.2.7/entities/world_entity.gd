@@ -10,6 +10,7 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
+const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -448,6 +449,9 @@ func _die() -> void:
 			evo.record_absorption(&"animal")
 	_CombatLog.push("%s died" % (config.display_name if config else str(entity_kind)))
 	died.emit(self, cell)
+	if player_killed and is_inside_tree():
+		var label := config.display_name if config else str(entity_kind)
+		_CombatRewards.grant_player_kill(get_tree(), entity_kind, label)
 	queue_free()
 
 

@@ -34,6 +34,10 @@ static var s_macro_enabled_from_env: bool = true
 static var s_micro_enabled_from_env: bool = true
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
+## Sparse player-forced ramps from FeatureRegistry (worker snapshot).
+var _worker_force_ramp: Dictionary = {}
+## Local/halo wet columns → body surface_y (0 if source tile with no extra lid).
+var _worker_water_lid: Dictionary = {}
 
 # Snapshotted on main thread before worker generation (avoids live WorldState races).
 var _worker_height_delta: Array = []
@@ -109,6 +113,8 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_worker_build_tile.clear()
 	_worker_feature_tile.clear()
 	_worker_feature_baked.clear()
+	_worker_force_ramp.clear()
+	_worker_water_lid.clear()
 	_worker_halo_height_delta.clear()
 	_halo_surface.clear()
 	_halo_base_surface.clear()
@@ -238,6 +244,8 @@ func capture_worker_snapshot() -> void:
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_ensure_worker_overlay_storage()
+	_worker_force_ramp.clear()
+	_worker_water_lid.clear()
 	if _snap_measure:
 		_snap_add("ensure_worker_overlay_storage", Time.get_ticks_usec() - t0)
 		parts["ensure_worker_overlay_storage_us"] = Time.get_ticks_usec() - t0
@@ -276,12 +284,16 @@ func capture_worker_snapshot() -> void:
 				var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 					if "seeded_tile_keys" in ws else false
 				_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+				var bid := str(feat_entry.get("build_id", ""))
+				if bid == "cardinal_ramp" or bid == "corner_ramp":
+					_worker_force_ramp[Vector2i(x, z)] = feat_entry.duplicate()
 		if _snap_measure:
 			_snap_add("overlay_copy_dict_walk", Time.get_ticks_usec() - t0)
 			parts["overlay_path"] = "dict_walk"
 			parts["overlay_copy_us"] = Time.get_ticks_usec() - t0
 			parts["feature_cells_n"] = ws.feature_cells.size()
 			parts["seeded_tile_keys_n"] = ws.seeded_tile_keys.size() if "seeded_tile_keys" in ws else 0
+	_capture_water_lid_snapshot(ws)
 	_has_worker_snapshot = true
 	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_capture_halo_surface()
@@ -300,6 +312,21 @@ func capture_worker_snapshot() -> void:
 			parts["total_ms"] = float(tot) / 1000.0
 			parts["coord"] = [position.x, position.y]
 			_snap_worst = parts.duplicate(true)
+
+
+func _capture_water_lid_snapshot(ws) -> void:
+	_worker_water_lid.clear()
+	if ws == null:
+		return
+	for x in range(-1, SIZE + 1):
+		for z in range(-1, SIZE + 1):
+			var wkey := Vector2i(position.x * SIZE + x, position.y * SIZE + z)
+			var entry: Dictionary = ws.channels.get(wkey, {})
+			if entry.is_empty():
+				continue
+			if not entry.has("water_level") or float(entry.get("water_level", 0.0)) < 0.05:
+				continue
+			_worker_water_lid[Vector2i(x, z)] = float(entry.get("surface_y", 0.0))
 
 
 func _ensure_worker_overlay_storage() -> void:
@@ -659,6 +686,11 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 		var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 			if "seeded_tile_keys" in ws else false
 		_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+		var bid := str(feat_entry.get("build_id", ""))
+		if bid == "cardinal_ramp" or bid == "corner_ramp":
+			_worker_force_ramp[Vector2i(x, z)] = feat_entry.duplicate()
+		else:
+			_worker_force_ramp.erase(Vector2i(x, z))
 		# Refresh frozen halo height-delta ring for dirty edge columns (main thread).
 		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
@@ -710,7 +742,10 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 		surface_map[x][z] = _WorldBakeService.compose_surface_height(
 			get_baked_base_height(x, z), hdelta
 		)
-		if build_t >= 0:
+		# Authored WorldObjects mark build_tile without raising — do not retile
+		# the floor under them. Feature tile overrides (water replace, paths,
+		# farmland) apply even when height is unchanged.
+		if build_t >= 0 and absf(hdelta) > 0.01:
 			tile_map[x][z] = build_t
 		elif feat_t >= 0:
 			tile_map[x][z] = feat_t
@@ -734,7 +769,7 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 			surface_map[x][z] = _WorldBakeService.compose_surface_height(
 				float(sample.get("surface", 0.0)), hdelta
 			)
-			if build_t >= 0:
+			if build_t >= 0 and absf(hdelta) > 0.01:
 				tile_map[x][z] = build_t
 			elif feat_t >= 0:
 				tile_map[x][z] = feat_t
@@ -750,7 +785,10 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 	var wz := float(wz_i)
 	if _has_worker_snapshot:
 		surface_map[x][z] = world.get_surface_height_worker(wx, wz, hdelta)
-		tile_map[x][z] = world.get_tile_type_worker(wx, wz, build_t, feat_t)
+		var mesh_build: int = build_t if absf(hdelta) > 0.01 else -1
+		# Feature overrides retile without a height edit (water-replace beside river).
+		var mesh_feat: int = feat_t
+		tile_map[x][z] = world.get_tile_type_worker(wx, wz, mesh_build, mesh_feat)
 	else:
 		surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
 		tile_map[x][z] = world.get_tile_type_uncached(wx, wz)

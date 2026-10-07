@@ -154,6 +154,8 @@ static func run_mesh_stage(
 				count = quads.size()
 				mesh_source = "cache"
 				rebuild_reason = "hit"
+				if host.has_method("_rehydrate_ramp_map_from_quads"):
+					host._rehydrate_ramp_map_from_quads(data, quads)
 			else:
 				rebuild_reason = str(plan_decision.get("rebuild_reason", "other"))
 		plan_lookup_us = Time.get_ticks_usec() - t_plan

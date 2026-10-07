@@ -8,6 +8,7 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
 
 signal enemy_spawned(enemy_id: StringName, world_pos: Vector2i)
+signal enemy_killed(enemy_id: StringName, world_pos: Vector2i, player_killed: bool)
 
 @export var spawn_interval: float = 8.0
 @export var max_active: int = 24
@@ -164,6 +165,8 @@ func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vecto
 	enemy.setup(enemy_id, _player, spawn_def, patrol_cell)
 	if enemy.has_method("sync_spatial_index"):
 		enemy.sync_spatial_index()
+	if enemy.has_signal("killed") and not enemy.killed.is_connected(_on_enemy_killed):
+		enemy.killed.connect(_on_enemy_killed)
 	_active.append(enemy)
 	enemy_spawned.emit(enemy_id, Vector2i(wx, wz))
 	_first_spawn_announced = true
@@ -192,6 +195,8 @@ func _spawn_enemy(enemy_id: StringName) -> void:
 	enemy.setup(enemy_id, _player, spawn_def, patrol)
 	if enemy.has_method("sync_spatial_index"):
 		enemy.sync_spatial_index()
+	if enemy.has_signal("killed") and not enemy.killed.is_connected(_on_enemy_killed):
+		enemy.killed.connect(_on_enemy_killed)
 	_active.append(enemy)
 	var ws = _WorldSettings.get_active()
 	var col := Vector2i(
@@ -200,6 +205,11 @@ func _spawn_enemy(enemy_id: StringName) -> void:
 	)
 	enemy_spawned.emit(enemy_id, col)
 	_first_spawn_announced = true
+
+
+func _on_enemy_killed(enemy_id: StringName, world_pos: Vector2i, player_killed: bool) -> void:
+	_prune_active()
+	enemy_killed.emit(enemy_id, world_pos, player_killed)
 
 
 func _pick_spawn_pos() -> Vector3:

@@ -1,6 +1,6 @@
 # Gameplay integration status
 
-**Date:** 2026-08-19  
+**Date:** 2026-08-21  
 **Source of truth:** windowed `scenes/main.tscn` via `scripts/autonomous_gameplay_audit.gd` (gameplay camera, F3, F4 / LiveWorldQuery). Headless verify names are **not** grades.  
 **Raw:** `{SCRATCH}/autonomous_audit.md`, `{SCRATCH}/autonomous_audit.json`, `{SCRATCH}/quality_*.json`, `{SCRATCH}/audit_*.png`.
 
@@ -18,13 +18,13 @@ Grades: **A** proven in the live camera · **B** works in isolation, fails in in
 | Terrain materials | Atlas tiles; F4 voxel/visual ids | Yes — tile 10 plains, 37/38 water, 39 wall, 40/41 builds | — | Mesh atlas | P3 | — | A |
 | Chunk streaming | Player ring **plus crystal origin ±1** in `update_stream` / `start_stream_coords` | Yes — env medium dist=2, ICS includes chunk (−1,0); travel streamQ; explicit unload/reload AGREE | Return-travel still queues a few frames; audit waits resident+anchor | Bake, visuals, overlays, crystal sim | P2 | Keep origin extras; do not unload while player is far | A |
 | Deferred baking | Valid v4 5×5 index; fill idle after stream-ready | Yes — occupancy loading then idle | Runtime vegetation scatter skipped because `vegetation_baked` | Features, veg | P2 | Confirm baked veg actually populates ground cover | A |
-| Terrain editing | TerrainEditor.try_dig/try_build | Yes — dig, adj, under-wall, F4 covered | No first-class demolish verb (overlay clear) | Mesh, water, features | P2 | Add demolish through TerrainEditor | A |
+| Terrain editing | TerrainEditor.try_dig/try_build/**try_remove** | Yes — dig, adj, under-wall, F4 covered; **gate_remove** `ok`, structure_count 0, visual=10, disc=[] | — | Mesh, water, features | P2 | — | A |
 | Digging | try_dig + immediate remesh + water reflow | Yes — trenches visible; neighbors covered | Spawn hitch ~300ms on first look | Mesh rebuild | P2 | Budget remesh | A |
 | Building | stone/wood wall, gate, bridge WorldObjects | Yes — stream restore shot shows palisade, arch, deck | Builds shot can miss the mesh if camera is 2 cells south | FeatureVisualLayer, orientation | P1 | — | A |
-| Ramps | Generated yard ramps; F4 landing + FACE_RAMP | Yes — ramps `has_ramp` + disc=[]; spawn re-audit **faces [0]** not orphan 7 | — | Mesh cover query | P2 | Cover clip shipped | A |
+| Ramps | One-column wedge; approach FACE_TOP; dedicated ramp shader | Windowed pipeline: approach covered `[0]`; pin 36,8 grass not a hole | Some generated landscape diamonds still dark in wide shots | Collision, mesh, GPU upload | P0 | Drain 8 buffers/frame; idle waits for GPU queue | B |
 | Walls | stone_wall WorldObject, Δh, heightfield | Yes — pin 42,11 after unload/reload | Dig-under-wall keeps visual | Collision is floor probe | A | — | A |
 | Bridges | try_build after trench | Yes — WorldObject yes; restore shot shows deck | Early builds PNG framed empty grass | Feature visuals | A | — | A |
-| Gates | passage collision, rebuild after remove | Yes — arch in restore shot; F4 passage | Remove is overlay-hack not a verb | Crystal baffle | P2 | TerrainEditor.try_remove | A |
+| Gates | passage collision; try_remove then rebuild | Yes — `gate_remove` clears WorldObject; `gate_rebuild` visual=gate | — | Crystal baffle | P2 | — | A |
 | Vegetation | Bake packages; runtime scatter skipped | Partial — trees on camera at spawn; 16×16 overlay plants=2 visuals=2 (agree, sparse) | `skip_runtime_vegetation=true` when bake veg valid; steppe ground cover sparse | FeatureVisualLayer billboard budget | P2 | Density is bake/biome, not a populate miss | C |
 | Water | VoxelFluidService dirty-region; channel + natural river | Yes — channel cell visual 38; natural water 24,6; F3 water sleep | Diagnostics still list 121 loaded channels from last tick | Crystal conductivity, dig | P2 | Keep sleep path | A |
 | Crystal | 8/8 spawns, origin (−10,10) | Yes — HUD **Crystal 54c · cap 72% · 57c W**; at origin F4 depth + **purple spawn marker**; `front` when close | Spawn camera still does not see the mass (56c, keep ≥20) | Enemies, HUD, presentation | P2 | Marker is readable; volume mesh still subtle on water | A |
@@ -32,8 +32,8 @@ Grades: **A** proven in the live camera · **B** works in isolation, fails in in
 | Combat | LMB sword; range in world units; adjacent fallback | Yes — `crystal_mite hit 12.0 → 12 HP`, VFX bursts, mite voxel on `open_combat.png` | First 70° mouse arc can miss without hover; adjacent fallback now connects | Spatial query, VFX | P2 | Hover-aim still the intended player path | A |
 | Player movement | Voxel floor probe, teleport/walk in audit | Yes — walk 6 columns, far travel, snap-to-ground | Red debug hex, not the sprite, is the body | Camera, collision | A | — | A |
 | Collision | heightfield_probe; walls block by step-up | Yes — F4 collision_kind; gate passage | WorldObject Area3D debug-only (by design) | Ramps, walls | A | — | A |
-| World persistence | WorldState overlay bundle export | Save_slot called; persist keys recorded | Full leave/reload of a second world not driven this session | SaveGameService | P2 | Frontend round-trip | C |
-| Save/load | SaveGameService.save_slot(0) | Call succeeded (err 0 in actions) | No load_slot round-trip in this audit | WorldState | P2 | Resume world from frontend | C |
+| World persistence | WorldState overlay bundle; `user://saves/world_{id}.json` | Headless save_world_id → reset → load_world_id restores overlays+player | Frontend Leave→Select→Play camera not driven this pass | SaveGameService, WorldManager | P2 | Windowed frontend resume | B |
+| Save/load | save_world_id / load_world_id after INITIAL_STREAM_READY | Headless resume contract | Live frontend Play pending_resume not camera-audited | WorldState | P2 | Drive frontend.tscn resume | B |
 | Inventory/relics | Hotbar + stone/wood counts after dig/build | Yes — HUD x96 stone/wood, pick/dig | Relic line empty | TerrainEditor consume | A | — | A |
 | World selection | Frontend exists; not booted this session | No — audit used main.tscn directly | — | WorldManager | P2 | Drive frontend.tscn | F |
 | Camera | Continuous yaw 12°–333°; F4 cell stable | Yes — six headings, same cell origin/life | Builds PNG look-at offset | Action targeting | A | — | A |
@@ -51,8 +51,8 @@ Grades: **A** proven in the live camera · **B** works in isolation, fails in in
 4. **P1 — Vegetation vitality.** Overlay=visuals (2=2) so populate is not dropping plants. Steppe 16×16 is sparse; camera still shows trees. Runtime scatter skipped because bake veg is valid. Density, not a restore bug.
 5. **P1 — Stream return sampled mid-bake (FIXED prior: wait resident+anchor).** `return_wall` AGREE with palisade in this re-audit.
 6. **P2 — FACE_RAMP greedy span (query clip shipped).** Re-audit spawn MESH not orphan 7.
-7. **P2 — No demolish gameplay verb.** Remove used FeatureRegistry.clear.
-8. **P2 — Enemies/combat untested** until mites unlock (0 crystal_enemy, 21 world_entity, 28s grace + grass absorption). Origin chunks now stay loaded so absorption *can* progress.
+7. **P2 — Demolish verb.** `TerrainEditor.try_remove`; LMB subtract / RMB place. Audit `gate_remove` AGREE.
+8. **P2 — Enemies/combat** proven prior pass at origin after grace. Mite unlock is now AbsorptionUnlockDef `unlock_at_start` (table is the only path).
 9. **P3 — Biome materials look similar** across steppe/marsh.
 10. **P3 — Spawn camera does not see the purple front** (~46 columns west). Toast says “Watch the purple front”; HUD now shows tile count. Early-survival verify wants spawn ≥20 from origin — do not collapse that gap.
 
@@ -85,7 +85,6 @@ HIGH extra in play is **entity_physics + entity_navigation**, not 18 Hz crystal.
 
 ## Next
 
-1. Mouse hover-aim is still the intended combat path; adjacent fallback covers standing next to a mite.
-2. Crystal *volume* mesh on water is still subtler than the spawn-marker pyramid (marker is now on camera).
-3. Frontend save/load round-trip still untested.
-4. If HIGH needs more FPS later, look at `use_lightweight_entity_nav` first.
+1. Generated ramp wedges still need a human look: some iso diamonds in the wide landscape remain dark even when F4 on a stamped cell is AGREE.
+2. Frontend Leave→Select→Play resume still needs a windowed camera pass.
+3. Do not start terrain-art batches until the gameplay surface is stable.

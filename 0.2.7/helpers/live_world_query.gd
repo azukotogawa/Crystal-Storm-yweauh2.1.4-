@@ -24,7 +24,7 @@ static func inspect_targeted(tree: SceneTree) -> Dictionary:
 		return {"ok": false, "error": "no_player"}
 	var world0 = tree.get_first_node_in_group("world")
 	var cm0 = tree.get_first_node_in_group("chunk_manager")
-	var info: Dictionary = _ActionTargeting.resolve_action(player, world0, cm0, 8.0)
+	var info: Dictionary = _ActionTargeting.resolve_action(player, world0, cm0, _ActionTargeting.INTERACTION_RANGE)
 	var cell: Vector2i = info.get("cell", Vector2i.ZERO) if not info.is_empty() else Vector2i.ZERO
 	if info.is_empty() or cell == Vector2i.ZERO:
 		if player.has_method("get_voxel_position"):
@@ -101,7 +101,9 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 	var build_id := str(feat.get("build_id", ""))
 	var plant_id := str(feat.get("plant_id", ""))
 	var kind := int(feat.get("kind", 0))
-	var visual_id := build_id if not build_id.is_empty() else (plant_id if not plant_id.is_empty() else str(tile))
+	var visual_id := str(feat.get("visual_id", "")).strip_edges()
+	if visual_id.is_empty():
+		visual_id = build_id if not build_id.is_empty() else (plant_id if not plant_id.is_empty() else str(tile))
 	var yaw := 0.0
 	if feat.has("yaw"):
 		yaw = float(feat.yaw)
@@ -147,6 +149,7 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 			yaw = atan2(float(rd.y), float(rd.x))
 			visual_yaw = yaw
 	var cover: Dictionary = _column_mesh_cover(cm, chunk, wx, wz)
+	var geom: Dictionary = column_surface_geometry(cm, wx, wz)
 	var rendered: AABB = structure_aabb if structure_count > 0 else col_aabb
 	var layers: int = int(round(hdelta / maxf(layer, 0.001)))
 	var is_passage := bool(feat.get("is_passage", false)) or build_id == "gate"
@@ -171,6 +174,7 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 		"chunk_ramp_count": _chunk_ramp_instance_count(cm, chunk),
 		"yaw": yaw, "visual_yaw": visual_yaw,
 		"rendered": rendered, "collision": col_aabb,
+		"ramp_entry": ramp_entry, "geom": geom,
 	})
 	return {
 		"ok": true,
@@ -203,6 +207,7 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 		"terrain_layer": layers,
 		"column_mesh_covered": bool(cover.get("covered", false)),
 		"column_face_codes": cover.get("faces", []),
+		"surface_geom": geom,
 		"chunk_ramp_count": _chunk_ramp_instance_count(cm, chunk),
 		"collision_exists": collision_exists,
 		"collision_kind": collision_kind,
@@ -235,6 +240,109 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 	}
 
 
+## Triangles whose centroid lies inside the column XZ. Side-lip verts on the
+## shared wall are ignored. Camera-truth proxy: slope vs flat square vs hole.
+static func column_surface_geometry(cm, wx: int, wz: int) -> Dictionary:
+	var out := {
+		"tri_count": 0,
+		"vert_count": 0,
+		"y_min": 0.0,
+		"y_max": 0.0,
+		"y_span": 0.0,
+		"unique_xz": 0,
+		"is_slope": false,
+		"is_flat": false,
+		"is_triangle_top": false,
+	}
+	if cm == null or not ("chunks" in cm):
+		return out
+	var chunk := Vector2i(
+		int(floor(float(wx) / float(_ChunkData.SIZE))),
+		int(floor(float(wz) / float(_ChunkData.SIZE)))
+	)
+	if not cm.chunks.has(chunk):
+		return out
+	var view = cm.chunks[chunk]
+	if view == null:
+		return out
+	var verts := PackedVector3Array()
+	var indices := PackedInt32Array()
+	var md: Dictionary = view.mesh_data if "mesh_data" in view else {}
+	verts = md.get("surface_vertices", PackedVector3Array())
+	indices = md.get("surface_indices", PackedInt32Array())
+	if verts.is_empty():
+		var am: ArrayMesh = md.get("surface_mesh_resource") as ArrayMesh
+		if am == null and view is Node:
+			var mi = (view as Node).get_node_or_null("LayerContainer/terrain_surface_mesh")
+			if mi is MeshInstance3D:
+				am = (mi as MeshInstance3D).mesh as ArrayMesh
+		if am != null and am.get_surface_count() > 0:
+			var arr: Array = am.surface_get_arrays(0)
+			verts = arr[Mesh.ARRAY_VERTEX]
+			indices = arr[Mesh.ARRAY_INDEX]
+	if verts.is_empty():
+		return out
+	var ws = _WorldSettings.get_active()
+	var x0: float = ws.column_to_world(float(wx))
+	var z0: float = ws.column_to_world(float(wz))
+	var x1: float = ws.column_to_world(float(wx + 1))
+	var z1: float = ws.column_to_world(float(wz + 1))
+	var eps: float = (x1 - x0) * 0.08
+	var y_min := 1.0e9
+	var y_max := -1.0e9
+	var xz := {}
+	var tri_n := 0
+	var vert_n := 0
+	var tri_end: int = indices.size() if not indices.is_empty() else verts.size()
+	var step: int = 3
+	var i := 0
+	while i + 2 < tri_end:
+		var a: Vector3
+		var b: Vector3
+		var c: Vector3
+		if indices.is_empty():
+			a = verts[i]
+			b = verts[i + 1]
+			c = verts[i + 2]
+		else:
+			var ia: int = int(indices[i])
+			var ib: int = int(indices[i + 1])
+			var ic: int = int(indices[i + 2])
+			if ia < 0 or ib < 0 or ic < 0 or ia >= verts.size() or ib >= verts.size() or ic >= verts.size():
+				i += step
+				continue
+			a = verts[ia]
+			b = verts[ib]
+			c = verts[ic]
+		var area2: Vector3 = (b - a).cross(c - a)
+		if area2.length_squared() < 0.0001:
+			i += step
+			continue
+		var mid: Vector3 = (a + b + c) * (1.0 / 3.0)
+		if mid.x > x0 + eps and mid.x < x1 - eps and mid.z > z0 + eps and mid.z < z1 - eps:
+			tri_n += 1
+			for v in [a, b, c]:
+				vert_n += 1
+				y_min = minf(y_min, v.y)
+				y_max = maxf(y_max, v.y)
+				xz["%d:%d" % [int(round(v.x * 50.0)), int(round(v.z * 50.0))]] = true
+		i += step
+	if tri_n <= 0:
+		return out
+	var span: float = y_max - y_min
+	var layer: float = ws.layer_height()
+	out["tri_count"] = tri_n
+	out["vert_count"] = vert_n
+	out["y_min"] = y_min
+	out["y_max"] = y_max
+	out["y_span"] = span
+	out["unique_xz"] = xz.size()
+	out["is_slope"] = span >= layer * 0.35
+	out["is_flat"] = span < layer * 0.35
+	out["is_triangle_top"] = xz.size() <= 3 and span >= layer * 0.35
+	return out
+
+
 static func _column_mesh_cover(cm, chunk: Vector2i, wx: int, wz: int) -> Dictionary:
 	var out := {"covered": false, "faces": []}
 	if cm == null or not ("chunks" in cm) or not cm.chunks.has(chunk):
@@ -258,15 +366,9 @@ static func _column_mesh_cover(cm, chunk: Vector2i, wx: int, wz: int) -> Diction
 			and float(lz) + 0.5 >= qz and float(lz) + 0.5 < qz + dz
 		)
 		if fc >= _WorldVisualCoords.FACE_RAMP:
-			# Greedy ramp quads span a rectangle; only the approach and landing
-			# columns own the FACE_RAMP, not every cell inside the merged box.
-			var rdx := int(q.get("ramp_dir_x", 0))
-			var rdz := int(q.get("ramp_dir_z", 0))
-			var is_approach := is_equal_approx(float(lx), qx) and is_equal_approx(float(lz), qz)
-			var is_landing := (rdx != 0 or rdz != 0) \
-				and is_equal_approx(float(lx), qx + float(rdx)) \
-				and is_equal_approx(float(lz), qz + float(rdz))
-			if not is_approach and not is_landing:
+			# Cardinal/corner quads live on the owner column (landing or
+			# corner-low). dir points at the approach; that cell is FACE_TOP.
+			if not (is_equal_approx(float(lx), qx) and is_equal_approx(float(lz), qz)):
 				continue
 		elif not in_box:
 			continue
@@ -345,6 +447,8 @@ static func _collect_discrepancies(p: Dictionary) -> PackedStringArray:
 	if bool(p.is_passage) and hdelta > layer * 0.25:
 		d.append("GATE: passage cell still raised Δh=%.2f" % hdelta)
 	if bool(p.has_ramp):
+		var entry: Dictionary = p.get("ramp_entry", {})
+		var approach_or_fill := bool(entry.get("approach", false)) or bool(entry.get("concave", false))
 		var faces_v = (p.cover as Dictionary).get("faces", [])
 		var has_ramp_face := false
 		if faces_v is Array or faces_v is PackedInt32Array:
@@ -352,8 +456,17 @@ static func _collect_discrepancies(p: Dictionary) -> PackedStringArray:
 				if int(fc) >= _WorldVisualCoords.FACE_RAMP:
 					has_ramp_face = true
 					break
-		if not has_ramp_face:
+		if not approach_or_fill and not has_ramp_face:
 			d.append("RAMP_VISUAL: ramp_map set but column mesh has no FACE_RAMP quad")
+		if not approach_or_fill:
+			var geom: Dictionary = p.get("geom", {})
+			var layer_h: float = float(p.layer)
+			if int(geom.get("tri_count", 0)) <= 0:
+				d.append("RAMP_RENDER: FACE_RAMP quads but no surface triangles in column")
+			elif float(geom.get("y_span", 0.0)) < layer_h * 0.35:
+				d.append("RAMP_RENDER: surface triangles are flat (y_span=%.3f), not a slope" % float(geom.get("y_span", 0.0)))
+			elif bool(entry.get("corner", false)) and int(geom.get("unique_xz", 0)) > 4:
+				d.append("RAMP_RENDER: corner top has %d xz corners, expected half-block" % int(geom.get("unique_xz", 0)))
 	return d
 
 

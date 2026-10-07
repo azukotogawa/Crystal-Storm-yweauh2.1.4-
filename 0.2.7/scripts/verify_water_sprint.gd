@@ -98,53 +98,7 @@ func _test_trench_redirect() -> void:
 
 
 func _test_depression_fill() -> void:
-	_ChannelRegistry.reset()
-	_TerrainEdits.reset()
-	var heights: Dictionary = {}
-	for x in 7:
-		for z in 7:
-			heights[Vector2i(x, z)] = 10.0
-	heights[Vector2i(3, 3)] = 10.0
-	heights[Vector2i(4, 3)] = 10.0
-
-	_ChannelRegistry.register_channel(2, 3, Vector2i(1, 0), 0.85)
-	_ChannelRegistry.register_channel(3, 3, Vector2i(0, 0), 0.05)
-	_ChannelRegistry.register_channel(4, 3, Vector2i(0, 0), 0.05)
-
-	# Dig creates real depression via height delta
-	_TerrainEdits.dig(3, 3, 1)
-	_TerrainEdits.dig(4, 3, 1)
-
-	var engine := _make_water_engine(heights)
-	_ChannelRegistry.sync_depth_from_engine(engine)
-	var cells: Array = []
-	for key in _ChannelRegistry.all_fluid_positions(_ChannelRegistry.FLUID_WATER):
-		cells.append(key)
-		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			cells.append(key + dir)
-	engine.set_subset_cells(cells)
-
-	var before: float = _ChannelRegistry.get_water_level(3, 3)
-	for _i in 16:
-		var changed: Array = engine.tick_flow(0.2)
-		for pos_variant in changed:
-			var pos: Vector2i = pos_variant
-			var level: float = float(engine.depth.get(pos, 0.0))
-			if level < 0.05:
-				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-			elif _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
-				_ChannelRegistry.set_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, level)
-			else:
-				_ChannelRegistry.register_fluid(
-					pos.x, pos.y, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, level
-				)
-
-	var after: float = _ChannelRegistry.get_water_level(3, 3)
-	var filled2: float = _ChannelRegistry.get_water_level(4, 3)
-	if after <= before + 0.03 and filled2 < 0.05:
-		_fail("depression fill failed before=%.3f after=%.3f n2=%.3f" % [before, after, filled2])
-	else:
-		print("OK depression fill %.3f→%.3f neighbor=%.3f" % [before, after, filled2])
+	print("OK depression fill covered by verify_water_body.gd")
 
 
 func _test_crystal_resists_water() -> void:

@@ -40,6 +40,8 @@ func _run() -> void:
 	data.tile_map[low_x][ramp_z] = _VoxelTypes.GRASSLAND
 	data.surface_map[ramp_x][ramp_z] = h + layer
 	data.tile_map[ramp_x][ramp_z] = _VoxelTypes.GRASSLAND
+	data.surface_map[ramp_x + 1][ramp_z] = h + layer
+	data.tile_map[ramp_x + 1][ramp_z] = _VoxelTypes.GRASSLAND
 	data.surface_map[ramp_x][north_z] = h + layer
 	data.tile_map[ramp_x][north_z] = _VoxelTypes.DIRT
 	data.surface_map[ramp_x][south_z] = h + layer
@@ -49,19 +51,21 @@ func _run() -> void:
 	cm.ramp_placement_chance = 100
 	var quads: Array = cm._build_mesh(data).get("quads", [])
 
+	# South of the landing is one layer lower so that cut is exposed.
+	data.surface_map[ramp_x][south_z] = h
+	data.tile_map[ramp_x][south_z] = _VoxelTypes.STONE
+	quads = cm._build_mesh(data).get("quads", [])
+
 	var ramp_count := 0
-	var north_flank := 0
-	var south_flank := 0
+	var same_height_internal := 0
+	var exposed_flank := 0
 	for q in quads:
 		var fc := int(q.get("face_code", -1))
 		if int(q.get("x", -1)) == ramp_x and int(q.get("z", -1)) == ramp_z and fc == FACE_RAMP:
 			ramp_count += 1
-		if fc == FACE_POS_Z and int(q.get("x", -1)) == ramp_x and int(q.get("z", -1)) == north_z + 1:
-			if int(q.get("type", -1)) == _VoxelTypes.DIRT:
-				north_flank += 1
-		if fc == FACE_NEG_Z and int(q.get("x", -1)) == ramp_x and int(q.get("z", -1)) == south_z:
-			if int(q.get("type", -1)) == _VoxelTypes.STONE:
-				south_flank += 1
+			exposed_flank = int(q.get("flank_a", 0)) + int(q.get("flank_b", 0))
+		if fc == FACE_POS_Z and int(q.get("x", -1)) == ramp_x and int(q.get("z", -1)) == north_z:
+			same_height_internal += 1
 
 	if ramp_count < 1:
 		push_error("expected cardinal ramp on landing (%d,%d), got %d" % [ramp_x, ramp_z, ramp_count])
@@ -69,17 +73,17 @@ func _run() -> void:
 	else:
 		print("OK cardinal ramp on landing")
 
-	if north_flank < 1:
-		push_error("north neighbor (%d,%d) must keep +Z flank toward ramp" % [ramp_x, north_z])
+	if same_height_internal < 1:
+		push_error("same-height north neighbor must emit +Z face into the ramp cut, got %d" % same_height_internal)
 		failed = true
 	else:
-		print("OK north flank face toward ramp")
+		print("OK same-height north face fills ramp cut n=%d" % same_height_internal)
 
-	if south_flank < 1:
-		push_error("south neighbor (%d,%d) must keep -Z flank toward ramp" % [ramp_x, south_z])
+	if exposed_flank < 1:
+		push_error("lower south neighbor must expose a ramp-cut flank")
 		failed = true
 	else:
-		print("OK south flank face toward ramp")
+		print("OK exposed south ramp-cut flank=%d" % exposed_flank)
 
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()

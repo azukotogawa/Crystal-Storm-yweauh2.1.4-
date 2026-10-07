@@ -17,6 +17,8 @@ var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 var test_base_heights: Dictionary = {}
 ## Headless tests: biome name per cell, used for spread and reserve.
 var test_biome_names: Dictionary = {}
+## Headless tests: tile id per cell when world is null / to override.
+var test_tiles: Dictionary = {}
 ## Single-sample cached height (faster than smooth bilinear for flow sim).
 var use_fast_terrain_height: bool = true
 
@@ -138,6 +140,8 @@ func get_terrain_height(pos: Vector2i) -> float:
 
 func get_tile(pos: Vector2i) -> int:
 	_inc_profiler_frame("terrain_queries")
+	if test_tiles.has(pos):
+		return int(test_tiles[pos])
 	if world == null:
 		return VoxelTypes.AIR
 	var t0 := Time.get_ticks_usec() if _measure_enabled else 0

@@ -20,7 +20,9 @@ static func quad_key(q: Dictionary) -> int:
 
 
 static func is_terrain_quad(q: Dictionary) -> bool:
-	return int(q.get("face_code", 99)) < 7
+	# Axis faces and ramp slopes both live in the terrain ArrayMesh.
+	var fc: int = int(q.get("face_code", 99))
+	return fc < 7 or fc == 7 or fc == 8
 
 
 static func filter_terrain_quads(quads: Array) -> Array:
@@ -224,10 +226,18 @@ static func _ensure_face_keys_from_quads(cache: Dictionary, payload: Dictionary)
 
 
 static func _cache_from_built(built: Dictionary, terrain_quads: Array) -> Dictionary:
+	var face_n: int = int(built.get("triangle_count", 0)) / 2
 	var face_keys := PackedInt64Array()
-	face_keys.resize(terrain_quads.size())
+	face_keys.resize(mini(face_n, terrain_quads.size()))
+	var ki := 0
 	for i in terrain_quads.size():
-		face_keys[i] = quad_key(terrain_quads[i])
+		if ki >= face_keys.size():
+			break
+		var qk: Dictionary = terrain_quads[i]
+		if not is_terrain_quad(qk):
+			continue
+		face_keys[ki] = quad_key(qk)
+		ki += 1
 	return {
 		"terrain_buffer": PackedFloat32Array(),
 		"terrain_count": terrain_quads.size(),

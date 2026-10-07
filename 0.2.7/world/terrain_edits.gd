@@ -68,6 +68,36 @@ static func set_build_tile_only(wx: int, wz: int, tile_id: int) -> bool:
 	return true
 
 
+## Reverse one `build_wall` layer. Last layer also clears build_tile.
+static func unstack_build(wx: int, wz: int) -> bool:
+	if not can_edit(wx, wz):
+		return false
+	var ws = _ws()
+	var key := Vector2i(wx, wz)
+	var layers: int = int(ws.height_delta.get(key, 0))
+	if layers <= 0 and not ws.build_tile.has(key):
+		return false
+	var next: int = layers - 1
+	if next > 0:
+		ws.height_delta[key] = next
+	else:
+		ws.height_delta.erase(key)
+		ws.build_tile.erase(key)
+	ws.bump(_WorldState.DOMAIN_TERRAIN)
+	return true
+
+
+static func clear_build_tile(wx: int, wz: int) -> void:
+	if not can_edit(wx, wz):
+		return
+	var ws = _ws()
+	var key := Vector2i(wx, wz)
+	ws.build_tile.erase(key)
+	if int(ws.height_delta.get(key, 0)) == 0:
+		ws.height_delta.erase(key)
+	ws.bump(_WorldState.DOMAIN_TERRAIN)
+
+
 static func edit_count() -> int:
 	return _ws().height_delta.size()
 

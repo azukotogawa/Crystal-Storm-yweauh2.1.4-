@@ -201,7 +201,7 @@ const ATLAS_COORDS = {
 
 	VoxelTypes.HILLS: Vector2i(0,3),
 	VoxelTypes.HILLS2: Vector2i(1,3),
-	VoxelTypes.HILLS3: Vector2i(3,3),  # unshared from TREE_TRUNK (2,3) — Batch 05
+	VoxelTypes.HILLS3: Vector2i(1,3),
 	VoxelTypes.HILLS4: Vector2i(4,3),
 
 	VoxelTypes.MOUNTAIN: Vector2i(0,4),
@@ -245,9 +245,9 @@ const ATLAS_COORDS = {
 	VoxelTypes.CRYSTAL_SHARD_GROUND: Vector2i(6,3),
 	VoxelTypes.CRYSTAL_SCAR: Vector2i(6,5),
 
-	VoxelTypes.GRASS_TUFT: Vector2i(5,2),  # unshared from GRASSLAND2 (1,2) — Batch 05
-	VoxelTypes.BUSH: Vector2i(5,3),        # unshared from HILLS4 (4,3) — Batch 05
-	VoxelTypes.TREE_TRUNK: Vector2i(2,3),
+	VoxelTypes.GRASS_TUFT: Vector2i(4,2),
+	VoxelTypes.BUSH: Vector2i(4,3),
+	VoxelTypes.TREE_TRUNK: Vector2i(1,3),
 	VoxelTypes.FARMLAND: Vector2i(4,1),    # unshared from DIRT (3,2) — Batch 03
 	VoxelTypes.TOWN_PATH: Vector2i(5,1),   # unshared from GRASSLAND3 (2,2) — Batch 03
 }
