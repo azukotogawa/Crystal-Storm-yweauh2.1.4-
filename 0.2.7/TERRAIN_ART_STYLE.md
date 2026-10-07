@@ -53,7 +53,7 @@ Keep a short ground palette that does not collide with structures:
 | Town path | packed earth / pale stone | dirt | another grass chip |
 | Farmland | furrowed brown-green | dirt | same texel as DIRT |
 
-Crystal stays **off this atlas** (emissive cluster). Do not paint a purple dirt tile “so crystal matches.”
+The emissive crystal cluster stays a mesh, not a terrain chip. Corrupted ground is the exception: absorbed land uses atlas cells `(6,2)` crystal, `(6,1)` crystal vein, `(6,3)` shard ground, and `(6,5)` scar (`CRYSTAL`, `CRYSTAL_VEIN`, `CRYSTAL_SHARD_GROUND`, `CRYSTAL_SCAR` in `helpers/voxel_types.gd`). Those tiles are placeholder nearest art in `assets/tiles/batch06/` so a later pass can swap the same cells. Do not paint the cluster itself onto the atlas.
 
 ## Recommended resolution per category
 

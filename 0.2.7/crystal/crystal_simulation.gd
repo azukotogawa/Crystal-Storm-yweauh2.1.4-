@@ -264,7 +264,7 @@ func _tick_emitters_from_snapshot(snapshot) -> void:
 		var spawn_id: int = int(row.get("id", -1))
 		var current: float = float(fluid.depth.get(pos, 0.0))
 		var added: float = emit_rate * mult * snapshot.delta
-		var room: float = config.max_depth - current
+		var room: float = fluid.depth_cap(pos) - current
 		if room <= 0.0 or added <= 0.0:
 			continue
 		fluid.set_depth(pos, current + minf(added, room), spawn_id, false)

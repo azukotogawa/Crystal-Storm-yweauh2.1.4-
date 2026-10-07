@@ -20,6 +20,9 @@ static func ensure_builtins() -> void:
 	_register(_make_fern())
 	_register(_make_bush())
 	_register(_make_tree())
+	_register(_make_crystal_grass())
+	_register(_make_crystal_bush())
+	_register(_make_shard_tree())
 
 
 static func register_all(defs: Array) -> void:
@@ -135,6 +138,61 @@ static func _make_tree() -> _PlantableDef:
 	d.stage_absorb_rates = PackedFloat32Array([0.02, 0.04, 0.05])
 	d.denial_radius = 2
 	d.mature_denial_flow_factor = 0.1
+	return d
+
+
+static func _make_crystal_grass() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"crystal_grass"
+	d.display_name = "Crystal Grass"
+	d.tile_id = VoxelTypes.CRYSTAL
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.GRASS_PATCH
+	d.material_id = "crystal_shard"
+	d.material_cost = 1
+	d.crystal_flow_factor = 0.72
+	d.absorb_rate = 0.08
+	d.growth_stage_count = 2
+	d.growth_seconds_per_stage = 10.0
+	d.stage_flow_factors = PackedFloat32Array([0.9, 0.72])
+	d.stage_absorb_rates = PackedFloat32Array([0.04, 0.08])
+	d.denial_radius = 0
+	return d
+
+
+static func _make_crystal_bush() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"crystal_bush"
+	d.display_name = "Crystal Bush"
+	d.tile_id = VoxelTypes.CRYSTAL_VEIN
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.BUSH
+	d.material_id = "crystal_shard"
+	d.material_cost = 2
+	d.crystal_flow_factor = 0.5
+	d.absorb_rate = 0.06
+	d.growth_stage_count = 3
+	d.growth_seconds_per_stage = 14.0
+	d.stage_flow_factors = PackedFloat32Array([0.86, 0.64, 0.5])
+	d.stage_absorb_rates = PackedFloat32Array([0.03, 0.05, 0.06])
+	d.denial_radius = 1
+	return d
+
+
+static func _make_shard_tree() -> _PlantableDef:
+	var d := _PlantableDef.new()
+	d.id = &"shard_tree"
+	d.display_name = "Shard Tree"
+	d.tile_id = VoxelTypes.CRYSTAL_SHARD_GROUND
+	d.feature_kind = _WorldFeatureTypes.FeatureKind.TREE
+	d.material_id = "crystal_shard"
+	d.material_cost = 3
+	d.crystal_flow_factor = 0.35
+	d.absorb_rate = 0.04
+	d.growth_stage_count = 3
+	d.growth_seconds_per_stage = 20.0
+	d.stage_flow_factors = PackedFloat32Array([0.8, 0.52, 0.35])
+	d.stage_absorb_rates = PackedFloat32Array([0.02, 0.03, 0.04])
+	d.denial_radius = 1
+	d.mature_denial_flow_factor = 0.2
 	return d
 
 

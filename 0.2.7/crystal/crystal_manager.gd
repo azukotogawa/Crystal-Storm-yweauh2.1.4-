@@ -20,6 +20,8 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
+const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
+const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
 signal fluid_changed(world_pos: Vector2i)
@@ -68,6 +70,7 @@ var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
 var _initialized: bool = false
+var _scars_reindexed: bool = false
 var _spawn_ctrl: _SpawnPointController
 var _perf_skip_counter: int = 0
 var _perf_max_rebuilds_per_frame: int = 5
@@ -393,8 +396,8 @@ func configure_evolution() -> void:
 	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
 	if not evolution.is_unlocked(&"crystal_mite"):
 		evolution.unlocked_enemies.append(&"crystal_mite")
-	if evolution.has_signal("enemy_unlocked") and not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
-		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
+	# Relics are not granted when absorption unlocks an enemy. They come from
+	# spawn destruction and ruin expeditions.
 
 
 ## Map absorption enemy unlocks → starter relics for progression feedback.
@@ -418,13 +421,36 @@ func _grant_relic_for_unlock(enemy_id: StringName) -> StringName:
 	var relic_id: StringName = relic_for_enemy_unlock(enemy_id)
 	if relic_id == &"":
 		return &""
-	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	var relic_mgr = _player_relic_manager()
+	if relic_mgr and relic_mgr.has_method("equip"):
+		if relic_mgr.equip(relic_id):
+			return relic_id
+	return &""
+
+
+func _player_relic_manager():
+	if not is_inside_tree():
+		return null
+	var player = get_tree().get_first_node_in_group("player")
 	if player == null:
-		return &""
+		return null
 	var relic_mgr = player.get_node_or_null("RelicManager")
 	if relic_mgr == null:
-		relic_mgr = get_tree().get_first_node_in_group("relic_manager") if is_inside_tree() else null
-	if relic_mgr and relic_mgr.has_method("equip"):
+		relic_mgr = get_tree().get_first_node_in_group("relic_manager")
+	return relic_mgr
+
+
+## Deterministic relic from a destroyed spawn. Skips relics already equipped.
+func _grant_relic_for_spawn(spawn: CrystalSpawnPoint) -> StringName:
+	var relic_mgr = _player_relic_manager()
+	if relic_mgr == null or not relic_mgr.has_method("equip"):
+		return &""
+	var equipped: Array = relic_mgr.equipped if "equipped" in relic_mgr else []
+	var start := posmod(spawn.id, _SPAWN_RELICS.size())
+	for step in _SPAWN_RELICS.size():
+		var relic_id: StringName = _SPAWN_RELICS[(start + step) % _SPAWN_RELICS.size()]
+		if relic_id in equipped:
+			continue
 		if relic_mgr.equip(relic_id):
 			return relic_id
 	return &""
@@ -1079,6 +1105,15 @@ func _tick_trace_finish() -> void:
 func _process(delta: float) -> void:
 	if not _initialized:
 		return
+	if not _scars_reindexed:
+		_CrystalCorruption.reindex_scars()
+		_scars_reindexed = true
+	if _CrystalCorruption.scar_count() > 0:
+		var healed: Array = _CrystalCorruption.tick_scars(delta, 8)
+		for cell_v in healed:
+			var healed_cell: Vector2i = cell_v
+			_pending_absorption_rebuilds[healed_cell] = true
+			_refresh_feature_visual(healed_cell)
 	if _tick_trace_env() and not _tick_trace_armed and not _tick_trace_done:
 		begin_tick_trace_arm()
 	var measure := _crystal_measure_enabled() and _measure_frame_i < _MEASURE_FRAMES
@@ -2112,6 +2147,9 @@ func damage_crystal_at(cell: Vector2i, amount: float) -> Dictionary:
 		_sim.set_depth(cell, 0.0 if broken else after, spawn_id, false)
 	if broken:
 		_on_sim_depth_cleared(cell)
+		var heal_s := sim_config.scar_heal_seconds if sim_config else 18.0
+		_CrystalCorruption.begin_scar(cell, heal_s)
+		_refresh_feature_visual(cell)
 	else:
 		_on_sim_depth_changed(cell)
 	_flush_dirty_chunks()
@@ -2182,6 +2220,7 @@ func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 		power = maxf(power - spawn.power_drain, 0.0)
 		strength_tier = sim_config.tier_from_power(power)
 		power_changed.emit(power, strength_tier)
+	_grant_relic_for_spawn(spawn)
 
 
 func _on_all_spawns_destroyed() -> void:
@@ -2299,21 +2338,21 @@ func _complete_absorption(pos: Vector2i) -> void:
 	if _tick_trace_active:
 		_tick_trace["clear_tile_calls"] = int(_tick_trace.get("clear_tile_calls", 0)) + 1
 		_tick_trace["clear_feature_calls"] = int(_tick_trace.get("clear_feature_calls", 0)) + 1
-	# Batch tile+feature clears so SpatialQuery sees one WorldState.changed, not two.
+		_tick_trace["corrupt_calls"] = int(_tick_trace.get("corrupt_calls", 0)) + 1
+	# One WorldState bump for the ground swap and the plant swap.
 	var ws = _WorldState.get_active() if _WorldState else null
 	if ws and ws.has_method("begin_batch"):
 		ws.begin_batch()
-	_FeatureRegistry.clear_tile_override(pos.x, pos.y)
-	_FeatureRegistry.clear_feature(pos.x, pos.y)
+	_CrystalCorruption.corrupt_absorbed_cell(pos, tile_id, feat)
 	if ws and ws.has_method("end_batch"):
 		ws.end_batch()
+	_refresh_feature_visual(pos)
 	_add_power(_absorption_power_boost(tile_id))
 	var source_id := _absorption_source_for(tile_id, feat)
 	if evolution:
 		var unlock: Dictionary = evolution.record_absorption(source_id)
 		if unlock.has("bonus_power"):
 			_add_power(float(unlock.bonus_power))
-		# enemy_unlocked signal grants relic via _on_enemy_unlocked_grant_relic
 	absorption_completed.emit(source_id, pos)
 	if world and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(pos.x, pos.y)
@@ -2322,6 +2361,14 @@ func _complete_absorption(pos: Vector2i) -> void:
 	_pending_absorption_rebuilds[pos] = true
 	if _tick_trace_active:
 		_tick_trace["rebuild_chunk_calls"] = int(_tick_trace.get("rebuild_chunk_calls", 0)) + 1
+
+
+func _refresh_feature_visual(pos: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	var layer = get_tree().get_first_node_in_group("feature_visual_layer")
+	if layer and layer.has_method("refresh_cell"):
+		layer.refresh_cell(pos.x, pos.y)
 
 
 func _drain_one_absorption_rebuild() -> void:
@@ -2501,6 +2548,8 @@ func import_state(data: Dictionary) -> void:
 		_rebuild_cell_index()
 	refresh_spawn_marker_textures()
 	_flush_dirty_chunks()
+	_CrystalCorruption.reindex_scars()
+	_scars_reindexed = true
 	_log_spawn_status("restored")
 
 

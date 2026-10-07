@@ -75,6 +75,7 @@ func _process(delta: float) -> void:
 	if _game_manager and _game_manager.phase == GameManager.Phase.ASSAULT:
 		interval /= assault_spawn_mult
 	interval /= _spawn_pressure_mult()
+	interval /= _biome_mob_mult()
 
 	_timer += delta
 	if _timer < interval:
@@ -333,6 +334,16 @@ func _spawn_pressure_mult() -> float:
 		return 1.0
 	var destroyed_ratio: float = float(total - active) / float(total)
 	return 1.0 + destroyed_ratio * 1.25
+
+
+func _biome_mob_mult() -> float:
+	if _world == null or _crystal == null or _crystal.sim_config == null:
+		return 1.0
+	if not _world.has_method("get_biome") or not _crystal.sim_config.has_method("biome_mob_mult"):
+		return 1.0
+	var col := _player_column_pos()
+	var biome: Dictionary = _world.get_biome(col.x, 0.0, col.y)
+	return maxf(_crystal.sim_config.biome_mob_mult(str(biome.get("name", ""))), 0.25)
 
 
 func _player_column_pos() -> Vector2:

@@ -43,6 +43,6 @@ There is no complete combat reward loop yet. Killing regular enemies removes pre
 ## Isolated mechanics
 
 - `CombatLog` records events, but does not feed progression.
-- `RelicManager` can affect stats, but relic acquisition is not connected to combat.
+- `RelicManager` equips relics gained by destroying crystal spawn points and by exploring ruins. Absorbing terrain does not grant a relic.
 - `herb` exists as a consumable item, but no combat-use loop is visible.
 

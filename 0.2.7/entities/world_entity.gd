@@ -8,6 +8,8 @@ const _CombatLog = preload("res://systems/combat_log.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
+const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
+const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -31,6 +33,9 @@ var _dead: bool = false
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
 var _base_tint: Color = Color(0.72, 0.72, 0.68)
+var _convert_elapsed: float = 0.0
+var _convert_from_tint: Color = Color(0.72, 0.72, 0.68)
+var _convert_started: bool = false
 
 
 func _ready() -> void:
@@ -273,6 +278,10 @@ func _physics_process(delta: float) -> void:
 
 	var crystal_sim = _crystal.get_fluid_sim() if _crystal and _crystal.has_method("get_fluid_sim") else null
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
+	var min_depth := 0.04
+	if _crystal and _crystal.sim_config:
+		min_depth = _crystal.sim_config.min_depth
+	advance_crystal_conversion(delta, nearby_depth >= min_depth)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
 	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
 		if not _chunk_manager.is_world_cell_loaded(target_cell.x, target_cell.y):
@@ -303,6 +312,53 @@ func _physics_process(delta: float) -> void:
 			attacked_player.emit(config.contact_damage)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
+
+
+## Passive animals standing in crystal harden into a hostile crystal form.
+func advance_crystal_conversion(delta: float, in_crystal: bool) -> void:
+	if _dead or config == null:
+		return
+	var hostile := _CrystalCorruption.hostile_for_animal(str(entity_kind))
+	if hostile == "":
+		return
+	if not in_crystal:
+		_convert_elapsed = maxf(_convert_elapsed - delta, 0.0)
+		return
+	var seconds := 3.5
+	if _crystal != null and _crystal.sim_config != null:
+		seconds = maxf(float(_crystal.sim_config.animal_convert_seconds), 0.2)
+	if not _convert_started:
+		_convert_started = true
+		_convert_from_tint = _base_tint
+	_convert_elapsed += delta
+	var t := clampf(_convert_elapsed / seconds, 0.0, 1.0)
+	var crystal_tint := Color(0.62, 0.28, 0.95, 1.0)
+	_base_tint = _convert_from_tint.lerp(crystal_tint, t)
+	if _hit_flash_timer <= 0.0:
+		_paint_tint(_base_tint)
+	if t < 1.0:
+		return
+	_EntityBrainRegistry.ensure_builtins()
+	var next = _EntityBrainRegistry.get_def(StringName(hostile))
+	if next == null:
+		return
+	var cell := brain.home_pos if brain else home_cell
+	config = next
+	entity_kind = next.id
+	health = next.max_health
+	brain = _EntityBrain.new(next)
+	brain.reset_at(cell, cell, cell)
+	_base_tint = crystal_tint
+	_convert_elapsed = 0.0
+	_convert_started = false
+	if _voxel_prop and is_instance_valid(_voxel_prop):
+		_voxel_prop.queue_free()
+		_voxel_prop = null
+	if _sprite and is_instance_valid(_sprite):
+		_sprite.queue_free()
+		_sprite = null
+	if is_inside_tree():
+		_ensure_visual(crystal_tint)
 
 
 func export_save_state() -> Dictionary:
@@ -344,6 +400,19 @@ func _flash_hit() -> void:
 			(_sprite.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.45, 0.45)
 	elif _mesh and _mesh.material_override is StandardMaterial3D:
 		(_mesh.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.35, 0.35)
+
+
+func _paint_tint(color: Color) -> void:
+	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
+		for child in _voxel_prop.get_children():
+			if child is MeshInstance3D and (child as MeshInstance3D).material_override is StandardMaterial3D:
+				((child as MeshInstance3D).material_override as StandardMaterial3D).albedo_color = color
+		return
+	if _sprite and is_instance_valid(_sprite) and _sprite.visible:
+		_sprite.modulate = color
+		return
+	if _mesh and is_instance_valid(_mesh) and _mesh.material_override is StandardMaterial3D:
+		(_mesh.material_override as StandardMaterial3D).albedo_color = color
 
 
 func _reset_hit_tint() -> void:

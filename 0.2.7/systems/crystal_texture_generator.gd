@@ -164,7 +164,7 @@ func generate_game_visual_bundle() -> Dictionary:
 	var entity_ids: Array[StringName] = [
 		&"rabbit", &"deer", &"boar", &"bird", &"town_militia",
 		&"crystal_mite", &"farm_bomber", &"crystal_stag", &"thornling",
-		&"corrupted_beast", &"shard_guard",
+		&"corrupted_beast", &"shard_guard", &"crystal_wisp",
 	]
 	for id in entity_ids:
 		bundle["entity_%s" % id] = generate_texture(Category.ENTITY, id, 48)
@@ -172,6 +172,9 @@ func generate_game_visual_bundle() -> Dictionary:
 		"grass_tuft_s0", "grass_tuft_s1", "tall_grass_s0", "tall_grass_s1",
 		"wildflower_s0", "wildflower_s1", "fern_s0", "fern_s1",
 		"bush_s0", "bush_s1", "bush_s2", "tree_s0", "tree_s1", "tree_s2",
+		"crystal_grass_s0", "crystal_grass_s1",
+		"crystal_bush_s0", "crystal_bush_s1", "crystal_bush_s2",
+		"shard_tree_s0", "shard_tree_s1", "shard_tree_s2",
 	]:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
 	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar", &"gate", &"bridge"]:
@@ -689,7 +692,7 @@ func _fill_vegetation_sprite(image: Image, palette: _Palette, seed_val: int, var
 		for x in dim:
 			var u := float(x) / float(dim)
 			var v := float(y) / float(dim)
-			if plant_id == "grass_tuft" or plant_id == "grass":
+			if plant_id == "grass_tuft" or plant_id == "grass" or plant_id == "crystal_grass":
 				if v < 0.55 or v > 0.55 + growth * 0.35:
 					continue
 				var blade := absf(sin(u * TAU * (3.0 + growth * 4.0) + float(seed_val) * 0.01))
@@ -699,7 +702,7 @@ func _fill_vegetation_sprite(image: Image, palette: _Palette, seed_val: int, var
 				var c := palette.primary.lerp(palette.accent, h)
 				c.a = (1.0 - h) * 0.9
 				image.set_pixel(x, y, c)
-			elif plant_id == "bush":
+			elif plant_id == "bush" or plant_id == "crystal_bush" or plant_id == "fern":
 				var d := Vector2(u - 0.5, v - 0.52).length()
 				var radius := 0.20 + growth * 0.22
 				if d > radius:
@@ -880,6 +883,12 @@ func _entity_palette(variant_id: StringName) -> _Palette:
 			p.primary = Color(0.55, 0.62, 0.78)
 			p.secondary = Color(0.35, 0.42, 0.58)
 			p.accent = Color(0.85, 0.92, 1.0)
+		"crystal_wisp":
+			p.primary = Color(0.72, 0.42, 0.98)
+			p.secondary = Color(0.4, 0.16, 0.7)
+			p.accent = Color(0.92, 0.75, 1.0)
+			p.glow_strength = 0.7
+			p.glow_color = Color(0.8, 0.45, 1.0)
 		"town_militia":
 			p.primary = Color(0.58, 0.6, 0.72)
 			p.secondary = Color(0.38, 0.4, 0.52)
@@ -898,7 +907,11 @@ func _vegetation_palette(variant_id: StringName) -> _Palette:
 	var p := _Palette.new()
 	p.id = variant_id
 	var id_str := str(variant_id)
-	if id_str.begins_with("bush"):
+	if id_str.begins_with("crystal") or id_str.begins_with("shard"):
+		p.primary = Color(0.62, 0.28, 0.92)
+		p.secondary = Color(0.36, 0.14, 0.62)
+		p.accent = Color(0.86, 0.62, 1.0)
+	elif id_str.begins_with("bush"):
 		p.primary = Color(0.38, 0.68, 0.34)
 		p.secondary = Color(0.24, 0.48, 0.22)
 		p.accent = Color(0.58, 0.88, 0.48)

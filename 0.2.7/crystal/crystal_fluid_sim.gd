@@ -288,8 +288,15 @@ func _new_cell_priority(pos: Vector2i, magnitude: float) -> float:
 	return float(touches) * 12.0 + float(hole_bonus) + magnitude
 
 
+func depth_cap(pos: Vector2i) -> float:
+	var cap := config.max_depth
+	if terrain != null and terrain.has_method("reserve_depth_mult"):
+		cap *= maxf(terrain.reserve_depth_mult(pos), 0.25)
+	return cap
+
+
 func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool = true) -> void:
-	new_depth = clampf(new_depth, 0.0, config.max_depth)
+	new_depth = clampf(new_depth, 0.0, depth_cap(pos))
 	if new_depth < config.min_depth:
 		if depth.has(pos):
 			depth.erase(pos)
@@ -323,7 +330,7 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 			continue
 		var current: float = float(depth.get(pos, 0.0))
 		var added: float = spawn.emit_rate * mult * delta
-		var room := config.max_depth - current
+		var room := depth_cap(pos) - current
 		if room <= 0.0:
 			continue
 		set_depth(pos, current + minf(added, room), spawn.id)
