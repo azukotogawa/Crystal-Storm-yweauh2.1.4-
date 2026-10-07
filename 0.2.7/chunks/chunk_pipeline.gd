@@ -301,6 +301,12 @@ static func run_worker_job(
 	var patch_quads: Array = mesh.get("quads", [])
 	var merged_quads: Array = keep_quads.duplicate(true)
 	merged_quads.append_array(patch_quads)
+	# Full rebuild already synced inside _build_mesh. Incremental and cache
+	# hits must sync the merged list, which is what the chunk will draw.
+	if host != null and host.has_method("sync_ramp_map_to_mesh") and not full_rebuild:
+		host.sync_ramp_map_to_mesh(data, merged_quads)
+	elif host != null and host.has_method("sync_ramp_map_to_mesh") and str(mesh.get("mesh_source", "")) == "cache":
+		host.sync_ramp_map_to_mesh(data, merged_quads)
 	var buf: Dictionary = run_buffer_stage(
 		data,
 		merged_quads,

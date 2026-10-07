@@ -35,6 +35,10 @@ func _ready() -> void:
 	call_deferred("_connect_signals")
 
 
+func _vox(voxels: float) -> float:
+	return voxels * _WorldSettings.get_active().voxel_scale
+
+
 func _ensure_visual_roots() -> void:
 	_burst_root = get_node_or_null("Bursts") as Node3D
 	if _burst_root == null:
@@ -157,8 +161,9 @@ func _build_indicators() -> void:
 	_boss_ring = MeshInstance3D.new()
 	_boss_ring.name = "BossRing"
 	var torus := TorusMesh.new()
-	torus.inner_radius = 0.9
-	torus.outer_radius = 1.15
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	torus.inner_radius = 0.45 * vs
+	torus.outer_radius = 0.575 * vs
 	torus.rings = 8
 	torus.ring_segments = 12
 	_boss_ring.mesh = torus
@@ -178,7 +183,8 @@ func _build_indicators() -> void:
 	_victory_flash = MeshInstance3D.new()
 	_victory_flash.name = "VictoryFlash"
 	var quad := QuadMesh.new()
-	quad.size = Vector2(6.0, 3.0)
+	var flash_vs: float = _WorldSettings.get_active().voxel_scale
+	quad.size = Vector2(3.0 * flash_vs, 1.5 * flash_vs)
 	_victory_flash.mesh = quad
 	var vmat := StandardMaterial3D.new()
 	vmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -331,10 +337,11 @@ func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), ra
 	var anchor := Node3D.new()
 	anchor.name = "HitMarker"
 	_burst_root.add_child(anchor)
-	anchor.global_position = world_pos + Vector3(0.0, 0.08, 0.0)
+	var lift: float = _WorldSettings.get_active().voxel_scale * 0.04
+	anchor.global_position = world_pos + Vector3(0.0, lift, 0.0)
 	var mesh_i := MeshInstance3D.new()
 	var torus := TorusMesh.new()
-	var r := maxf(radius, 0.2)
+	var r := maxf(radius, _WorldSettings.get_active().voxel_scale * 0.1)
 	torus.inner_radius = r * 0.72
 	torus.outer_radius = r
 	torus.rings = 6
@@ -479,7 +486,7 @@ func _on_world_entity_died(entity: Node, _world_pos: Vector2i) -> void:
 	if entity == null:
 		return
 	var pos: Vector3 = entity.global_position
-	_spawn_burst(pos + Vector3(0.0, 0.5, 0.0), Color(0.85, 0.55, 0.35), 3)
+	_spawn_burst(pos + Vector3(0.0, _vox(0.25), 0.0), Color(0.85, 0.55, 0.35), 3)
 
 
 func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
@@ -491,11 +498,11 @@ func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
 	var kind := int(def.get("weapon_kind", _ItemTypes.WeaponKind.MELEE))
 	match kind:
 		_ItemTypes.WeaponKind.MELEE, _ItemTypes.WeaponKind.DIG:
-			show_hit_marker(hit_pos + Vector3(0.0, 0.15, 0.0), Color(1.0, 0.88, 0.45), 0.42)
-			_spawn_burst(hit_pos + Vector3(0.0, 0.35, 0.0), Color(1.0, 0.88, 0.45), 2)
+			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.075), 0.0), Color(1.0, 0.88, 0.45), _vox(0.21))
+			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.175), 0.0), Color(1.0, 0.88, 0.45), 2)
 		_ItemTypes.WeaponKind.RANGED:
-			show_hit_marker(hit_pos + Vector3(0.0, 0.2, 0.0), Color(0.65, 0.82, 1.0), 0.36)
-			_spawn_burst(hit_pos + Vector3(0.0, 0.45, 0.0), Color(0.65, 0.82, 1.0), 1)
+			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.1), 0.0), Color(0.65, 0.82, 1.0), _vox(0.18))
+			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.225), 0.0), Color(0.65, 0.82, 1.0), 1)
 
 
 func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
@@ -504,15 +511,15 @@ func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 	var world_pos: Vector3 = target.global_position
 	if target.has_method("get_combat_center"):
 		world_pos = target.get_combat_center()
-	var radius := 0.45
+	var radius := _vox(0.225)
 	if target.has_method("get_combat_radius"):
-		radius = maxf(float(target.get_combat_radius()), 0.25)
-	_show_damage_at(world_pos + Vector3(0.0, 0.6, 0.0), damage, Color(1.0, 0.55, 0.45))
+		radius = maxf(float(target.get_combat_radius()), _vox(0.125))
+	_show_damage_at(world_pos + Vector3(0.0, _vox(0.3), 0.0), damage, Color(1.0, 0.55, 0.45))
 	show_hit_marker(world_pos, Color(1.0, 0.45, 0.35), radius)
 	if target.has_method("_flash_hit"):
 		target._flash_hit()
 	if "health" in target and float(target.health) <= 0.0 and target.is_in_group("crystal_enemy"):
-		_spawn_burst(world_pos + Vector3(0.0, 0.5, 0.0), Color(1.0, 0.55, 0.95), 3)
+		_spawn_burst(world_pos + Vector3(0.0, _vox(0.25), 0.0), Color(1.0, 0.55, 0.95), 3)
 
 
 func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:

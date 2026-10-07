@@ -19,7 +19,7 @@ The current crystal loop is:
 ## Connected systems
 
 - `CrystalManager` owns simulation, absorption, spawn setup, crystal visuals, and player-contact checks.
-- `CrystalFluidSim` implements crystal flow on top of `VoxelFluidEngine`.
+- `CrystalFluidSim` is its own pressure-pool sim. Water uses `VoxelFluidEngine`; crystal does not.
 - `CrystalTerrainQuery` reads terrain, features, channels, and world state.
 - `CrystalEvolution` records absorption and unlocks enemies.
 - `CrystalEnemySpawner` reacts to unlocked enemies.

@@ -10,6 +10,7 @@ const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _FluidRegistry = preload("res://helpers/fluid_registry.gd")
 const _VoxelFluidEngine = preload("res://fluids/voxel_fluid_engine.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _ChannelWaterVisual = preload("res://fluids/channel_water_visual.gd")
 
 signal channel_fluid_changed(pos: Vector2i)
 
@@ -39,6 +40,7 @@ var _last_tile_samples: int = 0
 var _last_registry_reads: int = 0
 var _last_offscreen_in_subset: int = 0
 var _last_signal_emits: int = 0
+var _water_visual: Node3D
 
 
 func _ready() -> void:
@@ -50,6 +52,7 @@ func _ready() -> void:
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	_FluidRegistry.ensure_builtins()
 	_init_water_engine()
+	_ensure_water_visual()
 	var cfg_svc = get_tree().get_first_node_in_group("config_service")
 	if cfg_svc and cfg_svc.crystal_sim:
 		apply_sim_config(cfg_svc.crystal_sim)
@@ -341,6 +344,38 @@ func get_sim_diagnostics() -> Dictionary:
 		"signal_emits": _last_signal_emits,
 		"signal_listeners": channel_fluid_changed.get_connections().size(),
 	}
+
+
+func _ensure_water_visual() -> void:
+	if _water_visual != null and is_instance_valid(_water_visual):
+		if not channel_fluid_changed.is_connected(_on_channel_fluid_changed):
+			channel_fluid_changed.connect(_on_channel_fluid_changed)
+		return
+	_water_visual = _ChannelWaterVisual.new()
+	_water_visual.name = "ChannelWaterVisual"
+	add_child(_water_visual)
+	if not channel_fluid_changed.is_connected(_on_channel_fluid_changed):
+		channel_fluid_changed.connect(_on_channel_fluid_changed)
+
+
+func _on_channel_fluid_changed(pos: Vector2i) -> void:
+	var level := 0.0
+	if _water_engine != null and _water_engine.depth.has(pos):
+		level = float(_water_engine.depth[pos])
+	else:
+		level = get_water_level_at(pos.x, pos.y)
+	var surface := 0.0
+	if world != null:
+		surface = world.get_surface_height(float(pos.x), float(pos.y))
+	if _water_visual != null and _water_visual.has_method("set_level"):
+		_water_visual.set_level(pos, level, surface)
+
+
+## Draw a channel fill without waiting for a sim tick. Probes and passive edits use this.
+func show_channel_level(pos: Vector2i, level: float, surface_y: float) -> void:
+	_ensure_water_visual()
+	if _water_visual != null and _water_visual.has_method("set_level"):
+		_water_visual.set_level(pos, level, surface_y)
 
 
 func get_water_level_at(wx: int, wz: int) -> float:

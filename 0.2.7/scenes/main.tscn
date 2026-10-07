@@ -140,8 +140,10 @@ transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387
 light_color = Color(0.72, 0.78, 0.9, 1)
 light_energy = 0.58
 shadow_enabled = true
-directional_shadow_mode = 1
-directional_shadow_max_distance = 80.0
+directional_shadow_mode = 0
+directional_shadow_max_distance = 360.0
+shadow_bias = 0.06
+shadow_normal_bias = 1.6
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1228396210]
 script = ExtResource("4_272bh")

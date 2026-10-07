@@ -13,6 +13,8 @@ SUITES=(
 	"res://scripts/verify_stability_perf.gd"
 	"res://scripts/verify_game_visuals.gd"
 	"res://scripts/verify_world_scale.gd"
+	"res://scripts/verify_height_agreement.gd"
+	"res://scripts/verify_water_redraw.gd"
 	"res://scripts/verify_visual_pipeline.gd"
 	"res://scripts/verify_visual_boot_order.gd"
 	"res://scripts/verify_visual_texture_binding.gd"

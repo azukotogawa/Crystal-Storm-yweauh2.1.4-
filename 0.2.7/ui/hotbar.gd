@@ -54,8 +54,8 @@ func _build_slots() -> void:
 		panel.position = Vector2(i * (SLOT_SIZE + SLOT_GAP), 0)
 
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.08, 0.08, 0.12, 0.82)
-		style.border_color = Color(0.35, 0.35, 0.45, 1.0)
+		style.bg_color = Color(0.1, 0.08, 0.07, 0.88)
+		style.border_color = Color(0.22, 0.16, 0.1, 1.0)
 		style.set_border_width_all(2)
 		style.set_corner_radius_all(4)
 		panel.add_theme_stylebox_override("panel", style)
@@ -66,6 +66,7 @@ func _build_slots() -> void:
 		icon.custom_minimum_size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
 		icon.size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
 		icon.position = Vector2(4, 2)
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(icon)
 

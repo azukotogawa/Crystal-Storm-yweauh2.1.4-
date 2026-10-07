@@ -219,6 +219,7 @@ func _emit_surface_mesh() -> void:
 	if mesh_instance == null:
 		mesh_instance = MeshInstance3D.new()
 		mesh_instance.name = "terrain_surface_mesh"
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		var t_tree := Time.get_ticks_usec()
 		layer_container.add_child(mesh_instance)
 		_mesh_phase_record("scenetree_insert", Time.get_ticks_usec() - t_tree)
@@ -331,6 +332,7 @@ func _assign_buffer_multimesh(
 	if mm_instance == null:
 		mm_instance = MultiMeshInstance3D.new()
 		mm_instance.name = node_name
+		mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if mesh_kind != "box":
 			mm_instance.sorting_offset = 1.0
 		var t_tree := Time.get_ticks_usec()
@@ -582,6 +584,7 @@ func _emit_ramp_multimesh(quads: Array, ramp_kind: String = "cardinal") -> void:
 	var mm_instance := MultiMeshInstance3D.new()
 	mm_instance.name = "%s_mm_instance" % ramp_kind
 	mm_instance.sorting_offset = 1.0
+	mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	layer_container.add_child(mm_instance)
 
 	var mm := MultiMesh.new()
