@@ -33,6 +33,10 @@ var _voxel_prop: Node3D
 var _dead: bool = false
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
+var _hurt_player: float = 0.0
+const HURT_LOCK := 0.22
+var _knock_dir := Vector3.ZERO
+var _knock_left := 0.0
 var _base_tint: Color = Color(0.72, 0.72, 0.68)
 var _convert_elapsed: float = 0.0
 var _convert_from_tint: Color = Color(0.72, 0.72, 0.68)
@@ -257,6 +261,8 @@ func _physics_process(delta: float) -> void:
 		_hit_flash_timer = maxf(_hit_flash_timer - delta, 0.0)
 		if _hit_flash_timer <= 0.0:
 			_reset_hit_tint()
+	if _hurt_player > 0.0:
+		_hurt_player = maxf(_hurt_player - delta, 0.0)
 
 	if _dead or brain == null or config == null:
 		if profiler and profiler.has_method("end"):
@@ -287,6 +293,21 @@ func _physics_process(delta: float) -> void:
 	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
 		if not _chunk_manager.is_world_cell_loaded(target_cell.x, target_cell.y):
 			target_cell = self_cell
+
+	if _knock_left > 0.0:
+		var step := minf(_knock_left, maxf(config.move_speed, 6.0) * delta * 2.4)
+		var shoved := _EntityNavigation.knockback_step(
+			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
+		)
+		if shoved.distance_squared_to(global_position) < 0.0004:
+			_knock_left = 0.0
+		else:
+			global_position = shoved
+			_knock_left = maxf(_knock_left - step, 0.0)
+		_notify_spatial_moved()
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
 
 	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(
@@ -379,9 +400,10 @@ func export_save_state() -> Dictionary:
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:
-	if _dead or amount <= 0.0:
+	if _dead or amount <= 0.0 or _hurt_player > 0.0:
 		return
 	_last_damage_source = source
+	_hurt_player = HURT_LOCK
 	health = maxf(health - amount, 0.0)
 	_flash_hit()
 	combat_damaged.emit(amount, health, source)
@@ -389,6 +411,14 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	_CombatLog.push("%s hit %.1f → %.0f HP" % [label, amount, health])
 	if health <= 0.0:
 		_die()
+
+
+func apply_knockback(dir: Vector3, distance: float) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001 or distance <= 0.0:
+		return
+	_knock_dir = flat.normalized()
+	_knock_left = distance
 
 
 func _flash_hit() -> void:

@@ -44,6 +44,14 @@ static func ensure_builtins() -> void:
 	guard.max_health = 55.0
 	_register(guard)
 
+	var warden := _enemy_brain(&"origin_warden", "Origin Warden", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 6.5, 28.0, 240.0, 18.0)
+	warden.attack_cooldown = 1.4
+	_register(warden)
+	var tyrant := _enemy_brain(&"spawn_elite", "Shard Tyrant", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 7.5, 14.0, 96.0, 16.0)
+	tyrant.patrol_radius = 6.0
+	tyrant.attack_cooldown = 1.3
+	_register(tyrant)
+
 
 static func register_all(defs: Array) -> void:
 	for def in defs:

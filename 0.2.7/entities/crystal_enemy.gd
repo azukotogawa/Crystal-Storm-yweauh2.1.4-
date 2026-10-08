@@ -8,6 +8,7 @@ const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")
+const _BossBrain = preload("res://entities/boss_brain.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -38,6 +39,15 @@ var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
 var _base_tint: Color = Color(0.72, 0.2, 0.95)
 var _mesh_radius: float = 0.22
+## Short lock so one swing cannot land twice on the same body.
+var _hurt_player: float = 0.0
+const HURT_LOCK := 0.22
+var _knock_dir := Vector3.ZERO
+var _knock_left := 0.0
+var _special: _BossBrain
+var _ring: MeshInstance3D
+var _ring_anchor := Vector3.ZERO
+var boss_phase: int = 1
 
 
 func _ready() -> void:
@@ -83,6 +93,7 @@ func setup(
 		_setup_visual(Color(0.72, 0.2, 0.95))
 
 	health = max_health
+	_bind_special(id)
 	# Caller (spawner/import) must set global_position before setup; index now.
 	sync_spatial_index()
 
@@ -110,6 +121,7 @@ func _setup_visual(tint: Color, radius: float = 0.22, height: float = 0.70) -> v
 		_setup_sprite(registry, tex, tint, height)
 	else:
 		_setup_mesh(tint, radius, height)
+	_apply_body_scale()
 
 
 func _hook_visual_registry() -> void:
@@ -196,6 +208,7 @@ func _setup_mesh(tint: Color, radius: float = 0.22, height: float = 0.70) -> voi
 	mesh.height = height * vs
 	_mesh.mesh = mesh
 	_mesh.position.y = mesh.height * 0.55
+	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if _mesh.material_override == null:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = tint
@@ -206,6 +219,74 @@ func _setup_mesh(tint: Color, radius: float = 0.22, height: float = 0.70) -> voi
 		var mat := _mesh.material_override as StandardMaterial3D
 		mat.albedo_color = tint
 		mat.emission = tint * 0.55
+
+
+func _apply_body_scale() -> void:
+	var s := 1.0
+	if enemy_id == &"origin_warden":
+		s = 1.65
+	elif enemy_id == &"spawn_elite":
+		s = 1.35
+	else:
+		return
+	if _voxel_prop and is_instance_valid(_voxel_prop):
+		_voxel_prop.scale = Vector3(s, s, s)
+	if _sprite and is_instance_valid(_sprite):
+		_sprite.scale = Vector3(s, s, s)
+
+
+func _bind_special(id: StringName) -> void:
+	_special = null
+	if id == &"origin_warden":
+		_special = _BossBrain.new()
+		boss_phase = 1
+		add_to_group("origin_boss")
+		_ensure_ring()
+		_notify_warden(true)
+		call_deferred("_register_boss_hud")
+	elif id == &"spawn_elite":
+		_special = _BossBrain.new()
+		_special.elite = true
+		_ensure_ring()
+
+
+func _ensure_ring() -> void:
+	if _ring != null and is_instance_valid(_ring):
+		return
+	_ring = MeshInstance3D.new()
+	_ring.name = "TelegraphRing"
+	_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 1.0
+	mesh.bottom_radius = 1.0
+	mesh.height = 0.06
+	_ring.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1.0, 0.28, 0.18, 0.5)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_ring.material_override = mat
+	_ring.visible = false
+	add_child(_ring)
+
+
+func _register_boss_hud() -> void:
+	if not is_inside_tree():
+		return
+	var overlay = get_tree().get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("track_boss"):
+		overlay.track_boss(self)
+
+
+func _notify_warden(alive: bool) -> void:
+	if not is_inside_tree():
+		return
+	var crystal = _crystal
+	if crystal == null:
+		crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if crystal and crystal.has_method("set_origin_warden_alive"):
+		crystal.set_origin_warden_alive(alive)
 
 
 func _bind_scene() -> void:
@@ -279,7 +360,10 @@ func _physics_process(delta: float) -> void:
 				(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
 
 	_age += delta
-	if _age >= lifetime:
+	_tick_hurt_lock(delta)
+	if _special:
+		_tick_special(delta)
+	if lifetime > 0.0 and _age >= lifetime:
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
 		queue_free()
@@ -303,6 +387,21 @@ func _physics_process(delta: float) -> void:
 	var crystal_sim = _crystal.get_fluid_sim() if _crystal and _crystal.has_method("get_fluid_sim") else null
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
+
+	if _knock_left > 0.0:
+		var step := minf(_knock_left, maxf(move_speed, 6.0) * delta * 2.4)
+		var shoved := _EntityNavigation.knockback_step(
+			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
+		)
+		if shoved.distance_squared_to(global_position) < 0.0004:
+			_knock_left = 0.0
+		else:
+			global_position = shoved
+			_knock_left = maxf(_knock_left - step, 0.0)
+		_notify_spatial_moved()
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
 
 	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(
@@ -328,10 +427,14 @@ func _physics_process(delta: float) -> void:
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:
-	if amount <= 0.0:
+	if amount <= 0.0 or _hurt_player > 0.0:
 		return
 	_last_damage_source = source
+	_hurt_player = HURT_LOCK
 	health = maxf(health - amount, 0.0)
+	if _special and max_health > 0.0:
+		_special.notify_hp_ratio(health / max_health)
+		boss_phase = _special.phase
 	_flash_hit()
 	combat_damaged.emit(amount, health, source)
 	var label := spawn_def.display_name if spawn_def else str(enemy_id)
@@ -356,7 +459,110 @@ func _on_killed() -> void:
 	killed.emit(enemy_id, cell, player_killed)
 	if player_killed and is_inside_tree():
 		_CombatRewards.grant_player_kill(get_tree(), enemy_id, label)
+		if enemy_id == &"origin_warden":
+			_BossBrain.on_warden_killed(get_tree())
+		elif enemy_id == &"spawn_elite":
+			_BossBrain.on_elite_killed(get_tree(), int(global_position.x))
+	elif enemy_id == &"origin_warden":
+		_notify_warden(false)
 	queue_free()
+
+
+func apply_knockback(dir: Vector3, distance: float) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001 or distance <= 0.0:
+		return
+	_knock_dir = flat.normalized()
+	_knock_left = distance
+
+
+func _tick_hurt_lock(delta: float) -> void:
+	if _hurt_player > 0.0:
+		_hurt_player = maxf(_hurt_player - delta, 0.0)
+
+
+func _tick_special(delta: float) -> void:
+	if _special == null:
+		return
+	var dist_v := 99.0
+	if _target and is_instance_valid(_target):
+		var there := _target_column_pos()
+		dist_v = Vector2(there.x - global_position.x, there.z - global_position.z).length()
+		dist_v /= maxf(WorldSettings.get_active().voxel_scale, 0.001)
+	var intent: Dictionary = _special.tick(delta, dist_v)
+	boss_phase = int(intent.get("phase", boss_phase))
+	var act := StringName(str(intent.get("action", "")))
+	if bool(intent.get("marker_fresh", false)):
+		_ring_anchor = _target_column_pos() if _target else global_position
+		_show_ring(act)
+	if bool(intent.get("telegraph", false)):
+		_show_ring(act)
+	if bool(intent.get("impact", false)):
+		_hide_ring()
+		_resolve_special(act, int(intent.get("summon", 0)))
+	elif int(intent.get("summon", 0)) > 0 and not bool(intent.get("impact", false)):
+		_summon_mites(int(intent.get("summon", 0)))
+
+
+func _show_ring(act: StringName) -> void:
+	_ensure_ring()
+	if _ring == null:
+		return
+	var radius := 2.4
+	if act == &"burst":
+		radius = 4.6
+	elif act == &"charge":
+		radius = 1.8
+	var vs: float = WorldSettings.get_active().voxel_scale
+	_ring.global_position = Vector3(_ring_anchor.x, global_position.y + 0.08, _ring_anchor.z)
+	_ring.scale = Vector3(radius * vs, 1.0, radius * vs)
+	_ring.visible = true
+	if _ring.material_override is StandardMaterial3D:
+		var mat := _ring.material_override as StandardMaterial3D
+		mat.albedo_color = Color(1.0, 0.45, 0.15, 0.55) if act == &"burst" else Color(1.0, 0.22, 0.16, 0.48)
+
+
+func _hide_ring() -> void:
+	if _ring:
+		_ring.visible = false
+
+
+func _resolve_special(act: StringName, summon: int) -> void:
+	var vs: float = WorldSettings.get_active().voxel_scale
+	if act == &"charge":
+		var dir := _ring_anchor - global_position
+		var lunged := _EntityNavigation.knockback_step(
+			global_position, dir, minf(dir.length(), 6.0 * vs), _world, _chunk_manager, _crystal
+		)
+		global_position = lunged
+		_notify_spatial_moved()
+	if _target and _target.has_method("take_damage"):
+		var there := _target_column_pos()
+		var reach: float = 2.4 * vs
+		if act == &"burst":
+			reach = 4.6 * vs
+		elif act == &"charge":
+			reach = 1.8 * vs
+		var flat := Vector2(there.x - _ring_anchor.x, there.z - _ring_anchor.z).length()
+		if act == &"charge":
+			flat = Vector2(there.x - global_position.x, there.z - global_position.z).length()
+		if flat <= reach:
+			var mult := 1.35 if act == &"burst" else 1.0
+			_target.take_damage(contact_damage * mult, &"boss")
+	if summon > 0:
+		_summon_mites(summon)
+
+
+func _summon_mites(count: int) -> void:
+	if count <= 0 or not is_inside_tree():
+		return
+	var spawner = get_tree().get_first_node_in_group("crystal_enemy_spawner")
+	if spawner == null or not spawner.has_method("spawn_enemy_at_column"):
+		return
+	var cell := _EntityNavigation.column_pos(global_position)
+	var n := mini(count, 3)
+	for i in n:
+		spawner.spawn_enemy_at_column(&"crystal_mite", cell.x + i - 1, cell.y + 2, cell)
 
 
 func _detonate() -> void:

@@ -24,6 +24,8 @@ var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
 ## Last terminal loss reason for UI / verifies (empty while playing or after win).
 var last_loss_reason: String = ""
+## "boss" when the origin warden dies. "spawns" when every heart is destroyed.
+var victory_reason: String = ""
 ## How many settlements have fallen this run (penalty already applied).
 var fallen_towns: int = 0
 ## Last town-fall penalty line for the HUD and probes.
@@ -174,11 +176,29 @@ func _apply_crystal_damage(delta: float) -> void:
 	if _player.has_method("get_stat"):
 		resist = _player.get_stat(_StatIds.CRYSTAL_RESISTANCE)
 	var dmg := crystal_damage_per_second * depth * delta * (1.0 - clampf(resist, 0.0, 0.95))
+	# Field damage is a burn, not a hit. It must not grant or respect i-frames.
+	if "damage_source_hint" in _player:
+		_player.damage_source_hint = &"crystal_field"
 	_player.take_damage(dmg)
 
 
 func _on_all_spawns_destroyed() -> void:
 	print("[Game] Victory — all crystal spawn points destroyed.")
+	if victory_reason == "":
+		victory_reason = "spawns"
+	if phase != Phase.VICTORY:
+		phase = Phase.VICTORY
+		phase_changed.emit(phase)
+	_set_won()
+
+
+## The origin warden's death ends the run. Loss conditions are unchanged.
+## The origin heart stays sealed while that warden lives (see SpawnPointController).
+func notify_boss_defeated() -> void:
+	if run_state != RunState.PLAYING:
+		return
+	victory_reason = "boss"
+	print("[Game] Victory — the origin warden fell.")
 	if phase != Phase.VICTORY:
 		phase = Phase.VICTORY
 		phase_changed.emit(phase)

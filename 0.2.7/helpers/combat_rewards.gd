@@ -7,11 +7,14 @@ static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: S
 	var empty := {"item_id": "", "count": 0, "label": ""}
 	if tree == null:
 		return empty
+	var label: String = display_name if display_name != "" else str(kind).replace("_", " ")
 	var loot: Dictionary = _loot_for_kind(kind)
 	var item_id: String = str(loot.get("item_id", ""))
 	var count: int = int(loot.get("count", 0))
 	if item_id.is_empty() or count <= 0:
-		return empty
+		var note := "%s down" % label
+		_toast(tree, note)
+		return {"item_id": "", "count": 0, "label": note}
 	var player = tree.get_first_node_in_group("player")
 	if player == null:
 		return empty
@@ -19,12 +22,17 @@ static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: S
 	if inv == null or not inv.has_method("add_item"):
 		return empty
 	inv.add_item(item_id, count)
-	var label: String = display_name if display_name != "" else str(kind).replace("_", " ")
 	var toast := "%s down — +%d %s for the maze" % [label, count, item_id]
+	_toast(tree, toast)
+	return {"item_id": item_id, "count": count, "label": toast}
+
+
+static func _toast(tree: SceneTree, text: String) -> void:
+	if tree == null or text == "":
+		return
 	var overlay = tree.get_first_node_in_group("game_overlay")
 	if overlay and overlay.has_method("_show_toast"):
-		overlay.call("_show_toast", toast)
-	return {"item_id": item_id, "count": count, "label": toast}
+		overlay.call("_show_toast", text)
 
 
 static func _loot_for_kind(kind: StringName) -> Dictionary:
@@ -33,6 +41,10 @@ static func _loot_for_kind(kind: StringName) -> Dictionary:
 			return {"item_id": "", "count": 0}
 		&"crystal_mite", &"thornling", &"shard_guard", &"crystal_stag", &"corrupted_beast", &"farm_bomber", &"crystal_enemy":
 			return {"item_id": "stone", "count": 1}
+		&"spawn_elite":
+			return {"item_id": "crystal_bomb", "count": 1}
+		&"origin_warden":
+			return {"item_id": "crystal_weave", "count": 1}
 		&"boar":
 			return {"item_id": "wood", "count": 1}
 		&"rabbit", &"deer", &"bird":

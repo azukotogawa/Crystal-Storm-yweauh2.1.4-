@@ -4,7 +4,7 @@ extends RefCounted
 
 const _ItemDef = preload("res://config/item_def.gd")
 
-enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC }
+enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
 
 const MAX_STACK := 99
@@ -21,6 +21,41 @@ const ITEMS: Dictionary = {
 		"crystal_damage": 0.35,
 		"range": 2.8,
 		"cooldown": 0.45,
+		"knockback": 1.0,
+		"description": "A quick arc. Reliable, short, and light.",
+		"stackable": false,
+		"max_stack": 1,
+	},
+	"spear": {
+		"name": "Spear",
+		"category": Category.WEAPON,
+		"weapon_kind": WeaponKind.MELEE,
+		"damage": 15.0,
+		"entity_damage": 15.0,
+		"crystal_damage": 0.5,
+		"range": 3.0,
+		"cooldown": 0.78,
+		"pierce": 2,
+		"thrust": true,
+		"knockback": 1.6,
+		"visual_id": "wooden_sword",
+		"description": "Long thrust, about 3 voxels. Pierces two targets. Slower than the sword.",
+		"stackable": false,
+		"max_stack": 1,
+	},
+	"crystal_hammer": {
+		"name": "Crystal Hammer",
+		"category": Category.WEAPON,
+		"weapon_kind": WeaponKind.MELEE,
+		"damage": 8.0,
+		"entity_damage": 7.0,
+		"crystal_damage": 4.8,
+		"range": 2.2,
+		"cooldown": 1.1,
+		"splash": 1,
+		"knockback": 3.2,
+		"visual_id": "stone_pick",
+		"description": "Slow crystal breaker. 3×3 cell splash and a heavy shove. Does not dig.",
 		"stackable": false,
 		"max_stack": 1,
 	},
@@ -41,9 +76,32 @@ const ITEMS: Dictionary = {
 		"category": Category.WEAPON,
 		"weapon_kind": WeaponKind.RANGED,
 		"damage": 10.0,
+		"entity_damage": 10.0,
 		"crystal_damage": 0.55,
 		"range": 14.0,
 		"cooldown": 0.8,
+		"knockback": 0.9,
+		"projectile_speed": 32.0,
+		"projectile_gravity": 12.0,
+		"description": "Fires an arrow along your aim. It drops and can miss. Does not dig.",
+		"stackable": false,
+		"max_stack": 1,
+	},
+	"sling": {
+		"name": "Sling",
+		"category": Category.WEAPON,
+		"weapon_kind": WeaponKind.RANGED,
+		"damage": 8.0,
+		"entity_damage": 8.0,
+		"crystal_damage": 0.45,
+		"range": 11.0,
+		"cooldown": 0.5,
+		"knockback": 0.7,
+		"projectile_speed": 18.0,
+		"projectile_gravity": 34.0,
+		"ammo_id": "stone",
+		"visual_id": "shortbow",
+		"description": "Lobs one stone in a high arc. Cheap, slow, and easy to miss.",
 		"stackable": false,
 		"max_stack": 1,
 	},
@@ -71,6 +129,51 @@ const ITEMS: Dictionary = {
 		"category": Category.MATERIAL,
 		"stackable": true,
 		"max_stack": MAX_STACK,
+	},
+	"crystal_bomb": {
+		"name": "Crystal Bomb",
+		"category": Category.CONSUMABLE,
+		"damage": 22.0,
+		"crystal_damage": 3.2,
+		"blast_radius": 2.5,
+		"throwable": true,
+		"knockback": 2.0,
+		"projectile_speed": 12.0,
+		"projectile_gravity": 22.0,
+		"visual_id": "crystal_shard",
+		"description": "Throws a short arc, then clears crystal in a 2.5-column radius. Terrain height stays.",
+		"stackable": true,
+		"max_stack": 8,
+	},
+	"leather_armor": {
+		"name": "Leather Armor",
+		"category": Category.ARMOR,
+		"damage_reduction": 0.12,
+		"move_speed_mult": 1.0,
+		"visual_id": "herb",
+		"description": "Light hide. Cuts incoming damage a little. No speed loss.",
+		"stackable": false,
+		"max_stack": 1,
+	},
+	"stone_plate": {
+		"name": "Stone Plate",
+		"category": Category.ARMOR,
+		"damage_reduction": 0.28,
+		"move_speed_mult": 0.86,
+		"visual_id": "stone",
+		"description": "Heavy plates. Strong reduction and slower steps.",
+		"stackable": false,
+		"max_stack": 1,
+	},
+	"crystal_weave": {
+		"name": "Crystal Weave",
+		"category": Category.ARMOR,
+		"damage_reduction": 0.20,
+		"move_speed_mult": 1.08,
+		"visual_id": "crystal_shard",
+		"description": "Woven shards. Solid protection and a quicker step. Taken from elites.",
+		"stackable": false,
+		"max_stack": 1,
 	},
 }
 
@@ -140,3 +243,28 @@ static func max_stack_for(item_id: String) -> int:
 
 static func is_stackable(item_id: String) -> bool:
 	return bool(get_def(item_id).get("stackable", false))
+
+
+static func is_armor(item_id: String) -> bool:
+	var def := get_def(item_id)
+	return not def.is_empty() and int(def.get("category", -1)) == Category.ARMOR
+
+
+## Icon key. New gear reuses an existing item texture through visual_id.
+static func visual_key(item_id: String) -> String:
+	var vis := str(get_def(item_id).get("visual_id", ""))
+	if vis == "":
+		return item_id
+	return vis
+
+
+static func armor_reduction(item_id: String) -> float:
+	if item_id == "":
+		return 0.0
+	return clampf(float(get_def(item_id).get("damage_reduction", 0.0)), 0.0, 0.75)
+
+
+static func armor_speed_mult(item_id: String) -> float:
+	if item_id == "":
+		return 1.0
+	return clampf(float(get_def(item_id).get("move_speed_mult", 1.0)), 0.5, 1.25)

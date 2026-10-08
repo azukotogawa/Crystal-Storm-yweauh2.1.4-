@@ -12,6 +12,8 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _PlaceableCatalog = preload("res://helpers/placeable_catalog.gd")
+const _Projectile = preload("res://weapons/projectile.gd")
+const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -84,7 +86,7 @@ func _process(delta: float) -> void:
 		return
 
 	# LMB subtracts structures/terrain for dig tools and place-catalog terrain edits.
-	# Combat weapons (sword/bow): LMB is attack only — never dig or remove (INPUT_CONTRACT).
+	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
 	var dig_held := _is_active_dig_tool() and Input.is_action_pressed("attack")
 	if Input.is_action_just_pressed("attack") and _cooldown_timer <= 0.0:
 		if not _is_active_combat_weapon():
@@ -187,7 +189,12 @@ func _is_active_combat_weapon() -> bool:
 	var def := ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
 		return false
-	if int(def.get("category", -1)) != ItemTypes.Category.WEAPON:
+	var category := int(def.get("category", -1))
+	if category == ItemTypes.Category.ARMOR:
+		return true
+	if category == ItemTypes.Category.CONSUMABLE and bool(def.get("throwable", false)):
+		return true
+	if category != ItemTypes.Category.WEAPON:
 		return false
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
 	return kind == ItemTypes.WeaponKind.MELEE or kind == ItemTypes.WeaponKind.RANGED
@@ -219,8 +226,17 @@ func _try_use_consumable() -> bool:
 	var def := ItemTypes.get_def(item_id)
 	if def.is_empty():
 		return false
-	if int(def.get("category", -1)) != ItemTypes.Category.CONSUMABLE:
+	var category := int(def.get("category", -1))
+	if category == ItemTypes.Category.ARMOR:
+		if inventory.has_method("equip_armor") and inventory.equip_armor(item_id):
+			_cooldown_timer = 0.2
+			_toast("Wearing %s" % ItemTypes.display_name(item_id))
+			return true
 		return false
+	if category != ItemTypes.Category.CONSUMABLE:
+		return false
+	if bool(def.get("throwable", false)):
+		return _throw_bomb(item_id, def)
 	if item_id != "herb":
 		return false
 	if not inventory.consume_item("herb", 1):
@@ -306,6 +322,12 @@ func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
 
 
 func _do_melee_attack(item_id: String, def: Dictionary) -> void:
+	if bool(def.get("thrust", false)):
+		_do_thrust_attack(item_id, def)
+		return
+	if int(def.get("splash", 0)) > 0:
+		_do_hammer_attack(item_id, def)
+		return
 	var range_v: float = float(def.get("range", 2.0))
 	var origin := _attack_origin(0.5)
 	var chunk_manager: ChunkManager = get_tree().get_first_node_in_group("chunk_manager") as ChunkManager if is_inside_tree() else null
@@ -342,6 +364,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	for target in targets:
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:
+			_shove(target, float(def.get("knockback", 1.0)))
 			entity_hit.emit(target, dealt, item_id)
 
 	if crystal_manager:
@@ -388,27 +411,139 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
 	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 12.0))
+	# Aim point stays in world space (column range × voxel scale) for the swing marker.
 	var hit_pos := origin + forward * _range_world(range_v)
-	var entity_damage: float = _entity_hit_damage(def, _StatIds.RANGED_DAMAGE)
+	if not _fire_projectile(item_id, def, origin, forward, false):
+		_cooldown_timer = 0.25
+		return
+	attacked.emit(item_id, hit_pos)
 
-	var target := _CombatHitResolver.query_ranged(self, origin, forward, range_v, _combat_def)
-	if target:
+
+## Line thrust. Hits the first `pierce` bodies on the aim line and can miss the side.
+func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
+	var range_v: float = float(def.get("range", 3.0))
+	var origin := _attack_origin(0.5)
+	var forward := _attack_forward()
+	var range_w := _range_world(range_v)
+	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
+	var targets := _WeaponStrike.thrust_targets(
+		origin, forward, range_w, nodes, int(def.get("pierce", 2))
+	)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+	for target in targets:
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:
+			_shove(target, float(def.get("knockback", 1.6)))
 			entity_hit.emit(target, dealt, item_id)
-	elif _combat_def.log_hits_to_console:
-		_CombatLog.push("ranged %s — no entity hit" % item_id)
-
 	if crystal_manager:
 		var mass_cell := _crystal_target_cell(range_v)
-		crystal_manager.damage_spawn_at_world(
-			mass_cell,
-			_crystal_hit_damage(def, _StatIds.RANGED_DAMAGE),
-			2.5
-		)
+		crystal_manager.damage_spawn_at_world(mass_cell, _crystal_hit_damage(def), range_v)
 		_try_break_crystal_mass(mass_cell, def)
+	var ws = _WorldSettings.get_active()
+	var aim := _crystal_target_cell(range_v)
+	attacked.emit(item_id, Vector3(ws.column_to_world(float(aim.x) + 0.5), origin.y, ws.column_to_world(float(aim.y) + 0.5)))
 
+
+## 3×3 crystal splash. Low entity damage, heavy knockback. Never digs or changes height.
+func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
+	var range_v: float = float(def.get("range", 2.2))
+	var origin := _attack_origin(0.45)
+	var forward := _attack_forward()
+	var cell := _crystal_target_cell(range_v)
+	var splash := int(def.get("splash", 1))
+	var cells := _WeaponStrike.splash_cells(cell, splash)
+	var mass := _crystal_mass_damage(def)
+	_WeaponStrike.apply_crystal_cells(crystal_manager, cells, mass)
+	if crystal_manager:
+		crystal_manager.damage_spawn_at_world(cell, _crystal_hit_damage(def), 1.6)
+	var range_w := _range_world(range_v)
+	var targets := _query_melee_facing(origin, forward, range_w)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+	var shoved := 0
+	for target in targets:
+		if shoved >= 1:
+			break
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		if dealt > 0.0:
+			_shove(target, float(def.get("knockback", 3.2)))
+			entity_hit.emit(target, dealt, item_id)
+			shoved += 1
+	var ws = _WorldSettings.get_active()
+	attacked.emit(item_id, Vector3(
+		ws.column_to_world(float(cell.x) + 0.5),
+		origin.y,
+		ws.column_to_world(float(cell.y) + 0.5)
+	))
+
+
+func _throw_bomb(item_id: String, def: Dictionary) -> bool:
+	if inventory == null or not inventory.consume_item(item_id, 1):
+		return false
+	var origin := _attack_origin(0.7)
+	var forward := _attack_forward()
+	if not _fire_projectile(item_id, def, origin, forward, true):
+		inventory.add_item(item_id, 1)
+		return false
+	_cooldown_timer = 0.9
+	var hit_pos := origin + forward * _range_world(float(def.get("blast_radius", 2.5)))
 	attacked.emit(item_id, hit_pos)
+	return true
+
+
+func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward: Vector3, lob: bool) -> bool:
+	var ammo := str(def.get("ammo_id", ""))
+	if ammo != "" and (inventory == null or not inventory.consume_item(ammo, 1)):
+		_toast("Need %s" % ammo)
+		return false
+	var speed := float(def.get("projectile_speed", 28.0))
+	if speed <= 0.0:
+		speed = 28.0
+	var vel := forward * speed
+	if lob or item_id == "sling":
+		vel.y += speed * 0.55
+	var kind := "arrow"
+	if item_id == "sling":
+		kind = "stone"
+	elif item_id == "crystal_bomb":
+		kind = "bomb"
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	var chunk_manager = get_tree().get_first_node_in_group("chunk_manager") if is_inside_tree() else null
+	var ok := _Projectile.launch(self, {
+		"origin": origin,
+		"velocity": vel,
+		"gravity": float(def.get("projectile_gravity", 12.0)),
+		"damage": _entity_hit_damage(def, _StatIds.RANGED_DAMAGE if not lob else _StatIds.MELEE_DAMAGE),
+		"crystal_damage": _crystal_mass_damage(def) if item_id != "crystal_bomb" else float(def.get("crystal_damage", 3.2)),
+		"knockback": float(def.get("knockback", 0.8)) * vs,
+		"blast_radius": float(def.get("blast_radius", 0.0)),
+		"source": item_id,
+		"kind": kind,
+		"ttl": 1.35 if kind == "bomb" else 2.8,
+		"crystal": crystal_manager,
+		"world": world,
+		"chunk_manager": chunk_manager,
+	})
+	if not ok and ammo != "" and inventory:
+		inventory.add_item(ammo, 1)
+	return ok
+
+
+func _shove(target: Node, voxels: float) -> void:
+	if voxels <= 0.0 or target == null or not target.has_method("apply_knockback"):
+		return
+	var origin := _attack_origin(0.5)
+	var center: Vector3 = (target as Node3D).global_position
+	if target.has_method("get_combat_center"):
+		center = target.get_combat_center()
+	target.apply_knockback(center - origin, voxels * _WorldSettings.get_active().voxel_scale)
+
+
+func _toast(text: String) -> void:
+	if not is_inside_tree():
+		return
+	var overlay = get_tree().get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("_show_toast"):
+		overlay.call("_show_toast", text)
 
 
 func _crystal_target_cell(range_v: float) -> Vector2i:

@@ -2,7 +2,7 @@ class_name ItemDef
 extends Resource
 ## Authored item. ItemTypes is the lookup façade (dict API for hotbar/weapons).
 
-enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC }
+enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
 
 const MAX_STACK := 99
@@ -24,6 +24,26 @@ const MAX_STACK := 99
 @export var attack_range: float = 0.0
 @export var cooldown: float = 0.0
 @export var crystal_damage: float = 0.0
+@export var description: String = ""
+## Targets a thrust can pass through. 1 is a normal swing.
+@export var pierce: int = 1
+## Horizontal shove in voxels. World distance is this times voxel_scale.
+@export var knockback: float = 0.8
+## Chebyshev splash on crystal cells. 1 is a 3×3. 0 is a single cell.
+@export var splash: int = 0
+@export var thrust: bool = false
+@export var projectile_speed: float = 0.0
+@export var projectile_gravity: float = 0.0
+## Stack spent per shot. Empty means the shot is free.
+@export var ammo_id: String = ""
+## Column radius for a thrown blast. 0 means not a bomb.
+@export var blast_radius: float = 0.0
+@export var throwable: bool = false
+
+@export_group("Armor")
+## Fraction removed from incoming damage, before the defense stat.
+@export var damage_reduction: float = 0.0
+@export var move_speed_mult: float = 1.0
 
 @export_group("Consumable")
 @export var heal_amount: float = 0.0
@@ -40,6 +60,7 @@ func to_lookup() -> Dictionary:
 		"stackable": stackable,
 		"max_stack": max_stack,
 		"visual_id": str(resolved_visual_id()),
+		"description": description,
 	}
 	if category == Category.WEAPON or category == Category.TOOL:
 		out["weapon_kind"] = int(weapon_kind)
@@ -48,8 +69,26 @@ func to_lookup() -> Dictionary:
 		out["range"] = attack_range
 		out["cooldown"] = cooldown
 		out["crystal_damage"] = crystal_damage
+		out["pierce"] = pierce
+		out["knockback"] = knockback
+		out["splash"] = splash
+		out["thrust"] = thrust
+		out["projectile_speed"] = projectile_speed
+		out["projectile_gravity"] = projectile_gravity
+		out["ammo_id"] = ammo_id
+		out["blast_radius"] = blast_radius
 	if category == Category.CONSUMABLE:
 		out["heal_amount"] = heal_amount
+		out["crystal_damage"] = crystal_damage
+		out["damage"] = damage
+		out["blast_radius"] = blast_radius
+		out["throwable"] = throwable
+		out["projectile_speed"] = projectile_speed
+		out["projectile_gravity"] = projectile_gravity
+		out["knockback"] = knockback
+	if category == Category.ARMOR:
+		out["damage_reduction"] = damage_reduction
+		out["move_speed_mult"] = move_speed_mult
 	return out
 
 
@@ -68,4 +107,16 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.cooldown = float(data.get("cooldown", 0.0))
 	d.crystal_damage = float(data.get("crystal_damage", 0.0))
 	d.heal_amount = float(data.get("heal_amount", 0.0))
+	d.description = str(data.get("description", ""))
+	d.pierce = int(data.get("pierce", 1))
+	d.knockback = float(data.get("knockback", 0.8))
+	d.splash = int(data.get("splash", 0))
+	d.thrust = bool(data.get("thrust", false))
+	d.projectile_speed = float(data.get("projectile_speed", 0.0))
+	d.projectile_gravity = float(data.get("projectile_gravity", 0.0))
+	d.ammo_id = str(data.get("ammo_id", ""))
+	d.blast_radius = float(data.get("blast_radius", 0.0))
+	d.throwable = bool(data.get("throwable", false))
+	d.damage_reduction = float(data.get("damage_reduction", 0.0))
+	d.move_speed_mult = float(data.get("move_speed_mult", 1.0))
 	return d

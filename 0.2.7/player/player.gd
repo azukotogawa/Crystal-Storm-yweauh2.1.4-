@@ -34,6 +34,11 @@ var _body_collision: CollisionShape3D
 signal died
 
 var health := 100.0
+## Burst hits set this. Crystal-field damage sets it to crystal_field before take_damage.
+var damage_source_hint: StringName = &"hit"
+## Seconds of invulnerability after a burst hit. Crystal pressure does not use this.
+var _hit_iframes: float = 0.0
+const HIT_IFRAMES := 0.6
 
 ## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
@@ -315,6 +320,7 @@ func _physics_process(delta: float) -> void:
 		profiler.begin("player_physics")
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("Player::_physics_process")
+	_tick_hit_iframes(delta)
 
 	var t0 := Time.get_ticks_usec() if measure else 0
 	_floor_probe.feet_height_hint = voxel_position.y
@@ -358,6 +364,8 @@ func _physics_process(delta: float) -> void:
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
+	if inventory and inventory.has_method("armor_speed_multiplier"):
+		speed *= inventory.armor_speed_multiplier()
 	speed *= _slope_speed_multiplier()
 	if measure:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
@@ -577,8 +585,16 @@ func _give_starting_loadout() -> void:
 	inventory.set_slot(1, "stone_pick", 1)
 	inventory.set_slot(2, "shortbow", 1)
 	inventory.set_slot(3, "wood", 16)
-	inventory.set_slot(4, "stone", 8)
+	inventory.set_slot(4, "stone", 16)
 	inventory.set_slot(5, "herb", 4)
+	# Extra kit lives in the bag. Leather is already worn. No crafting bench:
+	# sling spends stone, elites drop bombs and crystal weave.
+	inventory.set_slot(8, "spear", 1)
+	inventory.set_slot(9, "crystal_hammer", 1)
+	inventory.set_slot(10, "sling", 1)
+	inventory.set_slot(11, "crystal_bomb", 3)
+	inventory.set_slot(12, "stone_plate", 1)
+	inventory.armor_id = "leather_armor"
 
 
 func _ensure_spawn_chunks_loaded(spawn_col: Vector2i) -> void:
@@ -689,14 +705,35 @@ func apply_save_state(data: Dictionary) -> void:
 	_sync_global_from_voxel()
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, source: StringName = &"") -> void:
 	if amount <= 0.0:
 		return
+	var kind := source if source != &"" else damage_source_hint
+	damage_source_hint = &"hit"
+	var burst := kind != &"crystal_field"
+	if burst and _hit_iframes > 0.0:
+		return
+	if inventory and inventory.has_method("armor_damage_multiplier"):
+		amount *= inventory.armor_damage_multiplier()
 	var defense := get_stat(_StatIds.DEFENSE)
 	amount *= (1.0 - clampf(defense, 0.0, 0.9))
 	health = maxf(health - amount, 0.0)
+	if burst:
+		_hit_iframes = HIT_IFRAMES
 	if health <= 0.0:
 		died.emit()
+
+
+func _tick_hit_iframes(delta: float) -> void:
+	if _hit_iframes <= 0.0:
+		if player_mesh and not player_mesh.visible:
+			player_mesh.visible = true
+		return
+	_hit_iframes = maxf(_hit_iframes - delta, 0.0)
+	if player_mesh:
+		player_mesh.visible = fmod(_hit_iframes * 16.0, 2.0) >= 1.0 or _hit_iframes <= 0.0
+	if _hit_iframes <= 0.0 and player_mesh:
+		player_mesh.visible = true
 
 
 ## Restore health from existing consumables (e.g. herb). No new survival meters.

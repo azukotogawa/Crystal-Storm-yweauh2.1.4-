@@ -3,6 +3,8 @@ extends Control
 const _GameManager = preload("res://game/game_manager.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -34,6 +36,12 @@ var _objective_spawns: Label = null
 var _objective_coverage: Label = null
 var _objective_bearing: Label = null
 var _objective_arrow: Label = null
+var _boss: Node = null
+var _boss_panel: PanelContainer = null
+var _boss_label: Label = null
+var _boss_bar: ProgressBar = null
+var _boss_shown_hp: int = -1
+var _hud_player: Node = null
 
 
 func _ready() -> void:
@@ -447,7 +455,7 @@ func _update_map_temp_label() -> void:
 	var goal := _spawn_goal_line()
 	var suffix := "%s%s" % [temp_label, biome_label]
 	if _game_manager and _game_manager.run_state == _GameManager.RunState.WON:
-		_phase_label.text = "Phase: Victory — all spawns destroyed%s" % suffix
+		_phase_label.text = _victory_phase_text(suffix)
 	elif _game_manager and _game_manager.run_state == _GameManager.RunState.LOST:
 		_phase_label.text = "Phase: Defeat%s" % suffix
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
@@ -484,6 +492,7 @@ func _process(delta: float) -> void:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_update_game_hud()
 	_update_objective_hud()
+	_update_boss_bar()
 	_update_bake_chip()
 	if _GameplayInput.blocks_actions():
 		if profiler and profiler.has_method("end_func"):
@@ -554,8 +563,11 @@ func _update_game_hud() -> void:
 		var slot = weapon.get_active_item()
 		if slot != null:
 			var sid := str(slot.id)
-			if sid == "wooden_sword" or sid == "shortbow":
-				tool_line = "FIGHT · WASD · Space jump · LMB attack · RMB place %s" % place_name
+			if _is_fight_item(sid):
+				var verb := "LMB attack"
+				if int(_ItemTypes.get_def(sid).get("category", -1)) == _ItemTypes.Category.ARMOR:
+					verb = "LMB wear"
+				tool_line = "FIGHT · WASD · Space jump · %s · RMB place %s" % [verb, place_name]
 			else:
 				tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
 		else:
@@ -574,6 +586,121 @@ func _update_game_hud() -> void:
 		"%s  |  %s%s  |  %s%s%s%s%s  |  %s"
 		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]
 	)
+
+
+func _is_fight_item(item_id: String) -> bool:
+	var def := _ItemTypes.get_def(item_id)
+	if def.is_empty():
+		return false
+	if bool(def.get("throwable", false)):
+		return true
+	var category := int(def.get("category", -1))
+	if category == _ItemTypes.Category.ARMOR:
+		return true
+	return category == _ItemTypes.Category.WEAPON and int(def.get("weapon_kind", -1)) != _ItemTypes.WeaponKind.DIG
+
+
+func _victory_reason() -> String:
+	if _game_manager and "victory_reason" in _game_manager:
+		return str(_game_manager.victory_reason)
+	return ""
+
+
+func _victory_phase_text(suffix: String) -> String:
+	if _victory_reason() == "boss":
+		return "Phase: Victory — the Origin Warden fell%s" % suffix
+	return "Phase: Victory — all spawns destroyed%s" % suffix
+
+
+## Cached by the warden. The bar is hidden until the player is close or the boss has been hit.
+func track_boss(boss: Node) -> void:
+	if boss == null:
+		return
+	_boss = boss
+	_boss_shown_hp = -1
+	_ensure_boss_bar()
+
+
+func _ensure_boss_bar() -> void:
+	if _boss_panel != null:
+		return
+	_boss_panel = PanelContainer.new()
+	_boss_panel.name = "BossHpBar"
+	_boss_panel.visible = false
+	_boss_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_panel.offset_left = -170.0
+	_boss_panel.offset_right = 170.0
+	_boss_panel.offset_top = 8.0
+	_boss_panel.offset_bottom = 52.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.08, 0.03, 0.06, 0.86)
+	panel_style.border_color = Color(0.9, 0.22, 0.38, 0.95)
+	panel_style.set_border_width_all(1)
+	panel_style.set_content_margin_all(6)
+	_boss_panel.add_theme_stylebox_override("panel", panel_style)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
+	_boss_panel.add_child(box)
+	_boss_label = Label.new()
+	_boss_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_label.add_theme_font_size_override("font_size", 13)
+	_boss_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.86))
+	_boss_label.text = "Origin Warden"
+	box.add_child(_boss_label)
+	_boss_bar = ProgressBar.new()
+	_boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_bar.custom_minimum_size = Vector2(300, 12)
+	_boss_bar.max_value = 240.0
+	_boss_bar.value = 240.0
+	_boss_bar.show_percentage = false
+	box.add_child(_boss_bar)
+	add_child(_boss_panel)
+
+
+func _update_boss_bar() -> void:
+	if _boss_panel == null:
+		return
+	if _boss == null or not is_instance_valid(_boss):
+		_boss = null
+		_boss_panel.visible = false
+		return
+	var hp := float(_boss.get("health"))
+	var max_hp := maxf(float(_boss.get("max_health")), 1.0)
+	if hp <= 0.0:
+		_boss_panel.visible = false
+		_boss = null
+		return
+	var engaged := hp < max_hp - 0.5
+	if not engaged:
+		var player := _cached_player()
+		if player and player.has_method("get_voxel_position") and _boss is Node3D:
+			var pv: Vector3 = player.get_voxel_position()
+			var ws = _WorldSettings.get_active()
+			var body := _boss as Node3D
+			var flat := Vector2(
+				ws.world_to_column(body.global_position.x) - pv.x,
+				ws.world_to_column(body.global_position.z) - pv.z
+			)
+			engaged = flat.length() <= 22.0
+	_boss_panel.visible = engaged
+	if not engaged:
+		return
+	_boss_bar.max_value = max_hp
+	_boss_bar.value = hp
+	var shown := int(round(hp))
+	if shown != _boss_shown_hp:
+		_boss_shown_hp = shown
+		var phase := int(_boss.get("boss_phase"))
+		_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
+
+
+func _cached_player() -> Node:
+	if _hud_player != null and is_instance_valid(_hud_player):
+		return _hud_player
+	_hud_player = get_tree().get_first_node_in_group("player")
+	return _hud_player
 
 
 func _ensure_objective_hud() -> void:
@@ -805,12 +932,16 @@ func _on_phase_changed(new_phase: int) -> void:
 func _on_run_state_changed(new_state: int) -> void:
 	_panel.visible = true
 	if new_state == _GameManager.RunState.WON:
-		_title.text = "Victory — Crystal Shattered"
-		var prog := ""
-		if _crystal and _crystal.has_method("get_spawn_progress"):
-			var p: Dictionary = _crystal.get_spawn_progress()
-			prog = "\nAll %d spawn points destroyed." % int(p.get("total", 0))
-		_subtitle.text = "You shattered every crystal heart.%s\nPress R to restart." % prog
+		if _victory_reason() == "boss":
+			_title.text = "Victory — Origin Warden Fell"
+			_subtitle.text = "The warden is down. The storm breaks.\nPress R to restart."
+		else:
+			_title.text = "Victory — Crystal Shattered"
+			var prog := ""
+			if _crystal and _crystal.has_method("get_spawn_progress"):
+				var p: Dictionary = _crystal.get_spawn_progress()
+				prog = "\nAll %d spawn points destroyed." % int(p.get("total", 0))
+			_subtitle.text = "You shattered every crystal heart.%s\nPress R to restart." % prog
 	elif new_state == _GameManager.RunState.LOST:
 		_title.text = "Run Over"
 		var reason := ""

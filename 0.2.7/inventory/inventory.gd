@@ -5,12 +5,15 @@ const _ItemTypes = preload("res://helpers/item_types.gd")
 
 signal changed
 signal hotbar_changed(index: int)
+signal armor_changed(armor_id: String)
 
 const HOTBAR_SIZE := 8
 const BAG_SIZE := 24
 const TOTAL_SLOTS := HOTBAR_SIZE + BAG_SIZE
 
 var _slots: Array = []
+## One worn armor id. Empty means unarmored. Saved with the inventory dict.
+var armor_id: String = ""
 
 
 func _init() -> void:
@@ -118,6 +121,41 @@ func swap_slots(a: int, b: int) -> void:
 		hotbar_changed.emit(b)
 
 
+func equip_armor(item_id: String) -> bool:
+	if not _ItemTypes.is_armor(item_id):
+		return false
+	if not consume_item(item_id, 1):
+		return false
+	var prev := armor_id
+	armor_id = item_id
+	if prev != "":
+		add_item(prev, 1)
+	armor_changed.emit(armor_id)
+	changed.emit()
+	return true
+
+
+func clear_armor() -> bool:
+	if armor_id == "":
+		return false
+	var prev := armor_id
+	var leftover: int = add_item(prev, 1)
+	if leftover > 0:
+		return false
+	armor_id = ""
+	armor_changed.emit(armor_id)
+	changed.emit()
+	return true
+
+
+func armor_damage_multiplier() -> float:
+	return 1.0 - _ItemTypes.armor_reduction(armor_id)
+
+
+func armor_speed_multiplier() -> float:
+	return _ItemTypes.armor_speed_mult(armor_id)
+
+
 func count_item(item_id: String) -> int:
 	var total := 0
 	for slot in _slots:
@@ -152,7 +190,7 @@ func to_dict() -> Dictionary:
 			out.append(null)
 		else:
 			out.append({"id": slot.id, "count": slot.count})
-	return {"slots": out}
+	return {"slots": out, "armor": armor_id}
 
 
 func load_from_dict(data: Dictionary) -> void:
@@ -163,4 +201,6 @@ func load_from_dict(data: Dictionary) -> void:
 			_slots[i] = null
 		else:
 			_slots[i] = {"id": str(entry.get("id", "")), "count": int(entry.get("count", 1))}
+	armor_id = str(data.get("armor", armor_id))
 	changed.emit()
+	armor_changed.emit(armor_id)

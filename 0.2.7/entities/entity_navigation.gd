@@ -163,3 +163,42 @@ static func flee_cell(from_cell: Vector2i, threat_cell: Vector2i, distance: int 
 		int(round(dir.x * float(distance))),
 		int(round(dir.y * float(distance)))
 	)
+
+
+## Shove in world space. A step that would climb more than one layer stays put (no wall tunnel).
+## A world with sample_knock_ground(x, z) is a test stub. Live worlds use the walkable query.
+static func knockback_step(
+	current: Vector3,
+	dir: Vector3,
+	distance: float,
+	world,
+	chunk_manager,
+	crystal
+) -> Vector3:
+	if distance <= 0.0:
+		return current
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001:
+		return current
+	flat = flat.normalized()
+	var dest := current + flat * distance
+	var ground := _knock_ground_y(world, chunk_manager, crystal, dest, current.y)
+	var max_up: float = _WorldSettings.get_active().max_step_up_walk()
+	if absf(ground - current.y) > max_up + 0.05:
+		return current
+	dest.y = ground
+	return dest
+
+
+static func _knock_ground_y(world, chunk_manager, crystal, dest: Vector3, hint: float) -> float:
+	if world != null and world.has_method("sample_knock_ground"):
+		return float(world.sample_knock_ground(dest.x, dest.z))
+	var ws = _WorldSettings.get_active()
+	return walkable_y(
+		world,
+		chunk_manager,
+		crystal,
+		ws.world_to_column(dest.x),
+		ws.world_to_column(dest.z),
+		hint
+	)

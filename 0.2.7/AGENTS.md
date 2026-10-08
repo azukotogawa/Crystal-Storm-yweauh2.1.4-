@@ -8,7 +8,7 @@
 - Use `@export` instead of `export`.
 
 ## Project Overview
-**Crystalstorm** is a maze-builder tower-defense hybrid. The player constructs elaborate terrain mazes (build walls, dig tunnels) to maximize time before a growing crystal entity overwhelms the map. The crystal absorbs plants, animals, and ruins to gain power and spawn enemies. The player must balance maze-building/exploration with direct combat using weapons/relics. Win by destroying all crystal spawn points (final boss at origin).
+**Crystalstorm** is a maze-builder tower-defense hybrid. The player constructs elaborate terrain mazes (build walls, dig tunnels) to maximize time before a growing crystal entity overwhelms the map. The crystal absorbs plants, animals, and ruins to gain power and spawn enemies. The player must balance maze-building/exploration with direct combat using weapons/relics. Win by killing the Origin Warden (immediate victory) or by destroying every crystal spawn point. The origin heart stays sealed while any minor spawn remains and while the warden lives.
 
 Core gameplay pillars:
 - Long "Maze phase" (strategy, building, routing).

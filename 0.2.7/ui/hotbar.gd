@@ -118,7 +118,7 @@ func _refresh() -> void:
 		else:
 			var tex: Texture2D = null
 			if _registry and _registry.has_method("get_item_texture"):
-				tex = _registry.get_item_texture(str(slot.id))
+				tex = _registry.get_item_texture(_ItemTypes.visual_key(str(slot.id)))
 			icon.texture = tex
 			if int(slot.count) > 1:
 				label.text = "x%d" % int(slot.count)

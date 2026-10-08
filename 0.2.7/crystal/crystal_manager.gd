@@ -21,6 +21,7 @@ const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
+const _RelicChoice = preload("res://relics/relic_choice.gd")
 const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
@@ -441,19 +442,17 @@ func _player_relic_manager():
 
 
 ## Deterministic relic from a destroyed spawn. Skips relics already equipped.
+func set_origin_warden_alive(alive: bool) -> void:
+	if _spawn_ctrl:
+		_spawn_ctrl.origin_warden_alive = alive
+
+
 func _grant_relic_for_spawn(spawn: CrystalSpawnPoint) -> StringName:
 	var relic_mgr = _player_relic_manager()
 	if relic_mgr == null or not relic_mgr.has_method("equip"):
 		return &""
-	var equipped: Array = relic_mgr.equipped if "equipped" in relic_mgr else []
-	var start := posmod(spawn.id, _SPAWN_RELICS.size())
-	for step in _SPAWN_RELICS.size():
-		var relic_id: StringName = _SPAWN_RELICS[(start + step) % _SPAWN_RELICS.size()]
-		if relic_id in equipped:
-			continue
-		if relic_mgr.equip(relic_id):
-			return relic_id
-	return &""
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	return _RelicChoice.present(tree, relic_mgr, spawn.id, "Spawn destroyed — choose a relic")
 
 
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:

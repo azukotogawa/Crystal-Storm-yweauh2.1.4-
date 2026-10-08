@@ -29,6 +29,9 @@ var _player: Node3D
 var _world: InfiniteNoiseWorld
 var _game_manager: GameManager
 var _first_spawn_announced: bool = false
+## Spawn-point ids that already have a living warden or tyrant. Prevents doubles across retries and saves.
+var _guarded_spawn_ids: Dictionary = {}
+var _guardian_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -57,6 +60,8 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("enemy_spawner")
 		return
+	# Guardians are placed during the mite grace. The player starts far from the hearts.
+	_tick_guardians(delta)
 	_grace_elapsed += delta
 	if _grace_elapsed < spawn_grace_sec:
 		if profiler and profiler.has_method("end"):
@@ -279,19 +284,24 @@ func export_enemies() -> Array:
 	for enemy in _active:
 		if not is_instance_valid(enemy):
 			continue
-		out.append({
+		var row := {
 			"enemy_id": str(enemy.enemy_id),
 			"x": enemy.global_position.x,
 			"y": enemy.global_position.y,
 			"z": enemy.global_position.z,
 			"health": enemy.health,
-		})
+		}
+		if enemy.has_meta("guard_spawn_id"):
+			row["guard_spawn_id"] = int(enemy.get_meta("guard_spawn_id"))
+		out.append(row)
 	return out
 
 
 func import_enemies(rows: Array) -> void:
 	if rows.is_empty():
 		return
+	_guarded_spawn_ids.clear()
+	_guardian_timer = 1.0
 	_prune_active()
 	for enemy in _active:
 		if is_instance_valid(enemy):
@@ -316,6 +326,8 @@ func import_enemies(rows: Array) -> void:
 		enemy.setup(enemy_id, _player, spawn_def)
 		if row.has("health"):
 			enemy.health = float(row.health)
+		if row.has("guard_spawn_id"):
+			enemy.set_meta("guard_spawn_id", int(row["guard_spawn_id"]))
 		if enemy.has_method("sync_spatial_index"):
 			enemy.sync_spatial_index()
 		_active.append(enemy)
@@ -332,6 +344,90 @@ func _prune_active() -> void:
 		if is_instance_valid(e):
 			kept.append(e)
 	_active = kept
+
+
+## One origin warden and one shard tyrant per other living heart. Retries once a second until the world can place them.
+func _tick_guardians(delta: float) -> void:
+	if _game_manager == null:
+		_game_manager = get_tree().get_first_node_in_group("game_manager")
+	if _game_manager == null or _game_manager.run_state != GameManager.RunState.PLAYING:
+		return
+	_sync_warden_alive()
+	_guardian_timer += delta
+	if _guardian_timer < 1.0:
+		return
+	_guardian_timer = 0.0
+	_try_spawn_guardians()
+
+
+func _sync_warden_alive() -> void:
+	if _crystal == null or not _crystal.has_method("set_origin_warden_alive"):
+		return
+	var alive := false
+	for enemy in _active:
+		if not is_instance_valid(enemy):
+			continue
+		if enemy.get("enemy_id") != &"origin_warden":
+			continue
+		if float(enemy.get("health")) > 0.0:
+			alive = true
+			break
+	_crystal.set_origin_warden_alive(alive)
+
+
+func _try_spawn_guardians() -> void:
+	if _world == null:
+		_world = get_tree().get_first_node_in_group("world")
+	if _world == null or _crystal == null or not _crystal.has_method("get_active_spawns"):
+		return
+	var spawns: Array = _crystal.get_active_spawns()
+	if spawns.is_empty():
+		return
+	_claim_living_guardians(spawns)
+	for spawn in spawns:
+		var sid := int(spawn.id)
+		if _guarded_spawn_ids.has(sid):
+			continue
+		if _active.size() >= max_active:
+			return
+		var kind: StringName = &"origin_warden" if bool(spawn.is_boss) else &"spawn_elite"
+		if not spawn_enemy_at_column(kind, spawn.world_pos.x, spawn.world_pos.y, spawn.world_pos):
+			continue
+		var enemy: Node = _active[_active.size() - 1]
+		enemy.set_meta("guard_spawn_id", sid)
+		_guarded_spawn_ids[sid] = true
+
+
+func _claim_living_guardians(spawns: Array) -> void:
+	var boss_id := -999999
+	var open: Array[int] = []
+	for spawn in spawns:
+		var sid := int(spawn.id)
+		if _guarded_spawn_ids.has(sid):
+			continue
+		if bool(spawn.is_boss):
+			boss_id = sid
+		else:
+			open.append(sid)
+	for enemy in _active:
+		if not is_instance_valid(enemy) or float(enemy.get("health")) <= 0.0:
+			continue
+		var eid = enemy.get("enemy_id")
+		if eid == &"origin_warden" and boss_id != -999999 and not _guarded_spawn_ids.has(boss_id):
+			_guarded_spawn_ids[boss_id] = true
+			enemy.set_meta("guard_spawn_id", boss_id)
+		elif eid == &"spawn_elite":
+			var tagged := -999999
+			if enemy.has_meta("guard_spawn_id"):
+				tagged = int(enemy.get_meta("guard_spawn_id"))
+			if tagged != -999999:
+				_guarded_spawn_ids[tagged] = true
+				open.erase(tagged)
+			elif not open.is_empty():
+				var take: int = open[0]
+				open.remove_at(0)
+				_guarded_spawn_ids[take] = true
+				enemy.set_meta("guard_spawn_id", take)
 
 
 func _spawn_pressure_mult() -> float:
