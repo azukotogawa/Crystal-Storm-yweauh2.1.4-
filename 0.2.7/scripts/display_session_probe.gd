@@ -235,12 +235,19 @@ func _run() -> void:
 	for _w in 40:
 		await process_frame
 	var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
-	if build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
-		lines.append("- PASS %s — Build via interact at (%d,%d) delta=%.2f." % [stamp, build_wx, build_wz, build_delta])
+	var built: Dictionary = _FeatureRegistry.get_feature(build_wx, build_wz)
+	var built_id := str(built.get("build_id", ""))
+	var built_visual := str(built.get("visual_id", ""))
+	# Walls are WorldObjects: they block the column and do not raise the ground.
+	if build_ok and absf(build_delta) <= 0.01 and built_id == "stone_wall" and built_visual == "stone_wall":
+		lines.append("- PASS %s — Build WorldObject stone_wall at (%d,%d) delta=%.2f visual=%s." % [
+			stamp, build_wx, build_wz, build_delta, built_visual
+		])
 	else:
 		var stone_n: int = inv.count_item("stone") if inv else -1
-		lines.append("- [ ] %s — Build FAIL at (%d,%d) delta=%.2f stone=%d editor=%s." % [
-			stamp, build_wx, build_wz, build_delta, stone_n, terrain_editor != null
+		var reason := str(terrain_editor.last_fail_reason) if terrain_editor else ""
+		lines.append("- [ ] %s — Build FAIL at (%d,%d) delta=%.2f stone=%d editor=%s ok=%s id=%s reason=%s." % [
+			stamp, build_wx, build_wz, build_delta, stone_n, terrain_editor != null, build_ok, built_id, reason
 		])
 		failed = true
 

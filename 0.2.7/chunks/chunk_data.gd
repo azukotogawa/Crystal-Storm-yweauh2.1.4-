@@ -737,7 +737,7 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 	if _has_worker_snapshot:
 		hdelta = float(_worker_height_delta[x][z])
 		build_t = int(_worker_build_tile[x][z])
-		feat_t = int(_worker_feature_tile[x][z])
+		feat_t = mesh_feature_tile(x, z)
 	if _has_baked_base:
 		surface_map[x][z] = _WorldBakeService.compose_surface_height(
 			get_baked_base_height(x, z), hdelta
@@ -787,7 +787,7 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 		surface_map[x][z] = world.get_surface_height_worker(wx, wz, hdelta)
 		var mesh_build: int = build_t if absf(hdelta) > 0.01 else -1
 		# Feature overrides retile without a height edit (water-replace beside river).
-		var mesh_feat: int = feat_t
+		var mesh_feat: int = mesh_feature_tile(x, z)
 		tile_map[x][z] = world.get_tile_type_worker(wx, wz, mesh_build, mesh_feat)
 	else:
 		surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
@@ -957,7 +957,7 @@ func _compute_column_maps(use_uncached: bool = true):
 				tile_map[x][z] = w.get_tile_type_worker(
 					wx, wz,
 					int(_worker_build_tile[x][z]),
-					int(_worker_feature_tile[x][z])
+					mesh_feature_tile(x, z)
 				)
 			elif use_uncached:
 				surface_map[x][z] = w.get_surface_height_uncached(wx, wz)
@@ -1058,6 +1058,18 @@ func get_worker_build_tile(lx: int, lz: int) -> int:
 	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
 		return -1
 	return int(_worker_build_tile[lx][lz])
+
+
+## Feature tile that should retile the heightfield.
+## Baked plant decorations are drawn by the vegetation layer and must not
+## change the column the mesh plan was stored against.
+func mesh_feature_tile(lx: int, lz: int) -> int:
+	var ft: int = get_worker_feature_tile(lx, lz)
+	if ft < 0:
+		return -1
+	if get_worker_feature_is_baked(lx, lz) and VoxelTypes.is_plant_decoration_tile(ft):
+		return -1
+	return ft
 
 
 func get_worker_feature_tile(lx: int, lz: int) -> int:

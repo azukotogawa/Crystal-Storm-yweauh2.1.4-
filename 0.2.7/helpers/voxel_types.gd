@@ -56,6 +56,18 @@ const TREE_TRUNK := 47
 const FARMLAND := 48
 const TOWN_PATH := 49
 
+
+## Ground recolors and props written by vegetation scatter.
+## These stay off the heightfield mesh: the vegetation layer draws them, and
+## baked mesh plans must match the stored ground tile.
+static func is_plant_decoration_tile(tile_type: int) -> bool:
+	return tile_type == GRASS_TUFT \
+		or tile_type == BUSH \
+		or tile_type == TREE_TRUNK \
+		or tile_type == GRASSLAND2 \
+		or tile_type == GRASSLAND3 \
+		or tile_type == HILLS2
+
 ## Production chunk mesh atlas: assets/tiles/Cube.png (7 cols × 10 rows × 32 px).
 ## new_tile_set.tres / voxelsnew.png use a different 64 px strip layout — do not bind to ChunkView.
 const ATLAS_TEXTURE_PATH := "res://assets/tiles/Cube.png"
