@@ -48,6 +48,12 @@ var _special: _BossBrain
 var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
 var boss_phase: int = 1
+## Columns from the heart. Aggro opens at the inner radius and drops at the outer one.
+const GUARDIAN_AGGRO_COLUMNS := 14.0
+const GUARDIAN_LEASH_COLUMNS := 22.0
+var _guardian_aggro: bool = false
+var _heart_locked: bool = false
+var _locked_heart: Vector2i = Vector2i.ZERO
 
 
 func _ready() -> void:
@@ -347,6 +353,72 @@ func _target_column_pos() -> Vector3:
 	return _target.global_position
 
 
+## Player.get_voxel_position() is column X/Z. Boss aim and the leash need that, not world_to_column of it.
+func _player_column() -> Vector2i:
+	if _target != null and is_instance_valid(_target) and _target.has_method("get_voxel_position"):
+		var v: Vector3 = _target.get_voxel_position()
+		return Vector2i(floori(v.x), floori(v.z))
+	if _target != null and is_instance_valid(_target):
+		return _EntityNavigation.column_pos(_target.global_position)
+	return _EntityNavigation.column_pos(global_position)
+
+
+func _player_world_pos() -> Vector3:
+	if _target == null or not is_instance_valid(_target):
+		return global_position
+	if _target.has_method("get_voxel_position"):
+		var v: Vector3 = _target.get_voxel_position()
+		var ws = WorldSettings.get_active()
+		return Vector3(ws.column_to_world(v.x), v.y, ws.column_to_world(v.z))
+	return _target.global_position
+
+
+func _is_guardian() -> bool:
+	return enemy_id == &"origin_warden" or enemy_id == &"spawn_elite"
+
+
+func bind_heart(cell: Vector2i) -> void:
+	_heart_locked = true
+	_locked_heart = cell
+	_patrol_anchor = cell
+	if brain:
+		brain.home_pos = cell
+		brain.patrol_anchor = cell
+		brain.defend_center = cell
+		brain.target_cell = cell
+
+
+func _heart_cell() -> Vector2i:
+	if _heart_locked:
+		return _locked_heart
+	if brain:
+		return brain.home_pos
+	return _patrol_anchor
+
+
+func _refresh_guardian_aggro() -> void:
+	if _target == null or not is_instance_valid(_target):
+		_guardian_aggro = false
+		return
+	var heart := _heart_cell()
+	var player_to_heart := Vector2(_player_column()).distance_to(Vector2(heart))
+	var self_to_heart := Vector2(_EntityNavigation.column_pos(global_position)).distance_to(Vector2(heart))
+	if player_to_heart > GUARDIAN_LEASH_COLUMNS or self_to_heart > GUARDIAN_LEASH_COLUMNS:
+		_guardian_aggro = false
+	elif player_to_heart <= GUARDIAN_AGGRO_COLUMNS:
+		_guardian_aggro = true
+
+
+func _cancel_guardian_attack() -> void:
+	if _special == null:
+		return
+	if _special.windup <= 0.0 and (_ring == null or not _ring.visible):
+		return
+	_special.windup = 0.0
+	_special.action = &""
+	_hide_ring()
+
+
 func _physics_process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
@@ -361,8 +433,15 @@ func _physics_process(delta: float) -> void:
 
 	_age += delta
 	_tick_hurt_lock(delta)
-	if _special:
+	var guardian := _is_guardian()
+	if guardian:
+		_refresh_guardian_aggro()
+	# Specials aim at a world position. They stay off while the guardian is leashed home,
+	# so a charge cannot walk the warden across the map.
+	if _special and (not guardian or _guardian_aggro):
 		_tick_special(delta)
+	elif guardian:
+		_cancel_guardian_attack()
 	if lifetime > 0.0 and _age >= lifetime:
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
@@ -375,7 +454,11 @@ func _physics_process(delta: float) -> void:
 
 	var self_cell := _EntityNavigation.column_pos(global_position)
 	var player_cell := self_cell
-	player_cell = _EntityNavigation.column_pos(_target_column_pos())
+	if guardian:
+		# voxel_position is already column space. column_pos() expects world units.
+		player_cell = _player_column()
+	else:
+		player_cell = _EntityNavigation.column_pos(_target_column_pos())
 
 	var target_pos := _target_column_pos()
 	if brain.should_detonate(global_position, target_pos):
@@ -387,6 +470,8 @@ func _physics_process(delta: float) -> void:
 	var crystal_sim = _crystal.get_fluid_sim() if _crystal and _crystal.has_method("get_fluid_sim") else null
 	var nearby_depth := _max_neighbor_crystal_depth(self_cell)
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
+	if guardian and not _guardian_aggro:
+		target_cell = _heart_cell()
 
 	if _knock_left > 0.0:
 		var step := minf(_knock_left, maxf(move_speed, 6.0) * delta * 2.4)
@@ -417,7 +502,14 @@ func _physics_process(delta: float) -> void:
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
-	if brain.wants_attack(self_cell, player_cell):
+	if guardian:
+		if _guardian_aggro and brain.wants_attack(self_cell, player_cell):
+			var aim := _player_world_pos()
+			if global_position.distance_to(aim) <= 1.8:
+				if _target.has_method("take_damage"):
+					_target.take_damage(contact_damage)
+				attacked_player.emit(contact_damage)
+	elif brain.wants_attack(self_cell, player_cell):
 		if global_position.distance_to(target_pos) <= 1.8:
 			if _target.has_method("take_damage"):
 				_target.take_damage(contact_damage)
@@ -486,14 +578,14 @@ func _tick_special(delta: float) -> void:
 		return
 	var dist_v := 99.0
 	if _target and is_instance_valid(_target):
-		var there := _target_column_pos()
+		var there := _player_world_pos()
 		dist_v = Vector2(there.x - global_position.x, there.z - global_position.z).length()
 		dist_v /= maxf(WorldSettings.get_active().voxel_scale, 0.001)
 	var intent: Dictionary = _special.tick(delta, dist_v)
 	boss_phase = int(intent.get("phase", boss_phase))
 	var act := StringName(str(intent.get("action", "")))
 	if bool(intent.get("marker_fresh", false)):
-		_ring_anchor = _target_column_pos() if _target else global_position
+		_ring_anchor = _player_world_pos() if _target else global_position
 		_show_ring(act)
 	if bool(intent.get("telegraph", false)):
 		_show_ring(act)
@@ -537,7 +629,7 @@ func _resolve_special(act: StringName, summon: int) -> void:
 		global_position = lunged
 		_notify_spatial_moved()
 	if _target and _target.has_method("take_damage"):
-		var there := _target_column_pos()
+		var there := _player_world_pos()
 		var reach: float = 2.4 * vs
 		if act == &"burst":
 			reach = 4.6 * vs

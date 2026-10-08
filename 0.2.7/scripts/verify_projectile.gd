@@ -37,6 +37,10 @@ func _run() -> void:
 		failed = true
 	if not _miss_off_line(parent):
 		failed = true
+	if not _fade_material_reused():
+		failed = true
+	if not _pool_after_parent_freed():
+		failed = true
 
 	if failed:
 		push_error("Projectile tests FAILED")
@@ -160,4 +164,86 @@ func _miss_off_line(parent: Node3D) -> bool:
 		arrow.ttl = 0.0
 		arrow.integrate(0.05, [])
 	print("OK arrow misses the target off its line")
+	return true
+
+
+func _fade_material_reused() -> bool:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var arrow := _launch(holder, {
+		"origin": Vector3(0, 4, 0),
+		"velocity": Vector3(0, 0, 10),
+		"gravity": 0.0,
+		"kind": "arrow",
+		"ttl": 3.0,
+	})
+	if arrow == null:
+		push_error("fade-material launch failed")
+		holder.free()
+		return false
+	if arrow.get("_fade_mat") == null:
+		push_error("fade material should exist when the projectile is created")
+		holder.free()
+		return false
+	arrow._stick_at(arrow.global_position)
+	var mesh := arrow.get_node_or_null("ProjectileMesh") as MeshInstance3D
+	var first := mesh.material_override if mesh else null
+	arrow.stuck = false
+	arrow.active = true
+	arrow._stick_at(arrow.global_position)
+	var second := mesh.material_override if mesh else null
+	if first == null or first != second:
+		push_error("impact allocated a new fade material")
+		holder.free()
+		return false
+	if first == _Projectile._shared_arrow_mat():
+		push_error("stuck arrow is still using the shared material")
+		holder.free()
+		return false
+	arrow.stuck = false
+	arrow.active = true
+	arrow.ttl = 0.0
+	arrow.integrate(0.05, [])
+	holder.free()
+	print("OK projectile reuses its fade material")
+	return true
+
+
+func _pool_after_parent_freed() -> bool:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var spec := {
+		"origin": Vector3(2, 4, 0),
+		"velocity": Vector3(0, 0, 8),
+		"gravity": 0.0,
+		"kind": "arrow",
+		"ttl": 30.0,
+	}
+	var filled := 0
+	for _i in _Projectile.MAX_LIVE:
+		if _launch(holder, spec) == null:
+			break
+		filled += 1
+	if filled < _Projectile.MAX_LIVE:
+		push_error("could not fill the projectile pool, got %d" % filled)
+		holder.free()
+		return false
+	var ghost: Projectile = (load("res://weapons/projectile.gd") as GDScript).new()
+	_Projectile._pool.append(ghost)
+	var dead: Object = ghost
+	ghost.free()
+	if not is_instance_valid(dead):
+		_Projectile._pool.append(dead)
+	holder.free()
+	var next := Node3D.new()
+	root.add_child(next)
+	var again := _launch(next, spec)
+	if again == null or not is_instance_valid(again):
+		push_error("launch after parent free failed")
+		next.free()
+		return false
+	again.ttl = 0.0
+	again.integrate(0.05, [])
+	next.free()
+	print("OK projectile pool survives a freed parent")
 	return true

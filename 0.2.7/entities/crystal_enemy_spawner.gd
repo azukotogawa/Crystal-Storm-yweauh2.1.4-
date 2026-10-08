@@ -60,10 +60,12 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("enemy_spawner")
 		return
-	# Guardians are placed during the mite grace. The player starts far from the hearts.
-	_tick_guardians(delta)
+	# Mites and guardians both wait out spawn grace. A warden placed at t=0
+	# reaches the opening spawn before the player can orient.
 	_grace_elapsed += delta
-	if _grace_elapsed < spawn_grace_sec:
+	var in_grace := _grace_elapsed < spawn_grace_sec
+	_tick_guardians(delta, in_grace)
+	if in_grace:
 		if profiler and profiler.has_method("end"):
 			profiler.end("enemy_spawner")
 		return
@@ -327,7 +329,11 @@ func import_enemies(rows: Array) -> void:
 		if row.has("health"):
 			enemy.health = float(row.health)
 		if row.has("guard_spawn_id"):
-			enemy.set_meta("guard_spawn_id", int(row["guard_spawn_id"]))
+			var guard_id := int(row["guard_spawn_id"])
+			enemy.set_meta("guard_spawn_id", guard_id)
+			var heart = _column_for_spawn_id(guard_id)
+			if heart is Vector2i and enemy.has_method("bind_heart"):
+				enemy.bind_heart(heart)
 		if enemy.has_method("sync_spatial_index"):
 			enemy.sync_spatial_index()
 		_active.append(enemy)
@@ -347,17 +353,31 @@ func _prune_active() -> void:
 
 
 ## One origin warden and one shard tyrant per other living heart. Retries once a second until the world can place them.
-func _tick_guardians(delta: float) -> void:
+## No new guardian is placed during spawn grace. Ones already in the world stay, and the leash holds them.
+func _tick_guardians(delta: float, in_grace: bool) -> void:
 	if _game_manager == null:
 		_game_manager = get_tree().get_first_node_in_group("game_manager")
 	if _game_manager == null or _game_manager.run_state != GameManager.RunState.PLAYING:
 		return
 	_sync_warden_alive()
+	if in_grace:
+		return
 	_guardian_timer += delta
 	if _guardian_timer < 1.0:
 		return
 	_guardian_timer = 0.0
 	_try_spawn_guardians()
+
+
+func _column_for_spawn_id(spawn_id: int) -> Variant:
+	if _crystal == null:
+		_bind()
+	if _crystal == null or not _crystal.has_method("get_active_spawns"):
+		return null
+	for spawn in _crystal.get_active_spawns():
+		if int(spawn.id) == spawn_id:
+			return spawn.world_pos
+	return null
 
 
 func _sync_warden_alive() -> void:
@@ -395,6 +415,8 @@ func _try_spawn_guardians() -> void:
 			continue
 		var enemy: Node = _active[_active.size() - 1]
 		enemy.set_meta("guard_spawn_id", sid)
+		if enemy.has_method("bind_heart"):
+			enemy.bind_heart(spawn.world_pos)
 		_guarded_spawn_ids[sid] = true
 
 

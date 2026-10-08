@@ -54,7 +54,7 @@ Each enemy keeps one `0.22s` hurt lock after a player hit. A second hit from the
 
 ## Projectiles
 
-`weapons/projectile.gd` pools up to 32 arrows, stones, and bombs. They share one box mesh and two sphere meshes, unshaded, shadow casting off. No physics body per shot. Each step is semi-implicit gravity plus a segment test against cached combat nodes, then terrain, then a crystal cell. The node cache is reused for shots that stay near each other in the same frame.
+`weapons/projectile.gd` pools up to 32 arrows, stones, and bombs. They share one box mesh and two sphere meshes, unshaded, shadow casting off. No physics body per shot. Each node owns one fade material, created with the node and reused on every impact. Taking from the pool skips freed instances, and the live count is recomputed when a shot leaves the tree with its scene. Each step is semi-implicit gravity plus a segment test against cached combat nodes, then terrain, then a crystal cell. The node cache is reused for shots that stay near each other in the same frame.
 
 ## Boss and minibosses
 
@@ -69,7 +69,7 @@ The HUD boss bar is hidden until the player is within 22 columns or the warden h
 
 **Shard Tyrant** (`spawn_elite`) is one elite on each other active heart. 96 HP, speed 7.5, contact 16, visual `shard_guard` scaled 1.35. It only slams (windup 0.8s). No second phase and no summons.
 
-The spawner places them about once a second while the run is playing, including during the mite grace, and will not place a second copy of a heart that already has a living guardian. Saves store `guard_spawn_id` so a resume does not double them. A save that predates guardians grows them on load. The warden flag is not cleared from `_exit_tree` (save import frees the old body before the new one is ready).
+Guardians are not placed during the mite grace (`spawn_grace_sec`). After that, the spawner retries about once a second and will not place a second copy of a heart that already has a living guardian. A guardian only aggros when the player is within 14 columns of its heart. It walks back when the player is past 22 columns, or when the guardian itself is dragged past 22. It does not roam the map, and it does not charge or slam while leashed home. Saves store `guard_spawn_id` so a resume does not double them and the body is leashed to that heart again. A save that predates guardians grows them on load, after grace. The warden flag is not cleared from `_exit_tree` (save import frees the old body before the new one is ready).
 
 ## Rewards and how a run ends
 
@@ -80,7 +80,7 @@ The spawner places them about once a second while the run is playing, including 
 - Shard Tyrant: 1 crystal bomb. Origin Warden: 1 crystal weave.
 - Town militia and villagers: no items. The toast still says they went down.
 
-Destroying a spawn heart, killing a tyrant, or killing the warden offers 3 distinct relics from `RelicChoice` (`mason_glove`, `flow_anchor`, `crystal_ward`, `pathfinder_charm`, `ruin_seal`, rotated by a seed). With a `game_overlay` in the tree, `RelicChoicePanel` opens, sets `pause_open`, and slows time to 0.05. Without that overlay (headless probes), the first rolled relic is equipped. Relics still also come from the older absorption unlock path; absorbing grass does not equip one. Spawn destruction does.
+Destroying a spawn heart, killing a tyrant, or killing the warden offers 3 distinct relics from `RelicChoice` (`mason_glove`, `flow_anchor`, `crystal_ward`, `pathfinder_charm`, `ruin_seal`, rotated by a seed). With a `game_overlay` in the tree, `RelicChoicePanel` opens, sets `pause_open`, and slows time to 0.05. The pre-modal `Engine.time_scale` is saved once, while no panel is open, and restored after the last queued panel closes. A second offer (a heart and the warden dying together) does not save 0.05 and restore 0.05. If every relic slot is full, the panel stays open and the player picks one equipped relic to replace. Without that overlay (headless probes), the first rolled relic is equipped. Relics still also come from the older absorption unlock path; absorbing grass does not equip one. Spawn destruction does.
 
 Win:
 

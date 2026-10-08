@@ -11,6 +11,7 @@ const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 static var _pool: Array = []
+static var _tracked: Array = []
 static var _live: int = 0
 static var _arrow_mesh: BoxMesh
 static var _stone_mesh: SphereMesh
@@ -39,6 +40,14 @@ var _crystal = null
 var _world = null
 var _chunk_manager = null
 var _mesh: MeshInstance3D
+## One fade material per node, created with the node. Impacts reuse it.
+var _fade_mat: StandardMaterial3D
+## Set while remove_child is parking this node in the pool, so _exit_tree does not drop it.
+var _pool_detach: bool = false
+
+
+func _init() -> void:
+	_fade_mat = _new_fade_material()
 
 
 static func launch(parent: Node, spec: Dictionary) -> bool:
@@ -56,23 +65,53 @@ static func live_count() -> int:
 
 
 static func _take_node(parent: Node) -> Projectile:
+	_prune_pool()
+	_recount_live()
 	var node: Projectile = null
 	if _live >= MAX_LIVE:
 		node = _oldest_live(parent)
+		if node != null and is_instance_valid(node):
+			node._recycle_keep_count()
+		else:
+			_recount_live()
+			node = null
+			if _live >= MAX_LIVE:
+				return null
+	if node == null:
+		while not _pool.is_empty():
+			var candidate = _pool.pop_back()
+			if is_instance_valid(candidate):
+				node = candidate
+				break
 		if node == null:
-			return null
-		node._recycle_keep_count()
-	elif not _pool.is_empty():
-		node = _pool.pop_back()
-		_live += 1
-	else:
-		node = (load("res://weapons/projectile.gd") as GDScript).new()
-		_live += 1
+			node = (load("res://weapons/projectile.gd") as GDScript).new()
+	if not is_instance_valid(node):
+		return null
 	if node.get_parent() != parent:
 		if node.get_parent():
 			node.get_parent().remove_child(node)
 		parent.add_child(node)
 	return node
+
+
+static func _prune_pool() -> void:
+	var i := 0
+	while i < _pool.size():
+		if is_instance_valid(_pool[i]):
+			i += 1
+		else:
+			_pool.remove_at(i)
+
+
+static func _recount_live() -> void:
+	var i := 0
+	while i < _tracked.size():
+		var entry = _tracked[i]
+		if is_instance_valid(entry) and (entry as Projectile).active and (entry as Projectile).is_inside_tree():
+			i += 1
+		else:
+			_tracked.remove_at(i)
+	_live = _tracked.size()
 
 
 static func _oldest_live(parent: Node) -> Projectile:
@@ -108,6 +147,7 @@ func _activate(spec: Dictionary) -> void:
 	_chunk_manager = spec.get("chunk_manager")
 	_ensure_mesh()
 	_aim_mesh()
+	_note_tracked()
 
 
 func _process(delta: float) -> void:
@@ -124,7 +164,9 @@ func integrate(delta: float, nodes: Array = []) -> String:
 		stick_left -= delta
 		if _mesh and _mesh.material_override is StandardMaterial3D:
 			var mat := _mesh.material_override as StandardMaterial3D
-			mat.albedo_color.a = clampf(stick_left / STICK_TIME, 0.0, 1.0)
+			var color := mat.albedo_color
+			color.a = clampf(stick_left / STICK_TIME, 0.0, 1.0)
+			mat.albedo_color = color
 		if stick_left <= 0.0:
 			_recycle()
 		return "stuck"
@@ -295,10 +337,7 @@ func _stick_at(at: Vector3) -> void:
 	stick_left = STICK_TIME
 	velocity = Vector3.ZERO
 	_ensure_mesh()
-	if _mesh and _mesh.material_override is StandardMaterial3D:
-		var fade := (_mesh.material_override as StandardMaterial3D).duplicate() as StandardMaterial3D
-		fade.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_mesh.material_override = fade
+	_use_fade_material()
 	_ping(at)
 
 
@@ -319,23 +358,70 @@ func _recycle() -> void:
 	_chunk_manager = null
 	if _mesh:
 		_apply_shared_material()
+	_pool_detach = true
 	if get_parent():
 		get_parent().remove_child(self)
-	if _pool.size() < MAX_LIVE:
+	_pool_detach = false
+	_forget_tracked()
+	if is_instance_valid(self) and _pool.size() < MAX_LIVE:
 		_pool.append(self)
 	else:
 		queue_free()
-	_live = maxi(_live - 1, 0)
 
 
 func _recycle_keep_count() -> void:
-	# Reuse a live slot without changing the live counter.
+	# Reuse a live slot. The node stays tracked; _activate does not add it twice.
 	active = false
 	stuck = false
 	_crystal = null
 	_world = null
-	_live = maxi(_live - 1, 0)
-	_live += 1
+	_chunk_manager = null
+	if _mesh:
+		_apply_shared_material()
+
+
+func _exit_tree() -> void:
+	if _pool_detach:
+		return
+	# Parent scene freed this shot. Drop it before the next run pops a dead node.
+	active = false
+	_forget_tracked()
+	var pool_i := _pool.find(self)
+	if pool_i >= 0:
+		_pool.remove_at(pool_i)
+
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_PREDELETE:
+		return
+	var pool_i := _pool.find(self)
+	if pool_i >= 0:
+		_pool.remove_at(pool_i)
+	_forget_tracked()
+
+
+func _note_tracked() -> void:
+	if _tracked.find(self) < 0:
+		_tracked.append(self)
+	_live = _tracked.size()
+
+
+func _forget_tracked() -> void:
+	var live_i := _tracked.find(self)
+	if live_i >= 0:
+		_tracked.remove_at(live_i)
+	_live = _tracked.size()
+
+
+func _use_fade_material() -> void:
+	if _fade_mat == null:
+		_fade_mat = _new_fade_material()
+	var source := _shared_material_for_kind()
+	var color := source.albedo_color
+	color.a = 1.0
+	_fade_mat.albedo_color = color
+	if _mesh:
+		_mesh.material_override = _fade_mat
 
 
 func _ensure_mesh() -> void:
@@ -359,13 +445,17 @@ func _ensure_mesh() -> void:
 func _apply_shared_material() -> void:
 	if _mesh == null:
 		return
+	_mesh.material_override = _shared_material_for_kind()
+
+
+func _shared_material_for_kind() -> StandardMaterial3D:
 	match kind:
 		&"stone":
-			_mesh.material_override = _shared_stone_mat()
+			return _shared_stone_mat()
 		&"bomb":
-			_mesh.material_override = _shared_bomb_mat()
+			return _shared_bomb_mat()
 		_:
-			_mesh.material_override = _shared_arrow_mat()
+			return _shared_arrow_mat()
 
 
 func _aim_mesh() -> void:
@@ -425,4 +515,10 @@ static func _unshaded(color: Color) -> StandardMaterial3D:
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.albedo_color = color
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
+
+
+static func _new_fade_material() -> StandardMaterial3D:
+	var mat := _unshaded(Color(1, 1, 1, 1))
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	return mat

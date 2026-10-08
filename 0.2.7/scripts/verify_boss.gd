@@ -4,7 +4,9 @@ extends SceneTree
 
 const _BossBrain = preload("res://entities/boss_brain.gd")
 const _RelicChoice = preload("res://relics/relic_choice.gd")
+const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _GameManager = preload("res://game/game_manager.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 
 class _RelicBag extends RefCounted:
@@ -13,6 +15,22 @@ class _RelicBag extends RefCounted:
 	func equip(relic_id: StringName) -> bool:
 		got.append(relic_id)
 		return true
+
+
+class _FullBag extends RefCounted:
+	var equipped: Array[StringName] = []
+	var max_slots: int = 3
+
+	func equip(relic_id: StringName) -> bool:
+		if relic_id in equipped:
+			return true
+		if equipped.size() >= max_slots:
+			return false
+		equipped.append(relic_id)
+		return true
+
+	func unequip(relic_id: StringName) -> void:
+		equipped.erase(relic_id)
 
 
 func _init() -> void:
@@ -27,6 +45,12 @@ func _run() -> void:
 		failed = true
 	if not _relics():
 		failed = true
+	if not _queued_relic_scale():
+		failed = true
+	if not _full_slots_replace():
+		failed = true
+	Engine.time_scale = 1.0
+	_GameplayInput.pause_open = false
 	if failed:
 		push_error("Boss tests FAILED")
 		quit(1)
@@ -115,3 +139,119 @@ func _relics() -> bool:
 		return false
 	print("OK relic choice offers 3 distinct relics")
 	return true
+
+
+func _queued_relic_scale() -> bool:
+	Engine.time_scale = 0.8
+	_GameplayInput.pause_open = false
+	var overlay := Control.new()
+	overlay.name = "RelicProbeOverlay"
+	overlay.add_to_group("game_overlay")
+	root.add_child(overlay)
+	var bag := _RelicBag.new()
+	_RelicChoice.present(self, bag, 0, "Heart destroyed — choose a relic")
+	_RelicChoice.present(self, bag, 1, "Origin Warden fell — choose a relic")
+	if not is_equal_approx(Engine.time_scale, 0.05):
+		push_error("first relic panel should slow time, got %s" % Engine.time_scale)
+		overlay.free()
+		return false
+	var first := _live_panel(overlay)
+	if first == null or not _press_role(first, "offer", "mason_glove"):
+		push_error("could not choose the first queued relic")
+		overlay.free()
+		return false
+	if not is_equal_approx(Engine.time_scale, 0.05):
+		push_error("queued relic panel dropped slow-mo, got %s" % Engine.time_scale)
+		overlay.free()
+		return false
+	var second := _live_panel(overlay)
+	if second == null or second == first or not _press_role(second, "offer", "flow_anchor"):
+		push_error("queued relic panel did not open")
+		overlay.free()
+		return false
+	if not is_equal_approx(Engine.time_scale, 0.8):
+		push_error("last relic panel restored %s, want the pre-modal 0.8" % Engine.time_scale)
+		overlay.free()
+		return false
+	if _GameplayInput.pause_open:
+		push_error("pause_open stayed set after the last relic panel")
+		overlay.free()
+		return false
+	overlay.free()
+	print("OK queued relic panels restore the pre-modal time scale")
+	return true
+
+
+func _full_slots_replace() -> bool:
+	Engine.time_scale = 1.0
+	_GameplayInput.pause_open = false
+	var overlay := Control.new()
+	overlay.name = "RelicFullOverlay"
+	overlay.add_to_group("game_overlay")
+	root.add_child(overlay)
+	var bag := _FullBag.new()
+	bag.equipped = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
+	_RelicChoicePanel.open(self, bag, [&"pathfinder_charm", &"ruin_seal", &"mason_glove"], "Slots full")
+	var panel := _live_panel(overlay)
+	if panel == null or not _press_role(panel, "offer", "pathfinder_charm"):
+		push_error("could not pick a relic while slots are full")
+		overlay.free()
+		return false
+	if _live_panel(overlay) == null:
+		push_error("full relic slots closed the offer")
+		overlay.free()
+		return false
+	if not is_equal_approx(Engine.time_scale, 0.05):
+		push_error("replace choice should keep the run slowed")
+		overlay.free()
+		return false
+	if bag.equipped.size() != 3 or &"pathfinder_charm" in bag.equipped:
+		push_error("full slots equipped a relic before a replace choice")
+		overlay.free()
+		return false
+	var hint := ""
+	for node in _walk(panel):
+		if node is Label and "slots are full" in (node as Label).text.to_lower():
+			hint = (node as Label).text
+			break
+	if hint == "":
+		push_error("full slots did not say the slots are full")
+		overlay.free()
+		return false
+	if not _press_role(panel, "replace", "mason_glove"):
+		push_error("could not replace an equipped relic")
+		overlay.free()
+		return false
+	if &"pathfinder_charm" not in bag.equipped or &"mason_glove" in bag.equipped:
+		push_error("replace did not swap relics, got %s" % [bag.equipped])
+		overlay.free()
+		return false
+	if not is_equal_approx(Engine.time_scale, 1.0):
+		push_error("replace left time_scale at %s" % Engine.time_scale)
+		overlay.free()
+		return false
+	overlay.free()
+	print("OK full relic slots replace one and then restore time")
+	return true
+
+
+func _live_panel(host: Node) -> RelicChoicePanel:
+	for child in host.get_children():
+		if child is RelicChoicePanel and not (child as Node).is_queued_for_deletion():
+			return child as RelicChoicePanel
+	return null
+
+
+func _press_role(panel: Node, role: String, relic_id: String) -> bool:
+	for node in _walk(panel):
+		if node is Button and str(node.get_meta("relic_role", "")) == role and str(node.get_meta("relic_id", "")) == relic_id:
+			(node as Button).pressed.emit()
+			return true
+	return false
+
+
+func _walk(node: Node) -> Array:
+	var out: Array = [node]
+	for child in node.get_children():
+		out.append_array(_walk(child))
+	return out
