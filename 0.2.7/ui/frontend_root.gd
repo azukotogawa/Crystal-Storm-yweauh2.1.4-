@@ -3,7 +3,9 @@ extends Control
 
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
-const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _SettingsMenu = preload("res://ui/settings_menu.gd")
+const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 
 enum Screen { MAIN, WORLD_SELECT, NEW_WORLD, SETTINGS }
 
@@ -24,23 +26,14 @@ var _name_edit: LineEdit
 var _seed_edit: LineEdit
 var _rename_edit: LineEdit
 var _confirm_layer: Control
-var _preset_opt: OptionButton
-var _rd_slider: HSlider
-var _veg_slider: HSlider
-var _fx_check: CheckBox
-var _shake_check: CheckBox
-var _hit_stop_check: CheckBox
-var _flash_check: CheckBox
-var _vol_master: HSlider
-var _vol_music: HSlider
-var _vol_sfx: HSlider
-var _vol_ui: HSlider
 
 
 func _ready() -> void:
 	add_to_group("frontend_root")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_ThemeBuilder.apply(self)
+	_PlayerSettings.apply_to_tree(get_tree())
 	_build_chrome()
 	if _WorldManager.consume_return_to_select():
 		_show(Screen.WORLD_SELECT)
@@ -171,9 +164,23 @@ func _build_main() -> void:
 	settings.name = "Settings"
 	var quit_b := _btn("Quit", func(): get_tree().quit())
 	quit_b.name = "Quit"
+	var how := _btn("How to play", func(): _TutorialOverlay.open(get_tree(), true))
+	how.name = "HowToPlay"
+	var controls := _btn("Controls", func(): _TutorialOverlay.open_controls(get_tree()))
+	controls.name = "Controls"
 	box.add_child(play)
 	box.add_child(settings)
+	box.add_child(how)
+	box.add_child(controls)
 	box.add_child(quit_b)
+	var credit := Label.new()
+	credit.name = "FontCredit"
+	credit.text = "Pixelify Sans, Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans), SIL Open Font License 1.1."
+	credit.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	credit.add_theme_font_size_override("font_size", 12)
+	credit.add_theme_color_override("font_color", COL_MUTED)
+	box.add_child(credit)
 
 
 func _build_world_select() -> void:
@@ -372,103 +379,11 @@ func _on_create_world() -> void:
 
 func _build_settings() -> void:
 	var box := _card()
-	_title(box, "Settings", "Existing graphics and view options")
-	var data: Dictionary = _PlayerSettings.load_settings()
-	var preset_l := Label.new()
-	preset_l.text = "Graphics quality"
-	preset_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(preset_l)
-	_preset_opt = OptionButton.new()
-	_preset_opt.add_item("Low", int(_PerformanceQualityConfig.Preset.LOW))
-	_preset_opt.add_item("Medium", int(_PerformanceQualityConfig.Preset.MEDIUM))
-	_preset_opt.add_item("High", int(_PerformanceQualityConfig.Preset.HIGH))
-	_preset_opt.add_item("Safe", int(_PerformanceQualityConfig.Preset.SAFE))
-	var want: int = int(data.get("quality_preset", _PerformanceQualityConfig.Preset.MEDIUM))
-	for i in _preset_opt.item_count:
-		if _preset_opt.get_item_id(i) == want:
-			_preset_opt.select(i)
-			break
-	box.add_child(_preset_opt)
-	var rd_l := Label.new()
-	rd_l.text = "Render distance"
-	rd_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(rd_l)
-	_rd_slider = HSlider.new()
-	_rd_slider.min_value = 1
-	_rd_slider.max_value = 8
-	_rd_slider.step = 1
-	_rd_slider.value = int(data.get("render_distance", 2))
-	box.add_child(_rd_slider)
-	var veg_l := Label.new()
-	veg_l.text = "Vegetation density"
-	veg_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(veg_l)
-	_veg_slider = HSlider.new()
-	_veg_slider.min_value = 0
-	_veg_slider.max_value = 1
-	_veg_slider.step = 0.05
-	_veg_slider.value = float(data.get("vegetation_scatter_multiplier", 1.0))
-	box.add_child(_veg_slider)
-	_fx_check = CheckBox.new()
-	_fx_check.text = "Combat effects"
-	_fx_check.button_pressed = bool(data.get("combat_visuals_enabled", true))
-	box.add_child(_fx_check)
-	_shake_check = _settings_check(box, "Screen shake", bool(data.get("screen_shake_enabled", true)))
-	_hit_stop_check = _settings_check(box, "Hit stop", bool(data.get("hit_stop_enabled", true)))
-	_flash_check = _settings_check(box, "Hit flash", bool(data.get("flash_effects_enabled", true)))
-	_vol_master = _settings_volume(box, "Master volume", float(data.get("volume_master", 1.0)))
-	_vol_music = _settings_volume(box, "Music volume", float(data.get("volume_music", 1.0)))
-	_vol_sfx = _settings_volume(box, "SFX volume", float(data.get("volume_sfx", 1.0)))
-	_vol_ui = _settings_volume(box, "UI volume", float(data.get("volume_ui", 1.0)))
-	box.add_child(_btn("Save", _on_save_settings))
+	box.get_parent().custom_minimum_size = Vector2(640, 560)
+	_title(box, "Settings", "Controls, audio, display, and accessibility")
+	var menu := _SettingsMenu.new()
+	menu.name = "SettingsMenu"
+	menu.custom_minimum_size = Vector2(520, 360)
+	menu.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(menu)
 	box.add_child(_btn("Back", func(): _show(Screen.MAIN)))
-	_status = Label.new()
-	_status.add_theme_color_override("font_color", COL_MUTED)
-	box.add_child(_status)
-
-
-func _settings_check(box: Node, text: String, pressed: bool) -> CheckBox:
-	var check := CheckBox.new()
-	check.text = text
-	check.button_pressed = pressed
-	box.add_child(check)
-	return check
-
-
-func _settings_volume(box: Node, text: String, value: float) -> HSlider:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(label)
-	var slider := HSlider.new()
-	slider.min_value = 0.0
-	slider.max_value = 1.0
-	slider.step = 0.05
-	slider.value = value
-	box.add_child(slider)
-	return slider
-
-
-func _on_save_settings() -> void:
-	var data := _PlayerSettings.load_settings()
-	var preset := int(data.get("quality_preset", _PerformanceQualityConfig.Preset.MEDIUM))
-	if _preset_opt:
-		preset = _preset_opt.get_item_id(_preset_opt.selected)
-	data["quality_preset"] = preset
-	data["render_distance"] = int(_rd_slider.value) if _rd_slider else int(data.get("render_distance", 2))
-	data["vegetation_scatter_multiplier"] = float(_veg_slider.value) if _veg_slider else float(data.get("vegetation_scatter_multiplier", 1.0))
-	data["combat_visuals_enabled"] = bool(_fx_check.button_pressed) if _fx_check else bool(data.get("combat_visuals_enabled", true))
-	data["screen_shake_enabled"] = bool(_shake_check.button_pressed) if _shake_check else bool(data.get("screen_shake_enabled", true))
-	data["hit_stop_enabled"] = bool(_hit_stop_check.button_pressed) if _hit_stop_check else bool(data.get("hit_stop_enabled", true))
-	data["flash_effects_enabled"] = bool(_flash_check.button_pressed) if _flash_check else bool(data.get("flash_effects_enabled", true))
-	data["volume_master"] = float(_vol_master.value) if _vol_master else float(data.get("volume_master", 1.0))
-	data["volume_music"] = float(_vol_music.value) if _vol_music else float(data.get("volume_music", 1.0))
-	data["volume_sfx"] = float(_vol_sfx.value) if _vol_sfx else float(data.get("volume_sfx", 1.0))
-	data["volume_ui"] = float(_vol_ui.value) if _vol_ui else float(data.get("volume_ui", 1.0))
-	if _PlayerSettings.save_settings(data):
-		var audio := get_node_or_null("/root/AudioManager")
-		if audio and audio.has_method("apply_saved_volumes"):
-			audio.apply_saved_volumes()
-		_set_status("Settings saved.")
-	else:
-		_set_status("Could not save settings.")

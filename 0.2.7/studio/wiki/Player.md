@@ -26,7 +26,8 @@ The player is the active agent for movement, terrain editing, combat, inventory 
 - `RelicManager` can apply stat modifiers.
 - `Camera3D` controls isometric movement orientation.
 - `TargetHighlight` provides action preview feedback.
-- `GameManager` observes player death.
+- `GameManager` observes player death and records the run summary.
+- Settings, keybinds, the first-run tutorial, and UI scale live in `studio/wiki/UI.md`. Walk bob follows `Juice.walk_bob_allowed()` so Reduce motion can turn it off.
 
 ## Progression
 

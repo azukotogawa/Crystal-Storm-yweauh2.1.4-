@@ -5,6 +5,11 @@ const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
+const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -42,6 +47,8 @@ var _boss_label: Label = null
 var _boss_bar: ProgressBar = null
 var _boss_shown_hp: int = -1
 var _hud_player: Node = null
+var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
+var _run_summary: _RunSummaryPanel = null
 
 
 func _ready() -> void:
@@ -71,6 +78,9 @@ func _ready() -> void:
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
 	_ensure_objective_hud()
+	_ThemeBuilder.apply(self)
+	apply_hud_palette(_PlayerSettings.colorblind_palette)
+	call_deferred("_maybe_show_tutorial")
 
 
 func _ensure_bake_chip() -> void:
@@ -657,6 +667,7 @@ func _ensure_boss_bar() -> void:
 	_boss_bar.show_percentage = false
 	box.add_child(_boss_bar)
 	add_child(_boss_panel)
+	apply_hud_palette(_PlayerSettings.colorblind_palette)
 
 
 func _update_boss_bar() -> void:
@@ -802,7 +813,7 @@ func _update_objective_hud() -> void:
 		_objective_bearing.text = parts[3]
 	if _objective_arrow:
 		_objective_arrow.rotation = bearing.rotation
-		_objective_arrow.modulate = Color(0.95, 0.75, 1.0) if playing else Color(0.7, 0.7, 0.75)
+		_objective_arrow.modulate = _arrow_play_color if playing else Color(0.7, 0.7, 0.75)
 
 
 static func build_objective_lines(
@@ -951,4 +962,39 @@ func _on_run_state_changed(new_state: int) -> void:
 			_subtitle.text = "%s\nPress R to restart." % reason
 		else:
 			_subtitle.text = "The corruption won this time.\nPress R to restart."
+	if new_state == _GameManager.RunState.WON or new_state == _GameManager.RunState.LOST:
+		_show_run_summary()
 	_update_map_temp_label()
+
+
+func _maybe_show_tutorial() -> void:
+	if not _TutorialOverlay.should_show():
+		return
+	_TutorialOverlay.open(get_tree(), false)
+
+
+func apply_hud_palette(colorblind: bool) -> void:
+	_arrow_play_color = _CrystalPalette.hud_arrow(colorblind)
+	if _objective_arrow:
+		_objective_arrow.add_theme_color_override("font_color", _arrow_play_color)
+		_objective_arrow.modulate = _arrow_play_color
+	if _boss_label:
+		_boss_label.add_theme_color_override("font_color", _CrystalPalette.boss_label_color(colorblind))
+
+
+func _show_run_summary() -> void:
+	if _game_manager == null or not _game_manager.has_method("run_summary"):
+		return
+	if _run_summary == null:
+		_run_summary = _RunSummaryPanel.new()
+		_run_summary.name = "RunSummary"
+		var box := get_node_or_null("Panel/VBox")
+		if box:
+			box.add_child(_run_summary)
+		else:
+			add_child(_run_summary)
+	_panel.offset_left = -260.0
+	_panel.offset_right = 260.0
+	_panel.offset_top = -230.0
+	_panel.offset_bottom = 230.0
+	_run_summary.show_summary(_game_manager.run_summary())

@@ -26,6 +26,14 @@ var run_state: RunState = RunState.PLAYING
 var last_loss_reason: String = ""
 ## "boss" when the origin warden dies. "spawns" when every heart is destroyed.
 var victory_reason: String = ""
+## Run summary counters. Updated on signals, not by scanning the tree.
+var run_started_msec: int = 0
+var spawns_destroyed: int = 0
+var crystal_cells_broken: int = 0
+var enemies_killed: int = 0
+var relics_taken: int = 0
+var deaths: int = 0
+var _stats_bound: bool = false
 ## How many settlements have fallen this run (penalty already applied).
 var fallen_towns: int = 0
 ## Last town-fall penalty line for the HUD and probes.
@@ -40,6 +48,8 @@ var _world: InfiniteNoiseWorld
 
 func _ready() -> void:
 	add_to_group("game_manager")
+	if run_started_msec <= 0:
+		run_started_msec = Time.get_ticks_msec()
 	call_deferred("_bind")
 
 
@@ -69,6 +79,7 @@ func _bind() -> void:
 
 	if _player and _player.has_signal("died"):
 		_player.died.connect(_on_player_died)
+	_bind_run_stats()
 
 
 func _process(delta: float) -> void:
@@ -210,7 +221,79 @@ func _on_crystal_touched_player() -> void:
 
 
 func _on_player_died() -> void:
+	note_death()
 	_set_lost("You died.")
+
+
+func note_spawn_destroyed() -> void:
+	spawns_destroyed += 1
+
+
+func note_crystal_broken(count: int = 1) -> void:
+	crystal_cells_broken += maxi(count, 0)
+
+
+func note_enemy_killed() -> void:
+	enemies_killed += 1
+
+
+func note_relic_taken() -> void:
+	relics_taken += 1
+
+
+func note_death() -> void:
+	deaths += 1
+
+
+func run_summary() -> Dictionary:
+	var elapsed := 0.0
+	if run_started_msec > 0:
+		elapsed = maxf(0.0, float(Time.get_ticks_msec() - run_started_msec) / 1000.0)
+	var outcome := "playing"
+	if run_state == RunState.WON:
+		outcome = "win"
+	elif run_state == RunState.LOST:
+		outcome = "loss"
+	return {
+		"outcome": outcome,
+		"time_sec": elapsed,
+		"spawns_destroyed": spawns_destroyed,
+		"boss_defeated": victory_reason == "boss",
+		"crystal_broken": crystal_cells_broken,
+		"enemies_killed": enemies_killed,
+		"relics_taken": relics_taken,
+		"deaths": deaths,
+		"victory_reason": victory_reason,
+		"loss_reason": last_loss_reason,
+	}
+
+
+func _bind_run_stats() -> void:
+	if _stats_bound:
+		return
+	_stats_bound = true
+	if _crystal and _crystal.has_signal("spawn_destroyed") and not _crystal.spawn_destroyed.is_connected(_on_spawn_destroyed_stat):
+		_crystal.spawn_destroyed.connect(_on_spawn_destroyed_stat)
+	if _crystal and _crystal.has_signal("crystal_mass_hit") and not _crystal.crystal_mass_hit.is_connected(_on_crystal_mass_stat):
+		_crystal.crystal_mass_hit.connect(_on_crystal_mass_stat)
+	var relics = get_tree().get_first_node_in_group("relic_manager") if get_tree() else null
+	if relics and relics.has_signal("relic_equipped") and not relics.relic_equipped.is_connected(_on_relic_equipped_stat):
+		relics.relic_equipped.connect(_on_relic_equipped_stat)
+		if relics_taken == 0 and "equipped" in relics and relics.equipped is Array:
+			relics_taken = (relics.equipped as Array).size()
+
+
+func _on_spawn_destroyed_stat(_spawn) -> void:
+	note_spawn_destroyed()
+
+
+func _on_crystal_mass_stat(_pos: Vector3, _amount: float, broken: bool) -> void:
+	if broken:
+		note_crystal_broken(1)
+
+
+func _on_relic_equipped_stat(_relic_id: StringName) -> void:
+	note_relic_taken()
 
 
 func _set_won() -> void:

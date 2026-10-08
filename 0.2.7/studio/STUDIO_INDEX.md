@@ -35,6 +35,7 @@ Compact map of `/studio`. Do not duplicate project facts here. Point agents to t
 | `World.md` | Seed + overlays + feature roles |
 | `Performance.md` | Presets and budget risks |
 | `DeveloperTools.md` | Dev chat, F3, scenarios, verification |
+| `UI.md` | Theme, tooltips, settings, tutorial, run summary |
 
 ## Architecture & knowledge (read only when needed)
 

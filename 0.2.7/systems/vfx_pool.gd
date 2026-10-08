@@ -6,6 +6,7 @@ extends Node3D
 enum Kind { SHATTER, DUST, SPLASH, SPAWN_DEATH, CORRUPT }
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 var _cap: int = 10
 var _amount: int = 12
@@ -108,6 +109,9 @@ func active_count() -> int:
 
 
 func burst(kind: int, pos: Vector3, tint: Color = Color.WHITE, scale: float = 1.0) -> bool:
+	# Shatter and spawn-death are the large bursts. Dust, splash, and corruption stay.
+	if _PlayerSettings.reduce_motion and (kind == Kind.SHATTER or kind == Kind.SPAWN_DEATH):
+		return false
 	if kind == Kind.CORRUPT:
 		if _corrupt_wait > 0.0:
 			return false

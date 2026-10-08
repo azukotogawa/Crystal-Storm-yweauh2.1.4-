@@ -16,6 +16,14 @@ venv/
 __pycache__/
 *.pyc
 
+# Build output, logs, and local session scratch
+dist/
+*.log
+.tmp_*/
+accept_shots/
+.claude/settings.local.json
+conversation with supergrok
+
 # OS / editor
 .DS_Store
 Thumbs.db

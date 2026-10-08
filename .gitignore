@@ -1,0 +1,13 @@
+# Godot and local environments
+.godot/
+venv/
+.venv/
+
+# Build output, logs, and local session scratch
+dist/
+*.log
+__pycache__/
+.tmp_*/
+accept_shots/
+.claude/settings.local.json
+conversation with supergrok

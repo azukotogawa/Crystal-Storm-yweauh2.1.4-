@@ -26,6 +26,8 @@ func _ready() -> void:
 	_ensure_buses()
 	_build_players()
 	apply_saved_volumes()
+	# Keybinds, UI scale, and display once, before gameplay input. Later volume loads do not reapply them.
+	_PlayerSettings.apply_runtime(get_tree())
 	set_process(true)
 
 

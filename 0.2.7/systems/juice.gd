@@ -55,7 +55,7 @@ static func weight_for_item(item_id: String, damage: float) -> float:
 static func request_hit_stop(seconds: float, tree: SceneTree, force: bool = false) -> bool:
 	if tree == null:
 		return false
-	if not _PlayerSettings.hit_stop_enabled:
+	if _PlayerSettings.reduce_motion or not _PlayerSettings.hit_stop_enabled:
 		return false
 	if not force and DisplayServer.get_name() == "headless":
 		return false
@@ -100,7 +100,7 @@ static func cancel_hit_stop() -> float:
 static func request_shake(amount: float, force: bool = false) -> void:
 	if amount <= 0.0:
 		return
-	if not _PlayerSettings.screen_shake_enabled:
+	if _PlayerSettings.reduce_motion or not _PlayerSettings.screen_shake_enabled:
 		return
 	if not force and DisplayServer.get_name() == "headless":
 		return
@@ -108,7 +108,7 @@ static func request_shake(amount: float, force: bool = false) -> void:
 
 
 static func shake_offset(delta: float) -> Vector3:
-	if not _PlayerSettings.screen_shake_enabled or _amp <= 0.0001:
+	if _PlayerSettings.reduce_motion or not _PlayerSettings.screen_shake_enabled or _amp <= 0.0001:
 		_amp = 0.0
 		return Vector3.ZERO
 	_amp *= exp(-maxf(delta, 0.0) * 16.0)
@@ -123,7 +123,13 @@ static func clear_shake() -> void:
 	_amp = 0.0
 
 
+static func walk_bob_allowed() -> bool:
+	return not _PlayerSettings.reduce_motion
+
+
 static func creature_bob_allowed(body: Node3D, player: Node3D) -> bool:
+	if _PlayerSettings.reduce_motion:
+		return false
 	if bob_columns <= 0.0 or body == null or player == null or not is_instance_valid(player):
 		return false
 	var limit := bob_columns * 2.0

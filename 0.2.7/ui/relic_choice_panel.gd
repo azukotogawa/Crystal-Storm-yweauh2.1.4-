@@ -5,6 +5,8 @@ extends Control
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _Juice = preload("res://systems/juice.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 
 const SLOW_SCALE := 0.05
 
@@ -56,6 +58,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	z_index = 40
+	_ThemeBuilder.apply(self)
 	Engine.time_scale = SLOW_SCALE
 	if not _GameplayInput.pause_open:
 		_GameplayInput.pause_open = true
@@ -148,6 +151,8 @@ func _add_button(relic_id: StringName, role: String, text: String) -> void:
 	btn.pressed.connect(func(): _ui("ui_click"))
 	btn.pressed.connect(_on_button.bind(relic_id, role))
 	btn.mouse_entered.connect(func(): _ui("ui_hover"))
+	btn.mouse_entered.connect(_on_relic_hover.bind(relic_id))
+	btn.mouse_exited.connect(func(): _TooltipPanel.hide_tip())
 	_box.add_child(btn)
 	_buttons.append(btn)
 
@@ -167,6 +172,10 @@ func _relic_label(relic_id: StringName) -> String:
 	if def.description != "":
 		return "%s — %s" % [label, def.description]
 	return label
+
+
+func _on_relic_hover(relic_id: StringName) -> void:
+	_TooltipPanel.show_relic(get_tree(), str(relic_id))
 
 
 func _on_button(relic_id: StringName, role: String) -> void:

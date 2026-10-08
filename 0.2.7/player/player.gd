@@ -778,7 +778,7 @@ func _apply_walk_bob(delta: float) -> void:
 	var sx := 1.0
 	var sy := 1.0
 	var bob := 0.0
-	if current_state == State.RUNNING:
+	if current_state == State.RUNNING and _Juice.walk_bob_allowed():
 		_bob_phase += delta * 11.0
 		var s := sin(_bob_phase)
 		bob = s * _ws().voxel_scale * 0.04

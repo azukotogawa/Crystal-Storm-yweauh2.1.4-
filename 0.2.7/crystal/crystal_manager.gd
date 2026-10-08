@@ -22,6 +22,8 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
 const _RelicChoice = preload("res://relics/relic_choice.gd")
+const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
@@ -612,10 +614,9 @@ func _setup_materials() -> void:
 	# Scissor keeps the mass solid enough to cast and receive shadows.
 	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	_crystal_material.alpha_scissor_threshold = 0.35
-	# Brighter mass so the purple front is readable in the first minute (presentation only).
-	_crystal_material.albedo_color = Color(0.72, 0.28, 1.0, 0.88)
+	# Brighter mass so the front is readable in the first minute (presentation only).
 	_crystal_material.emission_enabled = true
-	_crystal_material.emission = Color(0.55, 0.18, 0.95)
+	_CrystalPalette.paint_mass(_crystal_material, _PlayerSettings.colorblind_palette)
 	_crystal_material.emission_energy_multiplier = 2.15
 	_crystal_material.roughness = 0.08
 	_crystal_material.metallic = 0.42
@@ -634,11 +635,38 @@ func _setup_materials() -> void:
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_marker_material.albedo_color = Color(1.0, 0.35, 0.9, 0.85)
 	_marker_material.emission_enabled = true
-	_marker_material.emission = Color(1.0, 0.2, 0.8)
+	_CrystalPalette.paint_marker(_marker_material, _PlayerSettings.colorblind_palette)
 	_marker_material.emission_energy_multiplier = 2.5
 	_marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+
+
+## Recolour the live mass, markers, and spawn bars. No textures are swapped.
+func apply_color_palette(colorblind: bool) -> void:
+	if _crystal_material:
+		_CrystalPalette.paint_mass(_crystal_material, colorblind)
+	if _marker_material:
+		_CrystalPalette.paint_marker(_marker_material, colorblind)
+	for key in _spawn_markers.keys():
+		var anchor := _spawn_markers[key] as Node3D
+		if anchor:
+			_repaint_spawn_anchor(anchor, colorblind)
+
+
+func _repaint_spawn_anchor(anchor: Node3D, colorblind: bool) -> void:
+	var boss := bool(anchor.get_meta("spawn_is_boss", false))
+	var sprite := anchor.get_node_or_null("Sprite") as Sprite3D
+	if sprite:
+		sprite.modulate = _CrystalPalette.marker_modulate(colorblind, boss)
+		if sprite.material_override is StandardMaterial3D:
+			_CrystalPalette.paint_marker(sprite.material_override as StandardMaterial3D, colorblind)
+	var prism := anchor.get_node_or_null("FallbackPrism") as MeshInstance3D
+	if prism and prism.material_override is StandardMaterial3D:
+		_CrystalPalette.paint_mass(prism.material_override as StandardMaterial3D, colorblind)
+	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
+	if fill and fill.material_override is StandardMaterial3D:
+		var mat := fill.material_override as StandardMaterial3D
+		mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, boss, false)
 
 
 func _initialize_spawns() -> void:
@@ -1910,12 +1938,14 @@ func _refresh_spawn_markers() -> void:
 
 		var anchor := Node3D.new()
 		anchor.name = "SpawnMarker_%d" % spawn.id
+		anchor.set_meta("spawn_is_boss", spawn.is_boss)
+		var colorblind := _PlayerSettings.colorblind_palette
 
 		var marker := Sprite3D.new()
 		marker.name = "Sprite"
 		marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		marker.pixel_size = vs * (0.011 if spawn.is_boss else 0.014)
-		marker.modulate = Color(1.0, 0.92, 1.0, 0.95) if spawn.is_boss else Color(0.88, 0.78, 1.0, 0.88)
+		marker.modulate = _CrystalPalette.marker_modulate(colorblind, spawn.is_boss)
 		var vis = get_tree().get_first_node_in_group("game_visual_registry")
 		var has_tex := false
 		if vis and vis.spawn_marker_textures_enabled:
@@ -1935,9 +1965,8 @@ func _refresh_spawn_markers() -> void:
 			box.size = Vector3(marker_size, marker_size * 1.4, marker_size)
 			prism.mesh = box
 			var pmat := StandardMaterial3D.new()
-			pmat.albedo_color = Color(0.78, 0.28, 1.0, 0.92)
 			pmat.emission_enabled = true
-			pmat.emission = Color(0.55, 0.18, 0.95)
+			_CrystalPalette.paint_mass(pmat, colorblind)
 			pmat.emission_energy_multiplier = 2.0
 			prism.material_override = pmat
 			prism.position.y = marker_size * 0.15
@@ -1980,7 +2009,7 @@ func _attach_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint, marker_size:
 	fill.mesh = fill_mesh
 	var fill_mat := StandardMaterial3D.new()
 	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fill_mat.albedo_color = Color(1.0, 0.35, 0.55) if spawn.is_boss else Color(0.82, 0.28, 1.0)
+	fill_mat.albedo_color = _CrystalPalette.spawn_fill(_PlayerSettings.colorblind_palette, spawn.is_boss, false)
 	fill.material_override = fill_mat
 	fill.position = Vector3(0.0, marker_size * 1.25, vs * 0.02)
 	fill.set_meta("bar_width", width * 0.92)
@@ -2005,12 +2034,11 @@ func _apply_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint) -> void:
 	fill.position.x = -full_w * (1.0 - ratio) * 0.5
 	if fill.material_override is StandardMaterial3D:
 		var mat := fill.material_override as StandardMaterial3D
+		var colorblind := _PlayerSettings.colorblind_palette
 		if ratio <= 0.3:
-			mat.albedo_color = Color(1.0, 0.28, 0.22)
-		elif spawn.is_boss:
-			mat.albedo_color = Color(1.0, 0.35, 0.55)
+			mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, spawn.is_boss, true)
 		else:
-			mat.albedo_color = Color(0.82, 0.28, 1.0)
+			mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, spawn.is_boss, false)
 
 
 func _check_player_contact() -> void:

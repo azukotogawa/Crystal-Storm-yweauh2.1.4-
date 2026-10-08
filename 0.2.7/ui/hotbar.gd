@@ -3,6 +3,8 @@ extends Control
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
@@ -24,6 +26,7 @@ func _ready() -> void:
 		if _player.inventory:
 			_player.inventory.changed.connect(_refresh)
 			_player.inventory.hotbar_changed.connect(_on_hotbar_changed)
+	_ThemeBuilder.apply(self)
 	_build_slots()
 	call_deferred("_bind_registry")
 	call_deferred("_refresh")
@@ -79,10 +82,26 @@ func _build_slots() -> void:
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(label)
 
+		panel.mouse_entered.connect(_on_slot_hover.bind(i))
+		panel.mouse_exited.connect(_on_slot_unhover)
 		add_child(panel)
 		_slot_nodes.append(panel)
 		_icon_nodes.append(icon)
 		_label_nodes.append(label)
+
+
+func _on_slot_hover(index: int) -> void:
+	if _player == null or _player.inventory == null:
+		return
+	var slot = _player.inventory.get_hotbar_item(index)
+	if slot == null:
+		_TooltipPanel.hide_tip()
+		return
+	_TooltipPanel.show_item(get_tree(), str(slot.id))
+
+
+func _on_slot_unhover() -> void:
+	_TooltipPanel.hide_tip()
 
 
 func _on_hotbar_changed(_index: int) -> void:

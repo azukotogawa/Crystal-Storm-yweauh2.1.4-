@@ -17,7 +17,7 @@ The current item loop is:
 - `ItemTypes` defines built-in item categories and weapon/tool metadata.
 - `WeaponController` reads the active hotbar item.
 - `TerrainEditor` consumes materials for build/channel/plant actions.
-- `Hotbar` and `InventoryPanel` present inventory state.
+- `Hotbar` and `InventoryPanel` present inventory state. Hovering a slot, armor, or relic opens `TooltipPanel` (`studio/wiki/UI.md`).
 - `SaveGameService` persists inventory.
 
 ## Current item roles

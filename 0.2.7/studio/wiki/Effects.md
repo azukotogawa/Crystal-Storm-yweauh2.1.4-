@@ -32,9 +32,10 @@ Melee and the pick ask the pool for a swing mesh. Spear is a thin thrust box. Ha
 
 `Juice` (`systems/juice.gd`):
 
-- Walk bob and landing squash scale the visual node. The player bob runs only while `RUNNING` and multiplies the existing landing squash. Creatures bob only inside `bob_columns` (LOW 8, MEDIUM 22, HIGH 36, SAFE 0) and only if the camera can see them. The physics body is not scaled.
-- Hit-stop dips `Engine.time_scale` to 0.02 for 40–80 ms and restores the previous scale with a real-time timer. Gameplay calls do nothing when `DisplayServer.get_name() == "headless"` (Godot 4.7 `--headless` leaves `OS.has_feature("headless")` false), when the setting is off, or when time scale is already away from 1 (the relic modal uses 0.05). `verify_juice` passes `force` to run the dip. A relic offer calls `Juice.cancel_hit_stop()` first and saves that pre-dip scale, so a killing blow cannot leave the run at 0.02.
-- Screen shake is a decaying offset added by `player/camera.gd` after it writes `global_position`. Boss impacts and bombs use a larger amount. Gameplay shake uses the same headless check as hit-stop.
+- Walk bob and landing squash scale the visual node. The player bob runs only while `RUNNING` and `Juice.walk_bob_allowed()`. Creatures bob only inside `bob_columns` (LOW 8, MEDIUM 22, HIGH 36, SAFE 0), only if the camera can see them, and only when `creature_bob_allowed` is true. The physics body is not scaled.
+- Hit-stop dips `Engine.time_scale` to 0.02 for 40–80 ms and restores the previous scale with a real-time timer. Gameplay calls do nothing when `DisplayServer.get_name() == "headless"` (Godot 4.7 `--headless` leaves `OS.has_feature("headless")` false), when the setting is off, when Reduce motion is on, or when time scale is already away from 1 (the relic modal uses 0.05). `verify_juice` passes `force` to run the dip. Reduce motion still refuses that `force` call. A relic offer calls `Juice.cancel_hit_stop()` first and saves that pre-dip scale, so a killing blow cannot leave the run at 0.02.
+- Screen shake is a decaying offset added by `player/camera.gd` after it writes `global_position`. Boss impacts and bombs use a larger amount. Gameplay shake uses the same headless check as hit-stop, and Reduce motion returns a zero offset.
+- Reduce motion (`PlayerSettings.reduce_motion`) also skips the large shatter and spawn-death bursts in `VfxPool`. Dust, splash, and corruption still emit. Hit flash stays on `flash_effects_enabled`. The settings screen is in `studio/wiki/UI.md`.
 - Hit flash sets `flash_amount` on one shared `shaders/entity_hit_flash.gdshader` overlay and clears that overlay when the amount returns to zero. No material is allocated per hit.
 
 Death moves the visual onto `CombatVisualFeedback` (cap 6) for a 0.4 s shrink and fade, then frees it. The body `queue_free`s immediately so death signals and spawn-cell cleanup stay on the old frame.
@@ -57,5 +58,6 @@ No audio files are in the repo. Record the list in `assets/audio/SOUNDS_NEEDED.m
 | `hit_stop_enabled` | on | Time-scale dip |
 | `flash_effects_enabled` | on | White overlay flash |
 | `volume_master` / `volume_music` / `volume_sfx` / `volume_ui` | 1 | Bus linear gain |
+| `reduce_motion` | off | Blocks shake, hit-stop, walk bob, creature bob, and large bursts |
 
-Headless suite: `scripts/verify_juice.gd`.
+Headless suites: `scripts/verify_juice.gd`, `scripts/verify_ui_settings.gd`. The rest of the settings keys live in `studio/wiki/UI.md`.
