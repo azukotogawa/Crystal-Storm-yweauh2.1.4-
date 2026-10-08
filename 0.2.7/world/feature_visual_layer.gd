@@ -453,9 +453,13 @@ func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> Stri
 		return "wood_wall"
 	if build_id == "stone_wall":
 		return "stone_wall"
-	# Visual identity is authored (visual_id / build_id / flags). Never infer a
-	# wall or bridge from a DIRT/STONE tile override — that spawned props on
-	# ordinary raised terrain.
+	# Explicit ids win above. A bare DIRT/STONE override is the legacy wall
+	# stamp (no build_id). Gate and bridge never reach this: they return above.
+	var tile_override: int = _FeatureRegistry.get_tile_override(wx, wz)
+	if tile_override == VoxelTypes.STONE:
+		return "stone_wall"
+	if tile_override == VoxelTypes.DIRT:
+		return "wood_wall"
 	return ""
 
 

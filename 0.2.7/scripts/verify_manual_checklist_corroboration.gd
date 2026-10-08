@@ -171,12 +171,17 @@ func _run() -> void:
 	for _w in 40:
 		await process_frame
 	var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
-	if build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
+	var wall_feat: Dictionary = _FeatureRegistry.get_feature(build_wx, build_wz)
+	var wall_id := str(wall_feat.get("build_id", ""))
+	if wall_id == "stone_wall" and absf(build_delta) <= 0.01:
+		lines.append("PASS build wall WorldObject wx=%d wz=%d delta=%.2f" % [build_wx, build_wz, build_delta])
+		print("OK build wall WorldObject")
+	elif build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
 		lines.append("PASS build wall wx=%d wz=%d delta=%.2f" % [build_wx, build_wz, build_delta])
 		print("OK build wall delta=%.2f" % build_delta)
 	else:
-		lines.append("FAIL build delta=%.2f tile=%s editor=%s" % [
-			build_delta, _TerrainEdits.get_build_tile(build_wx, build_wz), terrain_editor != null
+		lines.append("FAIL build delta=%.2f tile=%s build_id=%s editor=%s" % [
+			build_delta, _TerrainEdits.get_build_tile(build_wx, build_wz), wall_id, terrain_editor != null
 		])
 		push_error("build wall failed")
 		failed = true

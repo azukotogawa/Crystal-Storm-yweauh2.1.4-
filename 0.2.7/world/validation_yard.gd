@@ -24,11 +24,7 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	var cells := {
 		"flat": Vector2i(ox, oz),
 		"raised": Vector2i(ox + 2, oz),
-		# Spaced so each 8-cell downhill terrace does not climb back onto the next landing.
-		"ramp_east": Vector2i(ox, oz + 1),
-		"ramp_west": Vector2i(ox + 15, oz + 1),
-		"ramp_south": Vector2i(ox + 4, oz + 8),
-		"ramp_north": Vector2i(ox + 13, oz + 8),
+		# Ramps are filled in below from the chunk that contains the yard.
 		"wood_wall": Vector2i(ox, oz + 3),
 		"stone_wall": Vector2i(ox + 2, oz + 3),
 		"gate": Vector2i(ox + 4, oz + 3),
@@ -43,6 +39,9 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 		"dig_adj": Vector2i(ox + 9, oz + 6),
 		"slab": Vector2i(ox + 11, oz + 6),
 	}
+	var ramps := cardinal_ramp_cells(Vector2i(ox, oz))
+	for ramp_key in ramps.keys():
+		cells[ramp_key] = ramps[ramp_key]
 	# Raised column (player-built wall, not a ramp).
 	_TerrainEdits.build_wall(cells.raised.x, cells.raised.y, _VoxelTypes.STONE)
 	# Structures via gameplay editor when available.
@@ -87,6 +86,23 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 		if player.has_method("_snap_to_ground"):
 			player.call("_snap_to_ground")
 	return {"origin": Vector2i(ox, oz), "cells": cells}
+
+
+## Four model-A landings whose plateau, landing, and 8-cell terrace all sit
+## inside the one chunk that contains `origin`. East/west share the high z
+## band; south/north stay on the low z band so the runs do not climb onto
+## each other or off the chunk (halo samples would reject the cardinal).
+static func cardinal_ramp_cells(origin: Vector2i) -> Dictionary:
+	var base := Vector2i(
+		int(floor(float(origin.x) / 16.0)) * 16,
+		int(floor(float(origin.y) / 16.0)) * 16
+	)
+	return {
+		"ramp_east": base + Vector2i(1, 13),
+		"ramp_west": base + Vector2i(14, 13),
+		"ramp_south": base + Vector2i(2, 2),
+		"ramp_north": base + Vector2i(13, 10),
+	}
 
 
 static func apply_generated_ramps(tree: SceneTree, cells: Dictionary) -> void:

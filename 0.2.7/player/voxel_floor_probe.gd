@@ -8,6 +8,7 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -352,6 +353,16 @@ func _solid_blocks_head(wx: float, wz: float, head_y: float, floor_h: float, lay
 	return false
 
 
+func _blocking_build_at(wx: int, wz: int) -> bool:
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if feat.is_empty():
+		return false
+	if bool(feat.get("is_passage", false)) or bool(feat.get("is_bridge", false)):
+		return false
+	var build_id := str(feat.get("build_id", ""))
+	return build_id == "wood_wall" or build_id == "stone_wall"
+
+
 func can_step_to(
 	from_pos: Vector3,
 	to_pos: Vector3,
@@ -370,6 +381,12 @@ func can_step_to(
 		tile_id = world.get_tile_type(to_pos.x, to_pos.z)
 	# Oceans stop the player; border mountains block traversal; deep rim is impassable.
 	if _WorldBorder.blocks_player_at(to_pos.x, to_pos.z, tile_id):
+		if _measure:
+			_m_can_step_us += Time.get_ticks_usec() - t0
+		return false
+	# Wood and stone walls are WorldObjects. They do not raise the heightfield,
+	# so the step test has to refuse the column itself.
+	if _blocking_build_at(floori(to_pos.x), floori(to_pos.z)):
 		if _measure:
 			_m_can_step_us += Time.get_ticks_usec() - t0
 		return false

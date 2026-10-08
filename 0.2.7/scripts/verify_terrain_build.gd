@@ -65,17 +65,20 @@ func _run() -> void:
 	if not editor.try_build_wall(target, inv, true):
 		push_error("terrain_editor.try_build_wall failed with stone in inventory")
 		failed = true
-	elif not is_equal_approx(_TerrainEdits.get_height_delta(20, 22), layer):
-		push_error("editor build delta wrong")
+	elif not is_equal_approx(_TerrainEdits.get_height_delta(20, 22), 0.0):
+		push_error("editor wall must stay a WorldObject, delta=%s" % _TerrainEdits.get_height_delta(20, 22))
 		failed = true
-	elif _TerrainEdits.get_build_tile(20, 22) != _VoxelTypes.STONE:
-		push_error("editor build tile wrong")
+	elif str(_FeatureRegistry.get_feature(20, 22).get("build_id", "")) != "stone_wall":
+		push_error("editor build feature missing")
+		failed = true
+	elif str(_FeatureRegistry.get_feature(20, 22).get("visual_id", "")) != "stone_wall":
+		push_error("editor build visual_id missing")
 		failed = true
 	elif inv.count_item("stone") != 3:
 		push_error("stone not consumed, count=%d" % inv.count_item("stone"))
 		failed = true
 	else:
-		print("OK terrain_editor build placed stone wall")
+		print("OK terrain_editor build placed stone wall WorldObject")
 
 	_TerrainEdits.reset()
 	_FeatureRegistry.reset()

@@ -14,6 +14,14 @@
 class_name InfiniteNoiseWorld
 extends Node3D
 
+
+func _exit_tree() -> void:
+	# Bake jobs sample this node on the thread pool. Join them before the
+	# node is freed or engine shutdown hits a dead noise object.
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake != null and bake.has_method("_clear_job_queue"):
+		bake._clear_job_queue()
+
 enum MapTemperature { HOT, MILD, COLD, HOT_MILD, MILD_COLD }
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
@@ -423,9 +431,15 @@ func _compute_raw_elevation(wx: float, wz: float) -> float:
 	return clamp(raw, -12.0 * _height_gen_scale(), _max_height())
 
 func get_river_mask(wx: float, wz: float) -> Dictionary:
-	var r: float = _river_noise.get_noise_2d(wx, wz)
-	var len_mod: float = _river_length_noise.get_noise_2d(wx * 0.65, wz * 0.65)
-	var width_var: float = (_river_width_noise.get_noise_2d(wx * 2.1, wz * 2.1) + 1.0) * 0.5
+	# The slow biome-scale field is ~0 for a huge disk around the origin, so
+	# sampling it painted every nearby cell as river. The mask noise is the
+	# ribbon (about a handful of tiles wide). Shift the sample so a lattice
+	# zero does not sit on the world origin.
+	var sx: float = wx + 1800.0
+	var sz: float = wz + 2600.0
+	var r: float = _river_mask_noise.get_noise_2d(sx, sz)
+	var len_mod: float = _river_length_noise.get_noise_2d(sx * 0.65, sz * 0.65)
+	var width_var: float = (_river_width_noise.get_noise_2d(sx * 2.1, sz * 2.1) + 1.0) * 0.5
 	
 	# Distance from zero-crossing (ridge line) for thin, natural strips
 	var dist: float = abs(r)
@@ -884,7 +898,7 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 	var river: Dictionary = _compute_river_carve(wx, wz, surf)
 
 	# More rivers visible — require mask OR strong carve
-	if river_mask_dict.get("active", false) or river.carve > 6.0:
+	if river_mask_dict.get("active", false) or float(river.get("carve", 0.0)) > 6.0:
 		return VoxelTypes.RIVER
 
 	# Cave mouth / exposed stone on surface (strong near-surface cave or very steep)

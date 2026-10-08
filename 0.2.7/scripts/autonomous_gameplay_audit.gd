@@ -170,12 +170,7 @@ func _run() -> void:
 	await _do_build(editor, cm, insp, inv, "gate_rebuild", cells.rebuild, &"gate")
 
 	# Generated ramps (existing helper, not a new mechanic).
-	var ramp_cells: Dictionary = {
-		"ramp_east": origin + Vector2i(0, 1),
-		"ramp_west": origin + Vector2i(15, 1),
-		"ramp_south": origin + Vector2i(4, 8),
-		"ramp_north": origin + Vector2i(13, 8),
-	}
+	var ramp_cells: Dictionary = _ValidationYard.cardinal_ramp_cells(origin)
 	_ValidationYard.apply_generated_ramps(self, ramp_cells)
 	await _idle(cm)
 	for rk in ramp_cells.keys():

@@ -110,10 +110,13 @@ func get_action_column() -> Vector3:
 	# --- API baseline ---
 	var b0: float = _TerrainEdits.get_height_delta(4, 4)
 	editor.try_build(Vector3(4.5, 0, 4.5), player.inventory, &"wood_wall")
-	if int(round((_TerrainEdits.get_height_delta(4, 4) - b0) / layer)) != 1:
-		_fail("single try_build should add exactly 1 layer")
+	var placed: Dictionary = _FeatureRegistry.get_feature(4, 4)
+	if not is_equal_approx(_TerrainEdits.get_height_delta(4, 4), b0):
+		_fail("single try_build must not raise the heightfield")
+	elif str(placed.get("build_id", "")) != "wood_wall" or str(placed.get("visual_id", "")) != "wood_wall":
+		_fail("single try_build should place a wood_wall WorldObject")
 	else:
-		print("OK single try_build = 1 layer")
+		print("OK single try_build places one wood_wall WorldObject")
 
 	# --- Ship WeaponController._process + Input edge/hold ---
 	var cell := Vector2i(7, 7)

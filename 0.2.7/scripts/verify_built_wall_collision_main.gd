@@ -7,6 +7,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 
 
 func _init() -> void:
@@ -146,38 +147,30 @@ func _run() -> void:
 		await process_frame
 
 	build_delta = _TerrainEdits.get_height_delta(build_wx, build_wz)
-	if build_delta <= 0.01:
-		push_error("build delta not recorded")
+	var wall_feat: Dictionary = _FeatureRegistry.get_feature(build_wx, build_wz)
+	if str(wall_feat.get("build_id", "")) != "stone_wall":
+		push_error("stone_wall WorldObject missing after build")
+		failed = true
+	elif absf(build_delta) > 0.01:
+		push_error("wall raised the heightfield by %.2f" % build_delta)
 		failed = true
 	else:
-		var one_layer: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
-			floor_probe, build_wx, build_wz, true, false
+		var blocked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
+			floor_probe, build_wx, build_wz, false, true
 		)
-		if not one_layer.get("ok", false):
-			push_error("1-layer collision: %s" % one_layer.get("reason", "?"))
+		if not blocked.get("ok", false):
+			push_error("wall collision: %s" % blocked.get("reason", "?"))
 			failed = true
 		else:
-			print(
-				"OK main 1-layer collision raise=%.2f step=%s"
-				% [one_layer.get("raise", 0.0), one_layer.get("can_step", false)]
-			)
-
+			print("OK WorldObject wall blocks entry")
 		var h2: float = world.get_surface_height(float(build_wx), float(build_wz))
 		if terrain_editor.try_build_wall(
 			Vector3(float(build_wx) + 0.5, h2, float(build_wz) + 0.5), inv, true
 		):
-			if chunk_manager.has_method("await_rebuild_idle"):
-				await chunk_manager.await_rebuild_idle()
-			for _w in 40:
-				await process_frame
-		var stacked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(
-			floor_probe, build_wx, build_wz, false, true
-		)
-		if not stacked.get("ok", false):
-			push_error("stacked collision: %s" % stacked.get("reason", "?"))
+			push_error("second wall on the same cell should be refused")
 			failed = true
 		else:
-			print("OK main stacked wall blocks natural-feet entry")
+			print("OK second wall refused")
 
 	var probe_src := (load("res://player/voxel_floor_probe.gd") as GDScript).source_code
 	if "live_delta - snap_delta" not in probe_src:

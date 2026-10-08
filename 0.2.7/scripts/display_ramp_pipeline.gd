@@ -42,12 +42,7 @@ func _run() -> void:
 	var cm = get_first_node_in_group("chunk_manager")
 	var world = get_first_node_in_group("world")
 	var origin := _find_dry_origin(world, cm)
-	var cells := {
-		"ramp_east": origin + Vector2i(0, 1),
-		"ramp_west": origin + Vector2i(15, 1),
-		"ramp_south": origin + Vector2i(4, 8),
-		"ramp_north": origin + Vector2i(13, 8),
-	}
+	var cells := _ValidationYard.cardinal_ramp_cells(origin)
 	_ValidationYard.apply_generated_ramps(self, cells)
 	if cm and cm.has_method("await_rebuild_idle"):
 		await cm.await_rebuild_idle(120)

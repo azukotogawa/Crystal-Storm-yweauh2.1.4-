@@ -484,10 +484,20 @@ func try_remove(world_pos: Vector3, inventory = null) -> bool:
 	if not _TerrainEdits.can_edit(wx, wz):
 		last_fail_reason = "Outside playable area"
 		return false
-	if _is_water_source_column(wx, wz) and not bool(_FeatureRegistry.get_feature(wx, wz).get("player_built", false)):
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	var protected_kind: int = int(feat.get("kind", 0))
+	var protected_built: bool = bool(feat.get("player_built", false)) or bool(feat.get("player_placed", false))
+	if not protected_built and protected_kind in [
+		_WorldFeatureTypes.FeatureKind.TOWN,
+		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING,
+		_WorldFeatureTypes.FeatureKind.RUIN,
+		_WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN,
+	]:
+		last_fail_reason = "Nothing to remove"
+		return false
+	if _is_water_source_column(wx, wz) and not bool(feat.get("player_built", false)):
 		last_fail_reason = "Can't remove water"
 		return false
-	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	var build_id := str(feat.get("build_id", "")).strip_edges()
 	var player_built: bool = bool(feat.get("player_built", false)) or bool(feat.get("player_placed", false))
 	if build_id in ["wood_wall", "stone_wall", "gate", "bridge", "cardinal_ramp", "corner_ramp"]:

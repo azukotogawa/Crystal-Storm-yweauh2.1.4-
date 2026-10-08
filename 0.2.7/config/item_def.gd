@@ -23,6 +23,7 @@ const MAX_STACK := 99
 @export var entity_damage: float = 0.0
 @export var attack_range: float = 0.0
 @export var cooldown: float = 0.0
+@export var crystal_damage: float = 0.0
 
 @export_group("Consumable")
 @export var heal_amount: float = 0.0
@@ -46,6 +47,7 @@ func to_lookup() -> Dictionary:
 		out["entity_damage"] = entity_damage
 		out["range"] = attack_range
 		out["cooldown"] = cooldown
+		out["crystal_damage"] = crystal_damage
 	if category == Category.CONSUMABLE:
 		out["heal_amount"] = heal_amount
 	return out
@@ -64,5 +66,6 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.entity_damage = float(data.get("entity_damage", d.damage))
 	d.attack_range = float(data.get("range", 0.0))
 	d.cooldown = float(data.get("cooldown", 0.0))
+	d.crystal_damage = float(data.get("crystal_damage", 0.0))
 	d.heal_amount = float(data.get("heal_amount", 0.0))
 	return d
