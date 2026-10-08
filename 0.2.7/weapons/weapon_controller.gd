@@ -38,6 +38,7 @@ var _last_fail_toast: String = ""
 ## Hold-to-repeat: first press is one edit; continuous reshape only after a short hold.
 ## Prevents a single click (often >30ms) from stacking two layers without lengthening place delay.
 var _dig_hold_sec: float = 0.0
+var _audio: Node
 var _build_hold_sec: float = 0.0
 var place_index: int = 0
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
@@ -231,6 +232,7 @@ func _try_use_consumable() -> bool:
 		if inventory.has_method("equip_armor") and inventory.equip_armor(item_id):
 			_cooldown_timer = 0.2
 			_toast("Wearing %s" % ItemTypes.display_name(item_id))
+			_sfx("ui_click")
 			return true
 		return false
 	if category != ItemTypes.Category.CONSUMABLE:
@@ -249,6 +251,7 @@ func _try_use_consumable() -> bool:
 	elif "health" in player and "max_health" in player:
 		player.health = minf(float(player.max_health), float(player.health) + heal_amt)
 	_cooldown_timer = 0.35
+	_sfx("pickup")
 	var overlay = get_tree().get_first_node_in_group("game_overlay")
 	if overlay and overlay.has_method("_show_toast"):
 		overlay.call("_show_toast", "Used herb (+%.0f HP)" % heal_amt)
@@ -328,6 +331,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	if int(def.get("splash", 0)) > 0:
 		_do_hammer_attack(item_id, def)
 		return
+	_sfx("swing_sword", _attack_origin(0.5))
 	var range_v: float = float(def.get("range", 2.0))
 	var origin := _attack_origin(0.5)
 	var chunk_manager: ChunkManager = get_tree().get_first_node_in_group("chunk_manager") as ChunkManager if is_inside_tree() else null
@@ -416,6 +420,7 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	if not _fire_projectile(item_id, def, origin, forward, false):
 		_cooldown_timer = 0.25
 		return
+	_sfx("fire_sling" if item_id == "sling" else "fire_bow", origin)
 	attacked.emit(item_id, hit_pos)
 
 
@@ -423,6 +428,7 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 3.0))
 	var origin := _attack_origin(0.5)
+	_sfx("swing_spear", origin)
 	var forward := _attack_forward()
 	var range_w := _range_world(range_v)
 	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
@@ -448,6 +454,7 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.2))
 	var origin := _attack_origin(0.45)
+	_sfx("swing_hammer", origin)
 	var forward := _attack_forward()
 	var cell := _crystal_target_cell(range_v)
 	var splash := int(def.get("splash", 1))
@@ -484,6 +491,7 @@ func _throw_bomb(item_id: String, def: Dictionary) -> bool:
 	if not _fire_projectile(item_id, def, origin, forward, true):
 		inventory.add_item(item_id, 1)
 		return false
+	_sfx("bomb_throw", origin)
 	_cooldown_timer = 0.9
 	var hit_pos := origin + forward * _range_world(float(def.get("blast_radius", 2.5)))
 	attacked.emit(item_id, hit_pos)
@@ -566,6 +574,7 @@ func _notify_terrain_fail() -> void:
 
 
 func _do_dig_attack(item_id: String, def: Dictionary) -> void:
+	_sfx("swing_pick", _attack_origin(0.45) if player else null)
 	if _terrain_editor == null:
 		_bind_terrain_editor()
 	if _terrain_editor == null:
@@ -603,6 +612,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		if removed:
 			_cooldown_timer = _terrain_editor.get_build_delay(target)
 			_flash_build_feedback(target, &"remove")
+			_sfx("build_remove", target)
 		else:
 			_notify_terrain_fail()
 			_cooldown_timer = 0.04
@@ -705,6 +715,7 @@ func _try_place_selected() -> void:
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
 		structure_built.emit(StringName(place_id), target)
 		_flash_build_feedback(target, StringName(place_id))
+		_sfx("build_place", target)
 	else:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
@@ -762,6 +773,7 @@ func _flash_dig_feedback(target: Vector3) -> void:
 	var vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if vfx and vfx.has_method("show_place_flash"):
 		vfx.show_place_flash(target, &"dig")
+	_sfx("dig", target)
 
 
 func _player_damage_mult(stat_id: StringName) -> float:
@@ -841,3 +853,20 @@ func _try_channel_water_at_target(range_v: float) -> void:
 		mode = TerrainEditor.ChannelMode.REDIRECT
 	if _terrain_editor.try_channel_water(target, inventory if inventory else null, mode, forward):
 		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_channel_delay(target))
+
+
+func _sfx(id: String, at: Variant = null) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx") and not _audio.has_method("play_ui"):
+		return
+	if id.begins_with("ui_") and _audio.has_method("play_ui"):
+		_audio.play_ui(id)
+		return
+	if _audio.has_method("play_sfx"):
+		if at is Vector3:
+			_audio.play_sfx(id, at)
+		else:
+			_audio.play_sfx(id)

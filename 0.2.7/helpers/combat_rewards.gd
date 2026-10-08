@@ -22,6 +22,9 @@ static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: S
 	if inv == null or not inv.has_method("add_item"):
 		return empty
 	inv.add_item(item_id, count)
+	var audio = tree.root.get_node_or_null("AudioManager") if tree.root else null
+	if audio and audio.has_method("play_sfx"):
+		audio.play_sfx("pickup")
 	var toast := "%s down — +%d %s for the maze" % [label, count, item_id]
 	_toast(tree, toast)
 	return {"item_id": item_id, "count": count, "label": toast}

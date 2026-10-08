@@ -38,6 +38,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("inventory_toggle"):
 		_visible_panel = not _visible_panel
 		visible = _visible_panel
+		_ui("ui_open" if _visible_panel else "ui_close")
 		if _visible_panel:
 			_refresh()
 
@@ -100,6 +101,7 @@ func _build_ui() -> void:
 
 
 func _on_slot_pressed(index: int) -> void:
+	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return
 	# Simple click: move item to first empty hotbar slot
@@ -119,6 +121,7 @@ func _on_slot_pressed(index: int) -> void:
 
 
 func _on_armor_pressed() -> void:
+	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return
 	_player.inventory.clear_armor()
@@ -149,6 +152,12 @@ func _refresh() -> void:
 				count_suffix = "x%d" % int(slot.count)
 			btn.text = count_suffix
 			btn.tooltip_text = _ItemTypes.display_name(slot.id)
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
 
 
 func _refresh_armor() -> void:

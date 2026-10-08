@@ -109,6 +109,7 @@ SUITES=(
 	"res://scripts/verify_projectile.gd"
 	"res://scripts/verify_combat_depth.gd"
 	"res://scripts/verify_boss.gd"
+	"res://scripts/verify_juice.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
 	"res://scripts/verify_topographical_map.gd"
 	"res://scripts/verify_vegetation_perf.gd"

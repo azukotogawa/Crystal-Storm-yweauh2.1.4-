@@ -16,6 +16,7 @@ The renderer is not a fully stored 3D block grid. It is primarily a heightfield 
 - `GameVisualRegistry` generates/caches visual assets.
 - `CrystalChunkLayer` renders crystal coverage by chunk.
 - `FeatureVisualLayer` populates visible vegetation/features.
+- Combat particles, swing arcs, hit flash, and death fade live in `VfxPool` / `Juice`. Caps and buses are in `studio/wiki/Effects.md`. Terrain shaders stay unshaded, and these extras do not cast shadows.
 
 ## Gameplay-facing rendering
 

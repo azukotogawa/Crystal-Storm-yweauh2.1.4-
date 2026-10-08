@@ -11,6 +11,7 @@ const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _Juice = preload("res://systems/juice.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -51,6 +52,14 @@ var current_skew := 0.0
 enum State { IDLE, RUNNING, JUMPING, FALLING }
 var current_state := State.IDLE
 var landing_timer: float = 0.0
+var _bob_phase: float = 0.0
+var _mesh_rest_y: float = 0.0
+var _feet_wet: bool = false
+var _wet_ready: bool = false
+var _wet_cell: Vector2i = Vector2i(999999, 999999)
+var _wet_landed: bool = false
+var _audio: Node
+var _vfx: Node
 
 var is_input_locked: bool = false
 ## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
@@ -276,6 +285,7 @@ func _ready():
 	player_mesh.material_override = player_material
 	player_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	player_mesh.position.y = ph / 2.0
+	_mesh_rest_y = player_mesh.position.y
 
 	_floor_probe.feet_height_hint = _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
@@ -433,8 +443,9 @@ func _physics_process(delta: float) -> void:
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	_sync_global_from_voxel()
-	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
+	_apply_walk_bob(delta)
 	player_mesh.rotation.y = current_skew
+	_tick_feet_water()
 	if measure:
 		phase_local["sync_visual"] = Time.get_ticks_usec() - t0
 
@@ -720,6 +731,10 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	health = maxf(health - amount, 0.0)
 	if burst:
 		_hit_iframes = HIT_IFRAMES
+		var heavy := kind == &"boss" or amount >= 16.0
+		_Juice.request_hit_stop(0.08 if heavy else 0.04, get_tree())
+		_Juice.request_shake(0.5 if heavy else 0.14)
+		_play_sfx("player_death" if health <= 0.0 else "player_hurt")
 	if health <= 0.0:
 		died.emit()
 
@@ -753,3 +768,67 @@ func change_state(new_state: State) -> void:
 		velocity.y = _jump_force()
 		sprite_scale_modifier = Vector2(0.6, 1.6)
 		current_skew = 0.2
+
+
+func _apply_walk_bob(delta: float) -> void:
+	if player_mesh == null:
+		return
+	if _mesh_rest_y <= 0.0:
+		_mesh_rest_y = player_mesh.position.y
+	var sx := 1.0
+	var sy := 1.0
+	var bob := 0.0
+	if current_state == State.RUNNING:
+		_bob_phase += delta * 11.0
+		var s := sin(_bob_phase)
+		bob = s * _ws().voxel_scale * 0.04
+		sx = 1.0 + s * 0.06
+		sy = 1.0 - s * 0.08
+	else:
+		_bob_phase = 0.0
+	player_mesh.position.y = _mesh_rest_y + bob
+	player_mesh.scale = Vector3(sprite_scale_modifier.x * sx, sprite_scale_modifier.y * sy, 1.0)
+
+
+func _tick_feet_water() -> void:
+	if world == null or not world.has_method("get_tile_type"):
+		return
+	var cell := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	var landed := current_state == State.IDLE or current_state == State.RUNNING
+	if _wet_ready and cell == _wet_cell and landed == _wet_landed:
+		return
+	_wet_cell = cell
+	_wet_landed = landed
+	if not landed:
+		return
+	var wet := _CrystalTypes.is_water_tile(int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5)))
+	if not _wet_ready:
+		_feet_wet = wet
+		_wet_ready = true
+		return
+	if wet == _feet_wet:
+		return
+	_feet_wet = wet
+	_splash_here()
+
+
+func _splash_here() -> void:
+	if not is_instance_valid(_vfx):
+		_vfx = get_tree().get_first_node_in_group("combat_visual_feedback") if is_inside_tree() else null
+	if _vfx and _vfx.has_method("splash_at"):
+		_vfx.splash_at(global_position)
+	else:
+		_play_sfx("water_splash", global_position)
+
+
+func _play_sfx(id: String, at: Variant = null) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx"):
+		return
+	if at is Vector3:
+		_audio.play_sfx(id, at)
+	else:
+		_audio.play_sfx(id)

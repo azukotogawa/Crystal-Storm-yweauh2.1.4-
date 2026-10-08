@@ -90,6 +90,16 @@ Win:
 - If the warden dies while minor hearts remain, the run still ends in victory. The heart seal and the win are separate.
 - Loss is unchanged: player death, crystal coverage, and the crystal touching the player.
 
+## Feedback
+
+Hits, swings, and breaks go through `CombatVisualFeedback` and `VfxPool`. The pool reuses a small set of `CPUParticles3D` one-shots (crystal shatter, dig dust, water splash, spawn-heart burst, rate-limited corruption) and a few swing meshes. Sword and pick draw a short arc, the spear a thrust line, the hammer an overhead ring. Materials are unshaded and shadow casting is off. Counts follow the performance preset. LOW is the smallest. SAFE is smaller still. See `studio/wiki/Effects.md`.
+
+A hit also asks `Juice` for a 40–80 ms hit-stop and a camera shake. Light hits sit near 40 ms. Hammer, bomb, and boss slams sit near 80 ms and shake harder. Both are off in headless probes unless a test forces the dip. The pause menu and the frontend settings screen can turn shake, hit-stop, and the white hit flash off. Those flags persist in `player_settings.json`.
+
+Enemy and creature hits flash through one shared overlay shader (`shaders/entity_hit_flash.gdshader`). Death detaches the visual, shrinks and fades it for about 0.4 s, and frees the body immediately. Walking bobs the visual node only, and only while the creature is near the camera. LOW shortens that distance. SAFE skips creature bob.
+
+`AudioManager` is the sound hook. It plays nothing until files exist for the ids in `config/audio_manifest.gd`. The list of files to record is `assets/audio/SOUNDS_NEEDED.md`.
+
 ## Connected systems
 
 - `Player` owns `WeaponController`, armor multipliers, and hit i-frames.

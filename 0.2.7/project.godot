@@ -21,6 +21,11 @@ MainThreadFrameProbe="*res://systems/main_thread_frame_probe.gd"
 CrystalTextureGenerator="*res://systems/crystal_texture_generator.gd"
 PerfProfiler="*res://systems/perf_profiler.gd"
 FrameBudgetScheduler="*res://systems/frame_budget_scheduler.gd"
+AudioManager="*res://systems/audio_manager.gd"
+
+[audio]
+
+buses/default_bus_layout="res://default_bus_layout.tres"
 
 [display]
 

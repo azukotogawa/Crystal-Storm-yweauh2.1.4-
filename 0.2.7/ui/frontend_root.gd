@@ -28,6 +28,13 @@ var _preset_opt: OptionButton
 var _rd_slider: HSlider
 var _veg_slider: HSlider
 var _fx_check: CheckBox
+var _shake_check: CheckBox
+var _hit_stop_check: CheckBox
+var _flash_check: CheckBox
+var _vol_master: HSlider
+var _vol_music: HSlider
+var _vol_sfx: HSlider
+var _vol_ui: HSlider
 
 
 func _ready() -> void:
@@ -73,6 +80,7 @@ func _clear_stack() -> void:
 
 func _show(which: Screen) -> void:
 	_screen = which
+	_ui("ui_open")
 	_clear_stack()
 	match which:
 		Screen.MAIN:
@@ -134,8 +142,16 @@ func _btn(text: String, on_press: Callable, danger: bool = false) -> Button:
 		b.add_theme_color_override("font_color", COL_DANGER)
 	else:
 		b.add_theme_color_override("font_color", COL_ACCENT)
+	b.pressed.connect(func(): _ui("ui_click"))
 	b.pressed.connect(on_press)
+	b.mouse_entered.connect(func(): _ui("ui_hover"))
 	return b
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
 
 
 func _set_status(msg: String) -> void:
@@ -397,6 +413,13 @@ func _build_settings() -> void:
 	_fx_check.text = "Combat effects"
 	_fx_check.button_pressed = bool(data.get("combat_visuals_enabled", true))
 	box.add_child(_fx_check)
+	_shake_check = _settings_check(box, "Screen shake", bool(data.get("screen_shake_enabled", true)))
+	_hit_stop_check = _settings_check(box, "Hit stop", bool(data.get("hit_stop_enabled", true)))
+	_flash_check = _settings_check(box, "Hit flash", bool(data.get("flash_effects_enabled", true)))
+	_vol_master = _settings_volume(box, "Master volume", float(data.get("volume_master", 1.0)))
+	_vol_music = _settings_volume(box, "Music volume", float(data.get("volume_music", 1.0)))
+	_vol_sfx = _settings_volume(box, "SFX volume", float(data.get("volume_sfx", 1.0)))
+	_vol_ui = _settings_volume(box, "UI volume", float(data.get("volume_ui", 1.0)))
 	box.add_child(_btn("Save", _on_save_settings))
 	box.add_child(_btn("Back", func(): _show(Screen.MAIN)))
 	_status = Label.new()
@@ -404,17 +427,48 @@ func _build_settings() -> void:
 	box.add_child(_status)
 
 
+func _settings_check(box: Node, text: String, pressed: bool) -> CheckBox:
+	var check := CheckBox.new()
+	check.text = text
+	check.button_pressed = pressed
+	box.add_child(check)
+	return check
+
+
+func _settings_volume(box: Node, text: String, value: float) -> HSlider:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_color_override("font_color", COL_SUB)
+	box.add_child(label)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = value
+	box.add_child(slider)
+	return slider
+
+
 func _on_save_settings() -> void:
-	var preset := int(_PerformanceQualityConfig.Preset.MEDIUM)
+	var data := _PlayerSettings.load_settings()
+	var preset := int(data.get("quality_preset", _PerformanceQualityConfig.Preset.MEDIUM))
 	if _preset_opt:
 		preset = _preset_opt.get_item_id(_preset_opt.selected)
-	var data := {
-		"quality_preset": preset,
-		"render_distance": int(_rd_slider.value) if _rd_slider else 2,
-		"vegetation_scatter_multiplier": float(_veg_slider.value) if _veg_slider else 1.0,
-		"combat_visuals_enabled": bool(_fx_check.button_pressed) if _fx_check else true,
-	}
+	data["quality_preset"] = preset
+	data["render_distance"] = int(_rd_slider.value) if _rd_slider else int(data.get("render_distance", 2))
+	data["vegetation_scatter_multiplier"] = float(_veg_slider.value) if _veg_slider else float(data.get("vegetation_scatter_multiplier", 1.0))
+	data["combat_visuals_enabled"] = bool(_fx_check.button_pressed) if _fx_check else bool(data.get("combat_visuals_enabled", true))
+	data["screen_shake_enabled"] = bool(_shake_check.button_pressed) if _shake_check else bool(data.get("screen_shake_enabled", true))
+	data["hit_stop_enabled"] = bool(_hit_stop_check.button_pressed) if _hit_stop_check else bool(data.get("hit_stop_enabled", true))
+	data["flash_effects_enabled"] = bool(_flash_check.button_pressed) if _flash_check else bool(data.get("flash_effects_enabled", true))
+	data["volume_master"] = float(_vol_master.value) if _vol_master else float(data.get("volume_master", 1.0))
+	data["volume_music"] = float(_vol_music.value) if _vol_music else float(data.get("volume_music", 1.0))
+	data["volume_sfx"] = float(_vol_sfx.value) if _vol_sfx else float(data.get("volume_sfx", 1.0))
+	data["volume_ui"] = float(_vol_ui.value) if _vol_ui else float(data.get("volume_ui", 1.0))
 	if _PlayerSettings.save_settings(data):
+		var audio := get_node_or_null("/root/AudioManager")
+		if audio and audio.has_method("apply_saved_volumes"):
+			audio.apply_saved_volumes()
 		_set_status("Settings saved.")
 	else:
 		_set_status("Could not save settings.")

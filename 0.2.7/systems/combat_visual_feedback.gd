@@ -7,6 +7,8 @@ const _GameManager = preload("res://game/game_manager.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
+const _VfxPool = preload("res://systems/vfx_pool.gd")
+const _Juice = preload("res://systems/juice.gd")
 
 @export var enabled: bool = true
 
@@ -21,6 +23,13 @@ var _burst_root: Node3D
 var _labels_root: Node3D
 var _crystal: CrystalManager
 var _game_manager: Node
+var _pool: _VfxPool
+var _player: Node3D
+var _audio: Node
+var _dissolve_root: Node3D
+var _dissolves: Array[Dictionary] = []
+const _DISSOLVE_SEC := 0.4
+const _DISSOLVE_CAP := 6
 
 
 func _enter_tree() -> void:
@@ -29,6 +38,7 @@ func _enter_tree() -> void:
 
 func _ready() -> void:
 	_ensure_visual_roots()
+	_ensure_pool()
 	_build_label_pool()
 	call_deferred("_load_textures")
 	_build_indicators()
@@ -57,6 +67,9 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		return
 	_quality = cfg
 	enabled = cfg.combat_visuals_enabled
+	_ensure_pool()
+	_pool.configure_preset(int(cfg.preset))
+	_Juice.set_preset(int(cfg.preset))
 	_trim_label_pool(maxi(int(cfg.max_damage_labels), 0))
 	if not enabled:
 		_clear_active_vfx()
@@ -201,7 +214,8 @@ func _connect_signals() -> void:
 	_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_game_manager = get_tree().get_first_node_in_group("game_manager")
 
-	var player = get_tree().get_first_node_in_group("player")
+	_player = get_tree().get_first_node_in_group("player")
+	var player = _player
 	if player:
 		var weapon = player.get_node_or_null("WeaponController")
 		if weapon and weapon.has_signal("entity_hit"):
@@ -242,12 +256,16 @@ func _process(delta: float) -> void:
 	_update_spawn_marker_flashes(delta)
 	_update_boss_ring(delta)
 	_update_victory_flash(delta)
+	if not _dissolves.is_empty():
+		_update_dissolves(delta)
 	if profiler and profiler.has_method("end"):
 		profiler.end("combat_vfx")
 
 
 ## Brief placement flash for walls / gates / bridges (satisfying build feedback).
 func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") -> void:
+	if build_id == &"dig":
+		_burst_dig_dust(col_pos)
 	if not enabled:
 		return
 	_ensure_visual_roots()
@@ -502,6 +520,7 @@ func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
 		_ItemTypes.WeaponKind.MELEE, _ItemTypes.WeaponKind.DIG:
 			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.075), 0.0), Color(1.0, 0.88, 0.45), _vox(0.21))
 			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.175), 0.0), Color(1.0, 0.88, 0.45), 2)
+			_show_swing(item_id, hit_pos)
 		_ItemTypes.WeaponKind.RANGED:
 			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.1), 0.0), Color(0.65, 0.82, 1.0), _vox(0.18))
 			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.225), 0.0), Color(0.65, 0.82, 1.0), 1)
@@ -520,11 +539,24 @@ func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 	show_hit_marker(world_pos, Color(1.0, 0.45, 0.35), radius)
 	if target.has_method("_flash_hit"):
 		target._flash_hit()
+	var weight := _Juice.weight_for_item(_item_id, damage)
+	_Juice.request_hit_stop(_Juice.seconds_for_weight(weight), get_tree())
+	_Juice.request_shake(0.42 if weight >= 0.9 else 0.1)
+	_sfx("hit_heavy" if weight >= 0.9 else "hit_light", world_pos)
 	if "health" in target and float(target.health) <= 0.0 and target.is_in_group("crystal_enemy"):
 		_spawn_burst(world_pos + Vector3(0.0, _vox(0.25), 0.0), Color(1.0, 0.55, 0.95), 3)
 
 
 func _on_crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool) -> void:
+	var world_hit := _WorldVisualCoords.column_to_world_pos(world_pos.x, world_pos.y, world_pos.z)
+	var heavy := broken or amount >= 1.5
+	if heavy:
+		_pool_burst(_VfxPool.Kind.SHATTER, world_hit, Color(0.9, 0.45, 1.0), 1.15 if broken else 0.85)
+		_sfx("crystal_shatter" if broken else "crystal_crackle", world_hit)
+		if broken:
+			_Juice.request_shake(0.22)
+	else:
+		_sfx("crystal_crackle", world_hit)
 	if not enabled:
 		return
 	var tint := Color(0.78, 0.35, 1.0)
@@ -566,6 +598,9 @@ func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 	var pos := _spawn_world_pos(spawn)
 	var tint := Color(1.0, 0.35, 0.95) if spawn.is_boss else Color(0.75, 0.4, 1.0)
 	_spawn_burst(pos + Vector3(0.0, 1.5, 0.0), tint, 6 if spawn.is_boss else 4)
+	_pool_burst(_VfxPool.Kind.SPAWN_DEATH, pos + Vector3(0.0, _vox(0.4), 0.0), tint, 1.4 if spawn.is_boss else 1.0)
+	_sfx("spawn_destroyed", pos)
+	_Juice.request_shake(0.7 if spawn.is_boss else 0.35)
 	if spawn.is_boss:
 		_boss_ring.visible = false
 
@@ -732,3 +767,139 @@ func _update_victory_flash(delta: float) -> void:
 		(_victory_flash.material_override as StandardMaterial3D).albedo_color.a = clampf(t / 2.0, 0.0, 0.9)
 	if t <= 0.0:
 		_victory_flash.visible = false
+
+
+func _ensure_pool() -> void:
+	if _pool != null and is_instance_valid(_pool):
+		return
+	_pool = _VfxPool.new()
+	_pool.name = "VfxPool"
+	add_child(_pool)
+	if _dissolve_root == null:
+		_dissolve_root = Node3D.new()
+		_dissolve_root.name = "DeathDissolves"
+		add_child(_dissolve_root)
+
+
+func _burst_dig_dust(col_pos: Vector3) -> void:
+	var ws = _WorldSettings.get_active()
+	var y: float = col_pos.y + ws.layer_height() * 0.2
+	var pos := _WorldVisualCoords.column_to_world_pos(floorf(col_pos.x) + 0.5, y, floorf(col_pos.z) + 0.5)
+	_pool_burst(_VfxPool.Kind.DUST, pos, Color(0.72, 0.55, 0.32))
+
+
+func splash_at(world_pos: Vector3) -> void:
+	_pool_burst(_VfxPool.Kind.SPLASH, world_pos, Color(0.55, 0.78, 0.95))
+	_sfx("water_splash", world_pos)
+
+
+func burst_bomb(world_pos: Vector3) -> void:
+	_pool_burst(_VfxPool.Kind.SHATTER, world_pos, Color(0.85, 0.45, 1.0), 1.35)
+	_pool_burst(_VfxPool.Kind.DUST, world_pos, Color(0.7, 0.55, 0.8), 1.0)
+	_Juice.request_hit_stop(0.08, get_tree())
+	_Juice.request_shake(0.62)
+
+
+func pulse_corruption(cell: Vector2i, world_y: float) -> void:
+	var pos := _WorldVisualCoords.column_to_world_pos(float(cell.x) + 0.5, world_y + _vox(0.2), float(cell.y) + 0.5)
+	if _pool_burst(_VfxPool.Kind.CORRUPT, pos, Color(0.62, 0.28, 0.95), 0.7):
+		_sfx("corruption_spread", pos)
+
+
+func _pool_burst(kind: int, pos: Vector3, tint: Color, scale: float = 1.0) -> bool:
+	_ensure_pool()
+	return _pool.burst(kind, pos, tint, scale)
+
+
+func _show_swing(item_id: String, hit_pos: Vector3) -> void:
+	_ensure_pool()
+	if not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	var origin := hit_pos
+	if _player:
+		origin = _player.global_position + Vector3(0.0, _vox(0.7), 0.0)
+	var forward := hit_pos - origin
+	if forward.length() > 48.0 and _player and "locked_yaw_degrees" in _player:
+		var yaw := deg_to_rad(float(_player.locked_yaw_degrees))
+		forward = Vector3(sin(yaw), 0.0, cos(yaw))
+	_pool.show_swing(item_id, origin, forward)
+
+
+func adopt_death_visual(visual: Node3D) -> void:
+	if visual == null or not is_instance_valid(visual):
+		return
+	_ensure_pool()
+	var parent := visual.get_parent()
+	var xf := visual.global_transform
+	if parent:
+		parent.remove_child(visual)
+	if _dissolves.size() >= _DISSOLVE_CAP:
+		visual.queue_free()
+		return
+	_dissolve_root.add_child(visual)
+	visual.global_transform = xf
+	_prime_fade(visual)
+	_dissolves.append({
+		"node": visual,
+		"life": _DISSOLVE_SEC,
+		"scale": visual.scale,
+	})
+
+
+func _prime_fade(node: Node) -> void:
+	if node is GeometryInstance3D:
+		var gi := node as GeometryInstance3D
+		var mat := gi.material_override
+		if mat is StandardMaterial3D:
+			var sm := mat as StandardMaterial3D
+			sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	for child in node.get_children():
+		_prime_fade(child)
+
+
+func _set_fade(node: Node, alpha: float) -> void:
+	if node is GeometryInstance3D:
+		var gi := node as GeometryInstance3D
+		var mat := gi.material_override
+		if mat is StandardMaterial3D:
+			var sm := mat as StandardMaterial3D
+			var c := sm.albedo_color
+			c.a = alpha
+			sm.albedo_color = c
+		elif node is Sprite3D:
+			var spr := node as Sprite3D
+			var mod := spr.modulate
+			mod.a = alpha
+			spr.modulate = mod
+	for child in node.get_children():
+		_set_fade(child, alpha)
+
+
+func _update_dissolves(delta: float) -> void:
+	var kept: Array[Dictionary] = []
+	for entry in _dissolves:
+		var node: Node3D = entry.get("node")
+		if not is_instance_valid(node):
+			continue
+		var life := float(entry.get("life", 0.0)) - delta
+		if life <= 0.0:
+			node.queue_free()
+			continue
+		var k := clampf(life / _DISSOLVE_SEC, 0.0, 1.0)
+		var base: Vector3 = entry.get("scale", Vector3.ONE)
+		node.scale = base * maxf(k, 0.05)
+		_set_fade(node, k)
+		entry["life"] = life
+		kept.append(entry)
+	_dissolves = kept
+
+
+func _sfx(id: String, at: Variant = null) -> void:
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx"):
+		return
+	if at is Vector3:
+		_audio.play_sfx(id, at)
+	else:
+		_audio.play_sfx(id)

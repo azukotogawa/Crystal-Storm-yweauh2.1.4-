@@ -4,12 +4,14 @@ extends Control
 
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _Juice = preload("res://systems/juice.gd")
 
 const SLOW_SCALE := 0.05
 
 static var _open: RelicChoicePanel
 static var _pending: Array = []
 ## Pre-modal scale, captured only while no panel is open. A queued offer must not save 0.05.
+## cancel_hit_stop() ends a live dip first so this is the pre-dip scale, not 0.02.
 static var _saved_scale: float = 1.0
 static var _scale_held: bool = false
 ## True when this modal is the one that set pause_open.
@@ -32,7 +34,7 @@ static func open(tree: SceneTree, relic_mgr, ids: Array, title: String) -> void:
 		_pending.append({"mgr": relic_mgr, "ids": ids, "title": title})
 		return
 	if not _scale_held:
-		_saved_scale = Engine.time_scale
+		_saved_scale = _Juice.cancel_hit_stop()
 		_scale_held = true
 	var panel := RelicChoicePanel.new()
 	var typed: Array[StringName] = []
@@ -113,6 +115,7 @@ func _build() -> void:
 	_box.add_child(_hint)
 
 	_show_offers()
+	_ui("relic_open")
 
 
 func _show_offers() -> void:
@@ -142,7 +145,9 @@ func _add_button(relic_id: StringName, role: String, text: String) -> void:
 	btn.custom_minimum_size = Vector2(0, 48)
 	btn.set_meta("relic_role", role)
 	btn.set_meta("relic_id", str(relic_id))
+	btn.pressed.connect(func(): _ui("ui_click"))
 	btn.pressed.connect(_on_button.bind(relic_id, role))
+	btn.mouse_entered.connect(func(): _ui("ui_hover"))
 	_box.add_child(btn)
 	_buttons.append(btn)
 
@@ -174,6 +179,7 @@ func _on_button(relic_id: StringName, role: String) -> void:
 func _pick(relic_id: StringName) -> void:
 	if _relic_mgr and _relic_mgr.has_method("equip"):
 		if bool(_relic_mgr.equip(relic_id)):
+			_ui("relic_pick")
 			_close()
 			return
 		if _slots_are_full():
@@ -197,7 +203,14 @@ func _apply_replace(old_id: StringName) -> void:
 		if _hint:
 			_hint.text = "Relic slots are full. Pick one to replace."
 		return
+	_ui("relic_pick")
 	_close()
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
 
 
 func _equipped_ids() -> Array:
@@ -223,6 +236,7 @@ func _slots_are_full() -> bool:
 
 
 func _close() -> void:
+	_ui("ui_close")
 	if _open == self:
 		_open = null
 	var more := not _pending.is_empty()

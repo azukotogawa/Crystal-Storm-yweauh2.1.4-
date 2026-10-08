@@ -9,6 +9,8 @@ const _CombatLog = preload("res://systems/combat_log.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 const _BossBrain = preload("res://entities/boss_brain.gd")
+const _Juice = preload("res://systems/juice.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -34,6 +36,11 @@ var _age: float = 0.0
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
 var _voxel_prop: Node3D
+var _bob_phase: float = 0.0
+var _bob_ready: bool = false
+var _bob_base_y: float = 0.0
+var _bob_base_scale: Vector3 = Vector3.ONE
+var _audio: Node
 var _patrol_anchor: Vector2i = Vector2i.ZERO
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
@@ -426,10 +433,7 @@ func _physics_process(delta: float) -> void:
 	if _hit_flash_timer > 0.0:
 		_hit_flash_timer = maxf(_hit_flash_timer - delta, 0.0)
 		if _hit_flash_timer <= 0.0:
-			if _sprite and _sprite.visible:
-				_sprite.modulate = Color.WHITE
-			elif _mesh and _mesh.material_override is StandardMaterial3D:
-				(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
+			_clear_flash()
 
 	_age += delta
 	_tick_hurt_lock(delta)
@@ -501,6 +505,7 @@ func _physics_process(delta: float) -> void:
 	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
+	_apply_walk_bob(delta, target_cell != self_cell)
 
 	if guardian:
 		if _guardian_aggro and brain.wants_attack(self_cell, player_cell):
@@ -533,14 +538,17 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	_CombatLog.push("%s hit %.1f → %.0f HP" % [label, amount, health])
 	if health <= 0.0:
 		_on_killed()
+	else:
+		_sfx("enemy_hurt", global_position)
 
 
 func _flash_hit() -> void:
 	_hit_flash_timer = 0.14
-	if _sprite and _sprite.visible:
-		_sprite.modulate = Color(1.0, 0.55, 0.95)
-	elif _mesh and _mesh.material_override is StandardMaterial3D:
-		(_mesh.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.55, 0.95)
+	if not _PlayerSettings.flash_effects_enabled:
+		return
+	var vis := _active_visual()
+	if vis:
+		_Juice.set_flash(vis, 1.0)
 
 
 func _on_killed() -> void:
@@ -557,6 +565,9 @@ func _on_killed() -> void:
 			_BossBrain.on_elite_killed(get_tree(), int(global_position.x))
 	elif enemy_id == &"origin_warden":
 		_notify_warden(false)
+	var death_id := "boss_death" if enemy_id == &"origin_warden" else "enemy_death"
+	_sfx(death_id, global_position)
+	_release_death_visual()
 	queue_free()
 
 
@@ -583,14 +594,20 @@ func _tick_special(delta: float) -> void:
 		dist_v /= maxf(WorldSettings.get_active().voxel_scale, 0.001)
 	var intent: Dictionary = _special.tick(delta, dist_v)
 	boss_phase = int(intent.get("phase", boss_phase))
+	if bool(intent.get("phase_changed", false)):
+		_sfx("boss_phase", global_position)
 	var act := StringName(str(intent.get("action", "")))
 	if bool(intent.get("marker_fresh", false)):
 		_ring_anchor = _player_world_pos() if _target else global_position
+		_sfx("boss_telegraph", global_position)
 		_show_ring(act)
 	if bool(intent.get("telegraph", false)):
 		_show_ring(act)
 	if bool(intent.get("impact", false)):
 		_hide_ring()
+		_sfx("boss_slam", global_position)
+		_Juice.request_hit_stop(0.08, get_tree())
+		_Juice.request_shake(0.85)
 		_resolve_special(act, int(intent.get("summon", 0)))
 	elif int(intent.get("summon", 0)) > 0 and not bool(intent.get("impact", false)):
 		_summon_mites(int(intent.get("summon", 0)))
@@ -664,7 +681,71 @@ func _detonate() -> void:
 		if dist <= detonate_radius + 0.5:
 			_target.take_damage(contact_damage)
 	detonated.emit(contact_damage)
+	_sfx("enemy_death", global_position)
+	_release_death_visual()
 	queue_free()
+
+
+func _active_visual() -> Node3D:
+	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
+		return _voxel_prop
+	if _sprite and is_instance_valid(_sprite) and _sprite.visible:
+		return _sprite
+	if _mesh and is_instance_valid(_mesh) and _mesh.visible:
+		return _mesh
+	return null
+
+
+func _clear_flash() -> void:
+	var vis := _active_visual()
+	if vis:
+		_Juice.set_flash(vis, 0.0)
+
+
+func _apply_walk_bob(delta: float, moving: bool) -> void:
+	var vis := _active_visual()
+	if vis == null:
+		return
+	var allow := moving and _Juice.creature_bob_allowed(self, _target)
+	if not allow:
+		if _bob_ready:
+			vis.position.y = _bob_base_y
+			vis.scale = _bob_base_scale
+		return
+	if not _bob_ready:
+		_bob_base_y = vis.position.y
+		_bob_base_scale = vis.scale
+		_bob_ready = true
+	_bob_phase += delta * 9.0
+	var s := sin(_bob_phase)
+	vis.position.y = _bob_base_y + s * 0.05
+	var squash := 1.0 - s * 0.07
+	var stretch := 1.0 + s * 0.05
+	vis.scale = Vector3(_bob_base_scale.x * stretch, _bob_base_scale.y * squash, _bob_base_scale.z * stretch)
+
+
+func _release_death_visual() -> void:
+	if not is_inside_tree():
+		return
+	var vis := _active_visual()
+	if vis == null:
+		return
+	var vfx := get_tree().get_first_node_in_group("combat_visual_feedback")
+	if vfx and vfx.has_method("adopt_death_visual"):
+		vfx.adopt_death_visual(vis)
+
+
+func _sfx(id: String, at: Variant = null) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx"):
+		return
+	if at is Vector3:
+		_audio.play_sfx(id, at)
+	else:
+		_audio.play_sfx(id)
 
 
 func _max_neighbor_crystal_depth(cell: Vector2i) -> float:

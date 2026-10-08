@@ -9,6 +9,7 @@ const STICK_TIME := 1.15
 const _CombatHitResolver = preload("res://systems/combat_hit_resolver.gd")
 const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 
 static var _pool: Array = []
 static var _tracked: Array = []
@@ -345,8 +346,30 @@ func _ping(at: Vector3) -> void:
 	if not is_inside_tree():
 		return
 	var vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
-	if vfx and vfx.has_method("show_hit_marker"):
-		vfx.show_hit_marker(at)
+	var audio := get_node_or_null("/root/AudioManager")
+	if kind == &"bomb":
+		if vfx and vfx.has_method("burst_bomb"):
+			vfx.burst_bomb(at)
+		if audio and audio.has_method("play_sfx"):
+			audio.play_sfx("bomb_explode", at)
+	else:
+		if vfx and vfx.has_method("show_hit_marker"):
+			vfx.show_hit_marker(at)
+		if audio and audio.has_method("play_sfx"):
+			var impact := "impact_arrow" if kind == &"arrow" else "impact_stone"
+			audio.play_sfx(impact, at)
+	if _water_at(at):
+		if vfx and vfx.has_method("splash_at"):
+			vfx.splash_at(at)
+		elif audio and audio.has_method("play_sfx"):
+			audio.play_sfx("water_splash", at)
+
+
+func _water_at(at: Vector3) -> bool:
+	if _world == null or not _world.has_method("get_tile_type"):
+		return false
+	var cell := _column_of(at)
+	return _CrystalTypes.is_water_tile(int(_world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5)))
 
 
 func _recycle() -> void:

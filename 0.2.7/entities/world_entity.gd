@@ -11,6 +11,8 @@ const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")
+const _Juice = preload("res://systems/juice.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -30,6 +32,11 @@ var _player: Node3D
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
 var _voxel_prop: Node3D
+var _bob_phase: float = 0.0
+var _bob_ready: bool = false
+var _bob_base_y: float = 0.0
+var _bob_base_scale: Vector3 = Vector3.ONE
+var _audio: Node
 var _dead: bool = false
 var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
@@ -322,6 +329,7 @@ func _physics_process(delta: float) -> void:
 	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
+	_apply_walk_bob(delta, target_cell != self_cell)
 
 	if _player and brain.wants_attack(self_cell, player_cell):
 		var player_pos: Vector3 = (
@@ -411,6 +419,8 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	_CombatLog.push("%s hit %.1f → %.0f HP" % [label, amount, health])
 	if health <= 0.0:
 		_die()
+	else:
+		_sfx("enemy_hurt", global_position)
 
 
 func apply_knockback(dir: Vector3, distance: float) -> void:
@@ -423,14 +433,11 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 
 func _flash_hit() -> void:
 	_hit_flash_timer = 0.14
-	if _voxel_prop and _voxel_prop.visible:
-		_VoxelPropBuilder.flash_tint(_voxel_prop, Color(1.0, 0.45, 0.45))
-	elif _sprite and _sprite.visible:
-		_sprite.modulate = Color(1.0, 0.45, 0.45)
-		if _sprite.material_override is StandardMaterial3D:
-			(_sprite.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.45, 0.45)
-	elif _mesh and _mesh.material_override is StandardMaterial3D:
-		(_mesh.material_override as StandardMaterial3D).albedo_color = Color(1.0, 0.35, 0.35)
+	if not _PlayerSettings.flash_effects_enabled:
+		return
+	var vis := _active_visual()
+	if vis:
+		_Juice.set_flash(vis, 1.0)
 
 
 func _paint_tint(color: Color) -> void:
@@ -447,14 +454,9 @@ func _paint_tint(color: Color) -> void:
 
 
 func _reset_hit_tint() -> void:
-	if _voxel_prop and _voxel_prop.visible:
-		_VoxelPropBuilder.apply_tint(_voxel_prop, _base_tint)
-	elif _sprite and _sprite.visible:
-		_sprite.modulate = Color.WHITE
-		if _sprite.material_override is StandardMaterial3D:
-			(_sprite.material_override as StandardMaterial3D).albedo_color = _base_tint
-	elif _mesh and _mesh.material_override is StandardMaterial3D:
-		(_mesh.material_override as StandardMaterial3D).albedo_color = _base_tint
+	var vis := _active_visual()
+	if vis:
+		_Juice.set_flash(vis, 0.0)
 
 
 func _notify_spatial_moved() -> void:
@@ -482,7 +484,65 @@ func _die() -> void:
 	if player_killed and is_inside_tree():
 		var label := config.display_name if config else str(entity_kind)
 		_CombatRewards.grant_player_kill(get_tree(), entity_kind, label)
+	_sfx("enemy_death", global_position)
+	_release_death_visual()
 	queue_free()
+
+
+func _active_visual() -> Node3D:
+	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
+		return _voxel_prop
+	if _sprite and is_instance_valid(_sprite) and _sprite.visible:
+		return _sprite
+	if _mesh and is_instance_valid(_mesh) and _mesh.visible:
+		return _mesh
+	return null
+
+
+func _apply_walk_bob(delta: float, moving: bool) -> void:
+	var vis := _active_visual()
+	if vis == null:
+		return
+	var allow := moving and _Juice.creature_bob_allowed(self, _player)
+	if not allow:
+		if _bob_ready:
+			vis.position.y = _bob_base_y
+			vis.scale = _bob_base_scale
+		return
+	if not _bob_ready:
+		_bob_base_y = vis.position.y
+		_bob_base_scale = vis.scale
+		_bob_ready = true
+	_bob_phase += delta * 9.0
+	var s := sin(_bob_phase)
+	vis.position.y = _bob_base_y + s * 0.05
+	var squash := 1.0 - s * 0.07
+	var stretch := 1.0 + s * 0.05
+	vis.scale = Vector3(_bob_base_scale.x * stretch, _bob_base_scale.y * squash, _bob_base_scale.z * stretch)
+
+
+func _release_death_visual() -> void:
+	if not is_inside_tree():
+		return
+	var vis := _active_visual()
+	if vis == null:
+		return
+	var vfx := get_tree().get_first_node_in_group("combat_visual_feedback")
+	if vfx and vfx.has_method("adopt_death_visual"):
+		vfx.adopt_death_visual(vis)
+
+
+func _sfx(id: String, at: Variant = null) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx"):
+		return
+	if at is Vector3:
+		_audio.play_sfx(id, at)
+	else:
+		_audio.play_sfx(id)
 
 
 func _max_neighbor_crystal_depth(cell: Vector2i) -> float:

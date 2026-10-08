@@ -73,6 +73,7 @@ var _marker_root: Node3D
 var _initialized: bool = false
 var _scars_reindexed: bool = false
 var _spawn_ctrl: _SpawnPointController
+var _juice_vfx: Node
 var _perf_skip_counter: int = 0
 var _perf_max_rebuilds_per_frame: int = 5
 var _perf_crystal_skip_frames: int = 0
@@ -2361,7 +2362,8 @@ func _complete_absorption(pos: Vector2i) -> void:
 	var ws = _WorldState.get_active() if _WorldState else null
 	if ws and ws.has_method("begin_batch"):
 		ws.begin_batch()
-	_CrystalCorruption.corrupt_absorbed_cell(pos, tile_id, feat)
+	if _CrystalCorruption.corrupt_absorbed_cell(pos, tile_id, feat):
+		_pulse_corruption_juice(pos)
 	if ws and ws.has_method("end_batch"):
 		ws.end_batch()
 	_refresh_feature_visual(pos)
@@ -2379,6 +2381,15 @@ func _complete_absorption(pos: Vector2i) -> void:
 	_pending_absorption_rebuilds[pos] = true
 	if _tick_trace_active:
 		_tick_trace["rebuild_chunk_calls"] = int(_tick_trace.get("rebuild_chunk_calls", 0)) + 1
+
+
+func _pulse_corruption_juice(pos: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_juice_vfx):
+		_juice_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	if _juice_vfx and _juice_vfx.has_method("pulse_corruption"):
+		_juice_vfx.pulse_corruption(pos, _terrain_at(pos))
 
 
 func _refresh_feature_visual(pos: Vector2i) -> void:

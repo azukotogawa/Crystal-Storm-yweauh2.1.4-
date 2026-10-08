@@ -1,6 +1,7 @@
 extends Camera3D
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _Juice = preload("res://systems/juice.gd")
 
 const ISO_PITCH_DEG := -35.264
 const ISO_YAW0_DEG := 45.0
@@ -103,6 +104,7 @@ func _process(delta: float):
 		global_position = desired_pos
 
 	rotation_degrees = Vector3(ISO_PITCH_DEG, yaw_degrees, 0.0)
+	global_position += _Juice.shake_offset(delta)
 	if profiler and profiler.has_method("end"):
 		profiler.end("camera_update")
 
