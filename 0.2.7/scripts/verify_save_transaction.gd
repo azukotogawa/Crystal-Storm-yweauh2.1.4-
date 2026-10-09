@@ -8,6 +8,7 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _SaveSchema = preload("res://systems/save_schema.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+const _DryDigCells = preload("res://scripts/dry_dig_cells.gd")
 const TEST_SLOT := 13
 
 
@@ -58,10 +59,15 @@ func _run() -> void:
 	if save_svc.has_signal("load_transaction_stage"):
 		save_svc.load_transaction_stage.connect(func(s: String): _stages.append(s))
 
-	# Mutate world + overlay domains that must survive disk JSON load
-	var col := Vector2i(4, 6)
-	if not terrain.try_dig(Vector3(float(col.x) + 0.5, 0.0, float(col.y) + 0.5)):
-		_fail("try_dig failed")
+	# Mutate world + overlay domains that must survive disk JSON load.
+	# (4, 6) is river after the dry disk moved to the heart corner.
+	var col: Vector2i = _DryDigCells.find_cell(world, Vector2i(4, 6))
+	if not _DryDigCells.is_found(col):
+		_fail("no dry dig cell near (4, 6) or the heart disk")
+	else:
+		print("save transaction dig cell %s" % col)
+	if _DryDigCells.is_found(col) and not terrain.try_dig(Vector3(float(col.x) + 0.5, 0.0, float(col.y) + 0.5)):
+		_fail("try_dig failed at %s: %s" % [col, terrain.last_fail_reason])
 	_FeatureRegistry.register_feature(14, 15, _WorldFeatureTypes.FeatureKind.RUIN, {
 		"center": Vector2i(14, 15),
 	})
@@ -91,7 +97,8 @@ func _run() -> void:
 		return
 
 	# Further mutate so load must restore
-	terrain.try_dig(Vector3(float(col.x) + 0.5, 0.0, float(col.y) + 0.5))
+	if _DryDigCells.is_found(col):
+		terrain.try_dig(Vector3(float(col.x) + 0.5, 0.0, float(col.y) + 0.5))
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
 

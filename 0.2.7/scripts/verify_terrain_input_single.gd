@@ -13,6 +13,7 @@ const _WeaponController = preload("res://weapons/weapon_controller.gd")
 const _GameManager = preload("res://game/game_manager.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _Player = preload("res://player/player.gd")
+const _DryDigCells = preload("res://scripts/dry_dig_cells.gd")
 
 
 var _failed: int = 0
@@ -48,6 +49,15 @@ func _run() -> void:
 	world.add_to_group("world")
 	root3d.add_child(world)
 
+	# (7, 7) is a river tile. Fill-place still stacks, but a wet column makes
+	# the following real frames long enough to repeat inside the short hold.
+	var hold_cell: Vector2i = _DryDigCells.find_cell(world, Vector2i(7, 7))
+	if not _DryDigCells.is_found(hold_cell):
+		_fail("no dry cell for weapon hold")
+		quit(1)
+		return
+	print("weapon hold cell %s" % hold_cell)
+
 	var cm := _ChunkManager.new()
 	cm.add_to_group("chunk_manager")
 	cm.set_process(false)
@@ -55,6 +65,14 @@ func _run() -> void:
 	var view := ChunkView.new()
 	view.chunk_data = ChunkData.new(Vector2i(0, 0), world)
 	cm.chunks[Vector2i(0, 0)] = view
+	var hold_chunk := Vector2i(
+		floori(float(hold_cell.x) / float(ChunkData.SIZE)),
+		floori(float(hold_cell.y) / float(ChunkData.SIZE))
+	)
+	if hold_chunk != Vector2i(0, 0):
+		var hold_view := ChunkView.new()
+		hold_view.chunk_data = ChunkData.new(hold_chunk, world)
+		cm.chunks[hold_chunk] = hold_view
 
 	var editor := _TerrainEditor.new()
 	editor.add_to_group("terrain_editor")
@@ -84,8 +102,8 @@ func _run() -> void:
 	player.inventory.add_item("wood", 40)
 	player.world = world
 	player.chunk_manager = cm
-	# After _ready spawn, move player onto test cell for range checks.
-	player.voxel_position = Vector3(7.5, 4.0, 7.5)
+	# After _ready spawn, move player onto the dry cell for range checks.
+	player.voxel_position = Vector3(float(hold_cell.x) + 0.5, 4.0, float(hold_cell.y) + 0.5)
 	if player.has_method("_sync_global_from_voxel"):
 		player._sync_global_from_voxel()
 	await process_frame
@@ -119,7 +137,7 @@ func get_action_column() -> Vector3:
 		print("OK single try_build places one wood_wall WorldObject")
 
 	# --- Ship WeaponController._process + Input edge/hold ---
-	var cell := Vector2i(7, 7)
+	var cell := hold_cell
 	hl.col = Vector3(float(cell.x) + 0.5, 1.0, float(cell.y) + 0.5)
 	var before: float = _TerrainEdits.get_height_delta(cell.x, cell.y)
 
@@ -139,9 +157,14 @@ func get_action_column() -> Vector3:
 	else:
 		print("OK weapon Input edge place = 1 layer")
 
-	# Advance engine frame so is_action_just_pressed clears while button stays pressed.
+	# Retire is_action_just_pressed. The node must not _process these frames:
+	# a slow frame (delta > build delay 0.03s) would repeat and blow the short hold.
+	weapon.set_process(false)
 	await process_frame
 	await process_frame
+	weapon._build_hold_sec = 0.0
+	weapon._cooldown_timer = 0.0
+	weapon.set_process(true)
 	# Short hold: still pressed, not a new edge — accumulate < hold-start.
 	var hold_accum := 0.0
 	while hold_accum < weapon.TERRAIN_HOLD_REPEAT_START_SEC * 0.6:

@@ -16,6 +16,7 @@ SUITES=(
 	"res://scripts/verify_height_agreement.gd"
 	"res://scripts/verify_water_redraw.gd"
 	"res://scripts/verify_river_mask.gd"
+	"res://scripts/verify_spawn_dry_disk.gd"
 	"res://scripts/verify_visual_pipeline.gd"
 	"res://scripts/verify_visual_boot_order.gd"
 	"res://scripts/verify_visual_texture_binding.gd"

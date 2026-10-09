@@ -10,6 +10,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalCell = preload("res://crystal/crystal_cell.gd")
 const _CrystalChunkLayer = preload("res://crystal/crystal_chunk_layer.gd")
+const _DryDigCells = preload("res://scripts/dry_dig_cells.gd")
 
 
 var _failed: int = 0
@@ -26,6 +27,8 @@ func _fail(msg: String) -> void:
 
 func _run() -> void:
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
+	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "2")
 	_TerrainEdits.reset()
 
 	var root3d := Node3D.new()
@@ -36,13 +39,29 @@ func _run() -> void:
 	world.add_to_group("world")
 	root3d.add_child(world)
 
+	var pos := _DryDigCells.find_cell(world, Vector2i(3, 3))
+	if not _DryDigCells.is_found(pos):
+		_fail("no dry dig cell near (3, 3) or the heart disk")
+		quit(1)
+		return
+	var chunk_coord := Vector2i(
+		floori(float(pos.x) / float(ChunkData.SIZE)),
+		floori(float(pos.y) / float(ChunkData.SIZE))
+	)
+	print("crystal floor dig cell %s chunk %s" % [pos, chunk_coord])
+
 	var cm := _ChunkManager.new()
 	cm.add_to_group("chunk_manager")
 	cm.set_process(false)
 	root3d.add_child(cm)
 	var view := ChunkView.new()
-	view.chunk_data = ChunkData.new(Vector2i(0, 0), world)
-	cm.chunks[Vector2i(0, 0)] = view
+	view.chunk_data = ChunkData.new(chunk_coord, world)
+	cm.chunks[chunk_coord] = view
+	# Bootstrap waits on spawn_area_ready(0, 0) and never streams while process is off.
+	if chunk_coord != Vector2i(0, 0):
+		var origin_view := ChunkView.new()
+		origin_view.chunk_data = ChunkData.new(Vector2i(0, 0), world)
+		cm.chunks[Vector2i(0, 0)] = origin_view
 
 	var editor := _TerrainEditor.new()
 	editor.add_to_group("terrain_editor")
@@ -76,7 +95,6 @@ func _run() -> void:
 	if crystal._presentation.fluid == null:
 		crystal._presentation.fluid = crystal._sim
 
-	var pos := Vector2i(3, 3)
 	var layer_h: float = _WorldSettings.get_active().layer_height()
 	var depth: float = maxf(0.6, layer_h * 0.35)
 	crystal._sim.depth[pos] = depth
