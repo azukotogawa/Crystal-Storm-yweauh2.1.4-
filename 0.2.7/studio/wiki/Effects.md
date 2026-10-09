@@ -40,6 +40,20 @@ Melee and the pick ask the pool for a swing mesh. Spear is a thin thrust box. Ha
 
 Death moves the visual onto `CombatVisualFeedback` (cap 6) for a 0.4 s shrink and fade, then frees it. The body `queue_free`s immediately so death signals and spawn-cell cleanup stay on the old frame.
 
+## Held item, aim, hits, cracks
+
+`ItemAnim` reads `anim_kind`, `anim_duration`, and `impact_ratio` from the item definition. Missing values derive a swing (melee and the pick), a thrust, a raise (eat, place, throw), or an aim pose (bow and sling). Armor has no pose. `HeldItemView` is two reused meshes parented to the player. The body has no rig.
+
+`WeaponController._try_attack` arms that clock for melee and ranged weapons and releases the existing strike on the impact sample. The cooldown still starts when the button is pressed, so the cadence is unchanged. Dig, place, eat, and bombs stay immediate and snap the pose to the impact frame. A direct call to `_do_melee_attack` or `_do_ranged_attack` still applies damage inside that call.
+
+`AimIndicator` draws a ground reticle for melee and a line plus an end marker for a shot. Tools emit `tool_aim_changed(cell, world_pos, active)` for `TargetHighlight` and do not draw a second block box. A block or melee mark stays inside `ActionTargeting.INTERACTION_RANGE`. A bow or sling marker uses the shot's authored range. The ray is the camera basis, so pitch moves the mark.
+
+`HitMarkers` keeps six world rings. A hit, a miss, and a blocked swing use different colours. `show_hit_marker` reuses one slot and still uses the radius it was given. `hit_markers_enabled` (default on) hides them. Enemy hit flash is unchanged. Impact chips are `VfxPool.Kind.CHIP`.
+
+`BlockBreakFx` draws one crack box from `shaders/block_crack.gdshader` while a dig is held. The shader builds the cracks from a hash. There is no crack image. The stage follows a visual fill that resets when the layer breaks. It does not change the dig delay. A break spawns `CHIP` particles in the block tint. A placement scales one of four proxy boxes and does not rebuild a chunk. `crack_overlay_enabled` (default on) hides the overlay. Chips still play. Reduce motion snaps the place pop to full size.
+
+New meshes set `cast_shadow` off. Terrain shaders stay unshaded.
+
 ## Audio
 
 Autoload `AudioManager` looks up ids in `config/audio_manifest.gd`. Each id points at `res://assets/audio/...`. If the file is missing, the call returns and the id is printed once. Buses are Master, Music, SFX, and UI (`default_bus_layout.tres`). Linear volumes persist on `PlayerSettings` and are applied to `AudioServer`.
@@ -57,7 +71,9 @@ No audio files are in the repo. Record the list in `assets/audio/SOUNDS_NEEDED.m
 | `screen_shake_enabled` | on | Camera offset |
 | `hit_stop_enabled` | on | Time-scale dip |
 | `flash_effects_enabled` | on | White overlay flash |
+| `hit_markers_enabled` | on | Hit, miss, and blocked markers |
+| `crack_overlay_enabled` | on | Mining crack overlay. Chips still play when this is off |
 | `volume_master` / `volume_music` / `volume_sfx` / `volume_ui` | 1 | Bus linear gain |
 | `reduce_motion` | off | Blocks shake, hit-stop, walk bob, creature bob, and large bursts |
 
-Headless suites: `scripts/verify_juice.gd`, `scripts/verify_ui_settings.gd`. The rest of the settings keys live in `studio/wiki/UI.md`.
+Headless suites: `scripts/verify_juice.gd`, `scripts/verify_item_animations.gd`, `scripts/verify_block_break_place_fx.gd`, `scripts/verify_ui_settings.gd`. The rest of the settings keys live in `studio/wiki/UI.md`.

@@ -39,6 +39,12 @@ const MAX_STACK := 99
 ## Column radius for a thrown blast. 0 means not a bomb.
 @export var blast_radius: float = 0.0
 @export var throwable: bool = false
+## ItemAnim.Kind. -1 derives a pose from the category.
+@export var anim_kind: int = -1
+## Seconds. 0 uses the action cooldown.
+@export var anim_duration: float = 0.0
+## 0–1 through the pose when the hit lands. -1 uses the kind default.
+@export var impact_ratio: float = -1.0
 
 @export_group("Armor")
 ## Fraction removed from incoming damage, before the defense stat.
@@ -89,6 +95,9 @@ func to_lookup() -> Dictionary:
 	if category == Category.ARMOR:
 		out["damage_reduction"] = damage_reduction
 		out["move_speed_mult"] = move_speed_mult
+	out["anim_kind"] = anim_kind
+	out["anim_duration"] = anim_duration
+	out["impact_ratio"] = impact_ratio
 	return out
 
 
@@ -117,6 +126,9 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.ammo_id = str(data.get("ammo_id", ""))
 	d.blast_radius = float(data.get("blast_radius", 0.0))
 	d.throwable = bool(data.get("throwable", false))
+	d.anim_kind = int(data.get("anim_kind", -1))
+	d.anim_duration = float(data.get("anim_duration", 0.0))
+	d.impact_ratio = float(data.get("impact_ratio", -1.0))
 	d.damage_reduction = float(data.get("damage_reduction", 0.0))
 	d.move_speed_mult = float(data.get("move_speed_mult", 1.0))
 	return d

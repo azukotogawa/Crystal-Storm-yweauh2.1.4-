@@ -9,6 +9,9 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _VfxPool = preload("res://systems/vfx_pool.gd")
 const _Juice = preload("res://systems/juice.gd")
+const _HitMarkers = preload("res://systems/hit_markers.gd")
+const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 @export var enabled: bool = true
 
@@ -24,6 +27,8 @@ var _labels_root: Node3D
 var _crystal: CrystalManager
 var _game_manager: Node
 var _pool: _VfxPool
+var _markers: _HitMarkers
+var _break_fx: _BlockBreakFx
 var _player: Node3D
 var _audio: Node
 var _dissolve_root: Node3D
@@ -39,6 +44,8 @@ func _enter_tree() -> void:
 func _ready() -> void:
 	_ensure_visual_roots()
 	_ensure_pool()
+	_ensure_markers()
+	_ensure_break_fx()
 	_build_label_pool()
 	call_deferred("_load_textures")
 	_build_indicators()
@@ -253,6 +260,10 @@ func _process(delta: float) -> void:
 		profiler.begin("combat_vfx")
 	_update_labels(delta)
 	_update_bursts(delta)
+	if _markers and _markers.has_live():
+		_markers.tick(delta)
+	if _break_fx and _break_fx.has_live():
+		_break_fx.tick(delta)
 	_update_spawn_marker_flashes(delta)
 	_update_boss_ring(delta)
 	_update_victory_flash(delta)
@@ -349,34 +360,22 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 
 ## Short ring at a world-space impact. Radius matches the combat hitbox when known.
 func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), radius: float = 0.45) -> void:
-	if not enabled:
+	if not enabled or not _PlayerSettings.hit_markers_enabled:
 		return
 	_ensure_visual_roots()
+	_ensure_markers()
 	if _bursts.size() >= _quality.max_burst_sprites:
 		return
-	var anchor := Node3D.new()
-	anchor.name = "HitMarker"
-	_burst_root.add_child(anchor)
 	var lift: float = _WorldSettings.get_active().voxel_scale * 0.04
-	anchor.global_position = world_pos + Vector3(0.0, lift, 0.0)
-	var mesh_i := MeshInstance3D.new()
-	var torus := TorusMesh.new()
-	var r := maxf(radius, _WorldSettings.get_active().voxel_scale * 0.1)
-	torus.inner_radius = r * 0.72
-	torus.outer_radius = r
-	torus.rings = 6
-	torus.ring_segments = 10
-	mesh_i.mesh = torus
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.75)
-	mat.emission_enabled = true
-	mat.emission = tint
-	mat.emission_energy_multiplier = 2.2
-	mat.no_depth_test = true
-	mesh_i.material_override = mat
-	anchor.add_child(mesh_i)
+	var anchor: Node3D = _markers.show_at(world_pos + Vector3(0.0, lift, 0.0), _HitMarkers.Result.HIT, radius, true)
+	if anchor == null:
+		return
+	var mesh_i := anchor.get_node_or_null("Ring") as MeshInstance3D
+	if mesh_i and mesh_i.material_override is StandardMaterial3D:
+		var mat := mesh_i.material_override as StandardMaterial3D
+		mat.albedo_color = Color(tint.r, tint.g, tint.b, 0.75)
+		mat.emission_enabled = true
+		mat.emission = tint
 	_bursts.append({
 		"anchor": anchor,
 		"sprite": null,
@@ -385,7 +384,26 @@ func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), ra
 		"place": true,
 		"mesh": mesh_i,
 		"hit_marker": true,
+		"pooled": true,
+		"gen": int(anchor.get_meta("gen", 0)),
 	})
+
+
+func show_attack_feedback(world_pos: Vector3, result: int) -> void:
+	if not enabled or not _PlayerSettings.hit_markers_enabled:
+		return
+	_ensure_markers()
+	var radius := _vox(0.2 if result == _HitMarkers.Result.HIT else 0.14)
+	_markers.show_at(world_pos, result, radius, false)
+	if result == _HitMarkers.Result.MISS:
+		_pool_burst(_VfxPool.Kind.CHIP, world_pos, _markers.color_for(result), 0.45)
+	elif result == _HitMarkers.Result.HIT:
+		_pool_burst(_VfxPool.Kind.CHIP, world_pos, _markers.color_for(result), 0.7)
+
+
+func block_break_fx() -> Node:
+	_ensure_break_fx()
+	return _break_fx
 
 
 func _spawn_break_shards(world_pos: Vector3, tint: Color, count: int) -> void:
@@ -516,14 +534,8 @@ func _on_weapon_attacked(item_id: String, hit_pos: Vector3) -> void:
 	if def.is_empty():
 		return
 	var kind := int(def.get("weapon_kind", _ItemTypes.WeaponKind.MELEE))
-	match kind:
-		_ItemTypes.WeaponKind.MELEE, _ItemTypes.WeaponKind.DIG:
-			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.075), 0.0), Color(1.0, 0.88, 0.45), _vox(0.21))
-			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.175), 0.0), Color(1.0, 0.88, 0.45), 2)
-			_show_swing(item_id, hit_pos)
-		_ItemTypes.WeaponKind.RANGED:
-			show_hit_marker(hit_pos + Vector3(0.0, _vox(0.1), 0.0), Color(0.65, 0.82, 1.0), _vox(0.18))
-			_spawn_burst(hit_pos + Vector3(0.0, _vox(0.225), 0.0), Color(0.65, 0.82, 1.0), 1)
+	if kind == _ItemTypes.WeaponKind.MELEE or kind == _ItemTypes.WeaponKind.DIG:
+		_show_swing(item_id, hit_pos)
 
 
 func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
@@ -537,6 +549,7 @@ func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 		radius = maxf(float(target.get_combat_radius()), _vox(0.125))
 	_show_damage_at(world_pos + Vector3(0.0, _vox(0.3), 0.0), damage, Color(1.0, 0.55, 0.45))
 	show_hit_marker(world_pos, Color(1.0, 0.45, 0.35), radius)
+	_pool_burst(_VfxPool.Kind.CHIP, world_pos, Color(1.0, 0.55, 0.4), 0.65)
 	if target.has_method("_flash_hit"):
 		target._flash_hit()
 	var weight := _Juice.weight_for_item(_item_id, damage)
@@ -696,9 +709,17 @@ func _update_bursts(delta: float) -> void:
 		var sprite: Sprite3D = b.get("sprite")
 		if not is_instance_valid(anchor):
 			continue
+		if bool(b.get("pooled", false)):
+			var gen := int(b.get("gen", -1))
+			if int(anchor.get_meta("gen", -2)) != gen:
+				continue
 		var life: float = float(b.life) - delta
 		if life <= 0.0:
-			anchor.queue_free()
+			if bool(b.get("pooled", false)):
+				if _markers:
+					_markers.release(anchor)
+			else:
+				anchor.queue_free()
 			continue
 		var vel: Vector3 = b.get("vel", Vector3.ZERO)
 		anchor.global_position += vel * delta
@@ -809,6 +830,23 @@ func pulse_corruption(cell: Vector2i, world_y: float) -> void:
 func _pool_burst(kind: int, pos: Vector3, tint: Color, scale: float = 1.0) -> bool:
 	_ensure_pool()
 	return _pool.burst(kind, pos, tint, scale)
+
+
+func _ensure_markers() -> void:
+	if _markers != null and is_instance_valid(_markers):
+		return
+	_markers = _HitMarkers.new()
+	_markers.name = "HitMarkers"
+	add_child(_markers)
+
+
+func _ensure_break_fx() -> void:
+	if _break_fx != null and is_instance_valid(_break_fx):
+		return
+	_ensure_pool()
+	_break_fx = _BlockBreakFx.new()
+	_break_fx.name = "BlockBreakFx"
+	add_child(_break_fx)
 
 
 func _show_swing(item_id: String, hit_pos: Vector3) -> void:

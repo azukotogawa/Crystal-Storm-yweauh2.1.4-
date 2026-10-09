@@ -3,7 +3,7 @@ extends Node3D
 ## Pooled one-shot CPUParticles3D and a few swing meshes.
 ## Idle pool does not run _process. LOW keeps the smallest cap.
 
-enum Kind { SHATTER, DUST, SPLASH, SPAWN_DEATH, CORRUPT }
+enum Kind { SHATTER, DUST, SPLASH, SPAWN_DEATH, CORRUPT, CHIP }
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
@@ -301,6 +301,12 @@ func _style(p: CPUParticles3D, kind: int, tint: Color, scale: float) -> void:
 			grav = Vector3(0.0, 0.4, 0.0)
 			spread = 30.0
 			color = Color(0.62, 0.28, 0.95, 0.8)
+		Kind.CHIP:
+			count = maxi(4, int(_amount * 0.55))
+			life = 0.34
+			speed = 2.1 * scale
+			grav = Vector3(0.0, -2.4, 0.0)
+			color = tint if tint.a > 0.05 else Color(0.72, 0.55, 0.32)
 		_:
 			pass
 	p.amount = count

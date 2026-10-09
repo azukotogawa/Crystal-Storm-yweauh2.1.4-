@@ -29,6 +29,8 @@ Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `l
 | `screen_shake_enabled` | on | Camera offset. Forced off while Reduce motion is on. |
 | `hit_stop_enabled` | on | Time-scale dip. Forced off while Reduce motion is on. |
 | `flash_effects_enabled` | on | White hit flash. Independent of Reduce motion. |
+| `hit_markers_enabled` | on | World hit, miss, and blocked markers. Independent of Reduce motion. |
+| `crack_overlay_enabled` | on | Mining crack overlay. Independent of Reduce motion. Break chips still play. |
 | `volume_master` / `volume_music` / `volume_sfx` / `volume_ui` | 1 | Linear bus gain on Master, Music, SFX, UI. |
 | `fullscreen` | off | Display mode. Ignored on the headless server. |
 | `vsync` | on | `DisplayServer` vsync mode. Ignored headless. |
@@ -49,7 +51,7 @@ Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `l
 
 ### Reduce motion
 
-The flag is its own key. `Juice` refuses shake, hit-stop, and bob while it is on, including `force` calls used by probes. Flash stays on its own toggle. The settings screen also unchecks and disables shake and hit-stop while Reduce motion is checked, and writes those two keys off. Turning Reduce motion off unlocks the checkboxes and leaves them as they are. Large `VfxPool` bursts (`SHATTER`, `SPAWN_DEATH`) return without spawning. Dust, splash, and corruption still play.
+The flag is its own key. `Juice` refuses shake, hit-stop, and bob while it is on, including `force` calls used by probes. Flash stays on its own toggle. The settings screen also unchecks and disables shake and hit-stop while Reduce motion is checked, and writes those two keys off. Turning Reduce motion off unlocks the checkboxes and leaves them as they are. Large `VfxPool` bursts (`SHATTER`, `SPAWN_DEATH`) return without spawning. Dust, splash, corruption, and break chips still play. The place pop snaps to full size. Hit markers and the crack overlay keep their own toggles.
 
 ## Onboarding
 
