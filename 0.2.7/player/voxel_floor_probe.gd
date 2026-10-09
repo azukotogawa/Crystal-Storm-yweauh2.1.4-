@@ -26,7 +26,7 @@ var _probe_offsets: Array[Vector2] = []
 ## Disable with CRYSTALSTORM_PLAYER_HEIGHT_CACHE=0 for A/B measurement.
 var _height_cache_enabled: bool = true
 var _cache_physics_frame: int = -1
-var _walkable_height_cache: Dictionary = {}  # Vector3i key -> float
+var _walkable_height_cache: Dictionary = {}  # Vector4i key -> float
 var _sample_feet_cache: Dictionary = {}
 ## Ramp entries are per column and shared by the player probe and entity nav.
 static var _ramp_frame: int = -1
@@ -132,13 +132,14 @@ func _sync_frame_cache() -> void:
 	_sample_feet_cache.clear()
 
 
-func _height_cache_key(wx: float, wz: float) -> Vector3i:
-	# Live edit delta and the feet hint stay in the key so dig/build and cave
-	# floors do not reuse a surface sample from the same physics frame.
-	# 0.01 column is finer than the body-probe spacing, and it does not allocate.
+func _height_cache_key(wx: float, wz: float) -> Vector4i:
+	# 0.01 column / 0.02 hint is finer than body-probe spacing and does not allocate.
+	# Hint and the live edit delta each own a component. XOR-packing them
+	# (hint ^ (delta << 16)) aliases pairs, and Vector3i's int32 drops the
+	# high bits of a negative or large delta.
 	var delta_i := int(round(_TerrainEdits.get_height_delta(floori(wx), floori(wz)) * 100.0))
 	var hint_i := int(round(feet_height_hint * 50.0))
-	return Vector3i(int(round(wx * 100.0)), int(round(wz * 100.0)), hint_i ^ (delta_i << 16))
+	return Vector4i(int(round(wx * 100.0)), int(round(wz * 100.0)), hint_i, delta_i)
 
 
 static func cached_ramp_entry(chunk_manager, wx: float, wz: float) -> Dictionary:
@@ -166,6 +167,7 @@ static func cached_column_center_walkable(world, chunk_manager, col_x: int, col_
 	if frame != _center_frame:
 		_center_frame = frame
 		_center_y.clear()
+	# Column and edit delta are already separate components, so they do not alias.
 	var delta_i := int(round(_TerrainEdits.get_height_delta(col_x, col_z) * 100.0))
 	var key := Vector3i(col_x, col_z, delta_i)
 	if _center_y.has(key):

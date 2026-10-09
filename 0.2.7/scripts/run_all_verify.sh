@@ -89,6 +89,7 @@ SUITES=(
 	"res://scripts/verify_combat_entity_hit.gd"
 	"res://scripts/verify_melee_forward_targeting.gd"
 	"res://scripts/verify_built_wall_collision_main.gd"
+	"res://scripts/verify_floor_probe_live_edit.gd"
 	"res://scripts/verify_combat_crystal_damage.gd"
 	"res://scripts/verify_crystal_breaking.gd"
 	"res://scripts/verify_corruption.gd"
