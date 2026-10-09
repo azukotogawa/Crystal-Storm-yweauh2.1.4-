@@ -109,12 +109,24 @@ func _run() -> void:
 	else:
 		print("OK stacked wall blocks at natural feet")
 
-	var probe_src := (load("res://player/voxel_floor_probe.gd") as GDScript).source_code
-	if "live_delta - snap_delta" not in probe_src:
-		push_error("voxel_floor_probe must apply live terrain edits over chunk snapshot")
+	# Stack is +2. Drop three layers onto a delta this frame has not cached.
+	var dig_x := float(wx) + 0.5
+	var dig_z := float(wz) + 0.5
+	probe.feet_height_hint = world.get_surface_height(dig_x, dig_z) + layer
+	var before_dig: float = probe.walkable_height_at(dig_x, dig_z)
+	if not _TerrainEdits.dig(wx, wz, 3):
+		push_error("live dig failed")
 		failed = true
 	else:
-		print("OK probe applies live terrain edits")
+		var after_dig: float = probe.walkable_height_at(dig_x, dig_z)
+		if not is_equal_approx(before_dig - after_dig, layer * 3.0):
+			push_error(
+				"live dig must lower walkable by three layers got delta=%.2f"
+				% (before_dig - after_dig)
+			)
+			failed = true
+		else:
+			print("OK live dig lowers walkable feet")
 
 	var player_src := (load("res://player/player.gd") as GDScript).source_code
 	if "_try_move_delta" not in player_src:
