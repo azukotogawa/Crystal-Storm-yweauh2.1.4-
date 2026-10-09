@@ -27,6 +27,7 @@ SUITES=(
 	"res://scripts/verify_entity_spawn_order.gd"
 	"res://scripts/verify_chunk_bootstrap.gd"
 	"res://scripts/verify_player_jump.gd"
+	"res://scripts/verify_player_model_solid.gd"
 	"res://scripts/verify_jump_while_moving.gd"
 	"res://scripts/verify_terrain_dig.gd"
 	"res://scripts/verify_terrain_build.gd"
