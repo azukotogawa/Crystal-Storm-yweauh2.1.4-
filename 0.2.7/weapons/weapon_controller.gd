@@ -14,6 +14,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _PlaceableCatalog = preload("res://helpers/placeable_catalog.gd")
 const _Projectile = preload("res://weapons/projectile.gd")
 const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
+const _LivingForce = preload("res://world/living_force.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -40,6 +41,8 @@ var _last_fail_toast: String = ""
 var _dig_hold_sec: float = 0.0
 var _audio: Node
 var _build_hold_sec: float = 0.0
+var _brush_left_held: bool = false
+var _brush_right_held: bool = false
 var place_index: int = 0
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
 
@@ -85,6 +88,7 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("weapon_controller")
 		return
+	_poll_dig_brush_keys()
 
 	# LMB subtracts structures/terrain for dig tools and place-catalog terrain edits.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
@@ -618,7 +622,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			_cooldown_timer = 0.04
 		return
 	dig_attempted.emit(target)
-	if _terrain_editor.try_dig(target):
+	if _terrain_editor.has_method("try_dig_brush") and _terrain_editor.try_dig_brush(target, dig_brush_radius(), player):
 		# Snappy dig cadence only — ignore weapon table cooldown.
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
@@ -651,6 +655,35 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			)
 
 	attacked.emit(item_id, target)
+
+
+## Pick footprint. Combat weapons never reach this. Default tool radius is 1.
+func dig_brush_radius() -> int:
+	if not _is_active_dig_tool():
+		return _LivingForce.BRUSH_RADIUS_DEFAULT
+	var slot = get_active_item()
+	if slot == null:
+		return _LivingForce.BRUSH_RADIUS_DEFAULT
+	return _LivingForce.radius_for_item(str(slot.id))
+
+
+func _poll_dig_brush_keys() -> void:
+	if not _is_active_dig_tool():
+		_brush_left_held = false
+		_brush_right_held = false
+		return
+	var left := Input.is_physical_key_pressed(KEY_BRACKETLEFT)
+	var right := Input.is_physical_key_pressed(KEY_BRACKETRIGHT)
+	var slot = get_active_item()
+	var item_id := str(slot.id) if slot != null else "stone_pick"
+	if left and not _brush_left_held:
+		_LivingForce.adjust_session_bias(-1, item_id)
+		_toast("Dig brush %d" % dig_brush_radius())
+	if right and not _brush_right_held:
+		_LivingForce.adjust_session_bias(1, item_id)
+		_toast("Dig brush %d" % dig_brush_radius())
+	_brush_left_held = left
+	_brush_right_held = right
 
 
 func get_place_id() -> String:

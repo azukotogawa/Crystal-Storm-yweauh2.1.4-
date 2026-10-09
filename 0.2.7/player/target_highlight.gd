@@ -5,6 +5,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _LivingForce = preload("res://world/living_force.gd")
 
 var player: Player
 var world: InfiniteNoiseWorld
@@ -34,6 +35,11 @@ var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
 ## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
+## Reused footprint boxes. Hidden at radius 1 so the single-cell highlight is unchanged.
+const BRUSH_MARK_POOL := 12
+var _brush_marks: Array[MeshInstance3D] = []
+var _brush_key: Vector3i = Vector3i(999999, 999999, -1)
+var _brush_shown: bool = false
 
 
 func _ready() -> void:
@@ -44,6 +50,7 @@ func _ready() -> void:
 	process_priority = -20
 	_build_mesh()
 	_build_ghost()
+	_build_brush_pool()
 
 
 func _build_mesh() -> void:
@@ -205,6 +212,7 @@ func _process(delta: float) -> void:
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("target_highlight")
 	if player == null or world == null or _mesh == null:
+		_hide_brush_marks()
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -212,6 +220,7 @@ func _process(delta: float) -> void:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
+		_hide_brush_marks()
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -256,6 +265,7 @@ func _process(delta: float) -> void:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
+		_hide_brush_marks()
 		_display_ready = false
 		# Keep _action_column so hold-dig still hits the hovered cell under the mouse.
 		if profiler and profiler.has_method("end"):
@@ -324,6 +334,10 @@ func _process(delta: float) -> void:
 				_mat.emission_energy_multiplier = 0.5
 
 	_update_prediction(info, range_v, layer, scale, pulse)
+	if mode == &"dig":
+		_update_brush_footprint(cell, layer, scale)
+	else:
+		_hide_brush_marks()
 
 	if profiler and profiler.has_method("end"):
 		profiler.end("target_highlight")
@@ -337,6 +351,81 @@ func pulse_place_success() -> void:
 ## Column dig/build must use — matches the visible cursor (column-space).
 func get_action_column() -> Vector3:
 	return _action_column
+
+
+## Cells the dig brush would edit. Radius 1 is just the aimed column.
+func get_brush_footprint() -> Array:
+	if _action_column == Vector3.ZERO or world == null:
+		return []
+	var cell := Vector2i(floori(_action_column.x), floori(_action_column.z))
+	return _LivingForce.footprint(cell.x, cell.y, _highlight_brush_radius(), world)
+
+
+func _highlight_brush_radius() -> int:
+	if player == null:
+		return 1
+	var weapon := player.get_node_or_null("WeaponController")
+	if weapon and weapon.has_method("dig_brush_radius"):
+		return int(weapon.dig_brush_radius())
+	return 1
+
+
+func _build_brush_pool() -> void:
+	for i in BRUSH_MARK_POOL:
+		var mark := MeshInstance3D.new()
+		mark.name = "BrushMark%d" % i
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE
+		mark.mesh = box
+		mark.material_override = _mat
+		mark.visible = false
+		mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mark.sorting_offset = 3.8
+		add_child(mark)
+		_brush_marks.append(mark)
+
+
+func _hide_brush_marks() -> void:
+	if not _brush_shown:
+		return
+	_brush_shown = false
+	_brush_key = Vector3i(999999, 999999, -1)
+	for mark in _brush_marks:
+		mark.visible = false
+
+
+func _update_brush_footprint(cell: Vector2i, layer: float, scale: float) -> void:
+	var radius := _highlight_brush_radius()
+	if radius <= 1 or _brush_marks.is_empty():
+		_hide_brush_marks()
+		return
+	var key := Vector3i(cell.x, cell.y, radius)
+	if key != _brush_key:
+		_brush_key = key
+		var cells: Array = _LivingForce.footprint(cell.x, cell.y, radius, world)
+		var extra := 0
+		var ws = _WorldSettings.get_active()
+		for cell_v in cells:
+			var c: Vector2i = cell_v
+			if c == cell:
+				continue
+			if extra >= _brush_marks.size():
+				break
+			var mark: MeshInstance3D = _brush_marks[extra]
+			extra += 1
+			var top := world.get_surface_height(float(c.x), float(c.y)) + layer
+			mark.global_position = Vector3(
+				ws.column_to_world(float(c.x) + 0.5),
+				top - layer * 0.5,
+				ws.column_to_world(float(c.y) + 0.5)
+			)
+			mark.visible = true
+		for i in range(extra, _brush_marks.size()):
+			_brush_marks[i].visible = false
+		_brush_shown = extra > 0
+	for mark in _brush_marks:
+		if mark.visible:
+			mark.scale = Vector3(scale * 0.92, layer * 0.92, scale * 0.92)
 
 
 func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: float, pulse: float) -> void:

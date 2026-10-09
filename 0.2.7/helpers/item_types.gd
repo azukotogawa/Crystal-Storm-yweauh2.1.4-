@@ -68,6 +68,8 @@ const ITEMS: Dictionary = {
 		"crystal_damage": 2.4,
 		"range": 3.0,
 		"cooldown": 0.1,
+		"dig_radius": 1,
+		"description": "Dig radius 1. [ and ] widen the brush while this pick is held.",
 		"stackable": false,
 		"max_stack": 1,
 	},

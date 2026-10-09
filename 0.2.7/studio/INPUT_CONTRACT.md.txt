@@ -18,6 +18,9 @@ Interaction range:
 Combat:
 Sword attack must never invoke terrain/building removal.
 
+Dev (not rebindable actions):
+[ / ] = dig-brush radius while a dig tool is held. Session only, radius 1–3, added to the tool's dig_radius (stone pick is 1). Combat weapons never dig.
+
 Building:
 LMB = remove selected/intersected authored object
 RMB = place selected catalog item

@@ -38,6 +38,8 @@ const MAX_STACK := 99
 @export var ammo_id: String = ""
 ## Column radius for a thrown blast. 0 means not a bomb.
 @export var blast_radius: float = 0.0
+## Dig-tool footprint in columns. 1 is the single-column dig. 0 means not a dig tool.
+@export var dig_radius: int = 0
 @export var throwable: bool = false
 
 @export_group("Armor")
@@ -77,6 +79,8 @@ func to_lookup() -> Dictionary:
 		out["projectile_gravity"] = projectile_gravity
 		out["ammo_id"] = ammo_id
 		out["blast_radius"] = blast_radius
+		if weapon_kind == WeaponKind.DIG:
+			out["dig_radius"] = maxi(dig_radius, 1)
 	if category == Category.CONSUMABLE:
 		out["heal_amount"] = heal_amount
 		out["crystal_damage"] = crystal_damage
@@ -117,6 +121,7 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.ammo_id = str(data.get("ammo_id", ""))
 	d.blast_radius = float(data.get("blast_radius", 0.0))
 	d.throwable = bool(data.get("throwable", false))
+	d.dig_radius = int(data.get("dig_radius", 1 if d.weapon_kind == WeaponKind.DIG else 0))
 	d.damage_reduction = float(data.get("damage_reduction", 0.0))
 	d.move_speed_mult = float(data.get("move_speed_mult", 1.0))
 	return d
