@@ -28,6 +28,10 @@ static var _shared_box_mesh: BoxMesh
 static var _shared_ramp_material: ShaderMaterial
 static var _shared_chunk_material: ShaderMaterial
 static var _shared_surface_material: ShaderMaterial
+## Fresh materials so blueprint's first sampler bind is the placeholder.
+static var _bp_ramp_material: ShaderMaterial
+static var _bp_chunk_material: ShaderMaterial
+static var _bp_surface_material: ShaderMaterial
 static var _last_upload_us: int = 0
 static var _pending_buffer_uploads: Array = []
 static var _pending_surface_uploads: Array = []
@@ -38,6 +42,10 @@ func _ready() -> void:
 
 
 func _ensure_chunk_material() -> void:
+	if _blueprint_on():
+		chunk_material = _blueprint_chunk_material()
+		return
+	_bp_chunk_material = null
 	if _shared_chunk_material == null:
 		var seed_mat: ShaderMaterial = null
 		if chunk_material != null and chunk_material.shader != null:
@@ -50,6 +58,9 @@ func _ensure_chunk_material() -> void:
 
 
 static func _ensure_ramp_material() -> ShaderMaterial:
+	if _blueprint_on():
+		return _blueprint_ramp_material()
+	_bp_ramp_material = null
 	if _shared_ramp_material == null:
 		_shared_ramp_material = ShaderMaterial.new()
 		_shared_ramp_material.shader = _RAMP_SHADER
@@ -65,8 +76,24 @@ static func _bind_chunk_atlas(mat: ShaderMaterial) -> void:
 	if atlas == null or atlas.get_width() <= 0:
 		atlas = _CHUNK_MATERIAL_RES.get_shader_parameter("texture_atlas") as Texture2D
 	if atlas != null:
-		mat.set_shader_parameter("texture_atlas", atlas)
+		var bp := _texture_blueprint()
+		if bp != null and bool(bp.get("enabled")) and bp.has_method("remember_shader_texture"):
+			bp.remember_shader_texture(mat, "texture_atlas", atlas)
+		else:
+			mat.set_shader_parameter("texture_atlas", atlas)
 	mat.set_shader_parameter("atlas_grid", _VoxelTypes.atlas_grid_vec2())
+
+
+static func _texture_blueprint() -> Node:
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return null
+	return (loop as SceneTree).root.get_node_or_null("TextureBlueprint")
+
+
+static func _blueprint_on() -> bool:
+	var bp := _texture_blueprint()
+	return bp != null and bool(bp.get("enabled"))
 
 
 func setup(data: ChunkData, mesh_data: Dictionary):
@@ -203,10 +230,69 @@ func _uses_surface_mesh() -> bool:
 
 
 func _ensure_surface_material() -> ShaderMaterial:
+	if _blueprint_on():
+		return _blueprint_surface_material()
+	_bp_surface_material = null
 	if _shared_surface_material == null:
 		_shared_surface_material = _SURFACE_MATERIAL_RES.duplicate() as ShaderMaterial
 	_bind_chunk_atlas(_shared_surface_material)
 	return _shared_surface_material
+
+
+static func _blueprint_chunk_material() -> ShaderMaterial:
+	if _bp_chunk_material == null:
+		_bp_chunk_material = _CHUNK_MATERIAL_RES.duplicate() as ShaderMaterial
+		# Drop the imported atlas so the placeholder is the first sampler bind.
+		_bp_chunk_material.set_shader_parameter("texture_atlas", null)
+	_bind_chunk_atlas(_bp_chunk_material)
+	return _bp_chunk_material
+
+
+static func _blueprint_ramp_material() -> ShaderMaterial:
+	if _bp_ramp_material == null:
+		_bp_ramp_material = ShaderMaterial.new()
+		_bp_ramp_material.shader = _RAMP_SHADER
+		_bp_ramp_material.render_priority = 1
+	_bind_chunk_atlas(_bp_ramp_material)
+	return _bp_ramp_material
+
+
+static func _blueprint_surface_material() -> ShaderMaterial:
+	if _bp_surface_material == null:
+		_bp_surface_material = _SURFACE_MATERIAL_RES.duplicate() as ShaderMaterial
+	_bind_chunk_atlas(_bp_surface_material)
+	return _bp_surface_material
+
+
+## Push the active atlas material onto chunk meshes already in the tree.
+static func rebind_live_materials(tree: SceneTree) -> void:
+	if tree == null:
+		return
+	var surface := _SURFACE_MATERIAL_RES.shader
+	var chunk := _CHUNK_MATERIAL_RES.shader
+	var stack: Array = [tree.root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if not (node is GeometryInstance3D):
+			continue
+		var gi := node as GeometryInstance3D
+		var mat := gi.material_override as ShaderMaterial
+		if mat == null or mat.shader == null:
+			continue
+		if mat.shader == surface:
+			var next_surface: ShaderMaterial = _blueprint_surface_material() if _blueprint_on() else _shared_surface_material
+			if next_surface != null:
+				gi.material_override = next_surface
+		elif mat.shader == _RAMP_SHADER:
+			var next_ramp: ShaderMaterial = _blueprint_ramp_material() if _blueprint_on() else _shared_ramp_material
+			if next_ramp != null:
+				gi.material_override = next_ramp
+		elif mat.shader == chunk:
+			var next_chunk: ShaderMaterial = _blueprint_chunk_material() if _blueprint_on() else _shared_chunk_material
+			if next_chunk != null:
+				gi.material_override = next_chunk
 
 
 func _clear_multimesh_children() -> void:

@@ -15,24 +15,30 @@ global uniform float cutaway_radius_near;
 global uniform float cutaway_feet_clear;
 global uniform float cutaway_past;
 
+// Sun shade, AO strength, detail, and cave fog. Strength 0 disables AO only.
+global uniform float terrain_ao_strength;
+global uniform vec3 terrain_sun_dir;
+global uniform float terrain_detail;
+global uniform float terrain_cave_fog;
+
+#include "res://shaders/terrain_shade.gdshaderinc"
+
 uniform sampler2D texture_atlas : source_color, filter_nearest;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
 varying vec2 voxel_uv;
 varying flat vec4 face_tint;
-varying float fill_light;
+varying vec3 shade_normal;
+varying float vertex_ao;
 
 
 void vertex() {
 	voxel_uv = UV;
 	face_tint = COLOR;
-	// Fake iso key light so slopes, tops, and vertical cuts read apart without
-	// Lambert black-out. Chunks are not rotated; NORMAL is world-ish.
-	vec3 L = normalize(vec3(0.55, 0.82, 0.38));
-	vec3 n = normalize(NORMAL);
-	float ndl = clamp(dot(n, L), 0.0, 1.0);
-	float hemi = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
-	fill_light = 0.52 + 0.28 * hemi + 0.28 * ndl;
+	// Chunks are not rotated; NORMAL is world-ish. COLOR.a is baked corner AO.
+	vec3 n = NORMAL;
+	shade_normal = dot(n, n) > 0.001 ? normalize(n) : vec3(0.0, 1.0, 0.0);
+	vertex_ao = COLOR.a;
 }
 
 
@@ -82,5 +88,7 @@ void fragment() {
 	}
 
 	float shade = max(face_tint.b, 0.55);
-	ALBEDO = tex_color.rgb * shade * fill_light;
+	vec3 lit_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float crystal = cs_crystal_cell(col_row);
+	ALBEDO = cs_finish(tex_color.rgb * shade, shade_normal, repeated_uv, lit_pos, vertex_ao, crystal);
 }

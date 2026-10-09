@@ -13,6 +13,7 @@ const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -54,6 +55,7 @@ func _ready() -> void:
 	add_to_group("world_entity")
 	_bind_scene()
 	_hook_visual_registry()
+	_ContactShadow.attach(self, 0.06, 1.2)
 
 
 func setup(

@@ -22,4 +22,12 @@ Building:
 LMB = remove selected/intersected authored object
 RMB = place selected catalog item
 
+Dev (does not change gameplay bindings):
+F3 = debug overlay
+F4 = live world inspector
+F5 = quick save
+F6 = texture blueprint (placeholders for sprites, tiles, UI, and items; Settings → Graphics checkbox, off by default)
+F9 = quick load
+F11 = bug report
+
 Changing one system must not silently change these bindings.

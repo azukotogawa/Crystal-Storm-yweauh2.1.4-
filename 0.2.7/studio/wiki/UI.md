@@ -40,6 +40,7 @@ Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `l
 | `reduce_motion` | off | Disables shake, hit-stop, walk bob, creature bob, and the large shatter / spawn-death bursts. |
 | `tutorial_completed` | off | First-run overlay stays dismissed. |
 | `camera_cutaway_enabled` | on | Graphics tab. Cave cutaway between the camera and the player. |
+| `texture_blueprint` | off | Graphics tab and F6. Swaps textures for labelled placeholders. Export texture manifest writes `docs/texture_manifest.json`. |
 | `keybinds` | `{}` | Per-action event lists. Empty means the project defaults. |
 
 ### Keybinds

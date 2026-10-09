@@ -12,6 +12,13 @@ global uniform float cutaway_radius_near;
 global uniform float cutaway_feet_clear;
 global uniform float cutaway_past;
 
+global uniform float terrain_ao_strength;
+global uniform vec3 terrain_sun_dir;
+global uniform float terrain_detail;
+global uniform float terrain_cave_fog;
+
+#include "res://shaders/terrain_shade.gdshaderinc"
+
 uniform sampler2D texture_atlas : source_color, filter_nearest;	
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
@@ -21,6 +28,8 @@ varying flat vec4 instance_data;
 varying vec2 voxel_tiling;
 varying flat float face_code;
 varying flat float render_this_face;
+varying vec3 shade_normal;
+varying float vertex_ao;
 
 void vertex() {
     instance_data = INSTANCE_CUSTOM;
@@ -62,6 +71,9 @@ void vertex() {
     } else if (f == 7 || f == 8 || f == 9) { // RAMP / corner / side diagonal
         render_this_face = 1.0;
     }
+    vec3 nrm = NORMAL;
+    shade_normal = dot(nrm, nrm) > 0.001 ? normalize(nrm) : vec3(0.0, 1.0, 0.0);
+    vertex_ao = 1.0;
 }
 
 
@@ -120,17 +132,7 @@ void fragment() {
     // Uses the flag computed in vertex from object-space NORMAL (reliable axis directions).
     if (render_this_face < 0.5) discard;
 
-    ALBEDO = tex_color.rgb;
-
-    // Face-based pixel-art shading. Do not rely on Lambert for side faces —
-    // the iso camera leaves them nearly black under a single key light.
-    if (face_code > 0.5 && face_code < 6.5 && face_code != 2.0) {
-        ALBEDO *= 0.68;
-    }
-    if (face_code == 2.0) {
-        ALBEDO *= 0.48;
-    }
-    if (face_code < 0.5) {
-        ALBEDO *= 0.96;
-    }
+    vec3 lit_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    float crystal = cs_crystal_cell(vec2(col, row));
+    ALBEDO = cs_finish(tex_color.rgb, shade_normal, repeated_uv, lit_pos, vertex_ao, crystal);
 }

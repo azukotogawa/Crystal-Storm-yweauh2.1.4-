@@ -11,6 +11,7 @@ const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 const _BossBrain = preload("res://entities/boss_brain.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -67,6 +68,7 @@ func _ready() -> void:
 	add_to_group("crystal_enemy")
 	_bind_scene()
 	_hook_visual_registry()
+	_ContactShadow.attach(self, 0.06, 1.1)
 	# Spatial registration is deferred to setup()/sync_spatial_index() so the
 	# spawner can set global_position before the index samples it.
 

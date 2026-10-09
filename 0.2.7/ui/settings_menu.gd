@@ -8,6 +8,7 @@ const _InputBindings = preload("res://systems/input_bindings.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
+const _TextureManifest = preload("res://tools/texture_manifest.gd")
 
 const RESOLUTIONS: PackedStringArray = ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"]
 
@@ -27,6 +28,7 @@ var _vol_ui: HSlider
 var _fullscreen: CheckBox
 var _vsync: CheckBox
 var _cutaway: CheckBox
+var _blueprint: CheckBox
 var _resolution: OptionButton
 var _ui_scale: HSlider
 var _ui_scale_label: Label
@@ -38,6 +40,7 @@ var _status: Label
 
 
 func _ready() -> void:
+	add_to_group("settings_menu")
 	_ThemeBuilder.apply(self)
 	custom_minimum_size = Vector2(300, 280)
 	horizontal_scroll_mode = SCROLL_MODE_DISABLED
@@ -65,6 +68,12 @@ func _ready() -> void:
 	_veg = _slider(graphics, "Vegetation density", 0, 1, 0.05, "Vegetation")
 	_fx = _check(graphics, "Combat visuals", "CombatVisuals")
 	_cutaway = _check(graphics, "Camera cutaway", "CameraCutaway")
+	_blueprint = _check(graphics, "Texture blueprint (F6)", "TextureBlueprintToggle")
+	var export_manifest := Button.new()
+	export_manifest.name = "ExportTextureManifest"
+	export_manifest.text = "Export texture manifest"
+	export_manifest.pressed.connect(_on_export_texture_manifest)
+	graphics.add_child(export_manifest)
 	var audio := _tab(tabs, "Audio")
 	_vol_master = _slider(audio, "Master volume", 0, 1, 0.05, "VolumeMaster")
 	_vol_music = _slider(audio, "Music volume", 0, 1, 0.05, "VolumeMusic")
@@ -252,6 +261,7 @@ func sync_from_settings() -> void:
 	_set_check(_flash, bool(data.get("flash_effects_enabled", true)))
 	_set_check(_colorblind, bool(data.get("colorblind_palette", false)))
 	_set_check(_cutaway, bool(data.get("camera_cutaway_enabled", true)))
+	_set_check(_blueprint, bool(data.get("texture_blueprint", false)))
 	_apply_reduce_motion_lock()
 	_refresh_scale_label()
 	_refresh_bindings()
@@ -424,6 +434,8 @@ func _persist() -> void:
 		data["colorblind_palette"] = bool(_colorblind.button_pressed)
 	if _cutaway:
 		data["camera_cutaway_enabled"] = bool(_cutaway.button_pressed)
+	if _blueprint:
+		data["texture_blueprint"] = bool(_blueprint.button_pressed)
 	_apply_reduce_motion_lock()
 	if _resolution and _fullscreen:
 		_resolution.disabled = bool(_fullscreen.button_pressed)
@@ -451,6 +463,9 @@ func _persist() -> void:
 	var root = tree.get_first_node_in_group("composition_root") if tree else null
 	var registry = root.get("registry") if root and "registry" in root else null
 	_PlayerSettings.apply_to_performance(perf)
+	var blueprint := get_node_or_null("/root/TextureBlueprint")
+	if blueprint and blueprint.has_method("set_enabled"):
+		blueprint.set_enabled(bool(data.get("texture_blueprint", false)))
 	if perf and registry and perf.has_method("apply_to_registered"):
 		perf.apply_to_registered(registry, {})
 	if _status and _status.text != "Binding saved." and _status.text != "Defaults restored.":
@@ -510,6 +525,19 @@ func _set_check(box: CheckBox, pressed: bool) -> void:
 	box.set_block_signals(true)
 	box.button_pressed = pressed
 	box.set_block_signals(false)
+
+
+func set_texture_blueprint(on: bool) -> void:
+	_set_check(_blueprint, on)
+
+
+func _on_export_texture_manifest() -> void:
+	var doc: Dictionary = _TextureManifest.write_project()
+	if _status:
+		_status.text = "Texture manifest: %d slots (%d missing)" % [
+			int(doc.get("slot_count", 0)),
+			int(doc.get("missing_count", 0)),
+		]
 
 
 func _set_slider(slider: HSlider, value: float) -> void:

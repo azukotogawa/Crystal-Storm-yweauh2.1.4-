@@ -14,14 +14,24 @@ global uniform float cutaway_radius_near;
 global uniform float cutaway_feet_clear;
 global uniform float cutaway_past;
 
+global uniform float terrain_ao_strength;
+global uniform vec3 terrain_sun_dir;
+global uniform float terrain_detail;
+global uniform float terrain_cave_fog;
+
+#include "res://shaders/terrain_shade.gdshaderinc"
+
 uniform sampler2D texture_atlas : source_color, filter_nearest;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
 varying flat vec4 instance_data;
+varying vec3 shade_normal;
 
 
 void vertex() {
 	instance_data = INSTANCE_CUSTOM;
+	vec3 nrm = NORMAL;
+	shade_normal = dot(nrm, nrm) > 0.001 ? normalize(nrm) : vec3(0.0, 1.0, 0.0);
 }
 
 
@@ -63,5 +73,7 @@ void fragment() {
 	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.04) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
-	ALBEDO = tex_color.rgb * 0.92;
+	vec3 lit_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	float crystal = cs_crystal_cell(vec2(col, row));
+	ALBEDO = cs_finish(tex_color.rgb, shade_normal, repeated_uv, lit_pos, 1.0, crystal);
 }

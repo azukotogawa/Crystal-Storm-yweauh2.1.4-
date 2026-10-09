@@ -4,6 +4,7 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _TerrainAO = preload("res://helpers/terrain_vertex_ao.gd")
 
 const FACE_TOP := 0
 const FACE_BOTTOM := 2
@@ -127,7 +128,8 @@ static func build_fused_terrain_buffers(
 
 		_write_face_quad(
 			vertices, normals, uvs, colors, indices,
-			vi, ii, face_code, ox, oz, sx, sy, sz, surface_y, atlas, shade, uv_w, uv_h
+			vi, ii, face_code, ox, oz, sx, sy, sz, surface_y, atlas, shade, uv_w, uv_h,
+			1.0, data, float(q["x"]), float(q["z"]), dim_x, dim_z
 		)
 		vi += 4
 		ii += 6
@@ -318,7 +320,8 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 			_write_face_quad(
 				vertices, normals, uvs, colors, indices,
 				vi, ii, face_code, ox, oz, sx, sy, sz, surface_y, atlas, shade,
-				float(q.get("uv_w", dim_x)), float(q.get("uv_h", dim_z))
+				float(q.get("uv_w", dim_x)), float(q.get("uv_h", dim_z)),
+				1.0, data, float(q["x"]), float(q["z"]), dim_x, dim_z
 			)
 		vi += 4
 		ii += 6
@@ -372,7 +375,8 @@ static func patch_terrain_faces_into_cache(
 		_write_face_quad(
 			vertices, normals, uvs, colors, indices,
 			vi, ii, face_code, ox, oz, sx, sy, sz, surface_y, atlas, _face_shade(face_code),
-			float(q.get("uv_w", dim_x)), float(q.get("uv_h", dim_z))
+			float(q.get("uv_w", dim_x)), float(q.get("uv_h", dim_z)),
+			1.0, data, float(q["x"]), float(q["z"]), dim_x, dim_z
 		)
 
 
@@ -427,7 +431,12 @@ static func _write_face_quad(
 	shade: float,
 	uv_w: float,
 	uv_h: float,
-	_unused: float = 1.0
+	_unused: float = 1.0,
+	data: ChunkData = null,
+	col_x: float = 0.0,
+	col_z: float = 0.0,
+	col_dim_x: float = 1.0,
+	col_dim_z: float = 1.0
 ) -> void:
 	var y0: float = surface_y
 	var y1: float = surface_y + sy
@@ -475,6 +484,16 @@ static func _write_face_quad(
 			return
 
 	var tint := Color(float(atlas.x) / 255.0, float(atlas.y) / 255.0, shade, 1.0)
+	var ao := Vector4.ONE
+	if face_code == FACE_TOP and data != null:
+		ao = _TerrainAO.top_corner_ao(
+			data,
+			int(round(col_x)),
+			int(round(col_z)),
+			maxi(int(round(col_dim_x)), 1),
+			maxi(int(round(col_dim_z)), 1),
+			surface_y
+		)
 
 	normals[vi + 0] = normal
 	normals[vi + 1] = normal
@@ -484,10 +503,10 @@ static func _write_face_quad(
 	uvs[vi + 1] = Vector2(uv_w, 0.0)
 	uvs[vi + 2] = Vector2(uv_w, uv_h)
 	uvs[vi + 3] = Vector2(0.0, uv_h)
-	colors[vi + 0] = tint
-	colors[vi + 1] = tint
-	colors[vi + 2] = tint
-	colors[vi + 3] = tint
+	colors[vi + 0] = Color(tint.r, tint.g, tint.b, ao.x)
+	colors[vi + 1] = Color(tint.r, tint.g, tint.b, ao.y)
+	colors[vi + 2] = Color(tint.r, tint.g, tint.b, ao.z)
+	colors[vi + 3] = Color(tint.r, tint.g, tint.b, ao.w)
 
 	indices[ii + 0] = vi
 	indices[ii + 1] = vi + 1
