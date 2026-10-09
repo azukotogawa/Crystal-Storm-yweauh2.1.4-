@@ -10,6 +10,7 @@ const _CrystalPalette = preload("res://ui/crystal_palette.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
+const _WorldBakeService = preload("res://world/world_bake_service.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -49,6 +50,19 @@ var _boss_shown_hp: int = -1
 var _hud_player: Node = null
 var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
 var _run_summary: _RunSummaryPanel = null
+var _hud_frame: int = -999
+var _hud_skip: bool = false
+var _hk_cell: Vector2i = Vector2i(2147483647, 0)
+var _hk_tiles: int = -999999
+var _hk_phase: int = -999
+var _hk_run: int = -999
+var _hk_place: int = -999
+var _hk_biome: int = 0
+var _hk_relics: int = -1
+var _spawn_cell: Vector2i = Vector2i(999999, 999999)
+var _spawn_known: bool = false
+var _bake_done: int = -1
+var _bake_total: int = -1
 
 
 func _ready() -> void:
@@ -109,22 +123,23 @@ func _update_bake_chip() -> void:
 	if _bake_chip == null:
 		return
 	if _GameplayInput.world_loading:
-		_bake_chip.visible = false
+		if _bake_chip.visible:
+			_bake_chip.visible = false
 		return
-	var wb = load("res://world/world_bake_service.gd")
-	if wb == null or not wb.has_method("get_active"):
-		_bake_chip.visible = false
+	var bake = _WorldBakeService.get_active()
+	if bake == null or not ("bake_in_progress" in bake) or not bool(bake.bake_in_progress):
+		if _bake_chip.visible:
+			_bake_chip.visible = false
+		_bake_done = -1
 		return
-	var bake = wb.get_active()
-	if bake == null or not bake.has_method("fill_status"):
-		_bake_chip.visible = false
-		return
-	var fs: Dictionary = bake.fill_status()
-	if not bool(fs.get("bake_in_progress", false)):
-		_bake_chip.visible = false
+	var done := int(bake._fill_done) if "_fill_done" in bake else -1
+	var total := int(bake._fill_total) if "_fill_total" in bake else -1
+	if _bake_chip.visible and done == _bake_done and total == _bake_total:
 		return
 	_bake_chip.visible = true
-	_bake_chip.text = "Background bake %d / %d" % [int(fs.get("done", 0)), int(fs.get("total", 0))]
+	_bake_chip.text = "Background bake %d / %d" % [done, total]
+	_bake_done = done
+	_bake_total = total
 
 
 func _ensure_leave_world_button() -> void:
@@ -519,10 +534,55 @@ func _process(delta: float) -> void:
 		profiler.end("ui_overlay")
 
 
+func _hud_should_skip() -> bool:
+	var frame := Engine.get_process_frames()
+	if frame == _hud_frame:
+		return _hud_skip
+	_hud_frame = frame
+	var cell := Vector2i(2147483647, 0)
+	var player := _cached_player()
+	if player and player.has_method("get_voxel_position"):
+		var v: Vector3 = player.get_voxel_position()
+		cell = Vector2i(floori(v.x), floori(v.z))
+	var tiles := 0
+	if _crystal and "covered_cells" in _crystal:
+		tiles = int(_crystal.covered_cells)
+	var phase := -1
+	var run_state := -1
+	if _game_manager:
+		phase = int(_game_manager.phase)
+		run_state = int(_game_manager.run_state)
+	var place := 0
+	if player:
+		var weapon = player.get_node_or_null("WeaponController")
+		if weapon and "place_index" in weapon:
+			place = int(weapon.place_index)
+	var biome_h := _current_biome.hash()
+	var relics := _equipped_relic_names.size()
+	var changed := (
+		cell != _hk_cell or tiles != _hk_tiles or phase != _hk_phase
+		or run_state != _hk_run or place != _hk_place or biome_h != _hk_biome
+		or relics != _hk_relics
+	)
+	if changed:
+		_hk_cell = cell
+		_hk_tiles = tiles
+		_hk_phase = phase
+		_hk_run = run_state
+		_hk_place = place
+		_hk_biome = biome_h
+		_hk_relics = relics
+	# Town HP and wet crawl still move while the player stands on one cell.
+	_hud_skip = (not changed) and (posmod(frame, 20) != 0)
+	return _hud_skip
+
+
 func _update_game_hud() -> void:
 	if _game_hud == null:
 		return
 	if _crystal == null or _game_manager == null:
+		return
+	if _hud_should_skip():
 		return
 	if _game_manager.run_state != _GameManager.RunState.PLAYING:
 		_game_hud.visible = false
@@ -563,7 +623,7 @@ func _update_game_hud() -> void:
 			ruins_line = "  |  %s" % rl
 	var tool_line := "WASD move · Space jump · LMB break · RMB place · Tab cycle"
 	var weapon = null
-	var player = get_tree().get_first_node_in_group("player")
+	var player := _cached_player()
 	if player:
 		weapon = player.get_node_or_null("WeaponController")
 	var place_name := "Fill"
@@ -778,6 +838,10 @@ func _update_objective_hud() -> void:
 		_ensure_objective_hud()
 	if _objective_panel == null:
 		return
+	if _hud_should_skip():
+		_objective_panel.visible = true
+		_spin_objective_arrow()
+		return
 	_objective_panel.visible = true
 	var phase_name := "Maze"
 	var playing := true
@@ -863,9 +927,27 @@ static func arrow_rotation(world_delta: Vector2, cam_forward: Vector2, cam_right
 	return atan2(d.dot(r), d.dot(f))
 
 
+func _spin_objective_arrow() -> void:
+	if _objective_arrow == null or not _spawn_known:
+		return
+	var player := _cached_player()
+	if player == null or not player.has_method("get_voxel_position"):
+		return
+	var pv: Vector3 = player.get_voxel_position()
+	var dx := float(_spawn_cell.x) + 0.5 - pv.x
+	var dz := float(_spawn_cell.y) + 0.5 - pv.z
+	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	if cam == null:
+		return
+	var fwd := -cam.global_transform.basis.z
+	var right := cam.global_transform.basis.x
+	_objective_arrow.rotation = arrow_rotation(Vector2(dx, dz), Vector2(fwd.x, fwd.z), Vector2(right.x, right.z))
+
+
 func _nearest_spawn_bearing() -> Dictionary:
 	var empty := {"text": "Nearest spawn: —", "rotation": 0.0}
-	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	_spawn_known = false
+	var player := _cached_player() if is_inside_tree() else null
 	if player == null or not player.has_method("get_voxel_position"):
 		return empty
 	var pv: Vector3 = player.get_voxel_position()
@@ -879,6 +961,8 @@ func _nearest_spawn_bearing() -> Dictionary:
 		cell = _crystal.get_origin_cell()
 	if cell.x == 999999:
 		return empty
+	_spawn_cell = cell
+	_spawn_known = true
 	var dx := float(cell.x) + 0.5 - pv.x
 	var dz := float(cell.y) + 0.5 - pv.z
 	var text := compass_from_delta(dx, dz)
@@ -894,7 +978,7 @@ func _nearest_spawn_bearing() -> Dictionary:
 func _wet_crawl_bit() -> String:
 	if _crystal == null or not _crystal.has_method("count_wet_crystal_near"):
 		return ""
-	var player = get_tree().get_first_node_in_group("player")
+	var player := _cached_player()
 	if player == null or not player.has_method("get_voxel_position"):
 		return ""
 	var pv: Vector3 = player.get_voxel_position()
@@ -907,7 +991,7 @@ func _wet_crawl_bit() -> String:
 func _crystal_bearing_bit() -> String:
 	if _crystal == null or not _crystal.has_method("get_origin_cell"):
 		return ""
-	var player = get_tree().get_first_node_in_group("player")
+	var player := _cached_player()
 	if player == null or not player.has_method("get_voxel_position"):
 		return ""
 	var pv: Vector3 = player.get_voxel_position()

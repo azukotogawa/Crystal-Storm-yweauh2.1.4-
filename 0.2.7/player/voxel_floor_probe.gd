@@ -13,6 +13,8 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var crystal_manager
+## 0 unknown, 1 crystal_walkable_floor, 2 get_walkable_height, 3 neither.
+var _crystal_api: int = 0
 
 ## Feet height hint — when below surface, cave floors may apply.
 var feet_height_hint: float = 0.0
@@ -24,8 +26,16 @@ var _probe_offsets: Array[Vector2] = []
 ## Disable with CRYSTALSTORM_PLAYER_HEIGHT_CACHE=0 for A/B measurement.
 var _height_cache_enabled: bool = true
 var _cache_physics_frame: int = -1
-var _walkable_height_cache: Dictionary = {}  # String key -> float
+var _walkable_height_cache: Dictionary = {}  # Vector3i key -> float
 var _sample_feet_cache: Dictionary = {}
+## Ramp entries are per column and shared by the player probe and entity nav.
+static var _ramp_frame: int = -1
+static var _ramp_cache: Dictionary = {}
+static var _ramp_last_miss: bool = false
+## Column-center walkable height for this physics frame. Ramp samples that are
+## not at the cell center stay uncached so a wedge still changes across the cell.
+static var _center_frame: int = -1
+static var _center_y: Dictionary = {}
 
 ## Nested measure (owned by Player physics measure).
 var _measure: bool = false
@@ -80,6 +90,8 @@ func reset_measure() -> void:
 	_cache_physics_frame = -1
 	_walkable_height_cache.clear()
 	_sample_feet_cache.clear()
+	_ramp_frame = -1
+	_ramp_cache.clear()
 
 
 func get_measure() -> Dictionary:
@@ -120,14 +132,50 @@ func _sync_frame_cache() -> void:
 	_sample_feet_cache.clear()
 
 
-func _height_cache_key(wx: float, wz: float) -> String:
-	# Include live terrain edit delta so dig/build invalidate the same-frame cache.
-	# live_delta - snap_delta: live WorldState overlay over any chunk snapshot base.
-	var ix: int = floori(wx)
-	var iz: int = floori(wz)
-	var live_delta: float = _TerrainEdits.get_height_delta(ix, iz)
-	var snap_delta: float = 0.0
-	return "%s_%s_%s_%s" % [wx, wz, feet_height_hint, live_delta - snap_delta]
+func _height_cache_key(wx: float, wz: float) -> Vector3i:
+	# Live edit delta and the feet hint stay in the key so dig/build and cave
+	# floors do not reuse a surface sample from the same physics frame.
+	# 0.01 column is finer than the body-probe spacing, and it does not allocate.
+	var delta_i := int(round(_TerrainEdits.get_height_delta(floori(wx), floori(wz)) * 100.0))
+	var hint_i := int(round(feet_height_hint * 50.0))
+	return Vector3i(int(round(wx * 100.0)), int(round(wz * 100.0)), hint_i ^ (delta_i << 16))
+
+
+static func cached_ramp_entry(chunk_manager, wx: float, wz: float) -> Dictionary:
+	_ramp_last_miss = false
+	if chunk_manager == null or not chunk_manager.has_method("get_ramp_entry_at_world"):
+		return ChunkData.empty_ramp_entry()
+	var frame := Engine.get_physics_frames()
+	if frame != _ramp_frame:
+		_ramp_frame = frame
+		_ramp_cache.clear()
+	var key := Vector2i(floori(wx), floori(wz))
+	if _ramp_cache.has(key):
+		return _ramp_cache[key]
+	_ramp_last_miss = true
+	var entry: Dictionary = chunk_manager.get_ramp_entry_at_world(wx, wz)
+	_ramp_cache[key] = entry
+	return entry
+
+
+## Terrain height at the center of a column. Shared by entity steps and crystal tops.
+static func cached_column_center_walkable(world, chunk_manager, col_x: int, col_z: int) -> float:
+	if world == null:
+		return 0.0
+	var frame := Engine.get_physics_frames()
+	if frame != _center_frame:
+		_center_frame = frame
+		_center_y.clear()
+	var delta_i := int(round(_TerrainEdits.get_height_delta(col_x, col_z) * 100.0))
+	var key := Vector3i(col_x, col_z, delta_i)
+	if _center_y.has(key):
+		return float(_center_y[key])
+	var wx := float(col_x) + 0.5
+	var wz := float(col_z) + 0.5
+	var entry: Dictionary = cached_ramp_entry(chunk_manager, wx, wz)
+	var y: float = TerrainRamps.walkable_height_from_entry(world, wx, wz, entry)
+	_center_y[key] = y
+	return y
 
 
 func _init() -> void:
@@ -142,6 +190,7 @@ func configure(
 	world = p_world
 	chunk_manager = p_chunk_manager
 	crystal_manager = p_crystal_manager
+	_crystal_api = 0
 	_rebuild_probe_offsets()
 
 
@@ -164,11 +213,10 @@ func _rebuild_probe_offsets() -> void:
 
 
 func ramp_entry_at(wx: float, wz: float) -> Dictionary:
-	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
-		if _measure:
-			_m_ramp_entry += 1
-		return chunk_manager.get_ramp_entry_at_world(wx, wz)
-	return {}
+	var entry := cached_ramp_entry(chunk_manager, wx, wz)
+	if _measure and _ramp_last_miss:
+		_m_ramp_entry += 1
+	return entry
 
 
 func walkable_height_at(wx: float, wz: float) -> float:
@@ -210,15 +258,51 @@ func walkable_height_at(wx: float, wz: float) -> float:
 			return cave_floor
 	var entry := ramp_entry_at(wx, wz)
 	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, entry)
-	if crystal_manager and crystal_manager.has_method("get_walkable_height"):
-		if _measure:
-			_m_crystal_height += 1
-		base = maxf(base, crystal_manager.get_walkable_height(wx, wz))
+	if crystal_manager:
+		if _crystal_api == 0:
+			if crystal_manager.has_method("crystal_walkable_floor"):
+				_crystal_api = 1
+			elif crystal_manager.has_method("get_walkable_height"):
+				_crystal_api = 2
+			else:
+				_crystal_api = 3
+		if _crystal_api == 1:
+			if _measure:
+				_m_crystal_height += 1
+			base = maxf(base, float(crystal_manager.crystal_walkable_floor(wx, wz)))
+		elif _crystal_api == 2:
+			if _measure:
+				_m_crystal_height += 1
+			base = maxf(base, crystal_manager.get_walkable_height(wx, wz))
 	if _height_cache_enabled:
 		_walkable_height_cache[_height_cache_key(wx, wz)] = base
 	if _measure:
 		_m_walkable_height_us += Time.get_ticks_usec() - t0
 	return base
+
+
+## Flat, approach, and concave cells have one height for the whole column.
+## A landing wedge or corner still changes height inside the cell.
+func _height_uniform_in_column(entry: Dictionary) -> bool:
+	if entry.is_empty():
+		return true
+	if bool(entry.get("concave", false)) or bool(entry.get("approach", false)):
+		return true
+	if bool(entry.get("corner", false)):
+		return false
+	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
+	if dir != Vector2i.ZERO:
+		return false
+	return true
+
+
+func _same_column_repeat(wx: float, wz: float, sx: float, sz: float) -> bool:
+	if floori(sx) != floori(wx) or floori(sz) != floori(wz):
+		return false
+	# Cave feet can stand on a floor that is not the column top.
+	if world != null and feet_height_hint < world.get_surface_height(wx, wz) - _ws().layer_height() * 0.75:
+		return false
+	return _height_uniform_in_column(ramp_entry_at(wx, wz))
 
 
 func sample_walkable_feet(wx: float, wz: float) -> float:
@@ -243,6 +327,8 @@ func sample_walkable_feet(wx: float, wz: float) -> float:
 			continue
 		var sx := wx + offset.x
 		var sz := wz + offset.y
+		if _same_column_repeat(wx, wz, sx, sz):
+			continue
 		# A wall beside the body must not pull feet up onto that column.
 		if _grazes_blocking_wall(wx, wz, sx, sz):
 			continue
@@ -266,6 +352,8 @@ func sample_walkable_feet_max(wx: float, wz: float) -> float:
 			continue
 		var sx := wx + offset.x
 		var sz := wz + offset.y
+		if _same_column_repeat(wx, wz, sx, sz):
+			continue
 		if _grazes_blocking_wall(wx, wz, sx, sz):
 			continue
 		best = maxf(best, walkable_height_at(sx, sz))
@@ -354,26 +442,41 @@ func is_blocked_at(
 func _solid_blocks_head(wx: float, wz: float, head_y: float, floor_h: float, layer: float) -> bool:
 	if world == null or not world.has_method("get_solid"):
 		return false
-	if _measure:
-		_m_get_solid += 2
 	var check_y := floori(head_y)
 	var floor_y := floori(floor_h + layer * 0.05)
 	# Solids at or below the foot plane are ground, not head collision.
 	if check_y <= floor_y:
 		return false
-	if world.get_solid(wx, float(check_y), wz) or world.get_solid(wx, float(check_y + 1), wz):
+	# get_voxel() returns air above the surface, but it recomputes that surface
+	# with the uncached noise path. The cached surface is the same value.
+	var surf := world.get_surface_height(wx, wz)
+	var y0 := float(check_y)
+	var y1 := float(check_y + 1)
+	if y0 > surf + 0.1:
+		return false
+	if _measure:
+		_m_get_solid += 1
+	if world.get_solid(wx, y0, wz):
 		return true
-	return false
+	if y1 > surf + 0.1:
+		return false
+	if _measure:
+		_m_get_solid += 1
+	return world.get_solid(wx, y1, wz)
 
 
-## Wood/stone walls block the column. Gates and bridges do not. No string alloc on the step path.
+## Wood/stone walls block the column. Gates and bridges do not.
+## Misses must not allocate: get_feature's default Dictionary is a heap alloc per call.
 static func blocking_build_column(wx: int, wz: int) -> bool:
-	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
-	if feat.is_empty():
+	var feat = _FeatureRegistry.feature_at(wx, wz)
+	if feat == null:
 		return false
-	if bool(feat.get("is_passage", false)) or bool(feat.get("is_bridge", false)):
+	var row: Dictionary = feat
+	if row.is_empty():
 		return false
-	var build_id = feat.get("build_id", "")
+	if bool(row.get("is_passage", false)) or bool(row.get("is_bridge", false)):
+		return false
+	var build_id = row.get("build_id", "")
 	return build_id == "wood_wall" or build_id == "stone_wall"
 
 

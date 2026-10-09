@@ -31,6 +31,9 @@ var _target: Node3D
 var _world: InfiniteNoiseWorld
 var _chunk_manager: ChunkManager
 var _crystal: CrystalManager
+var _spatial: Node = null
+var _profiler: Node = null
+var _profiler_bound: bool = false
 var health: float = 24.0
 var _age: float = 0.0
 var _mesh: MeshInstance3D
@@ -324,10 +327,17 @@ func get_combat_radius() -> float:
 
 ## Register or refresh spatial index at the current world position.
 ## Call after global_position is final (spawner/import order: add_child → pos → setup).
-func sync_spatial_index() -> void:
+func _spatial_service() -> Node:
+	if _spatial != null and is_instance_valid(_spatial):
+		return _spatial
 	if not is_inside_tree():
-		return
-	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+		return null
+	_spatial = get_tree().get_first_node_in_group("spatial_query_service")
+	return _spatial
+
+
+func sync_spatial_index() -> void:
+	var svc := _spatial_service()
 	if svc == null:
 		return
 	if svc.has_method("register_combatant"):
@@ -337,9 +347,7 @@ func sync_spatial_index() -> void:
 
 
 func _notify_spatial_moved() -> void:
-	if not is_inside_tree():
-		return
-	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+	var svc := _spatial_service()
 	if svc and svc.has_method("notify_moved"):
 		svc.notify_moved(self)
 
@@ -426,8 +434,16 @@ func _cancel_guardian_attack() -> void:
 	_hide_ring()
 
 
+func _profiler_node() -> Node:
+	if _profiler_bound:
+		return _profiler
+	_profiler_bound = true
+	_profiler = get_node_or_null("/root/PerfProfiler")
+	return _profiler
+
+
 func _physics_process(delta: float) -> void:
-	var profiler = get_node_or_null("/root/PerfProfiler")
+	var profiler := _profiler_node()
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("entity_physics")
 	if _hit_flash_timer > 0.0:

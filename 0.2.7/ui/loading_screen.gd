@@ -63,6 +63,8 @@ var _crystals: Array = []  # { node, phase, speed, base }
 
 var _progress: float = 0.0
 var _display_progress: float = 0.0
+var _pct_shown: int = -1
+var _elapsed_shown: int = -1
 var _phase_text: String = "Starting..."
 var _bake_mode: String = "idle"
 var _fading: bool = false
@@ -393,9 +395,15 @@ func _process(delta: float) -> void:
 	if _display_progress < _progress:
 		_display_progress = minf(_progress, _display_progress + delta * 0.55)
 	_bar.value = _display_progress
-	_pct.text = "%d%%" % int(round(_display_progress * 100.0))
+	var pct_i := int(round(_display_progress * 100.0))
+	if pct_i != _pct_shown:
+		_pct_shown = pct_i
+		_pct.text = "%d%%" % pct_i
 	var elapsed_s: float = float(Time.get_ticks_msec() - _boot_t0_ms) / 1000.0
-	_elapsed_label.text = "%.1fs" % elapsed_s
+	var elapsed_tick := int(elapsed_s * 10.0)
+	if elapsed_tick != _elapsed_shown:
+		_elapsed_shown = elapsed_tick
+		_elapsed_label.text = "%.1fs" % elapsed_s
 
 	# Animate crystal accents with viewport size.
 	var sz := size
@@ -567,6 +575,7 @@ func _finish_dismiss() -> void:
 	_dismissed = true
 	_fading = false
 	visible = false
+	set_process(false)
 	_GameplayInput.set_world_loading(false)
 	# Allow HUD toasts etc. to show cleanly.
 	var overlay = get_tree().get_first_node_in_group("game_overlay") if get_tree() else null

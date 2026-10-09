@@ -29,6 +29,10 @@ var _world: InfiniteNoiseWorld
 var _chunk_manager: ChunkManager
 var _crystal: CrystalManager
 var _player: Node3D
+var _spatial: Node = null
+var _entity_mgr: Node = null
+var _profiler: Node = null
+var _profiler_bound: bool = false
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
 var _voxel_prop: Node3D
@@ -253,11 +257,30 @@ func is_combat_alive() -> bool:
 	return not _dead and health > 0.0
 
 
+func _profiler_node() -> Node:
+	if _profiler_bound:
+		return _profiler
+	_profiler_bound = true
+	_profiler = get_node_or_null("/root/PerfProfiler")
+	return _profiler
+
+
+func _entity_manager() -> Node:
+	if _entity_mgr != null and is_instance_valid(_entity_mgr):
+		return _entity_mgr
+	if not is_inside_tree():
+		return null
+	var found := get_tree().get_first_node_in_group("entity_manager")
+	if found:
+		_entity_mgr = found
+	return found
+
+
 func _physics_process(delta: float) -> void:
-	var profiler = get_node_or_null("/root/PerfProfiler")
+	var profiler := _profiler_node()
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("entity_physics")
-	var entity_mgr = get_tree().get_first_node_in_group("entity_manager")
+	var entity_mgr := _entity_manager()
 	if entity_mgr and int(entity_mgr.get("physics_skip_frames")) > 0:
 		if Engine.get_physics_frames() % (int(entity_mgr.physics_skip_frames) + 1) != 0:
 			if profiler and profiler.has_method("end"):
@@ -459,10 +482,17 @@ func _reset_hit_tint() -> void:
 		_Juice.set_flash(vis, 0.0)
 
 
-func _notify_spatial_moved() -> void:
+func _spatial_service() -> Node:
+	if _spatial != null and is_instance_valid(_spatial):
+		return _spatial
 	if not is_inside_tree():
-		return
-	var svc = get_tree().get_first_node_in_group("spatial_query_service")
+		return null
+	_spatial = get_tree().get_first_node_in_group("spatial_query_service")
+	return _spatial
+
+
+func _notify_spatial_moved() -> void:
+	var svc := _spatial_service()
 	if svc and svc.has_method("notify_moved"):
 		svc.notify_moved(self)
 

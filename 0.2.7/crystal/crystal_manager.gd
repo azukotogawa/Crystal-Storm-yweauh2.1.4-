@@ -1777,12 +1777,7 @@ func _terrain_at(pos: Vector2i) -> float:
 func _crystal_floor_at(pos: Vector2i) -> float:
 	if world == null:
 		return 0.0
-	var col_x := float(pos.x) + 0.5
-	var col_z := float(pos.y) + 0.5
-	var entry: Dictionary = {}
-	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
-		entry = chunk_manager.get_ramp_entry_at_world(col_x, col_z)
-	return TerrainRamps.walkable_height_from_entry(world, col_x, col_z, entry)
+	return VoxelFloorProbe.cached_column_center_walkable(world, chunk_manager, pos.x, pos.y)
 
 
 func _tile_at(pos: Vector2i) -> int:
@@ -2152,15 +2147,29 @@ func get_crystal_top(wx: float, wz: float) -> float:
 	return _crystal_floor_at(key) + depth
 
 
+## Crystal top only. -INF when the column has no walkable crystal, so callers
+## that already sampled the terrain base do not walk the ramp a second time.
+func crystal_walkable_floor(wx: float, wz: float) -> float:
+	var depth := get_depth_at(floori(wx), floori(wz))
+	var min_d := 0.04
+	if sim_config:
+		min_d = sim_config.min_depth
+	if depth < min_d:
+		return -INF
+	return _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05
+
+
+## True when no crystal fluid is stored. Town scans can skip an empty disk.
+func spread_depth_empty() -> bool:
+	return _sim == null or _sim.depth.is_empty()
+
+
 func get_walkable_height(wx: float, wz: float) -> float:
-	var ramp_entry: Dictionary = {}
+	var ramp_entry: Dictionary = ChunkData.empty_ramp_entry()
 	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
 		ramp_entry = chunk_manager.get_ramp_entry_at_world(wx, wz)
 	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, ramp_entry) if world else 1.0
-	var depth := get_depth_at(floori(wx), floori(wz))
-	if depth >= sim_config.min_depth:
-		return maxf(base, _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)
-	return base
+	return maxf(base, crystal_walkable_floor(wx, wz))
 
 
 func get_active_spawns() -> Array[CrystalSpawnPoint]:
