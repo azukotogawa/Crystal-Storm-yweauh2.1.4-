@@ -129,6 +129,13 @@ func get_action_column() -> Vector3:
 	weapon._cooldown_timer = 0.0
 	weapon._build_hold_sec = 0.0
 
+	# The controller is in the tree, so the engine also calls _process on the
+	# press frame. is_action_just_pressed stays true until the frame advances,
+	# and _process spends the 0.03s place cooldown before the edge check. A slow
+	# frame therefore places a second layer. Drive _process only from this probe.
+	var weapon_was_processing := weapon.is_processing()
+	weapon.set_process(false)
+
 	Input.action_press("build_place")
 	weapon._process(0.016)
 	var layers_edge := int(round((_TerrainEdits.get_height_delta(cell.x, cell.y) - before) / layer))
@@ -166,6 +173,7 @@ func get_action_column() -> Vector3:
 
 	Input.action_release("build_place")
 	await process_frame
+	weapon.set_process(weapon_was_processing)
 
 	# --- Herb via shipped _try_use_consumable ---
 	player.health = 40.0
