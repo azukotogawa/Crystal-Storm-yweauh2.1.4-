@@ -14,7 +14,9 @@ UI scale is `Window.content_scale_factor` on the root window (75%–150%). Theme
 
 ## Settings
 
-`ui/settings_menu.gd` is the shared body. The frontend settings screen and the pause menu both embed it. Opening the menu copies the saved file onto the widgets with signals blocked, so opening pause does not write the file. Later edits save immediately.
+`ui/settings_menu.gd` is the shared body. The frontend settings screen and the pause menu both embed it. The body is a tab container (`SettingsTabs`): Graphics, Audio, Display, Accessibility, Controls. A Close button under the tabs is always visible. Opening the menu copies the saved file onto the widgets with signals blocked, so opening pause does not write the file. Later edits save immediately.
+
+Closing Settings by Escape, Close, Resume, or leaving any tab hides the pause layer and every tab page, cancels a pending key rebind, calls `gui_release_focus`, and dismisses the controls overlay. That overlay is its own `CanvasLayer` (layer 70), not a child of the pause menu. The first Escape while a rebind is listening only cancels the capture. The next Escape closes.
 
 Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `load_settings()` merges the file onto `defaults()`, then `_sync_runtime` copies the statics, applies keybinds, UI scale, and display. `save_settings()` starts from `defaults()` and merges the dictionary you pass, so a partial save resets omitted keys. Callers that only mean to change one field load first, then overlay.
 
@@ -39,11 +41,12 @@ Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `l
 | `colorblind_palette` | off | Alternate crystal colours. See below. |
 | `reduce_motion` | off | Disables shake, hit-stop, walk bob, creature bob, and the large shatter / spawn-death bursts. |
 | `tutorial_completed` | off | First-run overlay stays dismissed. |
+| `camera_cutaway_enabled` | on | Graphics tab. Cave cutaway between the camera and the player. |
 | `keybinds` | `{}` | Per-action event lists. Empty means the project defaults. |
 
 ### Keybinds
 
-`systems/input_bindings.gd` owns every gameplay action in `project.godot`, plus `pause` (Escape). It does not rebind `ui_accept`. Defaults are captured once from the `InputMap` before any saved map is applied, so Reset restores the input contract: WASD move, Space jump, Q/E yaw. A click on a row listens for the next key or mouse button. Escape cancels the listen. A conflict (same key and modifiers, or the same mouse button, on another gameplay action) is refused and named. Bindings round-trip through `keybinds` in the settings file.
+`systems/input_bindings.gd` owns every gameplay action in `project.godot`, plus `pause` (Escape). It does not rebind `ui_accept`. Defaults are captured once from the `InputMap` before any saved map is applied, so Reset restores the input contract: WASD move, Space jump, Q/E yaw, Page Up / Page Down pitch, V unstuck. Middle-mouse drag also tilts the camera and is not a rebindable action. A click on a row listens for the next key or mouse button. Escape cancels the listen and leaves the menu open. A conflict (same key and modifiers, or the same mouse button, on another gameplay action) is refused and named. Bindings round-trip through `keybinds` in the settings file.
 
 ### Colour-blind palette
 
@@ -55,7 +58,7 @@ The flag is its own key. `Juice` refuses shake, hit-stop, and bob while it is on
 
 ## Onboarding
 
-`ui/tutorial_overlay.gd` shows six short steps: move, rotate the camera, attack a crystal (weapons do not dig), dig and build, follow the spawn arrow, and the boss goal. Skip, or Next on the last step, sets `tutorial_completed`. Headless runs do not auto-open it and do not pause the tree. `should_show()` is false when `DisplayServer` is headless. `wants_tutorial()` is the persisted flag and stays testable headless. Pause, settings, and the frontend can reopen the steps or a Controls page. The Controls page lists each action with `InputBindings.binding_text`, so rebound keys show up.
+`ui/tutorial_overlay.gd` shows six short steps: move, rotate and tilt the camera (and V to get unstuck), attack a crystal (weapons do not dig), dig and build, follow the spawn arrow, and the boss goal. Skip, or Next on the last step, sets `tutorial_completed`. Headless runs do not auto-open it and do not pause the tree. `should_show()` is false when `DisplayServer` is headless. `wants_tutorial()` is the persisted flag and stays testable headless. Pause, settings, and the frontend can reopen the steps or a Controls page. The Controls page lists each action with `InputBindings.binding_text`, so rebound keys show up. Closing settings or pressing Escape while pause is open frees that page.
 
 ## Run summary
 
@@ -68,6 +71,7 @@ On win or loss, `ui/game_overlay.gd` keeps the existing victory titles and adds 
 ## Probes
 
 - `scripts/verify_ui_settings.gd` — rebind persists, conflict, reset, bus volume, UI scale, reduce motion, colour-blind colours, tutorial flag.
+- `scripts/verify_settings_close.gd` — every settings tab, including Controls, closes on Escape and on Close. Rebind cancel, focus, and gameplay input are checked.
 - `scripts/verify_tooltips.gd` — weapon, armor, and relic tooltip text.
 - `scripts/verify_run_summary.gd` — summary dictionary and panel after a simulated win and loss.
 

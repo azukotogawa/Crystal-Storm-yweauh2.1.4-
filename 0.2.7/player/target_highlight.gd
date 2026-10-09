@@ -20,6 +20,8 @@ const HOVER_PULSE_HZ := 2.4
 
 var _mesh: MeshInstance3D
 var _mat: StandardMaterial3D
+var _outline: MeshInstance3D
+var _face: MeshInstance3D
 var _ghost: MeshInstance3D
 var _ghost_mat: StandardMaterial3D
 
@@ -64,6 +66,114 @@ func _build_mesh() -> void:
 	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh.sorting_offset = 4.0
 	add_child(_mesh)
+	_build_outline()
+	_build_face_marker()
+
+
+func _build_outline() -> void:
+	_outline = MeshInstance3D.new()
+	_outline.name = "TargetOutline"
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var h := 0.5
+	var t := 0.055
+	var corners: Array[Vector3] = [
+		Vector3(-h, -h, -h), Vector3(h, -h, -h), Vector3(h, -h, h), Vector3(-h, -h, h),
+		Vector3(-h, h, -h), Vector3(h, h, -h), Vector3(h, h, h), Vector3(-h, h, h),
+	]
+	var edges: Array[int] = [0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7]
+	for i in range(0, edges.size(), 2):
+		_add_edge(st, corners[edges[i]], corners[edges[i + 1]], t)
+	_outline.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.no_depth_test = true
+	mat.render_priority = 127
+	mat.albedo_color = Color(1.0, 0.25, 0.95, 1.0)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.2, 0.9)
+	mat.emission_energy_multiplier = 1.6
+	_outline.material_override = mat
+	_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_mesh.add_child(_outline)
+
+
+func _add_edge(st: SurfaceTool, a: Vector3, b: Vector3, thickness: float) -> void:
+	var lo := Vector3(minf(a.x, b.x), minf(a.y, b.y), minf(a.z, b.z))
+	var hi := Vector3(maxf(a.x, b.x), maxf(a.y, b.y), maxf(a.z, b.z))
+	lo -= Vector3(thickness, thickness, thickness)
+	hi += Vector3(thickness, thickness, thickness)
+	_add_box(st, lo, hi)
+
+
+func _add_box(st: SurfaceTool, lo: Vector3, hi: Vector3) -> void:
+	var p: Array[Vector3] = [
+		Vector3(lo.x, lo.y, lo.z), Vector3(hi.x, lo.y, lo.z), Vector3(hi.x, hi.y, lo.z), Vector3(lo.x, hi.y, lo.z),
+		Vector3(lo.x, lo.y, hi.z), Vector3(hi.x, lo.y, hi.z), Vector3(hi.x, hi.y, hi.z), Vector3(lo.x, hi.y, hi.z),
+	]
+	var quads: Array[int] = [
+		0, 1, 2, 3, 5, 4, 7, 6, 4, 0, 3, 7, 1, 5, 6, 2, 3, 2, 6, 7, 4, 5, 1, 0,
+	]
+	for i in range(0, quads.size(), 4):
+		var a: Vector3 = p[quads[i]]
+		var b: Vector3 = p[quads[i + 1]]
+		var c: Vector3 = p[quads[i + 2]]
+		var d: Vector3 = p[quads[i + 3]]
+		st.add_vertex(a)
+		st.add_vertex(b)
+		st.add_vertex(c)
+		st.add_vertex(a)
+		st.add_vertex(c)
+		st.add_vertex(d)
+
+
+func _build_face_marker() -> void:
+	_face = MeshInstance3D.new()
+	_face.name = "TargetFace"
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.72, 0.72)
+	_face.mesh = quad
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.render_priority = 127
+	mat.albedo_color = Color(1.0, 0.95, 0.35, 0.92)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.9, 0.2)
+	mat.emission_energy_multiplier = 1.2
+	_face.material_override = mat
+	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_mesh.add_child(_face)
+	apply_face_marker(0)
+
+
+## Reused face quad. Face codes match ActionTargeting.last_pick_face.
+func apply_face_marker(face: int) -> void:
+	if _face == null:
+		return
+	var lift := 0.53
+	match clampi(face, 0, 5):
+		0:
+			_face.position = Vector3(0.0, lift, 0.0)
+			_face.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		1:
+			_face.position = Vector3(0.0, -lift, 0.0)
+			_face.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		2:
+			_face.position = Vector3(lift, 0.0, 0.0)
+			_face.rotation_degrees = Vector3(0.0, 90.0, 0.0)
+		3:
+			_face.position = Vector3(-lift, 0.0, 0.0)
+			_face.rotation_degrees = Vector3(0.0, -90.0, 0.0)
+		4:
+			_face.position = Vector3(0.0, 0.0, lift)
+			_face.rotation_degrees = Vector3.ZERO
+		5:
+			_face.position = Vector3(0.0, 0.0, -lift)
+			_face.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 
 
 func _build_ghost() -> void:
@@ -180,6 +290,7 @@ func _process(delta: float) -> void:
 		if _display_pos.distance_to(target_pos) < 0.03:
 			_display_pos = target_pos
 	_mesh.global_position = _display_pos
+	apply_face_marker(_ActionTargeting.last_pick_face)
 	_last_mode = mode
 	_last_cell = cell
 

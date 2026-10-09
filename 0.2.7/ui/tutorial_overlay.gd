@@ -46,6 +46,12 @@ static func open_controls(tree: SceneTree) -> void:
 		layer.show_controls()
 
 
+## Hide the controls/how-to page from every settings close path.
+static func dismiss() -> void:
+	if _inst != null and is_instance_valid(_inst):
+		_inst.close_overlay()
+
+
 static func _ensure(tree: SceneTree) -> TutorialOverlay:
 	if _inst != null and is_instance_valid(_inst):
 		return _inst
@@ -139,7 +145,32 @@ func show_controls() -> void:
 
 func close_overlay() -> void:
 	visible = false
+	var vp := get_viewport()
+	if vp:
+		vp.gui_release_focus()
 	queue_free()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not visible or not _is_escape(event):
+		return
+	var tree := get_tree()
+	var pause = tree.get_first_node_in_group("pause_menu") if tree else null
+	if pause != null and bool(pause.visible) and pause.has_method("close"):
+		# close() dismisses this overlay. Do not toggle or the pause menu reopens.
+		pause.close()
+	else:
+		close_overlay()
+	var vp := get_viewport()
+	if vp:
+		vp.set_input_as_handled()
+
+
+func _is_escape(event: InputEvent) -> bool:
+	if event is InputEventKey:
+		var key := event as InputEventKey
+		return key.pressed and not key.echo and (key.physical_keycode == KEY_ESCAPE or key.keycode == KEY_ESCAPE)
+	return false
 
 
 func _build_steps() -> PackedStringArray:
@@ -157,7 +188,7 @@ func _build_steps() -> PackedStringArray:
 	var place := _InputBindings.binding_text("build_place")
 	return PackedStringArray([
 		"Move with %s. The camera is isometric, so forward follows the view." % move,
-		"Rotate the camera with %s. Turn until the path you want is in front of you." % yaw,
+		"Rotate the camera with %s. Page Up and Page Down tilt the view. Drag the middle mouse to tilt too. V frees you if you are stuck in the ground." % yaw,
 		"Attack the crystal with %s. Weapons hit the crystal and creatures. They do not dig." % attack,
 		"Dig and build with the pick. %s digs or removes. %s places a wall. Shift places a gate. Ctrl places a bridge." % [attack, place],
 		"The spawn arrow on the objective HUD points at the nearest crystal heart. Follow it when you are ready to strike.",

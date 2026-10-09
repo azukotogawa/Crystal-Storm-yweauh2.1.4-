@@ -27,6 +27,8 @@ static var tutorial_completed: bool = false
 static var fullscreen: bool = false
 static var vsync_enabled: bool = true
 static var resolution: String = "1280x720"
+## Hide terrain between the camera and the player. Default on. Pitch is not persisted.
+static var camera_cutaway_enabled: bool = true
 static var keybinds: Dictionary = {}
 ## Times `_apply_display_now` was entered. Headless still counts; it does not touch the window.
 static var display_apply_count: int = 0
@@ -60,6 +62,7 @@ static func defaults() -> Dictionary:
 		"fullscreen": false,
 		"vsync": true,
 		"resolution": "1280x720",
+		"camera_cutaway_enabled": true,
 		"keybinds": {},
 	}
 
@@ -109,6 +112,8 @@ static func load_settings() -> Dictionary:
 		out["vsync"] = bool(data.vsync)
 	if data.has("resolution"):
 		out["resolution"] = str(data.resolution)
+	if data.has("camera_cutaway_enabled"):
+		out["camera_cutaway_enabled"] = bool(data.camera_cutaway_enabled)
 	if data.has("keybinds") and data.keybinds is Dictionary:
 		out["keybinds"] = data.keybinds
 	_sync_runtime(out)
@@ -148,6 +153,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	fullscreen = bool(data.get("fullscreen", false))
 	vsync_enabled = bool(data.get("vsync", true))
 	resolution = str(data.get("resolution", "1280x720"))
+	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
 	var binds = data.get("keybinds", {})
 	if binds is Dictionary:
 		keybinds = (binds as Dictionary).duplicate(true)

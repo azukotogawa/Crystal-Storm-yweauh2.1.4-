@@ -76,6 +76,11 @@ var camera: Camera3D
 var world_ready := false
 
 var _floor_probe: _VoxelFloorProbe
+## Overlap test runs every few physics frames (not a per-frame tree search).
+var _overlap_tick: int = 0
+var _unstuck_cooldown: float = 0.0
+const UNSTUCK_COOLDOWN := 0.45
+const OVERLAP_CHECK_FRAMES := 4
 
 ## Physics process exclusive breakdown (CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1).
 var _phys_measure: bool = false
@@ -287,13 +292,18 @@ func _ready():
 	player_mesh.position.y = ph / 2.0
 	_mesh_rest_y = player_mesh.position.y
 
-	_floor_probe.feet_height_hint = _ws().layer_height()
+	# Hint must sit on the surface slab. A hint of one layer is below every real
+	# column, and the old cave-floor query then returned a Y inside the top voxel.
+	var natural := world.get_surface_height(spawn_x, spawn_z) if world else 0.0
+	_floor_probe.feet_height_hint = natural + _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
 	health = max_health
 	voxel_position = Vector3(spawn_x, surf, spawn_z)
-	while is_colliding_at(voxel_position) and voxel_position.y < surf + _ws().layer_height() * 3.0:
-		voxel_position.y += _ws().half_layer() * 0.1
+	var lift_guard := 0
+	while is_colliding_at(voxel_position) and voxel_position.y < surf + _ws().layer_height() * 6.0 and lift_guard < 48:
+		voxel_position.y += _ws().half_layer() * 0.5
+		lift_guard += 1
 
 	_sync_global_from_voxel()
 	world_ready = true
@@ -407,21 +417,27 @@ func _physics_process(delta: float) -> void:
 	match current_state:
 		State.JUMPING:
 			velocity.y -= _gravity() * delta
-			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
-			if velocity.y > 0.0 and is_colliding_at(next_pos):
-				velocity.y = 0.0
+			if velocity.y <= 0.0:
+				# Gravity ate the impulse this frame. Do not step down into the slab.
 				current_state = State.FALLING
 			else:
-				voxel_position.y = next_pos.y
-			if velocity.y < 0.0:
-				current_state = State.FALLING
+				var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
+				if is_colliding_at(next_pos):
+					velocity.y = 0.0
+					current_state = State.FALLING
+				else:
+					voxel_position.y = next_pos.y
 
 		State.FALLING:
 			velocity.y -= _gravity() * delta
 			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
-			if is_colliding_at(next_pos):
+			# is_colliding allows a fraction of a layer of sink. Stop at the walkable
+			# top instead, or a landing step sits inside the rendered slab.
+			var feet_h := _sample_walkable_feet(voxel_position.x, voxel_position.z)
+			var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
+			if reached_feet or is_colliding_at(next_pos):
 				# Land with a firm settle (not a mid-air soft float).
-				voxel_position.y = _sample_walkable_feet(voxel_position.x, voxel_position.z)
+				voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
 				velocity.y = 0.0
 				_move_vel_xz *= 0.65
 				sprite_scale_modifier = Vector2(1.6, 0.5)
@@ -440,6 +456,11 @@ func _physics_process(delta: float) -> void:
 				velocity.y = 0.0
 	if measure:
 		phase_local["vertical_state"] = Time.get_ticks_usec() - t0
+
+	t0 = Time.get_ticks_usec() if measure else 0
+	_tick_unstuck(delta)
+	if measure:
+		phase_local["unstuck"] = Time.get_ticks_usec() - t0
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	_sync_global_from_voxel()
@@ -567,6 +588,36 @@ func _snap_to_ground() -> void:
 	if chunk_manager == null or chunk_manager.world == null:
 		return
 	voxel_position = _floor_probe.snap_position_y(voxel_position)
+
+
+func _tick_unstuck(delta: float) -> void:
+	if _unstuck_cooldown > 0.0:
+		_unstuck_cooldown = maxf(_unstuck_cooldown - delta, 0.0)
+	if _floor_probe == null:
+		return
+	var manual := false
+	if not _GameplayInput.blocks_actions() and InputMap.has_action("unstuck"):
+		# Pressed, not just the edge: a tap between flushes still counts, and the cooldown blocks repeats.
+		manual = Input.is_action_pressed("unstuck") and _unstuck_cooldown <= 0.0
+	if manual:
+		_apply_safe_stand()
+		_unstuck_cooldown = UNSTUCK_COOLDOWN
+		return
+	_overlap_tick += 1
+	if _overlap_tick < OVERLAP_CHECK_FRAMES:
+		return
+	_overlap_tick = 0
+	if _floor_probe.body_overlaps_terrain(voxel_position, _player_height()):
+		_apply_safe_stand()
+
+
+func _apply_safe_stand() -> void:
+	var stand: Vector3 = _floor_probe.nearest_safe_stand(voxel_position, _player_height())
+	voxel_position = stand
+	velocity.y = 0.0
+	_move_vel_xz = Vector2.ZERO
+	if current_state == State.JUMPING or current_state == State.FALLING:
+		current_state = State.IDLE
 
 
 func _sample_walkable_feet(wx: float, wz: float) -> float:
