@@ -98,6 +98,10 @@ var _phys_call_snap: int = 0
 var _phys_call_grounded: int = 0
 var _phys_call_collide: int = 0
 var _phys_call_slope: int = 0
+## Slope is flat on almost every column. Recompute on cell change, at most every 4 ticks.
+var _slope_mul: float = 1.0
+var _slope_cell: Vector2i = Vector2i(2147483647, 0)
+var _slope_age: int = 99
 
 
 func set_physics_measure_enabled(enabled: bool) -> void:
@@ -386,7 +390,7 @@ func _physics_process(delta: float) -> void:
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
 	if inventory and inventory.has_method("armor_speed_multiplier"):
 		speed *= inventory.armor_speed_multiplier()
-	speed *= _slope_speed_multiplier()
+	speed *= _slope_speed_multiplier(moving or _move_vel_xz.length_squared() > 0.0004)
 	if measure:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
 		_phys_call_slope += 1
@@ -488,15 +492,27 @@ func _physics_process(delta: float) -> void:
 			_phys_worst_phases = phase_local.duplicate()
 
 
-func _slope_speed_multiplier() -> float:
+func _slope_speed_multiplier(moving: bool = true) -> float:
 	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
+	# Idle never applies the multiplier, so the slope sample stays off the standing tick.
+	if not moving:
+		_slope_age = 99
+		return 1.0
+	var cell := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	if cell == _slope_cell and _slope_age < 4:
+		_slope_age += 1
+		return _slope_mul
+	_slope_cell = cell
+	_slope_age = 0
 	var excess: float = _floor_probe.slope_excess_at(voxel_position.x, voxel_position.z)
 	var layer: float = _ws().layer_height()
 	var radius: float = _ws().player_radius()
 	var slope_limit: float = tan(deg_to_rad(_ws().player_slope_limit_degrees)) * radius
 	if excess <= slope_limit * 1.35:
+		_slope_mul = 1.0
 		return 1.0
-	return clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
+	_slope_mul = clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
+	return _slope_mul
 
 
 func rotate_input_to_world(input: Vector2, yaw_degrees: float) -> Vector2:

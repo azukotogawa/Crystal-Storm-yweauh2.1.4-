@@ -3587,13 +3587,13 @@ func get_ramp_entry_at_world(wx: float, wz: float) -> Dictionary:
 		floori(float(iz) / float(ChunkData.SIZE))
 	)
 	if not chunks.has(chunk_coord):
-		return {}
+		return ChunkData.empty_ramp_entry()
 	var data: ChunkData = chunks[chunk_coord].chunk_data
 	var lx := ix - chunk_coord.x * ChunkData.SIZE
 	var lz := iz - chunk_coord.y * ChunkData.SIZE
 	if data.has_ramp(lx, lz):
 		return data.get_ramp_entry(lx, lz)
-	return {}
+	return ChunkData.empty_ramp_entry()
 
 
 func get_chunk_data_at_world_pos(world_pos: Vector3) -> ChunkData:

@@ -1025,8 +1025,19 @@ func has_ramp(x: int, z: int) -> bool:
 	return ramp_map.has(Vector2i(x, z))
 
 
+## One shared miss entry. Callers only read it. A fresh {} here is a heap alloc per lookup.
+static var _empty_ramp: Dictionary = {}
+
+
+static func empty_ramp_entry() -> Dictionary:
+	return _empty_ramp
+
+
 func get_ramp_entry(x: int, z: int) -> Dictionary:
-	return ramp_map.get(Vector2i(x, z), {})
+	var key := Vector2i(x, z)
+	if not ramp_map.has(key):
+		return _empty_ramp
+	return ramp_map[key]
 
 
 func is_ramp_corner(x: int, z: int) -> bool:

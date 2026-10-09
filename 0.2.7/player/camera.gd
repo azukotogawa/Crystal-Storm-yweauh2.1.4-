@@ -39,6 +39,10 @@ var pitch_target_degrees: float = ISO_PITCH_DEG
 var pitch_degrees: float = ISO_PITCH_DEG
 var _pitch_dragging: bool = false
 var _cutaway_globals_ready: bool = false
+var _cutaway_pushed: bool = false
+var _cutaway_enabled: float = -1.0
+var _cutaway_feet: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
+var _cutaway_cam: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
 
 ## Compat: old 0–3 orbit index. Writing snaps yaw to that 90° stop.
 var orbit_rotation: int:
@@ -269,6 +273,15 @@ func update_cutaway_uniforms() -> void:
 	var feet := global_position
 	if target:
 		feet = target.global_position
+	var cam_pos := global_position
+	if _cutaway_pushed and enabled == _cutaway_enabled \
+			and feet.distance_squared_to(_cutaway_feet) < 0.0004 \
+			and cam_pos.distance_squared_to(_cutaway_cam) < 0.0004:
+		return
+	_cutaway_pushed = true
+	_cutaway_enabled = enabled
+	_cutaway_feet = feet
+	_cutaway_cam = cam_pos
 	_Cutaway.submitted_enabled = enabled
 	_Cutaway.submitted_player = feet
 	_Cutaway.submitted_camera = global_position

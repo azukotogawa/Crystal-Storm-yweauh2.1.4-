@@ -5,6 +5,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
 
 var player: Player
 var world: InfiniteNoiseWorld
@@ -34,12 +35,30 @@ var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
 ## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
+var _crystal = null
+## Skip the mouse-ray and both resolve passes while aim, cell, and edits are still.
+var _aim_cache_ok: bool = false
+var _aim_from_cache: bool = false
+var _aim_mouse: Vector2 = Vector2(99999.0, 99999.0)
+var _aim_pxz: Vector2 = Vector2(99999.0, 99999.0)
+var _aim_yaw: float = 99999.0
+var _aim_pitch: float = 99999.0
+var _aim_range: float = -1.0
+var _aim_build: bool = false
+var _aim_item: String = ""
+var _aim_edit: float = 99999.0
+var _aim_depth: float = 99999.0
+var _aim_cell: Vector2i = Vector2i(999999, 999999)
+var _aim_hover: Vector3 = Vector3.ZERO
+var _aim_stable: Vector3 = Vector3.ZERO
+var _aim_info: Dictionary = {}
 
 
 func _ready() -> void:
 	player = get_parent() as Player
 	world = get_tree().get_first_node_in_group("world")
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
+	_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	# Run before WeaponController so dig/build read this frame's aim column.
 	process_priority = -20
 	_build_mesh()
@@ -212,6 +231,7 @@ func _process(delta: float) -> void:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
+		_aim_cache_ok = false
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -220,35 +240,46 @@ func _process(delta: float) -> void:
 
 	var range_v := _active_range()
 	# Hold RMB / R to preview build even with sword or pick selected (build_place path).
-	if Input.is_action_pressed("build_place") or Input.is_action_pressed("interact"):
+	var build_held := Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
+	if build_held:
 		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
 
-	# Hover follows mouse beyond tool range (blocked tint when out of range).
-	var hover_col: Vector3 = _ActionTargeting.pick_hover_column(
-		player, world, chunk_manager, maxf(range_v, HOVER_PICK_RANGE)
-	)
-	if hover_col == Vector3.ZERO:
-		hover_col = _ActionTargeting.target_column(player, range_v)
-
-	# Exact mouse follow: action cell is always the live hover column (no hysteresis).
-	var hover_cell := Vector2i(floori(hover_col.x), floori(hover_col.z)) if hover_col != Vector3.ZERO \
-		else Vector2i(999999, 999999)
-	_stable_cell = hover_cell
-	var stable_col := Vector3(float(_stable_cell.x) + 0.5, player.voxel_position.y, float(_stable_cell.y) + 0.5) \
-		if _stable_cell.x < 900000 else Vector3.ZERO
-	# Always publish aim for dig/build — even when mode preview is blocked/out of range.
-	_action_column = stable_col
-
-	var resolve_t0 := Time.get_ticks_usec()
+	var hover_col: Vector3
+	var stable_col: Vector3
 	var info: Dictionary
-	if stable_col != Vector3.ZERO:
-		info = _ActionTargeting.resolve_action(
-			player, world, chunk_manager, range_v, false, &"", stable_col
-		)
+	if _aim_is_static(range_v, build_held):
+		_aim_from_cache = true
+		hover_col = _aim_hover
+		stable_col = _aim_stable
+		info = _aim_info
 	else:
-		info = _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
-	if profiler and profiler.has_method("record_func"):
-		profiler.record_func("ActionTargeting::resolve_action", Time.get_ticks_usec() - resolve_t0)
+		_aim_from_cache = false
+		# Hover follows mouse beyond tool range (blocked tint when out of range).
+		hover_col = _ActionTargeting.pick_hover_column(
+			player, world, chunk_manager, maxf(range_v, HOVER_PICK_RANGE)
+		)
+		if hover_col == Vector3.ZERO:
+			hover_col = _ActionTargeting.target_column(player, range_v)
+
+		# Exact mouse follow: action cell is always the live hover column (no hysteresis).
+		var hover_cell := Vector2i(floori(hover_col.x), floori(hover_col.z)) if hover_col != Vector3.ZERO \
+			else Vector2i(999999, 999999)
+		_stable_cell = hover_cell
+		stable_col = Vector3(float(_stable_cell.x) + 0.5, player.voxel_position.y, float(_stable_cell.y) + 0.5) \
+			if _stable_cell.x < 900000 else Vector3.ZERO
+		# Always publish aim for dig/build — even when mode preview is blocked/out of range.
+		_action_column = stable_col
+
+		var resolve_t0 := Time.get_ticks_usec()
+		if stable_col != Vector3.ZERO:
+			info = _ActionTargeting.resolve_action(
+				player, world, chunk_manager, range_v, false, &"", stable_col
+			)
+		else:
+			info = _ActionTargeting.resolve_action(player, world, chunk_manager, range_v)
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("ActionTargeting::resolve_action", Time.get_ticks_usec() - resolve_t0)
+		_remember_aim(range_v, build_held, hover_col, stable_col, info)
 
 	var mode: StringName = info.get("mode", &"none")
 	# Show dig/build/attack previews even when blocked so aim stays readable.
@@ -339,8 +370,88 @@ func get_action_column() -> Vector3:
 	return _action_column
 
 
+func _aim_is_static(range_v: float, build_held: bool) -> bool:
+	if not _aim_cache_ok or player == null:
+		return false
+	var mouse := get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	if mouse.distance_squared_to(_aim_mouse) > 1.0:
+		return false
+	var pxz := Vector2(player.voxel_position.x, player.voxel_position.z)
+	if pxz.distance_squared_to(_aim_pxz) > 0.0016:
+		return false
+	var yaw := 0.0
+	var pitch := 0.0
+	if player.camera:
+		if "yaw_degrees" in player.camera:
+			yaw = float(player.camera.yaw_degrees)
+		if "pitch_degrees" in player.camera:
+			pitch = float(player.camera.pitch_degrees)
+	if absf(yaw - _aim_yaw) > 0.15 or absf(pitch - _aim_pitch) > 0.15:
+		return false
+	if not is_equal_approx(range_v, _aim_range) or build_held != _aim_build:
+		return false
+	var item_id := _active_item_id()
+	if item_id != _aim_item:
+		return false
+	if not is_equal_approx(_TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y), _aim_edit):
+		return false
+	if _crystal and _crystal.has_method("get_depth_at"):
+		if not is_equal_approx(float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y)), _aim_depth):
+			return false
+	return true
+
+
+func _active_item_id() -> String:
+	if player == null:
+		return ""
+	var weapon := player.get_node_or_null("WeaponController")
+	if weapon == null or not weapon.has_method("get_active_item"):
+		return ""
+	var slot = weapon.get_active_item()
+	if slot == null:
+		return ""
+	return str(slot.id)
+
+
+func _remember_aim(range_v: float, build_held: bool, hover_col: Vector3, stable_col: Vector3, info: Dictionary) -> void:
+	_aim_cache_ok = true
+	_aim_mouse = get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	_aim_pxz = Vector2(player.voxel_position.x, player.voxel_position.z)
+	_aim_yaw = 0.0
+	_aim_pitch = 0.0
+	if player.camera:
+		if "yaw_degrees" in player.camera:
+			_aim_yaw = float(player.camera.yaw_degrees)
+		if "pitch_degrees" in player.camera:
+			_aim_pitch = float(player.camera.pitch_degrees)
+	_aim_range = range_v
+	_aim_build = build_held
+	_aim_item = _active_item_id()
+	_aim_hover = hover_col
+	_aim_stable = stable_col
+	_aim_info = info
+	_aim_cell = info.get("cell", _stable_cell)
+	_aim_edit = _TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y)
+	_aim_depth = 0.0
+	if _crystal and _crystal.has_method("get_depth_at"):
+		_aim_depth = float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y))
+
+
 func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: float, pulse: float) -> void:
 	if _ghost == null:
+		return
+	if _aim_from_cache:
+		if not _ghost.visible:
+			return
+		var cached_mode: StringName = info.get("mode", &"none")
+		var cached_a: float = 0.12 + 0.08 * pulse
+		if cached_mode == &"dig":
+			_ghost_mat.albedo_color = Color(1.0, 0.55, 0.12, cached_a)
+			_ghost_mat.emission = Color(1.0, 0.5, 0.08)
+		else:
+			_ghost_mat.albedo_color = Color(0.3, 1.0, 0.45, cached_a)
+			_ghost_mat.emission = Color(0.25, 0.95, 0.35)
+		_ghost_mat.emission_energy_multiplier = 0.25 + 0.2 * pulse
 		return
 	var mode: StringName = info.get("mode", &"none")
 	# Predict next tile along aim for dig/build continuous reshape.

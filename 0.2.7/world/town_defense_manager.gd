@@ -190,6 +190,10 @@ func _state_from_depth(depth: float) -> int:
 
 
 func _max_crystal_depth_in_radius(center: Vector2i, radius: int) -> float:
+	if _crystal == null:
+		return 0.0
+	if _crystal.has_method("spread_depth_empty") and _crystal.spread_depth_empty():
+		return 0.0
 	var best := 0.0
 	for dx in range(-radius, radius + 1):
 		for dz in range(-radius, radius + 1):

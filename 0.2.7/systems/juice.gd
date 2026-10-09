@@ -17,6 +17,9 @@ static var _dipped: float = 1.0
 static var _flash_mat: ShaderMaterial
 static var _cam: Camera3D
 static var _cam_check_msec: int = -100000
+static var _frustum_frame: int = -999
+static var _frustum_cam: Camera3D
+static var _frustum: Array = []
 
 
 static func set_preset(preset: int) -> void:
@@ -136,9 +139,22 @@ static func creature_bob_allowed(body: Node3D, player: Node3D) -> bool:
 	if body.global_position.distance_squared_to(player.global_position) > limit * limit:
 		return false
 	var cam := _camera(body)
-	if cam != null and not cam.is_position_in_frustum(body.global_position):
+	if cam != null and _outside_frustum(cam, body.global_position):
 		return false
 	return true
+
+
+## get_frustum() allocates six planes. One copy per physics frame is enough for every body.
+static func _outside_frustum(cam: Camera3D, point: Vector3) -> bool:
+	var frame := Engine.get_physics_frames()
+	if frame != _frustum_frame or cam != _frustum_cam:
+		_frustum_frame = frame
+		_frustum_cam = cam
+		_frustum = cam.get_frustum()
+	for plane in _frustum:
+		if plane.is_point_over(point):
+			return true
+	return false
 
 
 static func _camera(body: Node3D) -> Camera3D:

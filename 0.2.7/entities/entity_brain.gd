@@ -25,6 +25,9 @@ var patrol_anchor: Vector2i = Vector2i.ZERO
 var target_cell: Vector2i = Vector2i.ZERO
 var state_timer: float = 0.0
 var attack_timer: float = 0.0
+## Militia disk scans share a result for a few physics frames. Crystal spread is slower than that.
+static var _crystal_near_bucket: int = -999999
+static var _crystal_near_cache: Dictionary = {}
 
 
 func _init(p_config: _EntityBrainConfig) -> void:
@@ -258,16 +261,32 @@ func _crystal_threat(pos: Vector2i, crystal_sim: _CrystalFluidSim) -> bool:
 
 
 func _crystal_near(center: Vector2i, crystal_sim: _CrystalFluidSim, radius: float) -> bool:
-	if crystal_sim == null:
+	if crystal_sim == null or crystal_sim.depth.is_empty():
 		return false
 	var r := int(ceil(radius))
+	var bucket := int(Engine.get_physics_frames() / 6)
+	if bucket != _crystal_near_bucket:
+		_crystal_near_bucket = bucket
+		_crystal_near_cache.clear()
+	var depth_key := int(round(config.crystal_flee_depth * 1000.0))
+	var key := Vector3i(center.x, center.y, r * 100000 + depth_key)
+	if _crystal_near_cache.has(key):
+		return bool(_crystal_near_cache[key])
+	var found := false
+	var min_d := config.crystal_flee_depth
+	var r2 := r * r
 	for dx in range(-r, r + 1):
+		var dx2 := dx * dx
 		for dz in range(-r, r + 1):
-			if Vector2(dx, dz).length() > radius:
+			if dx2 + dz * dz > r2:
 				continue
-			if crystal_sim.get_depth_at(center.x + dx, center.y + dz) >= config.crystal_flee_depth:
-				return true
-	return false
+			if crystal_sim.get_depth_at(center.x + dx, center.y + dz) >= min_d:
+				found = true
+				break
+		if found:
+			break
+	_crystal_near_cache[key] = found
+	return found
 
 
 func _nearest_crystal_cell(pos: Vector2i, crystal_sim: _CrystalFluidSim) -> Vector2i:
@@ -286,4 +305,6 @@ func _nearest_crystal_cell(pos: Vector2i, crystal_sim: _CrystalFluidSim) -> Vect
 
 
 func _near(a: Vector2i, b: Vector2i, radius: float) -> bool:
-	return Vector2(a).distance_to(Vector2(b)) <= radius
+	var dx := float(a.x - b.x)
+	var dz := float(a.y - b.y)
+	return dx * dx + dz * dz <= radius * radius

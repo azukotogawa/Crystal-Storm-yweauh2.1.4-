@@ -215,7 +215,19 @@ static func set_plant_growth_state(wx: int, wz: int, stage: int, progress: float
 
 
 static func get_feature(wx: int, wz: int) -> Dictionary:
-	return _ws().feature_cells.get(Vector2i(wx, wz), {})
+	var found = feature_at(wx, wz)
+	if found == null:
+		return {}
+	return found
+
+
+## Null when the column has no feature. Does not allocate a Dictionary on the miss.
+static func feature_at(wx: int, wz: int):
+	var cells: Dictionary = _ws().feature_cells
+	var key := Vector2i(wx, wz)
+	if not cells.has(key):
+		return null
+	return cells[key]
 
 
 static func get_plant_positions() -> Array:
@@ -373,6 +385,11 @@ static func get_ruin_centers() -> Array[Vector2i]:
 		_ruin_centers_misses += 1
 		_record_op("get_ruin_centers", t0)
 	return _ruin_centers_frame_cache.duplicate()
+
+
+static func ruin_center_count() -> int:
+	_ensure_ruin_centers_list()
+	return _ruin_centers_list.size()
 
 
 static func _ensure_ruin_centers_list() -> void:
