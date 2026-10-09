@@ -1059,12 +1059,19 @@ func is_cave_air(wx: float, wy: float, wz: float) -> bool:
 
 func get_cave_floor_height(wx: float, wz: float, max_depth: float = 36.0) -> float:
 	var surf: float = get_surface_height(wx, wz)
-	var start_y: int = floori(surf)
-	var min_y: int = maxi(0, start_y - int(max_depth))
+	var layer: float = _WorldSettings.get_active().layer_height()
+	# The mesh occupies [surf, surf + layer]. get_voxel treats wy > surf + 0.1 as air,
+	# so a scan that starts at floor(surf) returns surf + 1 — inside that slab, not a cave.
+	# Start below the slab and only return air the body can stand in.
+	var start_y: int = floori(surf - layer)
+	var min_y: int = maxi(0, floori(surf) - int(max_depth))
 	for y in range(start_y, min_y - 1, -1):
 		var wy: float = float(y)
-		if get_solid(wx, wy, wz) and not get_solid(wx, wy + 1.0, wz):
-			return wy + 1.0
+		var stand: float = wy + 1.0
+		if stand >= surf - layer * 0.25:
+			continue
+		if get_solid(wx, wy, wz) and not get_solid(wx, stand, wz):
+			return stand
 	return 0.0
 
 # -----------------------------

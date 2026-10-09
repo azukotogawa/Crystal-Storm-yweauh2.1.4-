@@ -26,6 +26,7 @@ var _vol_sfx: HSlider
 var _vol_ui: HSlider
 var _fullscreen: CheckBox
 var _vsync: CheckBox
+var _cutaway: CheckBox
 var _resolution: OptionButton
 var _ui_scale: HSlider
 var _ui_scale_label: Label
@@ -40,11 +41,18 @@ func _ready() -> void:
 	_ThemeBuilder.apply(self)
 	custom_minimum_size = Vector2(300, 280)
 	horizontal_scroll_mode = SCROLL_MODE_DISABLED
-	var box := VBoxContainer.new()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_theme_constant_override("separation", 6)
-	add_child(box)
-	_section(box, "Graphics")
+	var body := VBoxContainer.new()
+	body.name = "SettingsBody"
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 6)
+	add_child(body)
+	var tabs := TabContainer.new()
+	tabs.name = "SettingsTabs"
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tabs.custom_minimum_size = Vector2(300, 260)
+	body.add_child(tabs)
+	var graphics := _tab(tabs, "Graphics")
 	_preset = OptionButton.new()
 	_preset.name = "QualityPreset"
 	_preset.add_item("Low", int(_PerformanceQualityConfig.Preset.LOW))
@@ -52,67 +60,127 @@ func _ready() -> void:
 	_preset.add_item("High", int(_PerformanceQualityConfig.Preset.HIGH))
 	_preset.add_item("Safe", int(_PerformanceQualityConfig.Preset.SAFE))
 	_preset.item_selected.connect(_on_preset_selected)
-	box.add_child(_preset)
-	_rd = _slider(box, "Render distance", 1, 8, 1, "RenderDistance")
-	_veg = _slider(box, "Vegetation density", 0, 1, 0.05, "Vegetation")
-	_fx = _check(box, "Combat visuals", "CombatVisuals")
-	_section(box, "Audio")
-	_vol_master = _slider(box, "Master volume", 0, 1, 0.05, "VolumeMaster")
-	_vol_music = _slider(box, "Music volume", 0, 1, 0.05, "VolumeMusic")
-	_vol_sfx = _slider(box, "SFX volume", 0, 1, 0.05, "VolumeSFX")
-	_vol_ui = _slider(box, "UI volume", 0, 1, 0.05, "VolumeUI")
-	_section(box, "Display")
-	_fullscreen = _check(box, "Fullscreen", "Fullscreen")
-	_vsync = _check(box, "VSync", "Vsync")
+	graphics.add_child(_preset)
+	_rd = _slider(graphics, "Render distance", 1, 8, 1, "RenderDistance")
+	_veg = _slider(graphics, "Vegetation density", 0, 1, 0.05, "Vegetation")
+	_fx = _check(graphics, "Combat visuals", "CombatVisuals")
+	_cutaway = _check(graphics, "Camera cutaway", "CameraCutaway")
+	var audio := _tab(tabs, "Audio")
+	_vol_master = _slider(audio, "Master volume", 0, 1, 0.05, "VolumeMaster")
+	_vol_music = _slider(audio, "Music volume", 0, 1, 0.05, "VolumeMusic")
+	_vol_sfx = _slider(audio, "SFX volume", 0, 1, 0.05, "VolumeSFX")
+	_vol_ui = _slider(audio, "UI volume", 0, 1, 0.05, "VolumeUI")
+	var display := _tab(tabs, "Display")
+	_fullscreen = _check(display, "Fullscreen", "Fullscreen")
+	_vsync = _check(display, "VSync", "Vsync")
 	var res_l := Label.new()
 	res_l.text = "Resolution (windowed)"
-	box.add_child(res_l)
+	display.add_child(res_l)
 	_resolution = OptionButton.new()
 	_resolution.name = "Resolution"
 	for res in RESOLUTIONS:
 		_resolution.add_item(res)
 	_resolution.item_selected.connect(func(_i): _persist())
-	box.add_child(_resolution)
+	display.add_child(_resolution)
 	_ui_scale_label = Label.new()
 	_ui_scale_label.text = "UI scale"
-	box.add_child(_ui_scale_label)
-	_ui_scale = _slider(box, "", 0.75, 1.5, 0.05, "UiScale")
-	_section(box, "Accessibility")
-	_reduce = _check(box, "Reduce motion", "ReduceMotion")
-	_shake = _check(box, "Screen shake", "ScreenShake")
-	_hit_stop = _check(box, "Hit stop", "HitStop")
-	_flash = _check(box, "Hit flash", "HitFlash")
-	_colorblind = _check(box, "Colour-blind crystal palette", "ColorblindPalette")
-	_section(box, "Controls")
+	display.add_child(_ui_scale_label)
+	_ui_scale = _slider(display, "", 0.75, 1.5, 0.05, "UiScale")
+	var access := _tab(tabs, "Accessibility")
+	_reduce = _check(access, "Reduce motion", "ReduceMotion")
+	_shake = _check(access, "Screen shake", "ScreenShake")
+	_hit_stop = _check(access, "Hit stop", "HitStop")
+	_flash = _check(access, "Hit flash", "HitFlash")
+	_colorblind = _check(access, "Colour-blind crystal palette", "ColorblindPalette")
+	var controls := _tab(tabs, "Controls")
 	var hint := Label.new()
 	hint.text = "Click a binding, then press a key or mouse button. Escape cancels."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(hint)
+	controls.add_child(hint)
 	_conflict = Label.new()
 	_conflict.name = "ConflictWarning"
 	_conflict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_conflict.add_theme_color_override("font_color", Color(0.95, 0.55, 0.45))
-	box.add_child(_conflict)
+	controls.add_child(_conflict)
 	for action in _InputBindings.ACTIONS:
-		_add_bind_row(box, action)
+		_add_bind_row(controls, action)
 	var reset := Button.new()
 	reset.text = "Reset bindings"
 	reset.pressed.connect(_on_reset_bindings)
-	box.add_child(reset)
+	controls.add_child(reset)
 	var how := Button.new()
 	how.text = "How to play"
 	how.pressed.connect(func(): _Tutorial.open(get_tree(), true))
-	box.add_child(how)
-	var controls := Button.new()
-	controls.text = "Controls"
-	controls.pressed.connect(func(): _Tutorial.open_controls(get_tree()))
-	box.add_child(controls)
+	controls.add_child(how)
+	var controls_page := Button.new()
+	controls_page.name = "OpenControls"
+	controls_page.text = "Controls"
+	controls_page.pressed.connect(func(): _Tutorial.open_controls(get_tree()))
+	controls.add_child(controls_page)
 	_status = Label.new()
 	_status.name = "SettingsStatus"
-	box.add_child(_status)
+	controls.add_child(_status)
+	var close := Button.new()
+	close.name = "SettingsClose"
+	close.text = "Close"
+	close.pressed.connect(_on_close_clicked)
+	body.add_child(close)
 	sync_from_settings()
 	if not _PlayerSettings.runtime_applied:
 		_PlayerSettings.apply_runtime(get_tree())
+
+
+func _tab(tabs: TabContainer, title: String) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.name = title
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 6)
+	tabs.add_child(box)
+	tabs.set_tab_title(tabs.get_tab_count() - 1, title)
+	return box
+
+
+func select_tab(title: String) -> void:
+	var tabs := find_child("SettingsTabs", true, false) as TabContainer
+	if tabs == null:
+		return
+	for i in tabs.get_tab_count():
+		if tabs.get_tab_title(i) == title or str(tabs.get_tab_control(i).name) == title:
+			tabs.current_tab = i
+			return
+
+
+func is_rebind_listening() -> bool:
+	return _listen_action != ""
+
+
+## Drop a pending key capture and give focus back. Safe to call when nothing is listening.
+func cancel_rebind() -> void:
+	var was := _listen_action != ""
+	_listen_action = ""
+	if was and _conflict:
+		_conflict.text = ""
+	_refresh_bindings()
+	var vp := get_viewport()
+	if vp:
+		vp.gui_release_focus()
+
+
+func _on_close_clicked() -> void:
+	cancel_rebind()
+	var tree := get_tree()
+	if tree == null:
+		visible = false
+		return
+	var pause = tree.get_first_node_in_group("pause_menu")
+	if pause != null and bool(pause.visible) and pause.has_method("close"):
+		pause.close()
+		return
+	_Tutorial.dismiss()
+	visible = false
+	var vp := get_viewport()
+	if vp:
+		vp.gui_release_focus()
 
 
 func _section(box: VBoxContainer, text: String) -> void:
@@ -183,6 +251,7 @@ func sync_from_settings() -> void:
 	_set_check(_hit_stop, bool(data.get("hit_stop_enabled", true)))
 	_set_check(_flash, bool(data.get("flash_effects_enabled", true)))
 	_set_check(_colorblind, bool(data.get("colorblind_palette", false)))
+	_set_check(_cutaway, bool(data.get("camera_cutaway_enabled", true)))
 	_apply_reduce_motion_lock()
 	_refresh_scale_label()
 	_refresh_bindings()
@@ -233,6 +302,12 @@ func _input(event: InputEvent) -> void:
 	if not is_visible_in_tree():
 		_listen_action = ""
 		return
+	if event is InputEventKey:
+		var early := event as InputEventKey
+		if early.pressed and not early.echo and early.physical_keycode == KEY_ESCAPE:
+			_cancel_listen()
+			get_viewport().set_input_as_handled()
+			return
 	if Time.get_ticks_msec() < _listen_after_msec:
 		if event is InputEventMouseButton:
 			get_viewport().set_input_as_handled()
@@ -347,6 +422,8 @@ func _persist() -> void:
 		data["flash_effects_enabled"] = bool(_flash.button_pressed)
 	if _colorblind:
 		data["colorblind_palette"] = bool(_colorblind.button_pressed)
+	if _cutaway:
+		data["camera_cutaway_enabled"] = bool(_cutaway.button_pressed)
 	_apply_reduce_motion_lock()
 	if _resolution and _fullscreen:
 		_resolution.disabled = bool(_fullscreen.button_pressed)

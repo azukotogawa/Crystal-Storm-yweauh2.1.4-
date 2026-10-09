@@ -4,6 +4,8 @@ Movement:
 WASD = camera-relative movement
 Space = jump
 Q/E = camera yaw
+Page Up / Page Down = camera pitch (middle-mouse drag tilts too)
+V = unstuck (nearest safe stand above or beside you; short cooldown)
 
 Interaction:
 LMB = primary interaction/removal

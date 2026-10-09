@@ -70,9 +70,18 @@ func open() -> void:
 
 
 func close() -> void:
+	if _settings_box:
+		_settings_box.visible = false
+	if _settings and _settings.has_method("cancel_rebind"):
+		_settings.cancel_rebind()
+	_TutorialOverlay.dismiss()
 	visible = false
 	_GameplayInput.pause_open = false
-	get_tree().paused = false
+	if get_tree():
+		get_tree().paused = false
+	var vp := get_viewport()
+	if vp:
+		vp.gui_release_focus()
 	_refresh_debug_overlay()
 	_ui("ui_close")
 
@@ -121,6 +130,7 @@ func _build() -> void:
 
 func _btn(parent: Node, text: String, cb: Callable) -> void:
 	var b := Button.new()
+	b.name = text
 	b.text = text
 	b.custom_minimum_size = Vector2(0, 32)
 	b.pressed.connect(func(): _ui("ui_click"))
@@ -137,6 +147,13 @@ func _ui(id: String) -> void:
 
 func _toggle_settings() -> void:
 	_settings_box.visible = not _settings_box.visible
+	if not _settings_box.visible:
+		if _settings and _settings.has_method("cancel_rebind"):
+			_settings.cancel_rebind()
+		_TutorialOverlay.dismiss()
+		var vp := get_viewport()
+		if vp:
+			vp.gui_release_focus()
 	_sync_settings_widgets()
 
 

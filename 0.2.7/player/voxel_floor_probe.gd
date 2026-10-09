@@ -198,7 +198,11 @@ func walkable_height_at(wx: float, wz: float) -> float:
 		if _measure:
 			_m_cave_floor += 1
 		var cave_floor := world.get_cave_floor_height(wx, wz)
-		if cave_floor > 0.01:
+		# Ignore the old false floor (inside the rendered top voxel) and only
+		# stand on a cave when the feet hint is already down in that air.
+		var layer_h: float = _ws().layer_height()
+		if cave_floor > 0.01 and cave_floor < surf - layer_h * 0.25 \
+				and feet_height_hint <= cave_floor + layer_h * 0.75:
 			if _height_cache_enabled:
 				_walkable_height_cache[_height_cache_key(wx, wz)] = cave_floor
 			if _measure:
@@ -481,6 +485,75 @@ func soft_follow_y(pos: Vector3, delta: float, follow_rate: float = 22.0) -> Vec
 	var k: float = clampf(rate * delta, 0.0, 1.0)
 	out.y = lerpf(pos.y, target_feet, k)
 	return out
+
+
+## Rendered walkable top, ignoring a low feet hint so the surface slab is not a cave.
+func rendered_top_at(wx: float, wz: float) -> float:
+	var saved: float = feet_height_hint
+	var surf: float = world.get_surface_height(wx, wz) if world else 0.0
+	feet_height_hint = surf + _ws().layer_height()
+	var top: float = sample_walkable_feet(wx, wz)
+	feet_height_hint = saved
+	return top
+
+
+## Body intersects the rendered ground slab or a solid voxel that is not cave air.
+## Samples the column under the feet only — no scene-tree search.
+func body_overlaps_terrain(pos: Vector3, player_height: float) -> bool:
+	if world == null:
+		return false
+	var layer: float = _ws().layer_height()
+	var surf: float = world.get_surface_height(pos.x, pos.z)
+	var top: float = rendered_top_at(pos.x, pos.z)
+	if pos.y < top - 0.08 and pos.y > surf - layer * 0.35:
+		return true
+	if not world.has_method("get_solid"):
+		return false
+	var feet_s: float = pos.y + 0.15
+	var mid_s: float = pos.y + player_height * 0.5
+	var head_s: float = pos.y + player_height * 0.85
+	if feet_s < top - 0.02 and world.get_solid(pos.x, feet_s, pos.z):
+		return true
+	if mid_s < top - 0.02 and world.get_solid(pos.x, mid_s, pos.z):
+		return true
+	if head_s < top - 0.02 and world.get_solid(pos.x, head_s, pos.z):
+		return true
+	return false
+
+
+## Nearest free standing spot: this column's rendered top, then a one-cell ring, then straight up.
+func nearest_safe_stand(pos: Vector3, player_height: float) -> Vector3:
+	var layer: float = _ws().layer_height()
+	var best := Vector3(pos.x, rendered_top_at(pos.x, pos.z), pos.z)
+	var best_cost := INF
+	var offsets: Array[Vector2] = [
+		Vector2.ZERO,
+		Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1),
+		Vector2(1, 1), Vector2(1, -1), Vector2(-1, 1), Vector2(-1, -1),
+	]
+	var radius: float = _ws().player_radius()
+	for off in offsets:
+		var x: float = pos.x + off.x
+		var z: float = pos.z + off.y
+		var top: float = rendered_top_at(x, z)
+		var candidate := Vector3(x, top, z)
+		if body_overlaps_terrain(candidate, player_height):
+			continue
+		if is_blocked_at(candidate, player_height, radius):
+			continue
+		var cost: float = absf(off.x) + absf(off.y) + absf(top - pos.y) * 0.05
+		if cost < best_cost:
+			best_cost = cost
+			best = candidate
+	if best_cost < INF:
+		return best
+	var lifted := Vector3(pos.x, pos.y, pos.z)
+	for _step in 16:
+		lifted.y += layer
+		if not body_overlaps_terrain(lifted, player_height) \
+				and not is_blocked_at(lifted, player_height, radius):
+			return lifted
+	return Vector3(pos.x, rendered_top_at(pos.x, pos.z), pos.z)
 
 
 func slope_excess_at(wx: float, wz: float) -> float:

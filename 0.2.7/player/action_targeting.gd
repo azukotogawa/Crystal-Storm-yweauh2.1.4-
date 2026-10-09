@@ -10,6 +10,16 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 
 ## Dig/build/remove/place reach in columns (INPUT_CONTRACT). Combat weapons keep item ranges.
 const INTERACTION_RANGE := 8.0
+## Slack as a fraction of voxel_scale. Just under half a column, so a ray through
+## a cell center is not stolen by a neighbor.
+const PICK_TOLERANCE_SCALE := 0.45
+## 0 top +Y, 1 bottom -Y, 2 +X, 3 -X, 4 +Z, 5 -Z. The face the last pick will affect.
+static var last_pick_face: int = 0
+static var last_pick_exact: bool = false
+static var _aabb_t: float = 0.0
+static var _aabb_face: int = 0
+static var _box_min: Vector3 = Vector3.ZERO
+static var _box_max: Vector3 = Vector3.ZERO
 
 
 static func _camera_yaw_degrees(player: Node3D) -> float:
@@ -342,7 +352,13 @@ static func _pick_column_from_mouse(
 		else:
 			break
 	if best != Vector3.ZERO:
-		return best
+		return _snap_near_miss(origin, dir, best, player, world, chunk_manager, range_v, require_in_range)
+
+	var ray_pick: Dictionary = pick_along_ray(
+		origin, dir, player, world, chunk_manager, range_v, require_in_range
+	)
+	if bool(ray_pick.get("hit", false)):
+		return ray_pick.get("column", Vector3.ZERO)
 
 	# Fallback: denser ray march within range (entities / odd slabs).
 	if world != null:
@@ -363,7 +379,312 @@ static func _pick_column_from_mouse(
 						best_t = t
 						best = Vector3(float(wxm) + 0.5, player.voxel_position.y, float(wzm) + 0.5)
 			t += step
+	if best != Vector3.ZERO:
+		last_pick_face = 0
+		last_pick_exact = false
 	return best
+
+
+## Ray pick used by probes and as the mouse fallback. Column space (x/z = cell + 0.5).
+## Exact slab hits are returned as-is. A miss within PICK_TOLERANCE_SCALE snaps to the
+## nearest in-range cell. An exact hit outside range is rejected when require_in_range.
+static func pick_along_ray(
+	origin: Vector3,
+	dir: Vector3,
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float,
+	require_in_range: bool = true
+) -> Dictionary:
+	last_pick_face = 0
+	last_pick_exact = false
+	var miss := {"column": Vector3.ZERO, "face": 0, "hit": false, "exact": false}
+	if world == null or dir.length_squared() < 0.0000001:
+		return miss
+	dir = dir.normalized()
+	var ws = _WorldSettings.get_active()
+	var scale: float = maxf(ws.voxel_scale, 0.001)
+	var tol: float = scale * PICK_TOLERANCE_SCALE
+	var max_dist: float = minf((range_v + 6.0) * scale * 4.0, 180.0)
+	var cx: int = floori(ws.world_to_column(origin.x))
+	var cz: int = floori(ws.world_to_column(origin.z))
+	var step_x: int = 1 if dir.x >= 0.0 else -1
+	var step_z: int = 1 if dir.z >= 0.0 else -1
+	var huge := 1.0e20
+	var t_delta_x: float = huge if absf(dir.x) < 0.0000001 else absf(scale / dir.x)
+	var t_delta_z: float = huge if absf(dir.z) < 0.0000001 else absf(scale / dir.z)
+	var next_x: float = ws.column_to_world(float(cx + (1 if step_x > 0 else 0)))
+	var next_z: float = ws.column_to_world(float(cz + (1 if step_z > 0 else 0)))
+	var t_max_x: float = huge if absf(dir.x) < 0.0000001 else (next_x - origin.x) / dir.x
+	var t_max_z: float = huge if absf(dir.z) < 0.0000001 else (next_z - origin.z) / dir.z
+	var near_d := tol
+	var near_cell := Vector2i(cx, cz)
+	var near_face := 0
+	var found_near := false
+	for _step in 48:
+		var exact: Dictionary = _exact_cell(origin, dir, cx, cz, player, world, chunk_manager, range_v, require_in_range, max_dist)
+		if bool(exact.get("reject", false)):
+			# The ray hit something past interaction range. Do not pull that cell inward.
+			break
+		if bool(exact.get("hit", false)):
+			return exact
+		_consider_near(origin, dir, cx, cz, player, world, chunk_manager, range_v, require_in_range, max_dist, tol)
+		if _near_found and _near_dist < near_d:
+			near_d = _near_dist
+			near_cell = _near_cell
+			near_face = _near_face
+			found_near = true
+		_consider_near(origin, dir, cx + 1, cz, player, world, chunk_manager, range_v, require_in_range, max_dist, tol)
+		if _near_found and _near_dist < near_d:
+			near_d = _near_dist
+			near_cell = _near_cell
+			near_face = _near_face
+			found_near = true
+		_consider_near(origin, dir, cx - 1, cz, player, world, chunk_manager, range_v, require_in_range, max_dist, tol)
+		if _near_found and _near_dist < near_d:
+			near_d = _near_dist
+			near_cell = _near_cell
+			near_face = _near_face
+			found_near = true
+		_consider_near(origin, dir, cx, cz + 1, player, world, chunk_manager, range_v, require_in_range, max_dist, tol)
+		if _near_found and _near_dist < near_d:
+			near_d = _near_dist
+			near_cell = _near_cell
+			near_face = _near_face
+			found_near = true
+		_consider_near(origin, dir, cx, cz - 1, player, world, chunk_manager, range_v, require_in_range, max_dist, tol)
+		if _near_found and _near_dist < near_d:
+			near_d = _near_dist
+			near_cell = _near_cell
+			near_face = _near_face
+			found_near = true
+		if t_max_x < t_max_z:
+			if t_max_x > max_dist:
+				break
+			cx += step_x
+			t_max_x += t_delta_x
+		else:
+			if t_max_z > max_dist:
+				break
+			cz += step_z
+			t_max_z += t_delta_z
+	if found_near:
+		return _finish_pick(near_cell.x, near_cell.y, near_face, false, player)
+	return miss
+
+
+static func _exact_cell(
+	origin: Vector3,
+	dir: Vector3,
+	wx: int,
+	wz: int,
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float,
+	require_in_range: bool,
+	max_dist: float
+) -> Dictionary:
+	_set_column_box(world, chunk_manager, wx, wz)
+	if not _ray_aabb(origin, dir, _box_min, _box_max):
+		return {"hit": false, "reject": false}
+	if _aabb_t < 0.0 or _aabb_t > max_dist:
+		return {"hit": false, "reject": false}
+	if require_in_range and player != null and not _column_in_range(player, wx, wz, range_v):
+		return {"hit": false, "reject": true}
+	return _finish_pick(wx, wz, _aabb_face, true, player)
+
+
+static func _consider_near(
+	origin: Vector3,
+	dir: Vector3,
+	wx: int,
+	wz: int,
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float,
+	require_in_range: bool,
+	max_dist: float,
+	tol: float
+) -> void:
+	_near_found = false
+	if require_in_range and player != null and not _column_in_range(player, wx, wz, range_v):
+		return
+	_set_column_box(world, chunk_manager, wx, wz)
+	var dist: float = _ray_box_distance(origin, dir, _box_min, _box_max, max_dist)
+	if dist <= 0.001 or dist >= tol:
+		return
+	_near_found = true
+	_near_dist = dist
+	_near_cell = Vector2i(wx, wz)
+	_near_face = _nearest_face(origin, dir, _box_min, _box_max, max_dist)
+
+
+static var _near_dist: float = INF
+static var _near_cell: Vector2i = Vector2i.ZERO
+static var _near_face: int = 0
+static var _near_found: bool = false
+
+
+static func _finish_pick(wx: int, wz: int, face: int, exact: bool, _player: Node3D) -> Dictionary:
+	last_pick_face = face
+	last_pick_exact = exact
+	var col := Vector3(float(wx) + 0.5, 0.0, float(wz) + 0.5)
+	if _player != null and "voxel_position" in _player:
+		col.y = float(_player.voxel_position.y)
+	return {"column": col, "face": face, "hit": true, "exact": exact, "reject": false}
+
+
+## Keep an exact hit on the plane cell. Otherwise snap to a slab the ray barely misses.
+static func _snap_near_miss(
+	origin: Vector3,
+	dir: Vector3,
+	plane_col: Vector3,
+	player: Node3D,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	range_v: float,
+	require_in_range: bool
+) -> Vector3:
+	if world == null:
+		last_pick_face = 0
+		last_pick_exact = false
+		return plane_col
+	var nd := dir.normalized() if dir.length_squared() > 0.0000001 else Vector3.DOWN
+	var wx := floori(plane_col.x)
+	var wz := floori(plane_col.z)
+	var exact: Dictionary = _exact_cell(origin, nd, wx, wz, player, world, chunk_manager, range_v, false, 400.0)
+	if bool(exact.get("hit", false)):
+		return plane_col
+	var ws = _WorldSettings.get_active()
+	var tol: float = ws.voxel_scale * PICK_TOLERANCE_SCALE
+	var best_d := tol
+	var best := Vector2i(wx, wz)
+	var best_face := 0
+	var found := false
+	var best_exact_t := INF
+	var exact_col := plane_col
+	var exact_face := 0
+	var found_exact := false
+	for ox in range(-1, 2):
+		for oz in range(-1, 2):
+			var cx: int = wx + ox
+			var cz: int = wz + oz
+			if cx == wx and cz == wz:
+				continue
+			if require_in_range and player != null and not _column_in_range(player, cx, cz, range_v):
+				continue
+			_set_column_box(world, chunk_manager, cx, cz)
+			if _ray_aabb(origin, nd, _box_min, _box_max) and _aabb_t >= 0.0 and _aabb_t < best_exact_t and _aabb_t <= 400.0:
+				best_exact_t = _aabb_t
+				exact_face = _aabb_face
+				exact_col = Vector3(float(cx) + 0.5, plane_col.y, float(cz) + 0.5)
+				found_exact = true
+				continue
+			var dist: float = _ray_box_distance(origin, nd, _box_min, _box_max, 400.0)
+			if dist < best_d:
+				best_d = dist
+				best = Vector2i(cx, cz)
+				best_face = _nearest_face(origin, nd, _box_min, _box_max, 400.0)
+				found = true
+	if found_exact:
+		last_pick_face = exact_face
+		last_pick_exact = true
+		return exact_col
+	if found and (best.x != wx or best.y != wz):
+		last_pick_face = best_face
+		last_pick_exact = false
+		return Vector3(float(best.x) + 0.5, plane_col.y, float(best.y) + 0.5)
+	last_pick_face = 0
+	last_pick_exact = false
+	return plane_col
+
+
+static func _set_column_box(world: InfiniteNoiseWorld, chunk_manager: ChunkManager, wx: int, wz: int) -> void:
+	var ws = _WorldSettings.get_active()
+	var slab: Vector2 = _surface_slab_bounds(world, chunk_manager, wx, wz)
+	_box_min = Vector3(ws.column_to_world(float(wx)), slab.x, ws.column_to_world(float(wz)))
+	_box_max = Vector3(ws.column_to_world(float(wx + 1)), slab.y, ws.column_to_world(float(wz + 1)))
+
+
+static func _face_code(axis: int, sign: float) -> int:
+	if axis == 1:
+		return 0 if sign > 0.0 else 1
+	if axis == 0:
+		return 2 if sign > 0.0 else 3
+	return 4 if sign > 0.0 else 5
+
+
+static func _ray_aabb(origin: Vector3, dir: Vector3, bmin: Vector3, bmax: Vector3) -> bool:
+	var tmin := -1.0e20
+	var tmax := 1.0e20
+	var enter_axis := 1
+	var enter_sign := 1.0
+	for axis in 3:
+		var o: float = origin[axis]
+		var d: float = dir[axis]
+		var mn: float = bmin[axis]
+		var mx: float = bmax[axis]
+		if absf(d) < 0.0000001:
+			if o < mn or o > mx:
+				return false
+			continue
+		var inv: float = 1.0 / d
+		var t1: float = (mn - o) * inv
+		var t2: float = (mx - o) * inv
+		var hit_min := true
+		if t1 > t2:
+			var swap: float = t1
+			t1 = t2
+			t2 = swap
+			hit_min = false
+		if t1 > tmin:
+			tmin = t1
+			enter_axis = axis
+			enter_sign = -1.0 if hit_min else 1.0
+		if t2 < tmax:
+			tmax = t2
+		if tmin > tmax:
+			return false
+	if tmax < 0.0:
+		return false
+	_aabb_t = tmin if tmin >= 0.0 else 0.0
+	_aabb_face = _face_code(enter_axis, enter_sign)
+	return true
+
+
+static func _ray_box_distance(origin: Vector3, dir: Vector3, bmin: Vector3, bmax: Vector3, max_dist: float) -> float:
+	var center := (bmin + bmax) * 0.5
+	var t: float = clampf(dir.dot(center - origin), 0.0, max_dist)
+	var p: Vector3 = origin + dir * t
+	var c := Vector3(
+		clampf(p.x, bmin.x, bmax.x),
+		clampf(p.y, bmin.y, bmax.y),
+		clampf(p.z, bmin.z, bmax.z)
+	)
+	return p.distance_to(c)
+
+
+static func _nearest_face(origin: Vector3, dir: Vector3, bmin: Vector3, bmax: Vector3, max_dist: float) -> int:
+	var center := (bmin + bmax) * 0.5
+	var t: float = clampf(dir.dot(center - origin), 0.0, max_dist)
+	var p: Vector3 = origin + dir * t
+	var c := Vector3(
+		clampf(p.x, bmin.x, bmax.x),
+		clampf(p.y, bmin.y, bmax.y),
+		clampf(p.z, bmin.z, bmax.z)
+	)
+	var delta := p - c
+	var ax := absf(delta.x)
+	var ay := absf(delta.y)
+	var az := absf(delta.z)
+	if ay >= ax and ay >= az:
+		return 0 if delta.y >= 0.0 else 1
+	if ax >= az:
+		return 2 if delta.x >= 0.0 else 3
+	return 4 if delta.z >= 0.0 else 5
 
 
 ## Mouse hover column for cursor UI (ignores dig range so the box follows the pointer).
