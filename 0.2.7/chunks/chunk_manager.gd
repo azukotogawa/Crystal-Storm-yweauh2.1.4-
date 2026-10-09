@@ -3923,6 +3923,90 @@ func get_stream_status() -> Dictionary:
 	}
 
 
+## True while a coalesced terrain flush has not run yet. Not per-chunk.
+func mesh_pipeline_busy() -> bool:
+	return (
+		_rebuild_flush_needed
+		or has_meta("_rebuild_flush_scheduled")
+		or not _rebuild_pending.is_empty()
+	)
+
+
+## Monotonic remesh token for the chunk that owns this column.
+## Unchanged across two settled frames means no newer job has started.
+func column_mesh_generation(wx: int, wz: int) -> int:
+	return int(_chunk_gen_tokens.get(world_to_chunk_coord(wx, wz), 0))
+
+
+## Why this column's chunk mesh is not safe to read yet.
+## Empty string: resident, not queued for load/unload/remesh/apply, quads non-empty.
+## A settled chunk can still leave the column geometrically uncovered.
+func column_mesh_block_reason(wx: int, wz: int) -> String:
+	var coord := world_to_chunk_coord(wx, wz)
+	if coord in _stream_unload_pending:
+		return "unloading"
+	if _mesh_apply_queued(coord):
+		return "awaiting_apply"
+	var resident := chunks.has(coord)
+	var inflight := pending.has(coord) or _chunk_tasks.has(coord)
+	if resident and inflight:
+		return "remesh_inflight"
+	if _patch_pending.has(coord) or _rebuild_pending.has(coord):
+		return "rebuild"
+	if not resident:
+		if inflight:
+			return "baking"
+		if _stream_load_pending.has(coord):
+			return "queued"
+		return "missing"
+	if _resident_mesh_quad_count(coord) <= 0:
+		return "empty_mesh"
+	return ""
+
+
+## True when every column's chunk is resident with a mesh and no stream or
+## remesh work is queued for it. Does not mean each column is covered.
+func columns_mesh_settled(cells: Array) -> bool:
+	if mesh_pipeline_busy():
+		return false
+	for cell_v in cells:
+		var cell := _column_from_variant(cell_v)
+		if column_mesh_block_reason(cell.x, cell.y) != "":
+			return false
+	return true
+
+
+func _column_from_variant(cell) -> Vector2i:
+	if cell is Vector2i:
+		return cell
+	if cell is Vector2:
+		var v: Vector2 = cell
+		return Vector2i(int(v.x), int(v.y))
+	return Vector2i.ZERO
+
+
+func _mesh_apply_queued(coord: Vector2i) -> bool:
+	for item_v in _mesh_completion_queue:
+		if typeof(item_v) != TYPE_DICTIONARY:
+			continue
+		if (item_v as Dictionary).get("coord", null) == coord:
+			return true
+	return false
+
+
+func _resident_mesh_quad_count(coord: Vector2i) -> int:
+	var view = chunks.get(coord, null)
+	if view == null or not ("mesh_data" in view):
+		return 0
+	var md = view.mesh_data
+	if typeof(md) != TYPE_DICTIONARY:
+		return 0
+	var quads = (md as Dictionary).get("quads", [])
+	if quads is Array:
+		return (quads as Array).size()
+	return 0
+
+
 func get_chunk_lifecycle(coord: Vector2i) -> String:
 	if chunks.has(coord):
 		if coord in _stream_unload_pending:

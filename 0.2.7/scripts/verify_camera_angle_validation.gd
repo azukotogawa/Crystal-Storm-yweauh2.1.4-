@@ -10,6 +10,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 const ANGLES: Array = [0.0, 22.0, 45.0, 67.0, 90.0, 113.0, 135.0, 180.0, 225.0, 248.0, 270.0, 315.0, 359.0]
 const ISO_PITCH := -35.264
+const MESH_SETTLE_FRAMES := 900
 const SUBJECTS: Array = [
 	"flat", "stone_wall", "gate", "bridge", "ramp_east", "dig_one", "water", "crystal",
 ]
@@ -97,8 +98,6 @@ func _run() -> void:
 		editor.try_dig(Vector3(float(d.x) + 0.5, sy, float(d.y) + 0.5))
 		if cm.has_method("await_rebuild_idle"):
 			await cm.await_rebuild_idle(60)
-	for _w2 in 6:
-		await process_frame
 
 	var cam: Camera3D = player.get("camera") if "camera" in player else null
 	if cam == null:
@@ -118,6 +117,12 @@ func _run() -> void:
 		int(floor(float(origin.x) / 16.0) + 1.0) * 16,
 		origin.y + 3
 	)
+	# Coverage reads chunk quads. await_rebuild_idle ignores the stream load
+	# queue, and the yard teleport is only seen on the next _process, so a
+	# fixed sleep can assert while the dig/boundary chunk is still in flight.
+	var watched: Array = _watched_columns(cells, boundary)
+	_look(origin.x + 6, origin.y + 2)
+	await _await_columns_settled(cm, watched, MESH_SETTLE_FRAMES)
 
 	for ang_v in ANGLES:
 		var ang: float = float(ang_v)
@@ -128,8 +133,9 @@ func _run() -> void:
 			cam.yaw_target_degrees = ang
 		cam.set("use_smoothing", false)
 		_look(origin.x + 6, origin.y + 2)
-		for _s in 4:
-			await process_frame
+		await process_frame
+		if cm.has_method("columns_mesh_settled") and not bool(cm.columns_mesh_settled(watched)):
+			await _await_columns_settled(cm, watched, MESH_SETTLE_FRAMES)
 		if absf(cam.rotation_degrees.y - ang) > 0.35 and absf(absf(cam.rotation_degrees.y - ang) - 360.0) > 0.35:
 			_fail("yaw %.1f camera at %.3f" % [ang, cam.rotation_degrees.y])
 		if absf(cam.rotation_degrees.x - ISO_PITCH) > 0.05:
@@ -210,6 +216,7 @@ func _dump_cell(c: Vector2i) -> Dictionary:
 		"neighbors_covered": _neigh_ok(snap.get("neighbors", {})),
 		"streamed": snap.get("streamed", false),
 		"chunk": snap.get("chunk", []),
+		"lifecycle": snap.get("chunk_lifecycle", ""),
 	}
 
 
@@ -229,7 +236,10 @@ func _assert_angle_row(ang: float, row: Dictionary) -> void:
 		var d: Dictionary = cells[key]
 		var disc: Array = d.get("disc", [])
 		if not bool(d.get("covered", false)) and not bool(d.get("has_ramp", false)):
-			_fail("yaw %.0f %s not mesh-covered" % [ang, key])
+			_fail("yaw %.0f %s not mesh-covered cell=%s streamed=%s lifecycle=%s faces=%s chunk=%s" % [
+				ang, key, str(d.get("cell", [])), str(d.get("streamed", false)),
+				str(d.get("lifecycle", "")), str(d.get("faces", [])), str(d.get("chunk", [])),
+			])
 		for item in disc:
 			var ds := str(item)
 			if ds.begins_with("MESH_HOLE"):
@@ -291,6 +301,70 @@ func _shot(name: String) -> void:
 	var path := _scratch.path_join("%s.png" % name)
 	img.save_png(path)
 	print("SHOT %s" % path)
+
+
+func _watched_columns(cells: Dictionary, boundary: Vector2i) -> Array:
+	var out: Array = []
+	for key in SUBJECTS:
+		if not cells.has(key):
+			continue
+		out.append(cells[key])
+	out.append(boundary)
+	return out
+
+
+## Two consecutive settled frames with the same per-chunk generation. A single
+## settled frame can sit in the gap before a deferred follow-up flush.
+func _await_columns_settled(cm, cells: Array, budget: int) -> void:
+	if cm == null or not cm.has_method("columns_mesh_settled") \
+			or not cm.has_method("column_mesh_generation") \
+			or not cm.has_method("column_mesh_block_reason"):
+		_fail("chunk manager cannot report column mesh settle")
+		return
+	var stable := 0
+	var prev_gen: Dictionary = {}
+	for _frame in budget:
+		await process_frame
+		if not bool(cm.columns_mesh_settled(cells)):
+			stable = 0
+			prev_gen = {}
+			continue
+		var gen: Dictionary = {}
+		var same := not prev_gen.is_empty()
+		for cell_v in cells:
+			var cell: Vector2i = cell_v
+			var g: int = int(cm.column_mesh_generation(cell.x, cell.y))
+			gen[cell] = g
+			if same and int(prev_gen.get(cell, -1)) != g:
+				same = false
+		prev_gen = gen
+		if not same:
+			stable = 1
+			continue
+		stable += 1
+		if stable >= 2:
+			return
+	_fail_mesh_settle(cm, cells, budget)
+
+
+func _fail_mesh_settle(cm, cells: Array, budget: int) -> void:
+	var parts: Array[String] = []
+	for cell_v in cells:
+		var cell: Vector2i = cell_v
+		var reason := str(cm.column_mesh_block_reason(cell.x, cell.y))
+		if reason.is_empty():
+			continue
+		parts.append("%d,%d %s gen=%d" % [
+			cell.x, cell.y, reason, int(cm.column_mesh_generation(cell.x, cell.y)),
+		])
+	var status: Dictionary = cm.get_stream_status() if cm.has_method("get_stream_status") else {}
+	if not parts.is_empty():
+		_fail("mesh settle timeout after %d frames: %s stream=%s" % [budget, "; ".join(parts), str(status)])
+		return
+	if cm.has_method("mesh_pipeline_busy") and bool(cm.mesh_pipeline_busy()):
+		_fail("mesh settle timeout after %d frames: rebuild flush still pending stream=%s" % [budget, str(status)])
+		return
+	_fail("mesh settle timeout after %d frames: generation kept changing stream=%s" % [budget, str(status)])
 
 
 func _find_dry_origin(world, cm) -> Vector2i:
