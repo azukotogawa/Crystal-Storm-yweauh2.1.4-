@@ -40,6 +40,10 @@ var caves_enabled: bool = true
 # --- Tunables for playable scale and feel ---
 # --- Tunables for playable scale and feel ---
 const BIOME_SCALE := 920.0
+## Column radius around the world origin where the river mask (and river tiles) stay off.
+## The unshifted river field is a zero-crossing through the origin; this disk keeps that
+## lattice zero from drowning spawn-adjacent columns. Outside the disk the mask is exact.
+const SPAWN_RIVER_CLEARANCE := 96.0
 const MOUNTAIN_FREQ := 1.0
 const DETAIL_FREQ := 4.5
 
@@ -120,7 +124,6 @@ var _river_valley: FastNoiseLite
 var _river_warp_x: FastNoiseLite
 var _river_warp_z: FastNoiseLite
 
-var _river_mask_noise: FastNoiseLite
 var _river_noise: FastNoiseLite
 var _river_length_noise: FastNoiseLite
 var _river_width_noise: FastNoiseLite
@@ -335,14 +338,6 @@ func _setup_noise():
 	_river_warp_z.fractal_type = FastNoiseLite.FRACTAL_FBM
 	_river_warp_z.fractal_octaves = 2
 	
-	_river_mask_noise = FastNoiseLite.new()
-	_river_mask_noise.seed = world_seed + 650
-	_river_mask_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	_river_mask_noise.frequency = 0.042 / (BIOME_SCALE / 920.0)
-	_river_mask_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	_river_mask_noise.fractal_octaves = 5
-	_river_mask_noise.fractal_gain = 0.45
-	
 	_river_noise = FastNoiseLite.new()
 	_river_noise.seed = world_seed + 7000
 	_river_noise.noise_type = FastNoiseLite.TYPE_PERLIN
@@ -430,31 +425,39 @@ func _compute_raw_elevation(wx: float, wz: float) -> float:
 	var raw: float = (base_h + mountain + detail + micro) * _height_gen_scale()
 	return clamp(raw, -12.0 * _height_gen_scale(), _max_height())
 
-func get_river_mask(wx: float, wz: float) -> Dictionary:
-	# The slow biome-scale field is ~0 for a huge disk around the origin, so
-	# sampling it painted every nearby cell as river. The mask noise is the
-	# ribbon (about a handful of tiles wide). Shift the sample so a lattice
-	# zero does not sit on the world origin.
-	var sx: float = wx + 1800.0
-	var sz: float = wz + 2600.0
-	var r: float = _river_mask_noise.get_noise_2d(sx, sz)
-	var len_mod: float = _river_length_noise.get_noise_2d(sx * 0.65, sz * 0.65)
-	var width_var: float = (_river_width_noise.get_noise_2d(sx * 2.1, sz * 2.1) + 1.0) * 0.5
-	
-	# Distance from zero-crossing (ridge line) for thin, natural strips
+## Unshifted main/local river ribbon. Callers that need spawn clearance use get_river_mask.
+func river_mask_formula(wx: float, wz: float) -> Dictionary:
+	var r: float = _river_noise.get_noise_2d(wx, wz)
+	var len_mod: float = _river_length_noise.get_noise_2d(wx * 0.65, wz * 0.65)
+	var width_var: float = (_river_width_noise.get_noise_2d(wx * 2.1, wz * 2.1) + 1.0) * 0.5
 	var dist: float = abs(r)
-	var threshold: float = 0.026   # ~5-9 tiles wide at BIOME_SCALE=920
-	
-	# Add gentle meander bias and length modulation
+	var threshold: float = 0.026
 	var active: bool = dist < threshold and len_mod > -0.32
-	
 	var strength: float = 0.0
 	if active:
 		strength = 1.0 - (dist / threshold) * 0.65
-		# Variable width + slight taper
 		strength = clamp(strength * (0.7 + width_var * 0.55), 0.0, 1.0)
-	
 	return {"active": active, "strength": strength, "dist": dist}
+
+
+func _inside_spawn_river_clearance(wx: float, wz: float) -> bool:
+	var clearance := SPAWN_RIVER_CLEARANCE
+	return wx * wx + wz * wz < clearance * clearance
+
+
+func get_river_mask(wx: float, wz: float) -> Dictionary:
+	var raw := river_mask_formula(wx, wz)
+	if not _inside_spawn_river_clearance(wx, wz):
+		return raw
+	# Hard dry disk: active stays false so the origin is not a river.
+	# Strength eases in (0 at the origin, formula strength at the rim) and the
+	# returned dict matches river_mask_formula exactly on and beyond the rim.
+	var dist_origin := sqrt(wx * wx + wz * wz)
+	var t := dist_origin / SPAWN_RIVER_CLEARANCE
+	var fade := t * t * (3.0 - 2.0 * t)
+	raw["active"] = false
+	raw["strength"] = float(raw["strength"]) * fade
+	return raw
 
 func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
 	# Returns {carve: float, is_river: bool, water_depth: float, river_factor: float}
@@ -897,8 +900,11 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 	var river_mask_dict: Dictionary = get_river_mask(wx, wz)
 	var river: Dictionary = _compute_river_carve(wx, wz, surf)
 
-	# More rivers visible — require mask OR strong carve
-	if river_mask_dict.get("active", false) or float(river.get("carve", 0.0)) > 6.0:
+	# More rivers visible — require mask OR strong carve.
+	# Inside the origin clearance the mask is already off; ignore carve there too
+	# so a valley under the lattice zero does not paint a lake. Height carving stays.
+	var in_spawn_clearance := _inside_spawn_river_clearance(wx, wz)
+	if river_mask_dict.get("active", false) or (not in_spawn_clearance and float(river.get("carve", 0.0)) > 6.0):
 		return VoxelTypes.RIVER
 
 	# Cave mouth / exposed stone on surface (strong near-surface cave or very steep)

@@ -17,11 +17,15 @@ func _run() -> void:
 	var svc := _VoxelFluidService.new()
 	root.add_child(svc)
 	await process_frame
-	if svc.get_node_or_null("ChannelWaterVisual") != null:
-		push_error("channel fill must not add a second water mesh")
+	# The per-cell ChannelWaterVisual mesh is gone. Flood body + chunk lids are the only water.
+	if ResourceLoader.exists("res://fluids/channel_water_visual.gd"):
+		push_error("channel_water_visual.gd is a second water renderer and must stay deleted")
+		failed = true
+	elif svc.get_node_or_null("ChannelWaterVisual") != null:
+		push_error("channel fill must not add a ChannelWaterVisual node")
 		failed = true
 	else:
-		print("OK no second water mesh")
+		print("OK no ChannelWaterVisual script")
 
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var pos := Vector2i(3, 5)
@@ -51,6 +55,16 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK empty channel clears the fill")
+
+	var mesh_count := 0
+	for child in svc.get_children():
+		if child is MeshInstance3D:
+			mesh_count += 1
+	if mesh_count > 0 or svc.get_node_or_null("ChannelWaterVisual") != null:
+		push_error("show_channel_level spawned %d mesh node(s); water stays on the chunk lid" % mesh_count)
+		failed = true
+	else:
+		print("OK show_channel_level adds no second water mesh")
 
 	if failed:
 		quit(1)

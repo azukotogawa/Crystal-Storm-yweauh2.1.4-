@@ -27,6 +27,7 @@ var _hint: Label
 var _buttons: Array[Button] = []
 var _replace_id: StringName = &""
 var _choosing_replace: bool = false
+var _start_in_replace: bool = false
 
 
 static func open(tree: SceneTree, relic_mgr, ids: Array, title: String) -> void:
@@ -45,6 +46,35 @@ static func open(tree: SceneTree, relic_mgr, ids: Array, title: String) -> void:
 	panel._ids = typed
 	panel._relic_mgr = relic_mgr
 	panel._title_text = title
+	panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	var host = tree.get_first_node_in_group("game_overlay")
+	if host == null:
+		host = tree.root
+	host.add_child(panel)
+	_open = panel
+
+
+## Slots are full. Offer replace for this one relic (no 3-choice roll).
+static func open_replace(tree: SceneTree, relic_mgr, relic_id: StringName, title: String) -> void:
+	if tree == null or relic_id == &"":
+		return
+	if _open != null and is_instance_valid(_open):
+		_pending.append({
+			"mgr": relic_mgr,
+			"ids": [relic_id],
+			"title": title,
+			"replace": true,
+		})
+		return
+	if not _scale_held:
+		_saved_scale = _Juice.cancel_hit_stop()
+		_scale_held = true
+	var panel := RelicChoicePanel.new()
+	panel._ids = [relic_id]
+	panel._relic_mgr = relic_mgr
+	panel._title_text = title
+	panel._start_in_replace = true
+	panel._replace_id = relic_id
 	panel.process_mode = Node.PROCESS_MODE_ALWAYS
 	var host = tree.get_first_node_in_group("game_overlay")
 	if host == null:
@@ -117,7 +147,11 @@ func _build() -> void:
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_box.add_child(_hint)
 
-	_show_offers()
+	if _start_in_replace:
+		var relic_id := _replace_id if _replace_id != &"" else (_ids[0] if not _ids.is_empty() else &"")
+		_show_replace(relic_id)
+	else:
+		_show_offers()
 	_ui("relic_open")
 
 
@@ -254,7 +288,12 @@ func _close() -> void:
 	queue_free()
 	if more and is_inside_tree():
 		var next: Dictionary = _pending.pop_front()
-		open(get_tree(), next.get("mgr"), next.get("ids", []), str(next.get("title", "Choose a relic")))
+		if bool(next.get("replace", false)):
+			var queued: Array = next.get("ids", [])
+			var relic_id := StringName(str(queued[0])) if not queued.is_empty() else &""
+			open_replace(get_tree(), next.get("mgr"), relic_id, str(next.get("title", "Relic unlocked — replace one")))
+		else:
+			open(get_tree(), next.get("mgr"), next.get("ids", []), str(next.get("title", "Choose a relic")))
 
 
 func _restore_run() -> void:

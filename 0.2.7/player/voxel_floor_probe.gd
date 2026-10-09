@@ -237,7 +237,12 @@ func sample_walkable_feet(wx: float, wz: float) -> float:
 	for offset in _probe_offsets:
 		if offset == Vector2.ZERO:
 			continue
-		var h: float = walkable_height_at(wx + offset.x, wz + offset.y)
+		var sx := wx + offset.x
+		var sz := wz + offset.y
+		# A wall beside the body must not pull feet up onto that column.
+		if _grazes_blocking_wall(wx, wz, sx, sz):
+			continue
+		var h: float = walkable_height_at(sx, sz)
 		# Only pull up toward gentle higher contacts — not a hard max of all probes.
 		if h > best and (h - center) <= layer * 0.65:
 			best = lerpf(best, h, 0.55)
@@ -255,7 +260,11 @@ func sample_walkable_feet_max(wx: float, wz: float) -> float:
 	for offset in _probe_offsets:
 		if offset == Vector2.ZERO:
 			continue
-		best = maxf(best, walkable_height_at(wx + offset.x, wz + offset.y))
+		var sx := wx + offset.x
+		var sz := wz + offset.y
+		if _grazes_blocking_wall(wx, wz, sx, sz):
+			continue
+		best = maxf(best, walkable_height_at(sx, sz))
 	return best
 
 
@@ -353,14 +362,28 @@ func _solid_blocks_head(wx: float, wz: float, head_y: float, floor_h: float, lay
 	return false
 
 
-func _blocking_build_at(wx: int, wz: int) -> bool:
+## Wood/stone walls block the column. Gates and bridges do not. No string alloc on the step path.
+static func blocking_build_column(wx: int, wz: int) -> bool:
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	if feat.is_empty():
 		return false
 	if bool(feat.get("is_passage", false)) or bool(feat.get("is_bridge", false)):
 		return false
-	var build_id := str(feat.get("build_id", ""))
+	var build_id = feat.get("build_id", "")
 	return build_id == "wood_wall" or build_id == "stone_wall"
+
+
+func _blocking_build_at(wx: int, wz: int) -> bool:
+	return blocking_build_column(wx, wz)
+
+
+## True when a probe offset only grazes a wall in a neighboring column.
+func _grazes_blocking_wall(center_x: float, center_z: float, sample_x: float, sample_z: float) -> bool:
+	var sx := floori(sample_x)
+	var sz := floori(sample_z)
+	if sx == floori(center_x) and sz == floori(center_z):
+		return false
+	return blocking_build_column(sx, sz)
 
 
 func can_step_to(
@@ -385,11 +408,15 @@ func can_step_to(
 			_m_can_step_us += Time.get_ticks_usec() - t0
 		return false
 	# Wood and stone walls are WorldObjects. They do not raise the heightfield,
-	# so the step test has to refuse the column itself.
-	if _blocking_build_at(floori(to_pos.x), floori(to_pos.z)):
-		if _measure:
-			_m_can_step_us += Time.get_ticks_usec() - t0
-		return false
+	# so the step test refuses entering that column. A body already inside can
+	# shuffle in the cell or leave it; probe offsets that only graze a wall do not.
+	var to_col_x := floori(to_pos.x)
+	var to_col_z := floori(to_pos.z)
+	if blocking_build_column(to_col_x, to_col_z):
+		if floori(from_pos.x) != to_col_x or floori(from_pos.z) != to_col_z:
+			if _measure:
+				_m_can_step_us += Time.get_ticks_usec() - t0
+			return false
 	# Horizontal intent is independent of exact voxel height: soft-follow Y after XZ moves.
 	# Step clearance uses max contact so multi-layer walls still block honestly.
 	var target_feet := sample_walkable_feet_max(to_pos.x, to_pos.z)
@@ -462,5 +489,9 @@ func slope_excess_at(wx: float, wz: float) -> float:
 	for offset in _probe_offsets:
 		if offset == Vector2.ZERO:
 			continue
-		max_delta = maxf(max_delta, absf(walkable_height_at(wx + offset.x, wz + offset.y) - center))
+		var sx := wx + offset.x
+		var sz := wz + offset.y
+		if _grazes_blocking_wall(wx, wz, sx, sz):
+			continue
+		max_delta = maxf(max_delta, absf(walkable_height_at(sx, sz) - center))
 	return max_delta

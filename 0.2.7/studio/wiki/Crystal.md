@@ -9,7 +9,7 @@ The current crystal loop is:
 1. Crystal spawn points seed pressure fluid.
 2. `CrystalFluidSim` spreads crystal across terrain.
 3. Crystal absorbs vegetation, farmland, and animals. The ground becomes a crystal tile and plants become crystal grass, crystal bushes, or shard trees. Ruins, towns, and player buildings stay so they can still be used.
-4. Absorption grants power and can unlock enemy types. It does not hand the player a relic.
+4. Absorption grants power and can unlock enemy types. The first time a milestone unlocks a new enemy, the player receives that enemy's mapped relic once per run. `crystal_mite` is unlocked at run start, so it does not grant. If relic slots are full and the game overlay is up, the player picks one equipped relic to replace.
 5. Unlocked enemies spawn near the player/crystal.
 6. Player attacks the crystal mass and spawn points. The pick removes depth quickly; the sword chips it. Broken cells drop crystal shards and leave scarred ground that grows back into the biome tile.
 7. Destroyed non-boss spawns weaken emission.
@@ -24,7 +24,7 @@ The current crystal loop is:
 - `CrystalEvolution` records absorption and unlocks enemies.
 - `CrystalCorruption` swaps absorbed cells to crystal ground and plants, tracks scars, and heals them.
 - Passive deer, boar, rabbits, and birds standing in crystal become crystal stags, corrupted beasts, crystal mites, and crystal wisps.
-- Relics come from destroying a spawn point or exploring a ruin.
+- Relics come from an absorption unlock milestone, from destroying a spawn point, or from exploring a ruin. Absorbing grass does not equip a relic, because crystal mite is already unlocked at run start.
 - `CrystalEnemySpawner` reacts to unlocked enemies.
 - `SpawnPointController` owns spawn damage, boss gate, weaken multiplier, and victory signal.
 - `GameManager` observes crystal victory/loss conditions.

@@ -112,6 +112,8 @@ static func step_toward_cell(
 
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
 		var candidate: Vector2i = from_cell + dir
+		if _VoxelFloorProbe.blocking_build_column(candidate.x, candidate.y):
+			continue
 		var cand_x := float(candidate.x) + 0.5
 		var cand_z := float(candidate.y) + 0.5
 		var cand_y: float
@@ -144,6 +146,9 @@ static func step_toward_cell(
 		return goal
 	var step := minf(move_speed * delta, dist)
 	var next := current + to_goal.normalized() * step
+	var next_cell := column_pos(next)
+	if next_cell != from_cell and _VoxelFloorProbe.blocking_build_column(next_cell.x, next_cell.y):
+		return snap_to_ground(current, world, chunk_manager, crystal_manager)
 	var next_col := _column_xz_from_world(next)
 	if use_lightweight_nav:
 		next.y = walkable_y_light(world, chunk_manager, crystal_manager, next_col.x, next_col.y)
@@ -165,7 +170,8 @@ static func flee_cell(from_cell: Vector2i, threat_cell: Vector2i, distance: int 
 	)
 
 
-## Shove in world space. A step that would climb more than one layer stays put (no wall tunnel).
+## Shove in world space. A step that would climb more than one layer stays put.
+## WorldObject walls block the segment, not only the destination column.
 ## A world with sample_knock_ground(x, z) is a test stub. Live worlds use the walkable query.
 static func knockback_step(
 	current: Vector3,
@@ -182,12 +188,33 @@ static func knockback_step(
 		return current
 	flat = flat.normalized()
 	var dest := current + flat * distance
+	if _segment_hits_blocking_wall(current, dest):
+		return current
 	var ground := _knock_ground_y(world, chunk_manager, crystal, dest, current.y)
 	var max_up: float = _WorldSettings.get_active().max_step_up_walk()
 	if absf(ground - current.y) > max_up + 0.05:
 		return current
 	dest.y = ground
 	return dest
+
+
+## Samples the segment in column space. The start cell is allowed so a body can leave a wall.
+static func _segment_hits_blocking_wall(from_pos: Vector3, to_pos: Vector3) -> bool:
+	var a := _column_xz_from_world(from_pos)
+	var b := _column_xz_from_world(to_pos)
+	var dx := b.x - a.x
+	var dz := b.y - a.y
+	var steps := maxi(1, int(ceil(maxf(absf(dx), absf(dz)))))
+	var start := Vector2i(floori(a.x), floori(a.y))
+	for i in steps + 1:
+		var t := float(i) / float(steps)
+		var p := a.lerp(b, t)
+		var col := Vector2i(floori(p.x), floori(p.y))
+		if col == start:
+			continue
+		if _VoxelFloorProbe.blocking_build_column(col.x, col.y):
+			return true
+	return false
 
 
 static func _knock_ground_y(world, chunk_manager, crystal, dest: Vector3, hint: float) -> float:

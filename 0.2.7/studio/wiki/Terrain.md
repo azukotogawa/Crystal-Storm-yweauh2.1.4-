@@ -17,7 +17,7 @@ The current terrain loop is:
 ## Connected systems
 
 - `TerrainEditor` is the gameplay façade.
-- `TerrainEdits` records height deltas and built walls.
+- `TerrainEdits` records height deltas. Wood and stone walls are WorldObjects: they block movement and enemies without raising the heightfield, and they persist with the feature overlay.
 - `FeatureRegistry` records plants, towns, ruins, and build metadata.
 - `ChannelRegistry` records water/channel state.
 - `ChunkManager` rebuilds affected terrain chunks.

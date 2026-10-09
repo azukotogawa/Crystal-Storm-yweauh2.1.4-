@@ -22,6 +22,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
 const _RelicChoice = preload("res://relics/relic_choice.gd")
+const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _CrystalPalette = preload("res://ui/crystal_palette.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
@@ -64,6 +65,8 @@ var _absorption: Dictionary = {}  # mirrored from simulation for save export
 var _ruin_absorption: Dictionary = {}
 var _absorbed_ruin_centers: Dictionary = {}
 var evolution: _CrystalEvolution
+## Enemy ids whose unlock relic was already handled this run.
+var _unlock_relics_granted: Dictionary = {}
 var _spawn_points: Array[CrystalSpawnPoint] = []
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
@@ -73,6 +76,7 @@ var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
 var _initialized: bool = false
+var _stop_bootstrap: bool = false
 var _scars_reindexed: bool = false
 var _spawn_ctrl: _SpawnPointController
 var _juice_vfx: Node
@@ -331,7 +335,13 @@ func ensure_ready() -> void:
 		await get_tree().process_frame
 
 
+func cancel_bootstrap() -> void:
+	_stop_bootstrap = true
+
+
 func _bootstrap_when_ready() -> void:
+	if _stop_bootstrap or not is_inside_tree():
+		return
 	var _STP = load("res://systems/startup_total_profiler.gd")
 	if _STP and _STP.is_enabled():
 		_STP.begin("CrystalManager.bootstrap_when_ready", "synchronous_main")
@@ -339,19 +349,27 @@ func _bootstrap_when_ready() -> void:
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] _bootstrap_when_ready ENTER t_ms=%d (started by CrystalManager._ready call_deferred)" % t_boot0)
 	while world == null:
-		if not is_inside_tree():
+		if _stop_bootstrap or not is_inside_tree():
 			return
 		world = get_tree().get_first_node_in_group("world")
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	while chunk_manager == null:
-		if not is_inside_tree():
+		if _stop_bootstrap or not is_inside_tree():
 			return
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] waiting spawn_area_ready(0,0) t_ms=%d" % Time.get_ticks_msec())
 	while not chunk_manager.spawn_area_ready(0, 0):
+		if _stop_bootstrap or not is_inside_tree():
+			return
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] spawn_area_ready OK t_ms=%d" % Time.get_ticks_msec())
 
@@ -400,8 +418,12 @@ func configure_evolution() -> void:
 	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
 	if not evolution.is_unlocked(&"crystal_mite"):
 		evolution.unlocked_enemies.append(&"crystal_mite")
-	# Relics are not granted when absorption unlocks an enemy. They come from
-	# spawn destruction and ruin expeditions.
+	# A later absorption milestone that unlocks a new enemy grants its mapped relic
+	# once per run. crystal_mite is already unlocked here, so it does not grant.
+	# Spawn destruction and ruin expeditions still grant relics on their own path.
+	if not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
+		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
+	_seed_unlock_relics_granted()
 
 
 ## Map absorption enemy unlocks → starter relics for progression feedback.
@@ -417,7 +439,20 @@ static func relic_for_enemy_unlock(enemy_id: StringName) -> StringName:
 			return &""
 
 
+func _seed_unlock_relics_granted() -> void:
+	if evolution == null:
+		return
+	for id in evolution.unlocked_enemies:
+		_unlock_relics_granted[id] = true
+
+
 func _on_enemy_unlocked_grant_relic(enemy_id: StringName) -> void:
+	# crystal_mite is unlocked at run start. Direct _grant_relic_for_unlock still equips it.
+	if enemy_id == &"crystal_mite":
+		return
+	if _unlock_relics_granted.has(enemy_id):
+		return
+	_unlock_relics_granted[enemy_id] = true
 	_grant_relic_for_unlock(enemy_id)
 
 
@@ -426,9 +461,18 @@ func _grant_relic_for_unlock(enemy_id: StringName) -> StringName:
 	if relic_id == &"":
 		return &""
 	var relic_mgr = _player_relic_manager()
-	if relic_mgr and relic_mgr.has_method("equip"):
-		if relic_mgr.equip(relic_id):
-			return relic_id
+	if relic_mgr == null or not relic_mgr.has_method("equip"):
+		return &""
+	if relic_mgr.equip(relic_id):
+		return relic_id
+	# Slots are full. With an overlay, offer replace for this relic only.
+	# Headless (no overlay) does not force-unequip.
+	if not is_inside_tree():
+		return &""
+	var tree := get_tree()
+	if tree == null or tree.get_first_node_in_group("game_overlay") == null:
+		return &""
+	_RelicChoicePanel.open_replace(tree, relic_mgr, relic_id, "Relic unlocked — replace one")
 	return &""
 
 
@@ -2560,6 +2604,8 @@ func import_state(data: Dictionary) -> void:
 		evolution.unlocked_enemies.clear()
 		for entry in evo.get("unlocked_enemies", []):
 			evolution.unlocked_enemies.append(StringName(str(entry)))
+		# Restored unlocks did not emit. Mark them so a later re-emit does not grant twice.
+		_seed_unlock_relics_granted()
 
 	# Only replace spawn points when the save explicitly carries a spawns list.
 	# Missing key must not wipe live win targets (empty {} import used to clear all).
