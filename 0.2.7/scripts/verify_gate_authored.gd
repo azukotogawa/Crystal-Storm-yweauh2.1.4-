@@ -13,6 +13,7 @@ const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 const GATE_MESH_PATH := "res://assets/structures/gate/gate.obj"
@@ -177,12 +178,9 @@ func _test_configure_binds_authored() -> void:
 		_fail("gate mesh not assigned")
 	if mi.mesh is ArrayMesh and str(mi.get_meta("authored_resource_path", "")).is_empty():
 		_fail("procedural ArrayMesh used without authored path")
-	if mi.material_override == null:
-		_fail("gate material missing")
-	var mat := mi.material_override as StandardMaterial3D
-	if mat == null or mat.albedo_texture == null:
+	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
 		_fail("gate material missing albedo texture")
-	elif mat.texture_filter != BaseMaterial3D.TEXTURE_FILTER_NEAREST:
+	elif not _StructureMat.uses_nearest_filter(mi.material_override):
 		_fail("gate must use nearest texture filter")
 	# Full-height arch, not a short wall cap.
 	if mi.scale.y < 0.9 or mi.scale.y > 1.15:

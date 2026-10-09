@@ -25,8 +25,13 @@ static var tutorial_completed: bool = false
 static var fullscreen: bool = false
 static var vsync_enabled: bool = true
 static var resolution: String = "1280x720"
-## Hide terrain between the camera and the player. Default on. Pitch is not persisted.
+## Hide terrain and structures between the camera and the player. Default on.
 static var camera_cutaway_enabled: bool = true
+## Matches player/camera.gd ISO_PITCH_DEG. Restored on load; the camera clamps it.
+const CAMERA_PITCH_DEFAULT := -35.264
+static var camera_pitch_degrees: float = CAMERA_PITCH_DEFAULT
+## Times set_camera_pitch actually wrote the file. Headless probes count writes.
+static var camera_pitch_save_count: int = 0
 static var keybinds: Dictionary = {}
 ## Times `_apply_display_now` was entered. Headless still counts; it does not touch the window.
 static var display_apply_count: int = 0
@@ -59,6 +64,7 @@ static func defaults() -> Dictionary:
 		"vsync": true,
 		"resolution": "1280x720",
 		"camera_cutaway_enabled": true,
+		"camera_pitch_degrees": CAMERA_PITCH_DEFAULT,
 		"keybinds": {},
 	}
 
@@ -106,6 +112,8 @@ static func load_settings() -> Dictionary:
 		out["resolution"] = str(data.resolution)
 	if data.has("camera_cutaway_enabled"):
 		out["camera_cutaway_enabled"] = bool(data.camera_cutaway_enabled)
+	if data.has("camera_pitch_degrees"):
+		out["camera_pitch_degrees"] = float(data.camera_pitch_degrees)
 	if data.has("keybinds") and data.keybinds is Dictionary:
 		out["keybinds"] = data.keybinds
 	_sync_runtime(out)
@@ -144,6 +152,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	vsync_enabled = bool(data.get("vsync", true))
 	resolution = str(data.get("resolution", "1280x720"))
 	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
+	camera_pitch_degrees = float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
 	var binds = data.get("keybinds", {})
 	if binds is Dictionary:
 		keybinds = (binds as Dictionary).duplicate(true)
@@ -281,6 +290,24 @@ static func set_ui_scale(scale: float, persist: bool = true) -> void:
 	else:
 		ui_scale = v
 	_apply_ui_scale_now()
+
+
+## Persist the camera pitch. Callers clamp to the live camera limits first.
+## Skips the disk when the file already has this value.
+static func set_camera_pitch(degrees: float) -> bool:
+	var data := load_settings()
+	var prev := float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
+	camera_pitch_degrees = degrees
+	var unchanged := is_equal_approx(prev, degrees) and (
+		data.has("camera_pitch_degrees") or is_equal_approx(degrees, CAMERA_PITCH_DEFAULT)
+	)
+	if unchanged:
+		return true
+	data["camera_pitch_degrees"] = degrees
+	var ok := save_settings(data)
+	if ok:
+		camera_pitch_save_count += 1
+	return ok
 
 
 static func set_tutorial_completed(done: bool) -> void:

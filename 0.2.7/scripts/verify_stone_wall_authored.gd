@@ -13,6 +13,7 @@ const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 const STONE_MESH_PATH := "res://assets/structures/stone_wall/stone_wall.obj"
@@ -130,12 +131,9 @@ func _test_configure_binds_authored() -> void:
 	if mi.mesh != authored_ref:
 		if str(mi.get_meta("authored_resource_path", "")) != STONE_MESH_PATH:
 			_fail("bound mesh is not the authored resource")
-	if mi.material_override == null:
-		_fail("stone_wall material missing")
-	var mat := mi.material_override as StandardMaterial3D
-	if mat == null or mat.albedo_texture == null:
+	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
 		_fail("stone_wall material missing albedo texture")
-	elif mat.texture_filter != BaseMaterial3D.TEXTURE_FILTER_NEAREST:
+	elif not _StructureMat.uses_nearest_filter(mi.material_override):
 		_fail("stone_wall must use nearest texture filter")
 	if mi.scale.y > 0.75:
 		_fail("stone_wall authored Y scale must be short cap (<=0.75), got %.3f" % mi.scale.y)

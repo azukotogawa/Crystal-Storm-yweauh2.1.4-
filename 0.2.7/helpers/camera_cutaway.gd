@@ -2,7 +2,7 @@ class_name CameraCutaway
 extends RefCounted
 ## Cone/cylinder cutaway between the camera and the player.
 ## Shaders read the same thresholds from global uniforms set once per frame.
-## Keep the literals in ChunkView / ChunkSurfaceMesh / ChunkRamp in sync with these.
+## Keep the literals in ChunkView / ChunkSurfaceMesh / ChunkRamp / StructureCutaway in sync with these.
 
 const RADIUS_AT_PLAYER := 6.0
 const RADIUS_AT_CAMERA := 1.25

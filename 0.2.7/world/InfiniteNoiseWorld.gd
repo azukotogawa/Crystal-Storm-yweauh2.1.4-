@@ -31,6 +31,10 @@ const _BiomeLayout = preload("res://world/biome_layout.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 var world_seed: int
+var _spawn_river_cx: float = 0.0
+var _spawn_river_cz: float = 0.0
+var _spawn_river_seed: int = 0
+var _spawn_river_ready: bool = false
 var map_temperature: MapTemperature = MapTemperature.MILD
 var map_temperature_label: String = "Mild"
 var world_config: _WorldGenConfig
@@ -40,9 +44,11 @@ var caves_enabled: bool = true
 # --- Tunables for playable scale and feel ---
 # --- Tunables for playable scale and feel ---
 const BIOME_SCALE := 920.0
-## Column radius around the world origin where the river mask (and river tiles) stay off.
-## The unshifted river field is a zero-crossing through the origin; this disk keeps that
-## lattice zero from drowning spawn-adjacent columns. Outside the disk the mask is exact.
+## Column radius around the crystal-heart corner (WorldBorder.origin_corner_for_seed)
+## where the river mask and river tiles stay off. Gameplay spawns on that corner,
+## not the world origin. 96 covers the player ring around the heart (farthest
+## offset in Player._resolve_spawn_column is about 72 columns). Outside the disk
+## the mask matches the unshifted formula. Height carving is unchanged.
 const SPAWN_RIVER_CLEARANCE := 96.0
 const MOUNTAIN_FREQ := 1.0
 const DETAIL_FREQ := 4.5
@@ -440,20 +446,39 @@ func river_mask_formula(wx: float, wz: float) -> Dictionary:
 	return {"active": active, "strength": strength, "dist": dist}
 
 
+## Heart corner for this seed. Cached so the river hot path does not rebuild it.
+func spawn_river_center() -> Vector2:
+	if not _spawn_river_ready or _spawn_river_seed != world_seed:
+		var corner: Vector2i = WorldBorder.origin_corner_for_seed(world_seed)
+		_spawn_river_cx = float(corner.x)
+		_spawn_river_cz = float(corner.y)
+		_spawn_river_seed = world_seed
+		_spawn_river_ready = true
+	return Vector2(_spawn_river_cx, _spawn_river_cz)
+
+
 func _inside_spawn_river_clearance(wx: float, wz: float) -> bool:
+	var center := spawn_river_center()
+	var dx := wx - center.x
+	var dz := wz - center.y
 	var clearance := SPAWN_RIVER_CLEARANCE
-	return wx * wx + wz * wz < clearance * clearance
+	return dx * dx + dz * dz < clearance * clearance
 
 
 func get_river_mask(wx: float, wz: float) -> Dictionary:
 	var raw := river_mask_formula(wx, wz)
-	if not _inside_spawn_river_clearance(wx, wz):
+	var center := spawn_river_center()
+	var dx := wx - center.x
+	var dz := wz - center.y
+	var dist2 := dx * dx + dz * dz
+	var clearance := SPAWN_RIVER_CLEARANCE
+	if dist2 >= clearance * clearance:
 		return raw
-	# Hard dry disk: active stays false so the origin is not a river.
-	# Strength eases in (0 at the origin, formula strength at the rim) and the
+	# Hard dry disk around the heart: active stays false so spawn is not a river.
+	# Strength eases in (0 at the heart, formula strength at the rim) and the
 	# returned dict matches river_mask_formula exactly on and beyond the rim.
-	var dist_origin := sqrt(wx * wx + wz * wz)
-	var t := dist_origin / SPAWN_RIVER_CLEARANCE
+	var dist := sqrt(dist2)
+	var t := dist / clearance
 	var fade := t * t * (3.0 - 2.0 * t)
 	raw["active"] = false
 	raw["strength"] = float(raw["strength"]) * fade
@@ -901,8 +926,8 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 	var river: Dictionary = _compute_river_carve(wx, wz, surf)
 
 	# More rivers visible — require mask OR strong carve.
-	# Inside the origin clearance the mask is already off; ignore carve there too
-	# so a valley under the lattice zero does not paint a lake. Height carving stays.
+	# Inside the heart-corner clearance the mask is already off; ignore carve there
+	# too so a valley under that disk does not paint a lake. Height carving stays.
 	var in_spawn_clearance := _inside_spawn_river_clearance(wx, wz)
 	if river_mask_dict.get("active", false) or (not in_spawn_clearance and float(river.get("carve", 0.0)) > 6.0):
 		return VoxelTypes.RIVER

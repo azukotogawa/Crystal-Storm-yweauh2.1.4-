@@ -78,6 +78,7 @@ SUITES=(
 	"res://scripts/verify_camera_angle_validation.gd"
 	"res://scripts/verify_camera_pitch.gd"
 	"res://scripts/verify_camera_cutaway.gd"
+	"res://scripts/verify_structure_cutaway.gd"
 	"res://scripts/verify_block_selection.gd"
 	"res://scripts/verify_player_unstuck.gd"
 	"res://scripts/verify_main_runtime_health.gd"

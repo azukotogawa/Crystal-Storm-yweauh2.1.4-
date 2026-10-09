@@ -4,6 +4,9 @@ extends SceneTree
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+
+const _PITCH_PATH := "user://verify_camera_pitch.json"
 
 var _failed: int = 0
 
@@ -23,12 +26,24 @@ func _ok(msg: String) -> void:
 
 
 func _run() -> void:
+	var old_path := _PlayerSettings.settings_path
+	_PlayerSettings.settings_path = _PITCH_PATH
+	_delete_pitch_file()
+	_PlayerSettings.load_settings()
 	var cam: Camera3D = Camera3D.new()
 	cam.set_script(load("res://player/camera.gd"))
 	var anchor := Node3D.new()
 	root.add_child(anchor)
 	root.add_child(cam)
 	await process_frame
+	var iso_default: float = float(cam.ISO_PITCH_DEG)
+	var defs_now: Dictionary = _PlayerSettings.defaults()
+	if absf(float(defs_now.get("camera_pitch_degrees", 0.0)) - iso_default) > 0.001:
+		_fail("settings default pitch %.4f does not match iso %.4f" % [float(defs_now.get("camera_pitch_degrees", 0.0)), iso_default])
+	elif absf(float(cam.pitch_degrees) - iso_default) > 0.02:
+		_fail("fresh camera pitch %.3f is not the iso default" % float(cam.pitch_degrees))
+	else:
+		_ok("default pitch is unchanged")
 	cam.target = anchor
 	cam.use_smoothing = false
 	var iso: float = float(cam.ISO_PITCH_DEG)
@@ -104,11 +119,113 @@ func _run() -> void:
 	if faces.size() == 2 and faces[0] == faces[1]:
 		_ok("min and max pitch pick the same face")
 
+	await _check_pitch_persistence(cam, anchor)
+	cam._pitch_persist_wait = -1.0
+	_PlayerSettings.settings_path = old_path
+	_delete_pitch_file()
+
 	if _failed > 0:
 		quit(1)
 		return
 	print("All camera pitch tests OK")
 	quit(0)
+
+
+func _check_pitch_persistence(cam: Camera3D, anchor: Node3D) -> void:
+	var iso: float = float(cam.ISO_PITCH_DEG)
+	var writes := _PlayerSettings.camera_pitch_save_count
+	cam.snap_pitch_degrees(-60.0)
+	await process_frame
+	if _PlayerSettings.camera_pitch_save_count != writes:
+		_fail("snap_pitch_degrees wrote the settings file")
+	else:
+		_ok("programmatic pitch snap does not write settings")
+
+	cam.pitch_save_delay = 1000.0
+	cam.apply_pitch_input(-8.0)
+	if not cam.pitch_save_pending():
+		_fail("pitch input did not schedule a save")
+	await process_frame
+	if _PlayerSettings.camera_pitch_save_count != writes:
+		_fail("pitch input wrote the settings file on the same frame")
+	else:
+		_ok("pitch save waits instead of writing every frame")
+	cam.flush_pitch_save()
+	if cam.pitch_save_pending():
+		_fail("flush left a pitch save pending")
+	if _PlayerSettings.camera_pitch_save_count != writes + 1:
+		_fail("flush did not write the pitch once (count %d)" % _PlayerSettings.camera_pitch_save_count)
+	else:
+		_ok("pitch flushes once on release")
+	var saved := float(cam.pitch_target_degrees)
+	await process_frame
+	await process_frame
+	if _PlayerSettings.camera_pitch_save_count != writes + 1:
+		_fail("pitch kept writing after the flush")
+
+	_PlayerSettings.camera_pitch_degrees = iso
+	var loaded: Dictionary = _PlayerSettings.load_settings()
+	if absf(float(loaded.get("camera_pitch_degrees", 0.0)) - saved) > 0.02:
+		_fail("reloaded pitch %.3f want %.3f" % [float(loaded.get("camera_pitch_degrees", 0.0)), saved])
+	elif absf(_PlayerSettings.camera_pitch_degrees - saved) > 0.02:
+		_fail("static pitch did not reload")
+	else:
+		_ok("saved pitch reloads from the settings file")
+
+	var cam_saved: Camera3D = Camera3D.new()
+	cam_saved.set_script(load("res://player/camera.gd"))
+	cam_saved.use_smoothing = false
+	root.add_child(cam_saved)
+	cam_saved.target = anchor
+	await process_frame
+	if absf(float(cam_saved.pitch_degrees) - saved) > 0.02:
+		_fail("new camera restored %.3f want %.3f" % [float(cam_saved.pitch_degrees), saved])
+	else:
+		_ok("new camera restores the saved pitch")
+
+	var data := _PlayerSettings.load_settings()
+	data["camera_pitch_degrees"] = -120.0
+	if not _PlayerSettings.save_settings(data):
+		_fail("could not write an out-of-range pitch")
+		return
+	var cam_low: Camera3D = Camera3D.new()
+	cam_low.set_script(load("res://player/camera.gd"))
+	root.add_child(cam_low)
+	await process_frame
+	if absf(float(cam_low.pitch_degrees) - float(cam.PITCH_MIN_DEG)) > 0.01:
+		_fail("restored pitch %.3f was not clamped to min %.3f" % [float(cam_low.pitch_degrees), float(cam.PITCH_MIN_DEG)])
+	else:
+		_ok("restored pitch clamps to the minimum")
+
+	data = _PlayerSettings.load_settings()
+	data["camera_pitch_degrees"] = 40.0
+	_PlayerSettings.save_settings(data)
+	var cam_high: Camera3D = Camera3D.new()
+	cam_high.set_script(load("res://player/camera.gd"))
+	root.add_child(cam_high)
+	await process_frame
+	if absf(float(cam_high.pitch_degrees) - float(cam.PITCH_MAX_DEG)) > 0.01:
+		_fail("restored pitch %.3f was not clamped to max %.3f" % [float(cam_high.pitch_degrees), float(cam.PITCH_MAX_DEG)])
+	else:
+		_ok("restored pitch clamps to the maximum")
+
+	_PlayerSettings.set_camera_pitch(-50.0)
+	_PlayerSettings.reset_bindings()
+	var kept: Dictionary = _PlayerSettings.load_settings()
+	if absf(float(kept.get("camera_pitch_degrees", 0.0)) - (-50.0)) > 0.02:
+		_fail("binding reset cleared the saved pitch")
+	else:
+		_ok("binding reset keeps the saved pitch")
+
+	cam_saved._pitch_persist_wait = -1.0
+	cam_low._pitch_persist_wait = -1.0
+	cam_high._pitch_persist_wait = -1.0
+
+
+func _delete_pitch_file() -> void:
+	var path := ProjectSettings.globalize_path(_PITCH_PATH)
+	if FileAccess.file_exists(_PITCH_PATH):
+		DirAccess.remove_absolute(path)
 
 
 func _find_land(world) -> Vector2i:

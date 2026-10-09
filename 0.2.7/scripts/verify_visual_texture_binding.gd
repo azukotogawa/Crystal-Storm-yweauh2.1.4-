@@ -10,9 +10,14 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 func _init() -> void:
+	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
+	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
+	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")
 	call_deferred("_run")
 
 
@@ -89,8 +94,10 @@ func _run() -> void:
 	if building_root and building_root.get_child_count() > 0:
 		var anchor_b: Node3D = building_root.get_child(0) as Node3D
 		bmesh = anchor_b.get_node_or_null("Mesh") as MeshInstance3D if anchor_b else null
-	if bmesh == null or not bmesh.visible or not bmesh.material_override is StandardMaterial3D \
-			or (bmesh.material_override as StandardMaterial3D).albedo_texture == null:
+	if bmesh == null or not bmesh.visible \
+			or not _StructureMat.is_cutaway(bmesh.material_override) \
+			or not _StructureMat.binds_albedo(bmesh.material_override) \
+			or not _StructureMat.uses_nearest_filter(bmesh.material_override):
 		push_error("ruin building mesh missing textured material_override")
 		failed = true
 	else:
