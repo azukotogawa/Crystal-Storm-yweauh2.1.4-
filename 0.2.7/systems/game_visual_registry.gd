@@ -267,6 +267,12 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		max_feature_billboards_per_chunk = maxi(int(cfg.max_feature_billboards_per_chunk), 0)
 
 
+## Drop cached sprites and rebuild them for the active texture set.
+func reload_texture_set() -> void:
+	clear_cache("texture_set")
+	generate_game_visual_bundle()
+
+
 func clear_cache(caller: String = "unknown") -> void:
 	if _trace_refresh_enabled:
 		_trace_clear_cache += 1

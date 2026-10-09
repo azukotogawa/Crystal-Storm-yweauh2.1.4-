@@ -9,6 +9,7 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _TextureManifest = preload("res://tools/texture_manifest.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 
 const RESOLUTIONS: PackedStringArray = ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"]
 
@@ -29,6 +30,7 @@ var _fullscreen: CheckBox
 var _vsync: CheckBox
 var _cutaway: CheckBox
 var _blueprint: CheckBox
+var _texture_set: OptionButton
 var _resolution: OptionButton
 var _ui_scale: HSlider
 var _ui_scale_label: Label
@@ -69,6 +71,15 @@ func _ready() -> void:
 	_fx = _check(graphics, "Combat visuals", "CombatVisuals")
 	_cutaway = _check(graphics, "Camera cutaway", "CameraCutaway")
 	_blueprint = _check(graphics, "Texture blueprint (F6)", "TextureBlueprintToggle")
+	var set_label := Label.new()
+	set_label.text = "Texture set"
+	graphics.add_child(set_label)
+	_texture_set = OptionButton.new()
+	_texture_set.name = "TextureSet"
+	_texture_set.add_item("Original", 0)
+	_texture_set.add_item("Batch 1", 1)
+	_texture_set.item_selected.connect(func(_i): _persist())
+	graphics.add_child(_texture_set)
 	var export_manifest := Button.new()
 	export_manifest.name = "ExportTextureManifest"
 	export_manifest.text = "Export texture manifest"
@@ -262,6 +273,7 @@ func sync_from_settings() -> void:
 	_set_check(_colorblind, bool(data.get("colorblind_palette", false)))
 	_set_check(_cutaway, bool(data.get("camera_cutaway_enabled", true)))
 	_set_check(_blueprint, bool(data.get("texture_blueprint", false)))
+	_set_texture_set(str(data.get("texture_set", "original")))
 	_apply_reduce_motion_lock()
 	_refresh_scale_label()
 	_refresh_bindings()
@@ -436,6 +448,8 @@ func _persist() -> void:
 		data["camera_cutaway_enabled"] = bool(_cutaway.button_pressed)
 	if _blueprint:
 		data["texture_blueprint"] = bool(_blueprint.button_pressed)
+	if _texture_set:
+		data["texture_set"] = "batch1" if _texture_set.selected == 1 else "original"
 	_apply_reduce_motion_lock()
 	if _resolution and _fullscreen:
 		_resolution.disabled = bool(_fullscreen.button_pressed)
@@ -446,6 +460,7 @@ func _persist() -> void:
 		or str(data.get("resolution", "")) != _PlayerSettings.resolution
 	)
 	var scale_changed := absf(float(data.get("ui_scale", 1.0)) - _PlayerSettings.ui_scale) > 0.001
+	var set_changed := str(data.get("texture_set", "original")) != _PlayerSettings.texture_set
 	if not _PlayerSettings.save_settings(data):
 		if _status:
 			_status.text = "Could not save settings."
@@ -458,6 +473,8 @@ func _persist() -> void:
 	if audio and audio.has_method("apply_saved_volumes"):
 		audio.apply_saved_volumes()
 	var tree := get_tree()
+	if set_changed:
+		_TextureSet.refresh_live(tree)
 	_PlayerSettings.apply_accessibility(tree)
 	var perf = tree.get_first_node_in_group("performance_service") if tree else null
 	var root = tree.get_first_node_in_group("composition_root") if tree else null
@@ -529,6 +546,14 @@ func _set_check(box: CheckBox, pressed: bool) -> void:
 
 func set_texture_blueprint(on: bool) -> void:
 	_set_check(_blueprint, on)
+
+
+func _set_texture_set(id: String) -> void:
+	if _texture_set == null:
+		return
+	_texture_set.set_block_signals(true)
+	_texture_set.select(1 if id == "batch1" else 0)
+	_texture_set.set_block_signals(false)
 
 
 func _on_export_texture_manifest() -> void:
