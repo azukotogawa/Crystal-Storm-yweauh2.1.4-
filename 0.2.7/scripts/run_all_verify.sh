@@ -52,6 +52,8 @@ SUITES=(
 	"res://scripts/verify_water_sprint.gd"
 	"res://scripts/verify_water_body.gd"
 	"res://scripts/verify_dig_flood_water_block.gd"
+	"res://scripts/verify_dig_brush.gd"
+	"res://scripts/verify_living_force.gd"
 	"res://scripts/verify_feature_tile_no_height.gd"
 	"res://scripts/verify_water_active_region.gd"
 	"res://scripts/verify_building_orientation.gd"

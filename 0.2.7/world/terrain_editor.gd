@@ -15,6 +15,9 @@ const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _LivingForce = preload("res://world/living_force.gd")
+const _WorldState = preload("res://world/world_state.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
 
 const REBUILD_EDGE_BAND := 1
 
@@ -31,6 +34,11 @@ var _growth_manager: Node
 var last_fail_reason: String = ""
 ## Last successful build id (for UI / feedback).
 var last_build_id: StringName = &""
+## Last dig stroke: cells, flush_count, chunk count. Tests and the brush share this.
+var last_stroke_stats: Dictionary = {}
+var _living_push_accum: float = 0.0
+var _living_crystal: Node
+var _living_crystal_tries: int = 0
 
 
 func _ready() -> void:
@@ -43,6 +51,7 @@ func _ready() -> void:
 	call_deferred("_bind_config")
 	call_deferred("_bind_growth_manager")
 	call_deferred("_try_bind_chunk_manager")
+	call_deferred("_rearm_living_push")
 
 
 func bind_chunk_manager(cm: ChunkManager) -> void:
@@ -90,6 +99,11 @@ func _process(delta: float) -> void:
 			_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
 			if profiler and profiler.has_method("record_func"):
 				profiler.record_func("ChannelRegistry::tick_equilibrium", Time.get_ticks_usec() - t0)
+	if _LivingForce.pushback_enabled and not _LivingForce.push_watch.is_empty():
+		_living_push_accum += delta
+		if _living_push_accum >= _LivingForce.pushback_interval:
+			_living_push_accum = 0.0
+			_living_push_tick()
 	if profiler and profiler.has_method("end"):
 		profiler.end("terrain_editor")
 
@@ -164,17 +178,112 @@ func try_dig(world_pos: Vector3) -> bool:
 	if edited_h <= min_h:
 		last_fail_reason = "Can't dig any deeper"
 		return false
+	var ws = _WorldState.get_active()
+	if ws:
+		ws.begin_batch()
 	if not _TerrainEdits.dig(wx, wz, 1):
+		if ws:
+			ws.end_batch()
 		last_fail_reason = "Can't dig here"
 		return false
+	var edited: Array = [Vector2i(wx, wz)]
+	var settled: Array = _LivingForce.apply_settle(edited, world)
+	if ws:
+		ws.end_batch()
+	for cell_v in settled:
+		edited.append(cell_v)
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("inc_frame"):
 		profiler.inc_frame("terrain_edits")
 	_grant_dig_loot(wx, wz, inv)
-	_invalidate_and_rebuild(wx, wz)
+	_remesh_cells(edited)
+	_record_stroke(1, edited)
 	_notify_water_reflow(wx, wz, true)
+	_living_water_inflow(edited)
+	_living_crystal_react(edited, &"dig")
 	terrain_edited.emit(wx, wz, &"dig")
 	return true
+
+
+## Heightfield brush. Radius 1 is try_dig (same cell, same water-replace rule).
+## Wider radii dig every column in the disk, then one remesh per dirty chunk.
+func try_dig_brush(world_pos: Vector3, radius: int = 1, range_player: Node = null) -> bool:
+	var r := clampi(radius, 1, _LivingForce.BRUSH_RADIUS_MAX)
+	if r <= 1:
+		return try_dig(world_pos)
+	last_fail_reason = ""
+	last_stroke_stats = {}
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var cx := floori(world_pos.x)
+	var cz := floori(world_pos.z)
+	if range_player != null and not _ActionTargeting._column_in_range(range_player, cx, cz, _ActionTargeting.INTERACTION_RANGE):
+		last_fail_reason = "Out of range"
+		return false
+	var cells: Array = _LivingForce.footprint(cx, cz, r, world)
+	var inv = null
+	if is_inside_tree():
+		var player := get_tree().get_first_node_in_group("player")
+		if player and "inventory" in player:
+			inv = player.inventory
+	var ws = _WorldState.get_active()
+	if ws:
+		ws.begin_batch()
+	var dug: Array = []
+	var skipped_floor := 0
+	var considered := 0
+	for cell_v in cells:
+		var cell: Vector2i = cell_v
+		if range_player != null and not _ActionTargeting._column_in_range(range_player, cell.x, cell.y, _ActionTargeting.INTERACTION_RANGE):
+			continue
+		considered += 1
+		var why := _brush_dig_cell(cell.x, cell.y, inv)
+		if why == "dug":
+			dug.append(cell)
+		elif why == "floor":
+			skipped_floor += 1
+	var settled: Array = _LivingForce.apply_settle(dug, world)
+	if ws:
+		ws.end_batch()
+	if dug.is_empty():
+		if skipped_floor > 0 and skipped_floor == considered:
+			last_fail_reason = "Can't dig any deeper"
+		elif not _TerrainEdits.can_edit(cx, cz):
+			last_fail_reason = "Outside playable area"
+		elif _is_water_source_column(cx, cz):
+			last_fail_reason = "Can't dig water"
+		else:
+			last_fail_reason = "Can't dig here"
+		return false
+	for cell_v in settled:
+		dug.append(cell_v)
+	var profiler = get_node_or_null("/root/PerfProfiler")
+	if profiler and profiler.has_method("inc_frame"):
+		profiler.inc_frame("terrain_edits")
+	_remesh_cells(dug)
+	_record_stroke(r, dug)
+	_living_water_inflow(dug)
+	_living_crystal_react(dug, &"dig")
+	terrain_edited.emit(cx, cz, &"dig")
+	return true
+
+
+func _brush_dig_cell(wx: int, wz: int, inventory) -> String:
+	if not _TerrainEdits.can_edit(wx, wz):
+		return "skip"
+	if _is_water_source_column(wx, wz):
+		return "skip"
+	if _LivingForce.is_protected_column(wx, wz, world):
+		return "skip"
+	var edited_h: float = world.get_surface_height(float(wx), float(wz))
+	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
+	if edited_h <= min_h:
+		return "floor"
+	if not _TerrainEdits.dig(wx, wz, 1):
+		return "floor"
+	_grant_dig_loot(wx, wz, inventory)
+	return "dug"
 
 
 func _grant_dig_loot(wx: int, wz: int, inventory) -> void:
@@ -309,6 +418,7 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 	last_build_id = buildable_id
 	var place_pos := Vector3(float(wx) + 0.5, world.get_surface_height(float(wx), float(wz)), float(wz) + 0.5)
 	structure_placed.emit(wx, wz, buildable_id, place_pos)
+	_living_crystal_react([Vector2i(wx, wz)], &"build")
 	terrain_edited.emit(wx, wz, buildable_id)
 	return true
 
@@ -782,6 +892,140 @@ static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
 	if lz < REBUILD_EDGE_BAND or lz >= _ChunkData.SIZE - REBUILD_EDGE_BAND:
 		return 1
 	return 0
+
+
+func _rearm_living_push() -> void:
+	_LivingForce.rearm_push_watch()
+
+
+func _record_stroke(radius: int, cells: Array) -> void:
+	var chunks := {}
+	for cell_v in cells:
+		var cell: Vector2i = cell_v
+		chunks[_LivingForce.chunk_coord(cell.x, cell.y)] = true
+	var flush_chunks := chunks.size()
+	if chunk_manager and "edit_flush_chunk_count" in chunk_manager:
+		flush_chunks = int(chunk_manager.edit_flush_chunk_count)
+	last_stroke_stats = {
+		"radius": radius,
+		"cells": cells.duplicate(),
+		"cell_count": cells.size(),
+		"home_chunks": chunks.size(),
+		"flush_count": int(chunk_manager.edit_flush_count) if chunk_manager and "edit_flush_count" in chunk_manager else 1,
+		"flush_chunks": flush_chunks,
+	}
+
+
+func _remesh_cells(cells: Array) -> void:
+	var seen := {}
+	for cell_v in cells:
+		var cell: Vector2i = cell_v
+		if seen.has(cell):
+			continue
+		seen[cell] = true
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				if world and world.has_method("invalidate_column_cache"):
+					world.invalidate_column_cache(cell.x + dx, cell.y + dz)
+		if chunk_manager and chunk_manager.has_method("invalidate_columns_at_world"):
+			chunk_manager.invalidate_columns_at_world(cell.x, cell.y)
+	if chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
+		chunk_manager.flush_rebuild_pending()
+
+
+func _living_water_inflow(dug: Array) -> void:
+	if not _LivingForce.water_inflow_enabled or dug.is_empty() or world == null:
+		return
+	if not is_inside_tree():
+		return
+	var anchor := Vector2i(-999999, -999999)
+	for cell_v in dug:
+		var cell: Vector2i = cell_v
+		if _dug_below_adjacent_water(cell.x, cell.y):
+			anchor = cell
+			break
+	if anchor.x < -900000:
+		return
+	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
+	if fluid_svc and fluid_svc.has_method("recompute_region_now"):
+		fluid_svc.recompute_region_now(anchor.x, anchor.y, 2, 1)
+
+
+func _dug_below_adjacent_water(wx: int, wz: int) -> bool:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var top: float = world.get_surface_height(float(wx), float(wz)) + layer
+	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var step: Vector2i = dir
+		var nx: int = wx + step.x
+		var nz: int = wz + step.y
+		if not _is_water_source_column(nx, nz):
+			continue
+		var waterline: float = world.get_surface_height(float(nx), float(nz)) + layer
+		if top < waterline - 0.001:
+			return true
+	return false
+
+
+func _living_crystal_node():
+	if _living_crystal != null and is_instance_valid(_living_crystal):
+		return _living_crystal
+	if not is_inside_tree() or _living_crystal_tries > 8:
+		return null
+	_living_crystal_tries += 1
+	_living_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	return _living_crystal
+
+
+func _living_crystal_react(cells: Array, kind: StringName) -> void:
+	if not _LivingForce.crystal_react_enabled or cells.is_empty():
+		return
+	var crystal = _living_crystal_node()
+	if crystal == null or not crystal.has_method("nudge_depth") or not crystal.has_method("get_depth_at"):
+		return
+	var min_d := 0.04
+	if "sim_config" in crystal and crystal.sim_config:
+		min_d = float(crystal.sim_config.min_depth)
+	var amount := _LivingForce.crystal_build_pressure if kind == &"build" else _LivingForce.crystal_dig_pressure
+	var nudged := {}
+	var count := 0
+	var depth_at := func(x: int, z: int) -> float:
+		return float(crystal.get_depth_at(x, z))
+	for cell_v in cells:
+		if count >= _LivingForce.crystal_pressure_cells_per_stroke:
+			break
+		var cell: Vector2i = cell_v
+		var targets: Array = _LivingForce.pressure_targets(
+			cell, depth_at, min_d, _LivingForce.crystal_react_radius, _LivingForce.crystal_pressure_cells_per_stroke
+		)
+		for t_v in targets:
+			if count >= _LivingForce.crystal_pressure_cells_per_stroke:
+				break
+			var t: Vector2i = t_v
+			if nudged.has(t):
+				continue
+			crystal.nudge_depth(t.x, t.y, amount)
+			nudged[t] = true
+			count += 1
+		if count > 0:
+			_LivingForce.arm_player_builds(cell, _LivingForce.crystal_react_radius)
+
+
+func _living_push_tick() -> void:
+	var crystal = _living_crystal_node()
+	if crystal == null or not crystal.has_method("get_depth_at"):
+		return
+	var depth_at := func(x: int, z: int) -> float:
+		return float(crystal.get_depth_at(x, z))
+	var broke: Array = _LivingForce.tick_pushback(depth_at)
+	if broke.is_empty():
+		return
+	_remesh_cells(broke)
+	var feat_layer = get_tree().get_first_node_in_group("feature_visual_layer")
+	for cell_v in broke:
+		var cell: Vector2i = cell_v
+		if feat_layer and feat_layer.has_method("refresh_cell"):
+			feat_layer.refresh_cell(cell.x, cell.y)
+		terrain_edited.emit(cell.x, cell.y, &"remove")
 
 
 func _invalidate_and_rebuild(wx: int, wz: int) -> void:

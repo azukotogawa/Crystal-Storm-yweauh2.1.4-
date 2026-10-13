@@ -2086,6 +2086,26 @@ func get_depth_at(wx: int, wz: int) -> float:
 	return _sim.get_depth_at(wx, wz) if _sim else 0.0
 
 
+## Add depth to a cell that already holds crystal. Does not seed a new cell.
+func nudge_depth(wx: int, wz: int, delta: float) -> float:
+	if _sim == null or absf(delta) < 0.00001:
+		return 0.0
+	var cur := get_depth_at(wx, wz)
+	var min_d := sim_config.min_depth if sim_config else 0.04
+	if cur < min_d:
+		return cur
+	var cap := sim_config.max_depth if sim_config else 12.0
+	var next := clampf(cur + delta, 0.0, cap)
+	if absf(next - cur) < 0.0001:
+		return cur
+	var pos := Vector2i(wx, wz)
+	var spawn_id := -1
+	if _sim.spawn_id_by_cell.has(pos):
+		spawn_id = int(_sim.spawn_id_by_cell[pos])
+	_set_depth(pos, next, spawn_id)
+	return get_depth_at(wx, wz)
+
+
 ## Nearby crystal sitting on water/channels — HUD "wet crawl" read.
 func count_wet_crystal_near(wx: int, wz: int, radius: int = 5) -> Dictionary:
 	var crystal_n := 0

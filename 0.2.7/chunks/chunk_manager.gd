@@ -3788,7 +3788,15 @@ func _schedule_rebuild_flush() -> void:
 	set_meta("_rebuild_flush_scheduled", true)
 
 
+## How many chunk flushes ran, and how many chunks the last flush held.
+## Gameplay does not read these. Probes use them to prove one remesh per stroke.
+var edit_flush_count: int = 0
+var edit_flush_chunk_count: int = 0
+
+
 func _flush_rebuild_pending() -> void:
+	edit_flush_count += 1
+	edit_flush_chunk_count = _patch_pending.size() + _rebuild_pending.size()
 	_rebuild_flush_needed = false
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")

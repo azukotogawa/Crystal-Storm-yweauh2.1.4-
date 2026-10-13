@@ -5,7 +5,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
-const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _LivingForce = preload("res://world/living_force.gd")
 
 var player: Player
 var world: InfiniteNoiseWorld
@@ -35,23 +35,11 @@ var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
 ## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
-var _crystal = null
-## Skip the mouse-ray and both resolve passes while aim, cell, and edits are still.
-var _aim_cache_ok: bool = false
-var _aim_from_cache: bool = false
-var _aim_mouse: Vector2 = Vector2(99999.0, 99999.0)
-var _aim_pxz: Vector2 = Vector2(99999.0, 99999.0)
-var _aim_yaw: float = 99999.0
-var _aim_pitch: float = 99999.0
-var _aim_range: float = -1.0
-var _aim_build: bool = false
-var _aim_item: String = ""
-var _aim_edit: float = 99999.0
-var _aim_depth: float = 99999.0
-var _aim_cell: Vector2i = Vector2i(999999, 999999)
-var _aim_hover: Vector3 = Vector3.ZERO
-var _aim_stable: Vector3 = Vector3.ZERO
-var _aim_info: Dictionary = {}
+## Reused footprint boxes. Hidden at radius 1 so the single-cell highlight is unchanged.
+const BRUSH_MARK_POOL := 12
+var _brush_marks: Array[MeshInstance3D] = []
+var _brush_key: Vector3i = Vector3i(999999, 999999, -1)
+var _brush_shown: bool = false
 
 
 func _ready() -> void:
@@ -63,6 +51,7 @@ func _ready() -> void:
 	process_priority = -20
 	_build_mesh()
 	_build_ghost()
+	_build_brush_pool()
 
 
 func _build_mesh() -> void:
@@ -224,6 +213,7 @@ func _process(delta: float) -> void:
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("target_highlight")
 	if player == null or world == null or _mesh == null:
+		_hide_brush_marks()
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -231,7 +221,7 @@ func _process(delta: float) -> void:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
-		_aim_cache_ok = false
+		_hide_brush_marks()
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -287,6 +277,7 @@ func _process(delta: float) -> void:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
+		_hide_brush_marks()
 		_display_ready = false
 		# Keep _action_column so hold-dig still hits the hovered cell under the mouse.
 		if profiler and profiler.has_method("end"):
@@ -355,6 +346,10 @@ func _process(delta: float) -> void:
 				_mat.emission_energy_multiplier = 0.5
 
 	_update_prediction(info, range_v, layer, scale, pulse)
+	if mode == &"dig":
+		_update_brush_footprint(cell, layer, scale)
+	else:
+		_hide_brush_marks()
 
 	if profiler and profiler.has_method("end"):
 		profiler.end("target_highlight")
@@ -370,71 +365,79 @@ func get_action_column() -> Vector3:
 	return _action_column
 
 
-func _aim_is_static(range_v: float, build_held: bool) -> bool:
-	if not _aim_cache_ok or player == null:
-		return false
-	var mouse := get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
-	if mouse.distance_squared_to(_aim_mouse) > 1.0:
-		return false
-	var pxz := Vector2(player.voxel_position.x, player.voxel_position.z)
-	if pxz.distance_squared_to(_aim_pxz) > 0.0016:
-		return false
-	var yaw := 0.0
-	var pitch := 0.0
-	if player.camera:
-		if "yaw_degrees" in player.camera:
-			yaw = float(player.camera.yaw_degrees)
-		if "pitch_degrees" in player.camera:
-			pitch = float(player.camera.pitch_degrees)
-	if absf(yaw - _aim_yaw) > 0.15 or absf(pitch - _aim_pitch) > 0.15:
-		return false
-	if not is_equal_approx(range_v, _aim_range) or build_held != _aim_build:
-		return false
-	var item_id := _active_item_id()
-	if item_id != _aim_item:
-		return false
-	if not is_equal_approx(_TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y), _aim_edit):
-		return false
-	if _crystal and _crystal.has_method("get_depth_at"):
-		if not is_equal_approx(float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y)), _aim_depth):
-			return false
-	return true
+## Cells the dig brush would edit. Radius 1 is just the aimed column.
+func get_brush_footprint() -> Array:
+	if _action_column == Vector3.ZERO or world == null:
+		return []
+	var cell := Vector2i(floori(_action_column.x), floori(_action_column.z))
+	return _LivingForce.footprint(cell.x, cell.y, _highlight_brush_radius(), world)
 
 
-func _active_item_id() -> String:
+func _highlight_brush_radius() -> int:
 	if player == null:
-		return ""
+		return 1
 	var weapon := player.get_node_or_null("WeaponController")
-	if weapon == null or not weapon.has_method("get_active_item"):
-		return ""
-	var slot = weapon.get_active_item()
-	if slot == null:
-		return ""
-	return str(slot.id)
+	if weapon and weapon.has_method("dig_brush_radius"):
+		return int(weapon.dig_brush_radius())
+	return 1
 
 
-func _remember_aim(range_v: float, build_held: bool, hover_col: Vector3, stable_col: Vector3, info: Dictionary) -> void:
-	_aim_cache_ok = true
-	_aim_mouse = get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
-	_aim_pxz = Vector2(player.voxel_position.x, player.voxel_position.z)
-	_aim_yaw = 0.0
-	_aim_pitch = 0.0
-	if player.camera:
-		if "yaw_degrees" in player.camera:
-			_aim_yaw = float(player.camera.yaw_degrees)
-		if "pitch_degrees" in player.camera:
-			_aim_pitch = float(player.camera.pitch_degrees)
-	_aim_range = range_v
-	_aim_build = build_held
-	_aim_item = _active_item_id()
-	_aim_hover = hover_col
-	_aim_stable = stable_col
-	_aim_info = info
-	_aim_cell = info.get("cell", _stable_cell)
-	_aim_edit = _TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y)
-	_aim_depth = 0.0
-	if _crystal and _crystal.has_method("get_depth_at"):
-		_aim_depth = float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y))
+func _build_brush_pool() -> void:
+	for i in BRUSH_MARK_POOL:
+		var mark := MeshInstance3D.new()
+		mark.name = "BrushMark%d" % i
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE
+		mark.mesh = box
+		mark.material_override = _mat
+		mark.visible = false
+		mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mark.sorting_offset = 3.8
+		add_child(mark)
+		_brush_marks.append(mark)
+
+
+func _hide_brush_marks() -> void:
+	if not _brush_shown:
+		return
+	_brush_shown = false
+	_brush_key = Vector3i(999999, 999999, -1)
+	for mark in _brush_marks:
+		mark.visible = false
+
+
+func _update_brush_footprint(cell: Vector2i, layer: float, scale: float) -> void:
+	var radius := _highlight_brush_radius()
+	if radius <= 1 or _brush_marks.is_empty():
+		_hide_brush_marks()
+		return
+	var key := Vector3i(cell.x, cell.y, radius)
+	if key != _brush_key:
+		_brush_key = key
+		var cells: Array = _LivingForce.footprint(cell.x, cell.y, radius, world)
+		var extra := 0
+		var ws = _WorldSettings.get_active()
+		for cell_v in cells:
+			var c: Vector2i = cell_v
+			if c == cell:
+				continue
+			if extra >= _brush_marks.size():
+				break
+			var mark: MeshInstance3D = _brush_marks[extra]
+			extra += 1
+			var top := world.get_surface_height(float(c.x), float(c.y)) + layer
+			mark.global_position = Vector3(
+				ws.column_to_world(float(c.x) + 0.5),
+				top - layer * 0.5,
+				ws.column_to_world(float(c.y) + 0.5)
+			)
+			mark.visible = true
+		for i in range(extra, _brush_marks.size()):
+			_brush_marks[i].visible = false
+		_brush_shown = extra > 0
+	for mark in _brush_marks:
+		if mark.visible:
+			mark.scale = Vector3(scale * 0.92, layer * 0.92, scale * 0.92)
 
 
 func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: float, pulse: float) -> void:

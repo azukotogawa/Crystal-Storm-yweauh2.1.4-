@@ -338,16 +338,22 @@ func _transaction_apply_body(data: Dictionary) -> bool:
 
 func _apply_world_state_from_payload(data: Dictionary) -> bool:
 	var ws = _WorldState.get_active()
+	var applied := false
 	if data.has("world_state") and data.world_state is Dictionary:
 		ws.import_persistence_bundle(data.world_state)
-		return true
-	# Migrated/legacy flat path
-	ws.apply_save_overlay_dicts(
-		data.get("terrain_edits", {}),
-		data.get("features", {}),
-		data.get("channels", {})
-	)
-	return true
+		applied = true
+	else:
+		# Migrated/legacy flat path
+		ws.apply_save_overlay_dicts(
+			data.get("terrain_edits", {}),
+			data.get("features", {}),
+			data.get("channels", {})
+		)
+		applied = true
+	var living = load("res://world/living_force.gd")
+	if living:
+		living.rearm_push_watch()
+	return applied
 
 
 func _coordinated_chunk_rebuild() -> void:
