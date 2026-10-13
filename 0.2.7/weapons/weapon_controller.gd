@@ -14,6 +14,12 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _PlaceableCatalog = preload("res://helpers/placeable_catalog.gd")
 const _Projectile = preload("res://weapons/projectile.gd")
 const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
+const _ItemAnim = preload("res://systems/item_anim.gd")
+const _HeldItemView = preload("res://systems/held_item_view.gd")
+const _AimIndicator = preload("res://systems/aim_indicator.gd")
+const _HitMarkers = preload("res://systems/hit_markers.gd")
+const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
+const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -42,6 +48,18 @@ var _audio: Node
 var _build_hold_sec: float = 0.0
 var place_index: int = 0
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
+var _held: _HeldItemView
+var _aim: _AimIndicator
+var _playback = null
+var _pending_mode: int = -1
+var _pending_item: String = ""
+var _pending_def: Dictionary = {}
+var _vfx: Node
+var _shown_item: String = ""
+var _clock_damage_elapsed: float = -1.0
+var _present_bound: bool = false
+## Visual only. Resets when a layer breaks so the overlay refills without changing dig cadence.
+var _crack_fill: float = 0.0
 
 
 func _ready() -> void:
@@ -54,6 +72,7 @@ func _ready() -> void:
 	# After TargetHighlight so shared aim column is current this frame.
 	process_priority = 10
 	_bind_terrain_editor()
+	call_deferred("_bind_presentation")
 
 
 func _resolve_combat_def() -> _CombatDef:
@@ -82,9 +101,14 @@ func _process(delta: float) -> void:
 		_fail_toast_cd = maxf(_fail_toast_cd - delta, 0.0)
 
 	if _GameplayInput.blocks_actions():
+		if _aim:
+			_aim.suppress(true)
 		if profiler and profiler.has_method("end"):
 			profiler.end("weapon_controller")
 		return
+	if _aim:
+		_aim.suppress(false)
+	_tick_animation_clock(delta)
 
 	# LMB subtracts structures/terrain for dig tools and place-catalog terrain edits.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
@@ -139,9 +163,12 @@ func _process(delta: float) -> void:
 		place_index = (place_index + 1) % _PlaceableCatalog.count()
 	for i in HOTBAR_INPUTS.size():
 		if Input.is_action_just_pressed(HOTBAR_INPUTS[i]):
+			_cancel_pending_strike()
 			_active_hotbar_index = i
+			_shown_item = ""
 			if inventory:
 				inventory.hotbar_changed.emit(i)
+	_present_held(delta)
 	if profiler and profiler.has_method("end"):
 		profiler.end("weapon_controller")
 
@@ -166,6 +193,10 @@ func _try_remove_at_cursor() -> bool:
 	if _terrain_editor.try_remove(target, inventory):
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
 		_flash_build_feedback(target, &"remove")
+		var removed_slot = get_active_item()
+		if removed_slot != null:
+			_sync_impact_pose(str(removed_slot.id))
+		_notify_block_break(target)
 		return true
 	_notify_terrain_fail()
 	_cooldown_timer = 0.035
@@ -250,6 +281,7 @@ func _try_use_consumable() -> bool:
 		player.heal(heal_amt)
 	elif "health" in player and "max_health" in player:
 		player.health = minf(float(player.max_health), float(player.health) + heal_amt)
+	_sync_impact_pose(item_id)
 	_cooldown_timer = 0.35
 	_sfx("pickup")
 	var overlay = get_tree().get_first_node_in_group("game_overlay")
@@ -306,9 +338,9 @@ func _try_attack() -> void:
 	_cooldown_timer = float(def.get("cooldown", 0.5))
 	match kind:
 		ItemTypes.WeaponKind.MELEE:
-			_do_melee_attack(item_id, def)
+			_arm_clock(item_id, def, 0)
 		ItemTypes.WeaponKind.RANGED:
-			_do_ranged_attack(item_id, def)
+			_arm_clock(item_id, def, 1)
 
 
 func _range_world(range_columns: float) -> float:
@@ -346,6 +378,8 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var ws = _WorldSettings.get_active()
 	var hit_pos := Vector3(ws.column_to_world(target_col.x), origin.y, ws.column_to_world(target_col.z))
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+	var connected := false
+	var saw_target := false
 
 	var range_w := _range_world(range_v)
 	var targets := _query_melee_facing(origin, forward, range_w)
@@ -366,8 +400,10 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 				targets.append(node)
 				break
 	for target in targets:
+		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:
+			connected = true
 			_shove(target, float(def.get("knockback", 1.0)))
 			entity_hit.emit(target, dealt, item_id)
 
@@ -378,7 +414,11 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 			_crystal_hit_damage(def),
 			range_v
 		)
-		_try_break_crystal_mass(mass_cell, def)
+		if _try_break_crystal_mass(mass_cell, def):
+			connected = true
+
+	if not connected:
+		_note_attack(hit_pos, _HitMarkers.Result.BLOCKED if saw_target else _HitMarkers.Result.MISS)
 
 	if _combat_def.log_hits_to_console and targets.is_empty():
 		_CombatLog.push("melee %s — no entity hit" % item_id)
@@ -419,6 +459,7 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var hit_pos := origin + forward * _range_world(range_v)
 	if not _fire_projectile(item_id, def, origin, forward, false):
 		_cooldown_timer = 0.25
+		_note_attack(origin, _HitMarkers.Result.BLOCKED)
 		return
 	_sfx("fire_sling" if item_id == "sling" else "fire_bow", origin)
 	attacked.emit(item_id, hit_pos)
@@ -436,18 +477,26 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 		origin, forward, range_w, nodes, int(def.get("pierce", 2))
 	)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+	var connected := false
+	var saw_target := false
 	for target in targets:
+		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:
+			connected = true
 			_shove(target, float(def.get("knockback", 1.6)))
 			entity_hit.emit(target, dealt, item_id)
 	if crystal_manager:
 		var mass_cell := _crystal_target_cell(range_v)
 		crystal_manager.damage_spawn_at_world(mass_cell, _crystal_hit_damage(def), range_v)
-		_try_break_crystal_mass(mass_cell, def)
+		if _try_break_crystal_mass(mass_cell, def):
+			connected = true
 	var ws = _WorldSettings.get_active()
 	var aim := _crystal_target_cell(range_v)
-	attacked.emit(item_id, Vector3(ws.column_to_world(float(aim.x) + 0.5), origin.y, ws.column_to_world(float(aim.y) + 0.5)))
+	var thrust_pos := Vector3(ws.column_to_world(float(aim.x) + 0.5), origin.y, ws.column_to_world(float(aim.y) + 0.5))
+	if not connected:
+		_note_attack(thrust_pos, _HitMarkers.Result.BLOCKED if saw_target else _HitMarkers.Result.MISS)
+	attacked.emit(item_id, thrust_pos)
 
 
 ## 3×3 crystal splash. Low entity damage, heavy knockback. Never digs or changes height.
@@ -460,27 +509,32 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var splash := int(def.get("splash", 1))
 	var cells := _WeaponStrike.splash_cells(cell, splash)
 	var mass := _crystal_mass_damage(def)
-	_WeaponStrike.apply_crystal_cells(crystal_manager, cells, mass)
+	var crystal_hits := _WeaponStrike.apply_crystal_cells(crystal_manager, cells, mass)
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(cell, _crystal_hit_damage(def), 1.6)
 	var range_w := _range_world(range_v)
 	var targets := _query_melee_facing(origin, forward, range_w)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var shoved := 0
+	var connected := crystal_hits > 0
 	for target in targets:
 		if shoved >= 1:
 			break
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
 		if dealt > 0.0:
+			connected = true
 			_shove(target, float(def.get("knockback", 3.2)))
 			entity_hit.emit(target, dealt, item_id)
 			shoved += 1
 	var ws = _WorldSettings.get_active()
-	attacked.emit(item_id, Vector3(
+	var hammer_pos := Vector3(
 		ws.column_to_world(float(cell.x) + 0.5),
 		origin.y,
 		ws.column_to_world(float(cell.y) + 0.5)
-	))
+	)
+	if not connected and shoved == 0 and targets.is_empty():
+		_note_attack(hammer_pos, _HitMarkers.Result.MISS)
+	attacked.emit(item_id, hammer_pos)
 
 
 func _throw_bomb(item_id: String, def: Dictionary) -> bool:
@@ -492,6 +546,7 @@ func _throw_bomb(item_id: String, def: Dictionary) -> bool:
 		inventory.add_item(item_id, 1)
 		return false
 	_sfx("bomb_throw", origin)
+	_sync_impact_pose(item_id)
 	_cooldown_timer = 0.9
 	var hit_pos := origin + forward * _range_world(float(def.get("blast_radius", 2.5)))
 	attacked.emit(item_id, hit_pos)
@@ -568,12 +623,15 @@ func _notify_terrain_fail() -> void:
 		return
 	_fail_toast_cd = 0.5
 	_last_fail_toast = reason
+	if player:
+		_note_attack(player.global_position + _attack_forward() * _WorldSettings.get_active().voxel_scale, _HitMarkers.Result.BLOCKED)
 	var overlay = get_tree().get_first_node_in_group("game_overlay")
 	if overlay and overlay.has_method("_show_toast"):
 		overlay.call("_show_toast", reason)
 
 
 func _do_dig_attack(item_id: String, def: Dictionary) -> void:
+	_sync_impact_pose(item_id)
 	_sfx("swing_pick", _attack_origin(0.45) if player else null)
 	if _terrain_editor == null:
 		_bind_terrain_editor()
@@ -612,6 +670,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		if removed:
 			_cooldown_timer = _terrain_editor.get_build_delay(target)
 			_flash_build_feedback(target, &"remove")
+			_notify_block_break(target)
 			_sfx("build_remove", target)
 		else:
 			_notify_terrain_fail()
@@ -622,6 +681,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		# Snappy dig cadence only — ignore weapon table cooldown.
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
+		_notify_block_break(target)
 	else:
 		_notify_terrain_fail()
 		# Brief retry so hold-dig recovers quickly after a miss.
@@ -674,6 +734,7 @@ func _try_dig_tool_or_fill_remove() -> void:
 	if _terrain_editor.try_dig(target):
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
+		_notify_block_break(target)
 	else:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
@@ -715,6 +776,8 @@ func _try_place_selected() -> void:
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
 		structure_built.emit(StringName(place_id), target)
 		_flash_build_feedback(target, StringName(place_id))
+		_sync_impact_pose(_place_anim_id())
+		_notify_block_place(target)
 		_sfx("build_place", target)
 	else:
 		_notify_terrain_fail()
@@ -853,6 +916,197 @@ func _try_channel_water_at_target(range_v: float) -> void:
 		mode = TerrainEditor.ChannelMode.REDIRECT
 	if _terrain_editor.try_channel_water(target, inventory if inventory else null, mode, forward):
 		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_channel_delay(target))
+
+
+func begin_animation_clock(item_id: String) -> void:
+	_playback = _ItemAnim.playback_for(item_id)
+	_clock_damage_elapsed = -1.0
+	_pending_mode = -1
+	_pending_item = ""
+	_pending_def = {}
+
+
+func tick_animation_clock(delta: float) -> bool:
+	return _tick_animation_clock(delta)
+
+
+func animation_damage_elapsed() -> float:
+	return _clock_damage_elapsed
+
+
+func animation_impact_time() -> float:
+	if _playback == null:
+		return -1.0
+	return float(_playback.impact_time())
+
+
+func _bind_presentation() -> void:
+	if _present_bound or player == null:
+		return
+	_present_bound = true
+	_held = _HeldItemView.new()
+	_held.name = "HeldItemView"
+	player.add_child(_held)
+	_aim = _AimIndicator.new()
+	_aim.name = "AimIndicator"
+	player.add_child(_aim)
+	_aim.bind_player(player)
+
+
+func _arm_clock(item_id: String, def: Dictionary, mode: int) -> void:
+	_playback = _ItemAnim.playback_for(item_id)
+	_pending_mode = mode
+	_pending_item = item_id
+	_pending_def = def
+	_clock_damage_elapsed = -1.0
+	if _held:
+		_held.apply_playback(_playback)
+		if player:
+			_held.face(_attack_forward())
+	if _playback.impact_time() <= 0.0:
+		_tick_animation_clock(0.0)
+
+
+func _tick_animation_clock(delta: float) -> bool:
+	if _playback == null:
+		return false
+	var fired: bool = bool(_playback.advance(delta))
+	if _held and int(_playback.kind) != _ItemAnim.Kind.NONE:
+		_held.apply_playback(_playback)
+	if fired:
+		_clock_damage_elapsed = float(_playback.elapsed)
+		if _pending_mode >= 0 and player != null:
+			var mode := _pending_mode
+			var item := _pending_item
+			var def := _pending_def
+			_pending_mode = -1
+			_pending_item = ""
+			_pending_def = {}
+			if mode == 0:
+				_do_melee_attack(item, def)
+			elif mode == 1:
+				_do_ranged_attack(item, def)
+	if _playback != null and _playback.finished() and _pending_mode < 0:
+		var done_id := str(_playback.item_id)
+		_playback = null
+		_shown_item = done_id
+		if _held:
+			_held.show_item(done_id)
+	return fired
+
+
+func _cancel_pending_strike() -> void:
+	if _pending_mode < 0:
+		return
+	_pending_mode = -1
+	_pending_item = ""
+	_pending_def = {}
+	_playback = null
+	_shown_item = ""
+
+
+func _sync_impact_pose(item_id: String) -> void:
+	if _pending_mode >= 0:
+		return
+	var spec: Dictionary = _ItemAnim.spec_for(item_id)
+	if int(spec.get("kind", _ItemAnim.Kind.NONE)) == _ItemAnim.Kind.NONE:
+		return
+	_playback = _ItemAnim.playback_for(item_id)
+	_playback.snap_to_impact()
+	_clock_damage_elapsed = float(_playback.elapsed)
+	if _held:
+		_held.apply_playback(_playback)
+		if player:
+			_held.face(_attack_forward())
+
+
+func _present_held(_delta: float) -> void:
+	if not _present_bound:
+		return
+	var id := ""
+	var slot = get_active_item()
+	if slot != null:
+		id = str(slot.id)
+	if _held:
+		if player:
+			_held.face(_attack_forward())
+		if _playback == null and id != _shown_item:
+			_shown_item = id
+			_held.show_item(id)
+	if _aim:
+		_aim.tick(id)
+	if _is_active_dig_tool() and Input.is_action_pressed("attack"):
+		_crack_fill = minf(_crack_fill + _delta / TERRAIN_HOLD_REPEAT_START_SEC, 0.92)
+		_preview_dig_cracks()
+	elif _crack_fill > 0.0:
+		_crack_fill = 0.0
+		_clear_dig_cracks()
+
+
+func _preview_dig_cracks() -> void:
+	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
+	if target == Vector3.ZERO:
+		return
+	var fx := _break_fx()
+	if fx and fx.has_method("set_progress"):
+		fx.set_progress(_column_fx_pos(target), _crack_fill, _BlockBreakFx.tint_for_column(world, target))
+
+
+func _clear_dig_cracks() -> void:
+	var fx := _break_fx()
+	if fx and fx.has_method("current_stage") and int(fx.current_stage()) > 0 and fx.has_method("set_progress"):
+		fx.set_progress(Vector3.ZERO, 0.0)
+
+
+func _column_fx_pos(col: Vector3) -> Vector3:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	return _WorldVisualCoords.column_to_world_pos(
+		floorf(col.x) + 0.5,
+		col.y + layer * 0.45,
+		floorf(col.z) + 0.5
+	)
+
+
+func _place_anim_id() -> String:
+	var slot = get_active_item()
+	if slot != null:
+		return str(slot.id)
+	return "wood"
+
+
+func _note_attack(world_pos: Vector3, result: int) -> void:
+	var vfx := _feedback()
+	if vfx and vfx.has_method("show_attack_feedback"):
+		vfx.show_attack_feedback(world_pos, result)
+
+
+func _notify_block_break(target: Vector3) -> void:
+	_crack_fill = 0.0
+	var fx := _break_fx()
+	if fx and fx.has_method("notify_break"):
+		fx.notify_break(_column_fx_pos(target), _BlockBreakFx.tint_for_column(world, target))
+
+
+func _notify_block_place(target: Vector3) -> void:
+	var fx := _break_fx()
+	if fx and fx.has_method("notify_place"):
+		fx.notify_place(_column_fx_pos(target), Color(0.45, 0.82, 0.42))
+
+
+func _break_fx() -> Node:
+	var vfx := _feedback()
+	if vfx and vfx.has_method("block_break_fx"):
+		return vfx.block_break_fx()
+	return null
+
+
+func _feedback() -> Node:
+	if is_instance_valid(_vfx):
+		return _vfx
+	if not is_inside_tree():
+		return null
+	_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	return _vfx
 
 
 func _sfx(id: String, at: Variant = null) -> void:

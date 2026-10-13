@@ -92,7 +92,7 @@ Win:
 
 ## Feedback
 
-Hits, swings, and breaks go through `CombatVisualFeedback` and `VfxPool`. The pool reuses a small set of `CPUParticles3D` one-shots (crystal shatter, dig dust, water splash, spawn-heart burst, rate-limited corruption) and a few swing meshes. Sword and pick draw a short arc, the spear a thrust line, the hammer an overhead ring. Materials are unshaded and shadow casting is off. Counts follow the performance preset. LOW is the smallest. SAFE is smaller still. See `studio/wiki/Effects.md`.
+Hits, swings, and breaks go through `CombatVisualFeedback` and `VfxPool`. The pool reuses a small set of `CPUParticles3D` one-shots (crystal shatter, dig dust, water splash, spawn-heart burst, rate-limited corruption, impact chips) and a few swing meshes. Sword and pick draw a short arc, the spear a thrust line, the hammer an overhead ring. The held item plays the same timing as a procedural pose: the strike lands on the impact sample of that pose. A miss and a blocked hit use a different marker from a landed hit. Materials are unshaded and shadow casting is off. Counts follow the performance preset. LOW is the smallest. SAFE is smaller still. See `studio/wiki/Effects.md`.
 
 A hit also asks `Juice` for a 40–80 ms hit-stop and a camera shake. Light hits sit near 40 ms. Hammer, bomb, and boss slams sit near 80 ms and shake harder. Both are off in headless probes unless a test forces the dip. The pause menu and the frontend settings screen can turn shake, hit-stop, and the white hit flash off. Those flags persist in `player_settings.json`.
 

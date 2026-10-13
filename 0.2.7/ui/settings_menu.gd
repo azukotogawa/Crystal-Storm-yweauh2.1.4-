@@ -18,6 +18,8 @@ var _fx: CheckBox
 var _shake: CheckBox
 var _hit_stop: CheckBox
 var _flash: CheckBox
+var _hit_markers: CheckBox
+var _cracks: CheckBox
 var _reduce: CheckBox
 var _colorblind: CheckBox
 var _vol_master: HSlider
@@ -91,6 +93,8 @@ func _ready() -> void:
 	_shake = _check(access, "Screen shake", "ScreenShake")
 	_hit_stop = _check(access, "Hit stop", "HitStop")
 	_flash = _check(access, "Hit flash", "HitFlash")
+	_hit_markers = _check(access, "Hit markers", "HitMarkers")
+	_cracks = _check(access, "Block cracks", "BlockCracks")
 	_colorblind = _check(access, "Colour-blind crystal palette", "ColorblindPalette")
 	var controls := _tab(tabs, "Controls")
 	var hint := Label.new()
@@ -250,6 +254,8 @@ func sync_from_settings() -> void:
 	_set_check(_shake, bool(data.get("screen_shake_enabled", true)))
 	_set_check(_hit_stop, bool(data.get("hit_stop_enabled", true)))
 	_set_check(_flash, bool(data.get("flash_effects_enabled", true)))
+	_set_check(_hit_markers, bool(data.get("hit_markers_enabled", true)))
+	_set_check(_cracks, bool(data.get("crack_overlay_enabled", true)))
 	_set_check(_colorblind, bool(data.get("colorblind_palette", false)))
 	_set_check(_cutaway, bool(data.get("camera_cutaway_enabled", true)))
 	_apply_reduce_motion_lock()
@@ -420,6 +426,10 @@ func _persist() -> void:
 			data["hit_stop_enabled"] = bool(_hit_stop.button_pressed)
 	if _flash:
 		data["flash_effects_enabled"] = bool(_flash.button_pressed)
+	if _hit_markers:
+		data["hit_markers_enabled"] = bool(_hit_markers.button_pressed)
+	if _cracks:
+		data["crack_overlay_enabled"] = bool(_cracks.button_pressed)
 	if _colorblind:
 		data["colorblind_palette"] = bool(_colorblind.button_pressed)
 	if _cutaway:

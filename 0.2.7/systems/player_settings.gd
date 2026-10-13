@@ -14,6 +14,8 @@ static var settings_path: String = DEFAULT_PATH
 static var screen_shake_enabled: bool = true
 static var hit_stop_enabled: bool = true
 static var flash_effects_enabled: bool = true
+static var hit_markers_enabled: bool = true
+static var crack_overlay_enabled: bool = true
 static var volume_master: float = 1.0
 static var volume_music: float = 1.0
 static var volume_sfx: float = 1.0
@@ -47,6 +49,8 @@ static func defaults() -> Dictionary:
 		"screen_shake_enabled": true,
 		"hit_stop_enabled": true,
 		"flash_effects_enabled": true,
+		"hit_markers_enabled": true,
+		"crack_overlay_enabled": true,
 		"volume_master": 1.0,
 		"volume_music": 1.0,
 		"volume_sfx": 1.0,
@@ -87,6 +91,10 @@ static func load_settings() -> Dictionary:
 		out["hit_stop_enabled"] = bool(data.hit_stop_enabled)
 	if data.has("flash_effects_enabled"):
 		out["flash_effects_enabled"] = bool(data.flash_effects_enabled)
+	if data.has("hit_markers_enabled"):
+		out["hit_markers_enabled"] = bool(data.hit_markers_enabled)
+	if data.has("crack_overlay_enabled"):
+		out["crack_overlay_enabled"] = bool(data.crack_overlay_enabled)
 	for key in ["volume_master", "volume_music", "volume_sfx", "volume_ui"]:
 		if data.has(key):
 			out[key] = clampf(float(data[key]), 0.0, 1.0)
@@ -132,6 +140,8 @@ static func _sync_runtime(data: Dictionary) -> void:
 	screen_shake_enabled = bool(data.get("screen_shake_enabled", true))
 	hit_stop_enabled = bool(data.get("hit_stop_enabled", true))
 	flash_effects_enabled = bool(data.get("flash_effects_enabled", true))
+	hit_markers_enabled = bool(data.get("hit_markers_enabled", true))
+	crack_overlay_enabled = bool(data.get("crack_overlay_enabled", true))
 	volume_master = clampf(float(data.get("volume_master", 1.0)), 0.0, 1.0)
 	volume_music = clampf(float(data.get("volume_music", 1.0)), 0.0, 1.0)
 	volume_sfx = clampf(float(data.get("volume_sfx", 1.0)), 0.0, 1.0)
