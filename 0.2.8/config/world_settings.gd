@@ -104,13 +104,14 @@ func chunk_world_size() -> float:
 
 
 ## One voxel column is layer_height() world units. A person is 1.6 voxels tall
-## (about a Minecraft player). Radius is the body half-width in the same unit.
+## (about a Minecraft player). Radius is half the scout's body width, and that
+## width scales with height (opaque art is 16×34, not the padded 32×48 canvas).
 func player_height() -> float:
 	return layer_height() * 1.6
 
 
 func player_radius() -> float:
-	return layer_height() * 0.28
+	return PlayerBodyMesh.half_width_for_height(player_height())
 
 
 ## Wildlife fallback body. Shorter than the player, about half a voxel.

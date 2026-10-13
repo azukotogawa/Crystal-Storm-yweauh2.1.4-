@@ -9,6 +9,10 @@ extends RefCounted
 const ALBEDO := "res://assets/player/player.png"
 const DEPTH_STEPS := 8
 const ALPHA_CUTOFF := 0.5
+## Opaque span of the scout in player.png (arms through boots). The 32×48
+## canvas has empty columns beside the body and empty rows under the boots.
+const CONTENT_W := 16
+const CONTENT_H := 34
 
 const _TINT_SIDE := 0.62
 const _TINT_BACK := 0.50
@@ -78,12 +82,18 @@ class _Buf:
 		return mesh
 
 
+## Half the body width when the scout is `body_height` tall. Width scales with
+## height using the opaque pixel span, so the capsule matches the mesh.
+static func half_width_for_height(body_height: float) -> float:
+	return body_height * float(CONTENT_W) / float(CONTENT_H) * 0.5
+
+
 static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
 	var built: Dictionary = build(radius * 2.0, height)
 	mesh_instance.mesh = built["mesh"]
 	mesh_instance.material_override = built["material"]
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Same anchor as the old box: mesh center at half the capsule, feet at y=0.
+	# Capsule center. Opaque boots are placed on local y=-height/2, so world feet are 0.
 	mesh_instance.position.y = height * 0.5
 
 
@@ -185,6 +195,10 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 	buf.wind_sign = _wind_sign
 	buf.setup_grid(w, h, d)
 	var opaque := 0
+	var min_ix := w
+	var max_ix := -1
+	var min_my := h
+	var max_my := -1
 	for iy in h:
 		var my := h - 1 - iy
 		for ix in w:
@@ -192,20 +206,41 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 			if pix.a < ALPHA_CUTOFF:
 				continue
 			opaque += 1
+			if ix < min_ix:
+				min_ix = ix
+			if ix > max_ix:
+				max_ix = ix
+			if my < min_my:
+				min_my = my
+			if my > max_my:
+				max_my = my
 			for iz in d:
 				buf.occupy(ix, my, iz)
-	var body_d := width * float(d) / float(w)
+	# Square texels. Height is the master so width follows the art; the
+	# capsule diameter is a hard cap. Boots sit on the bottom of the height.
+	var span_x := 1
+	var span_y := 1
+	if opaque > 0:
+		span_x = max_ix - min_ix + 1
+		span_y = max_my - min_my + 1
+	var pixel := height / float(span_y)
+	var cap := width / float(maxi(span_x, 1))
+	if pixel > cap:
+		pixel = cap
+	var body_d := pixel * float(d)
 	var z_step := body_d / float(d)
+	var x_origin := -float(span_x) * pixel * 0.5
+	var y_origin := -height * 0.5
 	for iz in d:
 		for my in h:
 			for ix in w:
 				if not buf.occ(ix, my, iz):
 					continue
 				var texel := img.get_pixel(ix, h - 1 - my)
-				var x0 := (float(ix) / float(w) - 0.5) * width
-				var x1 := (float(ix + 1) / float(w) - 0.5) * width
-				var y0 := (float(my) / float(h) - 0.5) * height
-				var y1 := (float(my + 1) / float(h) - 0.5) * height
+				var x0 := x_origin + float(ix - min_ix) * pixel
+				var x1 := x0 + pixel
+				var y0 := y_origin + float(my - min_my) * pixel
+				var y1 := y0 + pixel
 				var z0 := -body_d * 0.5 + float(iz) * z_step
 				var z1 := z0 + z_step
 				if not buf.occ(ix + 1, my, iz):

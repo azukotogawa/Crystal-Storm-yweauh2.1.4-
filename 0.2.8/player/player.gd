@@ -318,7 +318,8 @@ func _setup_body_collision() -> void:
 	_body_collision = CollisionShape3D.new()
 	_body_collision.name = "BodyCollision"
 	_body_collision.shape = capsule
-	_body_collision.position.y = ph * 0.5
+	# Capsule height includes the hemispheres. Center it so the bottom rests on the feet.
+	_body_collision.position.y = capsule.height * 0.5
 	add_child(_body_collision)
 
 
