@@ -48,6 +48,7 @@ func _init() -> void:
 		"res://ui/frontend_root.gd",
 		"res://ui/hotbar.gd",
 		"res://ui/inventory_panel.gd",
+		"res://ui/slot_drag.gd",
 		"res://systems/config_service.gd",
 		"res://systems/config_json_io.gd",
 	]

@@ -7,6 +7,7 @@ const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
+const _SlotDrag = preload("res://ui/slot_drag.gd")
 
 
 var _player: Player
@@ -18,6 +19,7 @@ var _registry: _GameVisualRegistry
 
 func _ready() -> void:
 	visible = false
+	_SlotDrag.set_modal_open(false, self)
 
 func _enter_tree() -> void:
 	_ThemeBuilder.apply(self)
@@ -39,19 +41,27 @@ func _unhandled_input(event: InputEvent) -> void:
 	if _GameplayInput.blocks_actions():
 		return
 	if event.is_action_pressed("inventory_toggle"):
-		_visible_panel = not _visible_panel
-		visible = _visible_panel
-		_ui("ui_open" if _visible_panel else "ui_close")
-		if _visible_panel:
+		var opening := not _visible_panel
+		if not opening:
+			_SlotDrag.cancel()
+		_visible_panel = opening
+		visible = opening
+		_SlotDrag.set_modal_open(opening, self)
+		_ui("ui_open" if opening else "ui_close")
+		if opening:
 			_refresh()
 
 
 func _build_ui() -> void:
+	# Full-screen root must not eat clicks; the hotbar sits above this layer on z.
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	anchor_right = 1.0
 	anchor_bottom = 1.0
 
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.45)
+	backdrop.z_index = -1
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
 
@@ -99,19 +109,22 @@ func _build_ui() -> void:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(48, 40)
 		btn.focus_mode = Control.FOCUS_NONE
-		btn.pressed.connect(_on_slot_pressed.bind(i))
 		btn.mouse_entered.connect(_on_slot_hover.bind(i))
 		btn.mouse_exited.connect(_on_slot_unhover)
+		btn.size = Vector2(48, 40)
 		_grid.add_child(btn)
 
 	add_child(panel)
+	_SlotDrag.register_passthrough(_armor_button)
+	for i in _grid.get_child_count():
+		_SlotDrag.register_slot(get_tree(), _grid.get_child(i), i, _on_slot_pressed.bind(i))
 
 
 func _on_slot_pressed(index: int) -> void:
 	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return
-	# Simple click: move item to first empty hotbar slot
+	# A click that did not drag still files the stack into the hotbar.
 	var slot = _player.inventory.get_slot(index)
 	if slot == null:
 		return
@@ -152,6 +165,7 @@ func _on_slot_unhover() -> void:
 
 
 func _on_armor_pressed() -> void:
+	Input.action_release("attack")
 	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return

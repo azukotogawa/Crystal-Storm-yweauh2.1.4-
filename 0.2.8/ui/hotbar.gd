@@ -5,6 +5,7 @@ const _ItemTypes = preload("res://helpers/item_types.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
+const _SlotDrag = preload("res://ui/slot_drag.gd")
 
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
@@ -51,9 +52,13 @@ func _build_slots() -> void:
 	offset_top = -SLOT_SIZE - 24
 	offset_bottom = -16
 
+	# Absolute z so the bar stays above the inventory dimmer and receives drops.
+	z_index = 2
+	z_as_relative = false
 	for i in _Inventory.HOTBAR_SIZE:
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(SLOT_SIZE, SLOT_SIZE)
+		panel.size = Vector2(SLOT_SIZE, SLOT_SIZE)
 		panel.position = Vector2(i * (SLOT_SIZE + SLOT_GAP), 0)
 
 		var style := StyleBoxFlat.new()
@@ -84,10 +89,28 @@ func _build_slots() -> void:
 
 		panel.mouse_entered.connect(_on_slot_hover.bind(i))
 		panel.mouse_exited.connect(_on_slot_unhover)
+		panel.mouse_filter = Control.MOUSE_FILTER_STOP
 		add_child(panel)
+		_SlotDrag.register_slot(get_tree(), panel, i, _on_slot_click.bind(i))
 		_slot_nodes.append(panel)
 		_icon_nodes.append(icon)
 		_label_nodes.append(label)
+
+
+func _on_slot_click(index: int) -> void:
+	if _player == null or _player.inventory == null:
+		return
+	var slot = _player.inventory.get_hotbar_item(index)
+	if slot == null or not _ItemTypes.is_armor(str(slot.id)):
+		return
+	_player.inventory.equip_armor(str(slot.id))
+	_ui("ui_click")
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
 
 
 func _on_slot_hover(index: int) -> void:
