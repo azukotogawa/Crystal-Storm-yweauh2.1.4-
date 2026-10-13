@@ -6,6 +6,7 @@ const _TopographicalMapConfig = preload("res://config/topographical_map_config.g
 const _WorldGenConfig = preload("res://config/world_gen_config.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd")
+const _TerrainLighting = preload("res://helpers/terrain_lighting.gd")
 
 var quality: _PerformanceQualityConfig = _PerformanceQualityConfig.create_default()
 ## Last effective quality after folding platform/debug policy (composition path).
@@ -111,6 +112,7 @@ func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler:
 		profiler.enabled = bool(eff.perf_profiler_enabled)
+	_TerrainLighting.apply_preset(int(eff.preset))
 	_applied = true
 	print("[Perf] Applied effective policy dist=%d caves=%s flow_cap=%d upload_budget=%dus (registry)" % [
 		eff.render_distance,
@@ -260,6 +262,7 @@ func _apply_to_scene() -> void:
 			var base: int = int(wg.vegetation_scatter_attempts)
 			veg_mgr.scatter_attempts = maxi(0, int(float(base) * quality.vegetation_scatter_multiplier))
 
+	_TerrainLighting.apply_preset(int(quality.preset))
 	_applied = true
 	var env_p := OS.get_environment("CRYSTALSTORM_PERF_PRESET").strip_edges().to_lower()
 	print("[Perf] Applied preset=%d safe=%s dist=%d crystal=%s flow_cap=%d upload_budget=%dus env=%s" % [

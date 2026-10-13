@@ -41,8 +41,8 @@ Persistence is `user://player_settings.json` (`PlayerSettings.DEFAULT_PATH`). `l
 | `colorblind_palette` | off | Alternate crystal colours. See below. |
 | `reduce_motion` | off | Disables shake, hit-stop, walk bob, creature bob, and the large shatter / spawn-death bursts. |
 | `tutorial_completed` | off | First-run overlay stays dismissed. |
-| `camera_cutaway_enabled` | on | Graphics tab. Cave cutaway on terrain and authored structures between the camera and the player. |
-| `camera_pitch_degrees` | `-35.264` | Iso pitch. Written when the camera tilt settles (Page Up / Page Down or middle-mouse release). Restored on boot and clamped to the camera limits. There is no settings-wide reset; Reset bindings leaves this key alone. |
+| `camera_cutaway_enabled` | on | Graphics tab. Cave cutaway between the camera and the player. |
+| `texture_blueprint` | off | Graphics tab and F6. Swaps textures for labelled placeholders. Export texture manifest writes `docs/texture_manifest.json`. |
 | `keybinds` | `{}` | Per-action event lists. Empty means the project defaults. |
 
 ### Keybinds

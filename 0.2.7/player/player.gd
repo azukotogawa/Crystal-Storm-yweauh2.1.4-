@@ -12,7 +12,7 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _Juice = preload("res://systems/juice.gd")
-const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
+const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -282,6 +282,7 @@ func _ready():
 	_PlayerBodyMesh.apply_to(player_mesh, ph, pr)
 	player_material = player_mesh.material_override as StandardMaterial3D
 	_mesh_rest_y = player_mesh.position.y
+	_ContactShadow.attach(self, 0.05, 1.6)
 
 	# Hint must sit on the surface slab. A hint of one layer is below every real
 	# column, and the old cave-floor query then returned a Y inside the top voxel.

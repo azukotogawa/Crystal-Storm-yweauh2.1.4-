@@ -1,0 +1,2157 @@
+{
+	"art_count": 155,
+	"missing_count": 3,
+	"placeholder_count": 13,
+	"slot_count": 171,
+	"slots": [
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/bridge.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/gate.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/ruin_pillar.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/stone_wall.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/town_hall.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/building/wood_wall.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd",
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "missing",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/art/crystal/amethyst.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://crystal/crystal_manager.gd"
+			],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/crystal/facet.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd",
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "missing",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/art/crystal/solar_crystal.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd",
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "missing",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/art/crystal/void_shard.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/bird.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/boar.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/corrupted_beast.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/crystal_mite.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/crystal_stag.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/entity/crystal_wisp.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/deer.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/farm_bomber.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://tools/capture_blueprint.gd"
+			],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/rabbit.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/shard_guard.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/thornling.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/entity/town_militia.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/crystal_shard.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/herb.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/shortbow.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://tools/capture_blueprint.gd"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/stone.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/stone_pick.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/wood.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://tools/capture_blueprint.gd"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/items/wooden_sword.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/particle/damage_number.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				16,
+				16
+			],
+			"path": "res://assets/art/particle/hit_flash.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				24,
+				24
+			],
+			"path": "res://assets/art/particle/shatter.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				48,
+				48
+			],
+			"path": "res://assets/art/particle/spawn_boss.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/particle/spawn_miniboss.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/art/particle/victory_glow.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/bush_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/bush_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/bush_s2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/crystal_bush_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/crystal_bush_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/crystal_bush_s2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/crystal_grass_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/crystal_grass_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/fern_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/fern_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/grass_tuft_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/grass_tuft_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/shard_tree_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/shard_tree_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/art/vegetation/shard_tree_s2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/tall_grass_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/tall_grass_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/tree_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/tree_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/tree_s2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/wildflower_s0.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "vegetation",
+			"expected_size": [
+				40,
+				40
+			],
+			"path": "res://assets/art/vegetation/wildflower_s1.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://helpers/voxel_prop_builder.gd"
+			],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				16,
+				16
+			],
+			"path": "res://assets/art/voxel_brick.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://assets/player/author_player.gd",
+				"script:res://player/player.gd"
+			],
+			"art": "art",
+			"category": "mobs",
+			"expected_size": [
+				32,
+				48
+			],
+			"path": "res://assets/player/player.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_bridge_authored.gd",
+				"script:res://scripts/verify_bridge_studio_capture.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/bridge/bridge_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/bridge/src/deck.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/bridge/src/endgrain.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/bridge/src/rail.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/bridge/src/rope.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_bridge_studio_capture.gd",
+				"script:res://scripts/verify_gate_authored.gd",
+				"script:res://scripts/verify_gate_studio_capture.gd",
+				"script:res://scripts/verify_ruin_pillar_studio_capture.gd",
+				"script:res://scripts/verify_town_hall_studio_capture.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/gate/gate_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/gate/src/endgrain.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/gate/src/iron.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/gate/src/rope.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/gate/src/timber.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_ruin_pillar_authored.gd",
+				"script:res://scripts/verify_ruin_pillar_studio_capture.gd",
+				"script:res://scripts/verify_town_hall_studio_capture.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/ruin_pillar/ruin_pillar_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/ruin_pillar/src/column.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/ruin_pillar/src/dirt.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/ruin_pillar/src/moss.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/ruin_pillar/src/rubble.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/stone_wall/src/capstone.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/stone_wall/src/dirt.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/stone_wall/src/fieldstone.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/stone_wall/src/moss.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_gate_studio_capture.gd",
+				"script:res://scripts/verify_ruin_pillar_studio_capture.gd",
+				"script:res://scripts/verify_stone_wall_authored.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/stone_wall/stone_wall_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/town_hall/src/endgrain.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/town_hall/src/plaster.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/town_hall/src/roof.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/town_hall/src/timber.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_town_hall_authored.gd",
+				"script:res://scripts/verify_town_hall_studio_capture.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/town_hall/town_hall_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/wood_wall/src/bark.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/wood_wall/src/dirt.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/wood_wall/src/endgrain.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				1024,
+				1024
+			],
+			"path": "res://assets/structures/wood_wall/src/rope.jpg",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://scripts/verify_bridge_studio_capture.gd",
+				"script:res://scripts/verify_gate_studio_capture.gd",
+				"script:res://scripts/verify_wood_wall_authored.gd",
+				"script:res://systems/game_visual_registry.gd",
+				"doc:res://read.txt"
+			],
+			"art": "art",
+			"category": "items",
+			"expected_size": [
+				256,
+				256
+			],
+			"path": "res://assets/structures/wood_wall/wood_wall_albedo.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://assets/tiles/batch01/author_batch01.gd",
+				"script:res://assets/tiles/batch02/author_batch02.gd",
+				"script:res://assets/tiles/batch03/author_batch03.gd",
+				"script:res://assets/tiles/batch04/author_batch04.gd",
+				"script:res://assets/tiles/batch05/author_batch05.gd",
+				"script:res://assets/tiles/batch06/author_batch06.gd",
+				"script:res://chunks/chunk_view.gd",
+				"script:res://helpers/voxel_types.gd"
+			],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				224,
+				320
+			],
+			"path": "res://assets/tiles/Cube.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				224,
+				320
+			],
+			"path": "res://assets/tiles/batch01/Cube_prebatch.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/beach.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/beach_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/dirt.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/dirt2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/dirt2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/dirt_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/grassland3.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/grassland3_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/hills.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/hills_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/ocean.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/ocean_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/river.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/river_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/stone.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/stone2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/stone2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/stone_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch01/tree_trunk.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch01/tree_trunk_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch02/grassland.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch02/grassland2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch02/grassland2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch02/grassland5.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch02/grassland5_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch02/grassland_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch02/hills2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch02/hills2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch03/farmland.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch03/farmland_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch03/grassland4.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch03/grassland4_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch03/town_path.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch03/town_path_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch04/basin.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch04/basin_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch04/mountain2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch04/mountain2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch04/snow.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch04/snow2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch04/snow2_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch04/snow_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch05/bush.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch05/bush_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch05/grass_tuft.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch05/grass_tuft_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch05/hills3.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch05/hills3_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch05/hills4.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch05/hills4_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch05/mountain3.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "res://assets/tiles/batch05/mountain3_2x2.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch06/crystal.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch06/crystal_scar.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch06/crystal_shard_ground.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/batch06/crystal_vein.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"resource:res://assets/tiles/new_tile_set.tres"
+			],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				2432,
+				256
+			],
+			"path": "res://assets/tiles/voxelsnew.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "terrain",
+			"expected_size": [
+				32,
+				32
+			],
+			"path": "res://assets/tiles/water_surface.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				651,
+				464
+			],
+			"path": "res://docs/visual/Screenshot 2026-08-21 111741.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				944,
+				311
+			],
+			"path": "res://docs/visual/old screenshot from prior edits (not current visual graphic) (1).png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				818,
+				460
+			],
+			"path": "res://docs/visual/old screenshot from prior edits (not current visual graphic) (2).png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				715,
+				330
+			],
+			"path": "res://docs/visual/old screenshot from prior edits (not current visual graphic) (3).png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				851,
+				507
+			],
+			"path": "res://docs/visual/old screenshot from prior edits (not current visual graphic) (4).png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				828,
+				459
+			],
+			"path": "res://docs/visual/old screenshot from prior edits (not current visual graphic) (5).png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				1204,
+				552
+			],
+			"path": "res://docs/visual/screenshot 1 ramp visual bugs.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				1181,
+				725
+			],
+			"path": "res://docs/visual/screenshot 2 terrain unloading during block breaking.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"config:res://export_presets.cfg"
+			],
+			"art": "art",
+			"category": "ui",
+			"expected_size": [
+				128,
+				128
+			],
+			"path": "res://icon.png",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/biome/forest",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/biome/highland",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/biome/marsh",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/biome/plains",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd"
+			],
+			"art": "placeholder",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/crystal/amethyst",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd"
+			],
+			"art": "placeholder",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/crystal/solar_crystal",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://systems/crystal_texture_generator.gd"
+			],
+			"art": "placeholder",
+			"category": "effects",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/crystal/void_shard",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ground/dirt",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ground/sand",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ground/stone",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ore/copper",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ore/crystal_ore",
+			"scale": 1.0
+		},
+		{
+			"animation_frames": 1,
+			"appears_in": [
+				"script:res://config/crystal_texture_gen_config.gd"
+			],
+			"art": "placeholder",
+			"category": "terrain",
+			"expected_size": [
+				64,
+				64
+			],
+			"path": "runtime://generated/ore/iron",
+			"scale": 1.0
+		}
+	]
+}

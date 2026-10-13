@@ -14,6 +14,7 @@ The project includes several developer-facing systems:
 - display/smoke/manual probes under `scripts/`.
 - `world_viewer.tscn` and `world/world_viewer.gd` for world-generation inspection.
 - `addons/crystal_texture_tools` for texture generation/editor workflows.
+- F6 texture blueprint (`systems/texture_blueprint.gd`) and Settings → Graphics → Export texture manifest. Headless export: `godot --headless --path . -s res://tools/export_texture_manifest.gd`. Windowed capture: `godot --path . -s res://tools/capture_blueprint.gd -- --out <path>` (headless skips the capture).
 
 ## Connected systems
 

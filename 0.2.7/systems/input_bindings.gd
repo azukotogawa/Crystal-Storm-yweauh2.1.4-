@@ -15,6 +15,7 @@ const ACTIONS: PackedStringArray = [
 	"toggle_map", "quick_save", "quick_load",
 	"pause",
 	"dev_chat_toggle", "debug_overlay_toggle", "bug_report",
+	"texture_blueprint_toggle",
 ]
 
 const LABELS := {
@@ -50,6 +51,7 @@ const LABELS := {
 	"dev_chat_toggle": "Dev chat",
 	"debug_overlay_toggle": "Debug overlay",
 	"bug_report": "Bug report",
+	"texture_blueprint_toggle": "Texture blueprint",
 }
 
 static var _captured: bool = false
