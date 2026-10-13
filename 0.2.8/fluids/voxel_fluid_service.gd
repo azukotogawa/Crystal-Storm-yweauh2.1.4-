@@ -95,6 +95,39 @@ func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
 					_dirty_cells[cell + dir] = true
 
 
+## Edit opened a column or turned it into water. Queue that cell and its
+## orthogonal neighbours, then take one local step. Already-wet neighbours
+## stay in the queue so the body keeps moving into connected empty cells
+## instead of stopping on the first one. Same-height ground is not wetted.
+func requeue_neighbors_on_edit(wx: int, wz: int) -> void:
+	var origin := Vector2i(wx, wz)
+	_queue_cell_and_neighbors(origin)
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = origin + dir
+		if _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER) or _is_natural_water_cell(n):
+			_queue_cell_and_neighbors(n)
+	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
+	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz if fluid_def else 10.0, 1.0)
+	var prev_cap: int = 0
+	if _water_engine:
+		prev_cap = int(_water_engine.max_cells_per_tick)
+		# One bounded step. The rest of a long trench continues on _process.
+		_water_engine.max_cells_per_tick = mini(maxi(prev_cap, 1), 32)
+	_interactive_local_center = origin
+	_interactive_local_radius = 3
+	_interactive_local_mode = true
+	_tick_water(step_dt)
+	_interactive_local_mode = false
+	if _water_engine:
+		_water_engine.max_cells_per_tick = prev_cap
+
+
+func _queue_cell_and_neighbors(pos: Vector2i) -> void:
+	_dirty_cells[pos] = true
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		_dirty_cells[pos + dir] = true
+
+
 func recompute_region_now(wx: int, wz: int, radius: int = 1, steps: int = 6) -> void:
 	mark_region_dirty(wx, wz, radius)
 	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
@@ -269,20 +302,38 @@ func _sources_in_subset(subset: Dictionary) -> Dictionary:
 
 func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 	var empty := {"wet": {}, "surface_y": 0.0, "wet_count": 0}
-	if sources.is_empty():
-		return empty
 	# Waterline is the source visual top (top of the river voxel), not an extra
 	# layer above ground. Indentations are columns whose visual top is below that.
+	# When the river has left the dirty set, overlay still in the subset carries
+	# the same waterline forward. It is not a natural source and is not stripped.
+	# A tick that still sees the river starts from the river only, so a puddle
+	# that is no longer connected can dry.
 	var surface_y := -1.0e9
+	var origins: Dictionary = {}
 	for key_variant in sources.keys():
 		var s: Vector2i = key_variant
+		origins[s] = true
 		surface_y = maxf(surface_y, _visual_top(s))
+	if origins.is_empty():
+		for key_variant in subset.keys():
+			var pos: Vector2i = key_variant
+			if not _is_cell_active(pos):
+				continue
+			if not _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
+				continue
+			var stored: float = _ChannelRegistry.get_runtime_surface_y(pos.x, pos.y)
+			if stored <= 0.01 or _visual_top(pos) >= stored - 0.001:
+				continue
+			origins[pos] = true
+			surface_y = maxf(surface_y, stored)
+	if origins.is_empty() or surface_y < -1.0e8:
+		return empty
 	var cap: int = 64
 	if _water_engine:
 		cap = maxi(int(_water_engine.max_cells_per_tick), 16)
 	var wet: Dictionary = {}
 	var q: Array = []
-	for key_variant in sources.keys():
+	for key_variant in origins.keys():
 		var s: Vector2i = key_variant
 		wet[s] = true
 		q.append(s)
@@ -301,13 +352,17 @@ func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 				continue
 			if _visual_top(n) >= surface_y - 0.001:
 				continue
+			# Already-full cells must not spend the new-cell budget, or the
+			# wave stops on the first empty column past a pool.
+			var already: bool = _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER)
 			wet[n] = true
 			q.append(n)
-			if not sources.has(n):
-				new_cells += 1
-				if new_cells >= cap:
-					qi = q.size()
-					break
+			if sources.has(n) or already:
+				continue
+			new_cells += 1
+			if new_cells >= cap:
+				qi = q.size()
+				break
 	return {"wet": wet, "surface_y": surface_y, "wet_count": wet.size()}
 
 

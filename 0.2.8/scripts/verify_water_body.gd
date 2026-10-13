@@ -107,6 +107,54 @@ func _run() -> void:
 	else:
 		print("OK dry dig stays dry")
 
+	# Open the far cell first, then the block between it and the river.
+	# The link becomes a water tile; the earlier hole must still fill, and
+	# the wave must continue into the next connected empty cell.
+	_ChannelRegistry.reset()
+	_TerrainEdits.reset()
+	for x3 in 12:
+		for z3 in 8:
+			heights[Vector2i(x3, z3)] = 10.0
+			tiles[Vector2i(x3, z3)] = _VoxelTypes.GRASSLAND
+	tiles[Vector2i(2, 2)] = _VoxelTypes.RIVER
+	query.test_base_heights = heights
+	query.test_tiles = tiles
+	_TerrainEdits.dig(4, 2, 1)
+	_TerrainEdits.dig(5, 2, 1)
+	_TerrainEdits.dig(6, 2, 1)
+	_TerrainEdits.dig(7, 2, 1)
+	svc.set("_dirty_cells", {})
+	svc.call("recompute_region_now", 4, 2, 2, 4)
+	if bool(svc.call("is_wet_column", 4, 2)):
+		_fail("cell two away must stay dry while the block between is solid")
+	else:
+		print("OK blocked trench stays dry")
+	tiles[Vector2i(3, 2)] = _VoxelTypes.RIVER
+	query.test_tiles = tiles
+	svc.call("requeue_neighbors_on_edit", 3, 2)
+	var spread_ok := true
+	for sx in [4, 5, 6]:
+		if not bool(svc.call("is_wet_column", sx, 2)):
+			_fail("opening the link must flood connected empty cell (%d, 2)" % sx)
+			spread_ok = false
+	if _ChannelRegistry.has_fluid(3, 3, _ChannelRegistry.FLUID_WATER):
+		_fail("requeue must not wet undug same-height ground")
+		spread_ok = false
+	if not bool(svc.call("is_persistent_source", 2, 2)):
+		_fail("river source lost after neighbour requeue")
+		spread_ok = false
+	if spread_ok:
+		print("OK water spread through the opened link")
+	# Frontier only: river is outside this dirty set. Overlay must carry the wave.
+	svc.set("_dirty_cells", {Vector2i(7, 2): true, Vector2i(6, 2): true})
+	svc.call("_tick_water", 0.1)
+	if not bool(svc.call("is_wet_column", 7, 2)):
+		_fail("water must keep spreading into the next connected empty cell")
+	elif _ChannelRegistry.has_fluid(2, 2, _ChannelRegistry.FLUID_WATER):
+		_fail("continuation must not store the river as overlay")
+	else:
+		print("OK continued spread past the first empty cells")
+
 	# Idle sleep / no world scan.
 	svc.set("_dirty_cells", {})
 	var t0 := Time.get_ticks_usec()

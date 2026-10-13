@@ -40,8 +40,11 @@ func _run() -> void:
 			if "_notify_water_reflow" in branch:
 				push_error("water-replace path must not region-flood neighbors")
 				failed = true
+			elif "requeue_neighbors_on_edit" not in branch and "_requeue_water_neighbors" not in branch:
+				push_error("water-replace must requeue neighbours so connected empty cells fill")
+				failed = true
 			else:
-				print("OK water-replace skips region reflow")
+				print("OK water-replace requeues neighbours without region reflow")
 	if "_clear_flood_water_block" not in src:
 		push_error("try_fill must clear replaced water blocks")
 		failed = true

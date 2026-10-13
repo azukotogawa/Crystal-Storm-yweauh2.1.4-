@@ -160,8 +160,9 @@ func try_dig(world_pos: Vector3) -> bool:
 	var player := get_tree().get_first_node_in_group("player")
 	if player and "inventory" in player:
 		inv = player.inventory
-	# Next to water: replace this block with water — do not dig a cavity and
-	# do not region-flood neighbors into water lids.
+	# Next to water: this column becomes a water tile (no cavity). Neighbours
+	# are re-queued so water keeps flowing into connected empty cells that
+	# were opened earlier. Same-height ground is not turned into a water lid.
 	if _has_adjacent_water(wx, wz):
 		_grant_dig_loot(wx, wz, inv)
 		if not _replace_cell_with_water_block(wx, wz):
@@ -171,6 +172,7 @@ func try_dig(world_pos: Vector3) -> bool:
 		if profiler_w and profiler_w.has_method("inc_frame"):
 			profiler_w.inc_frame("terrain_edits")
 		_invalidate_and_rebuild(wx, wz)
+		_requeue_water_neighbors(wx, wz)
 		terrain_edited.emit(wx, wz, &"water")
 		return true
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
@@ -1039,6 +1041,16 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 			chunk_manager.flush_rebuild_pending()
 	elif chunk_manager and chunk_manager.has_method("rebuild_chunk_at_world"):
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
+
+
+## Water-tile stamp did not dig. Wake the edited cell and its neighbours so
+## an earlier hole on the far side of this block still receives the body.
+func _requeue_water_neighbors(wx: int, wz: int) -> void:
+	if not is_inside_tree():
+		return
+	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
+	if fluid_svc and fluid_svc.has_method("requeue_neighbors_on_edit"):
+		fluid_svc.requeue_neighbors_on_edit(wx, wz)
 
 
 ## Dig/channel/build reshape water — mark fluid dirty; channels force immediate steps.
