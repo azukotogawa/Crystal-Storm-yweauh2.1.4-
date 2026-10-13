@@ -26,7 +26,7 @@ static func apply_preset(preset: int) -> void:
 
 
 static func ensure_globals() -> void:
-	var have := RenderingServer.global_shader_parameter_get_list()
+	var have := PackedStringArray()  # get_list is editor-only; see _add(
 	_add(have, &"terrain_ao_strength", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add(have, &"terrain_sun_dir", RenderingServer.GLOBAL_VAR_TYPE_VEC3, SUN)
 	_add(have, &"terrain_detail", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
@@ -34,6 +34,8 @@ static func ensure_globals() -> void:
 
 
 static func _add(have: PackedStringArray, param: StringName, type: int, default_value: Variant) -> void:
-	if have.has(String(param)):
+	if have.has(String(param)) or Engine.has_meta(&"sg_" + String(param)) \
+			or ProjectSettings.has_setting("shader_globals/" + String(param)):
 		return
+	Engine.set_meta(&"sg_" + String(param), true)  # shared registry: camera + terrain_lighting both register terrain_*
 	RenderingServer.global_shader_parameter_add(param, type, default_value)

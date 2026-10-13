@@ -345,7 +345,7 @@ func _ensure_cutaway_globals() -> void:
 	if _cutaway_globals_ready:
 		return
 	_cutaway_globals_ready = true
-	var have: PackedStringArray = RenderingServer.global_shader_parameter_get_list()
+	var have: PackedStringArray = PackedStringArray()  # get_list is editor-only; see _add_cutaway_global(
 	_add_cutaway_global(have, &"cutaway_enabled", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add_cutaway_global(have, &"cutaway_player", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
 	_add_cutaway_global(have, &"cutaway_camera", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
@@ -361,8 +361,10 @@ func _ensure_cutaway_globals() -> void:
 
 
 func _add_cutaway_global(have: PackedStringArray, param: StringName, type: int, default_value: Variant) -> void:
-	if have.has(String(param)):
+	if have.has(String(param)) or Engine.has_meta(&"sg_" + String(param)) \
+			or ProjectSettings.has_setting("shader_globals/" + String(param)):
 		return
+	Engine.set_meta(&"sg_" + String(param), true)  # shared registry: camera + terrain_lighting both register terrain_*
 	RenderingServer.global_shader_parameter_add(param, type, default_value)
 
 
