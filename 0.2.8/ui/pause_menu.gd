@@ -172,4 +172,7 @@ func _leave() -> void:
 
 
 func _quit() -> void:
+	var save = get_tree().get_first_node_in_group("save_game_service")
+	if save and save.has_method("save_or_drop_continue"):
+		save.save_or_drop_continue()
 	get_tree().quit()

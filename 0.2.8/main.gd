@@ -16,9 +16,14 @@ const _StartupTotal = preload("res://systems/startup_total_profiler.gd")
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 
+var _quit_save_started: bool = false
+
 
 func _ready() -> void:
 	add_to_group("game")
+	# Window close is handled in _notification so an alive quit can finish writing.
+	if get_tree():
+		get_tree().set_auto_accept_quit(false)
 	_ensure_live_inspector()
 	if _StartupTotal.is_enabled():
 		if _StartupTotal.now_us() <= 0:
@@ -86,10 +91,37 @@ func _apply_catalog_launch() -> void:
 	print("[Main] Catalog launch world=%s seed=%s" % [str(launch.get("name", "")), str(launch.get("seed", ""))])
 
 
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_WM_CLOSE_REQUEST or _quit_save_started:
+		return
+	_quit_save_started = true
+	_save_quit_while_alive()
+	var tree := get_tree()
+	if tree:
+		tree.quit()
+
+
+func _exit_tree() -> void:
+	var tree := get_tree()
+	if tree:
+		tree.set_auto_accept_quit(true)
+
+
+func _save_quit_while_alive() -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	var save = tree.get_first_node_in_group("save_game_service")
+	if save and save.has_method("save_or_drop_continue"):
+		save.save_or_drop_continue()
+
+
 func return_to_world_select() -> void:
 	var save = get_tree().get_first_node_in_group("save_game_service")
 	var world_id := str(_WorldManager.active_world_id)
-	if save and world_id != "" and save.has_method("save_world_id"):
+	if save and save.has_method("save_or_drop_continue"):
+		save.save_or_drop_continue()
+	elif save and world_id != "" and save.has_method("save_world_id"):
 		save.save_world_id(world_id, true)
 	_WorldManager.request_return_to_select()
 	var bake = load("res://world/world_bake_service.gd").get_active()

@@ -27,12 +27,21 @@ class StubPlayer extends Node:
 		return {
 			"voxel_position": [voxel_position.x, voxel_position.y, voxel_position.z],
 			"health": health,
+			"inventory": {"slots": [{"id": "stone", "count": 3}], "armor": ""},
 		}
 
 	func apply_save_state(data: Dictionary) -> void:
 		var pos: Array = data.get("voxel_position", [0.0, 0.0, 0.0])
 		voxel_position = Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 		health = float(data.get("health", health))
+
+
+class StubEntities extends Node:
+	func _enter_tree() -> void:
+		add_to_group("entity_manager")
+
+	func export_entities() -> Array:
+		return [{"brain_id": "rabbit", "health": 4.0, "world_pos": [3, 5]}]
 
 
 func _init() -> void:
@@ -112,6 +121,55 @@ func _run() -> void:
 		else:
 			print("OK world save/load overlays + player")
 
+	# Quit-while-alive writes the Continue file the main menu reads.
+	var entities := StubEntities.new()
+	root.add_child(entities)
+	await process_frame
+	player.health = 55.0
+	player.voxel_position = Vector3(18.0, 6.0, 3.0)
+	if svc.save_alive_session(true) != OK:
+		_fail("save_alive_session failed")
+	else:
+		var meta: Dictionary = _SaveGameService.peek_continue()
+		if meta.is_empty():
+			_fail("peek_continue empty after alive save")
+		elif str(meta.get("world_id", "")) != WORLD_ID:
+			_fail("continue world_id mismatch %s" % str(meta.get("world_id", "")))
+		elif not is_equal_approx(float(meta.get("health", 0.0)), 55.0):
+			_fail("continue health mismatch")
+		elif not _SaveGameService.has_continue():
+			_fail("has_continue false after alive save")
+		else:
+			print("OK continue file after alive quit")
+		var raw = JSON.parse_string(FileAccess.get_file_as_string(_SaveGameService.continue_save_path()))
+		if raw is Dictionary:
+			var blob: Dictionary = raw
+			var player_blob: Dictionary = blob.get("player", {})
+			var pos: Array = player_blob.get("voxel_position", [])
+			if pos.size() < 3 or not is_equal_approx(float(pos[0]), 18.0):
+				_fail("continue player position missing")
+			var inv: Dictionary = player_blob.get("inventory", {})
+			var slots: Array = inv.get("slots", [])
+			if slots.is_empty() or str(slots[0].get("id", "")) != "stone":
+				_fail("continue inventory missing")
+			var ws_blob: Variant = blob.get("world_state", {})
+			if not ws_blob is Dictionary or (ws_blob as Dictionary).get("height_delta", {}).is_empty():
+				_fail("continue world_state missing block edits")
+			if not blob.has("entities"):
+				_fail("continue file missing entities array")
+			elif not blob.get("entities") is Array:
+				_fail("continue entities must be an array")
+		else:
+			_fail("continue file did not parse")
+
+	# Quitting after death removes Continue. The run is over.
+	player.health = 0.0
+	svc.save_or_drop_continue()
+	if not _SaveGameService.peek_continue().is_empty():
+		_fail("dead quit must drop continue")
+	else:
+		print("OK dead quit drops continue")
+
 	_WorldManager.request_return_to_select()
 	if _WorldManager.active_world_id != "" or _WorldManager.pending_resume:
 		_fail("request_return_to_select must clear active_world_id/pending_resume")
@@ -131,8 +189,15 @@ func _run() -> void:
 func _cleanup(svc: Node, player: Node, path: String) -> void:
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var continue_path := _SaveGameService.continue_save_path()
+	if FileAccess.file_exists(continue_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(continue_path))
+	_SaveGameService.pending_continue = false
 	if is_instance_valid(player):
 		player.queue_free()
+	var entities = root.get_first_node_in_group("entity_manager") if root else null
+	if entities and is_instance_valid(entities):
+		entities.queue_free()
 	if is_instance_valid(svc):
 		svc.queue_free()
 	_WorldManager.active_world_id = ""

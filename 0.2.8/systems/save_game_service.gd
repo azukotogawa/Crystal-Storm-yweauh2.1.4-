@@ -33,6 +33,10 @@ const STAGE_COMMIT := "commit"
 const STAGE_ROLLBACK := "rollback"
 
 static var pending_load_slot: int = -1
+## Main-menu Continue loads this file after the next main-scene boot.
+static var pending_continue: bool = false
+
+const CONTINUE_FILE_NAME := "continue.json"
 
 @export var config: Resource
 
@@ -95,6 +99,13 @@ func _post_boot() -> void:
 		await get_tree().process_frame
 		frames += 1
 	var WM = load("res://systems/world_manager.gd")
+	if pending_continue:
+		pending_continue = false
+		if FileAccess.file_exists(continue_save_path()):
+			if WM:
+				WM.pending_resume = false
+			await load_path(continue_save_path())
+			return
 	if WM and bool(WM.pending_resume) and str(WM.active_world_id) != "":
 		WM.pending_resume = false
 		await load_world_id(str(WM.active_world_id))
@@ -134,6 +145,53 @@ func _autosave_now() -> void:
 		save_slot(_cfg().default_slot, true)
 
 
+static func continue_save_path() -> String:
+	return "user://saves/".path_join(CONTINUE_FILE_NAME)
+
+
+## Header for the main menu. Empty when missing, corrupt, or not an alive quit.
+static func peek_continue() -> Dictionary:
+	var path := continue_save_path()
+	if not FileAccess.file_exists(path):
+		return {}
+	var text := FileAccess.get_file_as_string(path)
+	if text.strip_edges().is_empty():
+		return {}
+	var parsed = JSON.parse_string(text)
+	var check: Dictionary = _SaveSchema.validate_and_migrate(parsed)
+	if not bool(check.get("ok", false)):
+		return {}
+	var data: Dictionary = check.get("data", {})
+	if not bool(data.get("continue_alive", false)):
+		return {}
+	var game_v: Variant = data.get("game", {})
+	if game_v is Dictionary and int((game_v as Dictionary).get("run_state", 0)) != 0:
+		return {}
+	var player_v: Variant = data.get("player", {})
+	if not player_v is Dictionary:
+		return {}
+	var player: Dictionary = player_v
+	if not player.has("voxel_position"):
+		return {}
+	if not player.has("health") or float(player.get("health", 0.0)) <= 0.0:
+		return {}
+	return {
+		"world_id": str(data.get("world_id", "")),
+		"world_seed": int(data.get("world_seed", 0)),
+		"health": float(player.get("health", 0.0)),
+	}
+
+
+static func has_continue() -> bool:
+	return not peek_continue().is_empty()
+
+
+static func clear_continue() -> void:
+	var path := continue_save_path()
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+
+
 static func world_save_path(world_id: String) -> String:
 	if world_id.strip_edges().is_empty():
 		return ""
@@ -155,6 +213,73 @@ func is_transaction_active() -> bool:
 
 func get_transaction_stage() -> String:
 	return _transaction_stage
+
+
+## True while the run is still in progress and the player has health remaining.
+func is_session_alive() -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	var player = tree.get_first_node_in_group("player")
+	if player == null:
+		return false
+	if "health" in player and float(player.health) <= 0.0:
+		return false
+	var gm = tree.get_first_node_in_group("game_manager")
+	if gm != null and gm.has_method("is_run_playing") and not bool(gm.is_run_playing()):
+		return false
+	return true
+
+
+## Quit / leave-world hook. An in-progress living player becomes the Continue file.
+## A dead or finished run drops Continue and still updates the per-world file.
+func save_or_drop_continue() -> void:
+	if is_session_alive():
+		save_alive_session(true)
+		return
+	if get_tree() == null or get_tree().get_first_node_in_group("player") == null:
+		return
+	clear_continue()
+	var WM = load("res://systems/world_manager.gd")
+	var world_id := str(WM.active_world_id) if WM else ""
+	if world_id != "":
+		save_world_id(world_id, true)
+
+
+func save_alive_session(silent: bool = true) -> Error:
+	if _transaction_active:
+		return ERR_BUSY
+	if not is_session_alive():
+		return ERR_UNAVAILABLE
+	var WM = load("res://systems/world_manager.gd")
+	var world_id := str(WM.active_world_id) if WM else ""
+	var snapshot := collect_snapshot()
+	snapshot["world_id"] = world_id
+	snapshot["continue_alive"] = true
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("user://saves"))
+	var err := _write_sealed_snapshot(continue_save_path(), snapshot, silent, "continue")
+	if err != OK:
+		return err
+	if world_id != "":
+		return _write_sealed_snapshot(world_save_path(world_id), snapshot, true, world_id)
+	return OK
+
+
+func _write_sealed_snapshot(path: String, snapshot: Dictionary, silent: bool, label: String) -> Error:
+	var check: Dictionary = _SaveSchema.validate_and_migrate(_SaveSchema.attach_integrity(snapshot))
+	if not bool(check.get("ok", false)):
+		save_failed.emit(-1, "validate_failed_%s" % str(check.get("reason", "?")))
+		return ERR_INVALID_DATA
+	var sealed: Dictionary = _SaveSchema.attach_integrity(check.get("data", {}))
+	var err := _write_text_atomic(path, JSON.stringify(sealed, "\t"))
+	if err == OK:
+		_last_save_label = path
+		save_completed.emit(-1, path)
+		if not silent:
+			print("[SaveGame] Saved %s -> %s" % [label, path])
+	else:
+		save_failed.emit(-1, "write_error_%d" % err)
+	return err
 
 
 func save_world_id(world_id: String, silent: bool = false) -> Error:

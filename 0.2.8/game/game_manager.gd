@@ -329,5 +329,9 @@ func _set_lost(reason: String = "") -> void:
 		print("Run lost: ", reason)
 
 
+func is_run_playing() -> bool:
+	return run_state == RunState.PLAYING
+
+
 func restart_run() -> void:
 	get_tree().reload_current_scene()

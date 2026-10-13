@@ -2,6 +2,7 @@ extends Control
 ## Player-facing shell: MAIN MENU → WORLD SELECT → NEW WORLD → GAME, plus SETTINGS.
 
 const _WorldManager = preload("res://systems/world_manager.gd")
+const _SaveGame = preload("res://systems/save_game_service.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _SettingsMenu = preload("res://ui/settings_menu.gd")
@@ -158,6 +159,13 @@ func _build_main() -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 16)
 	box.add_child(spacer)
+	var continue_b := _btn("Continue", _on_continue)
+	continue_b.name = "Continue"
+	var can_continue := _SaveGame.has_continue()
+	continue_b.disabled = not can_continue
+	if not can_continue:
+		continue_b.add_theme_color_override("font_color", COL_MUTED)
+		continue_b.add_theme_color_override("font_disabled_color", COL_MUTED)
 	var play := _btn("Play", func(): _show(Screen.WORLD_SELECT))
 	play.name = "Play"
 	var settings := _btn("Settings", func(): _show(Screen.SETTINGS))
@@ -168,6 +176,7 @@ func _build_main() -> void:
 	how.name = "HowToPlay"
 	var controls := _btn("Controls", func(): _TutorialOverlay.open_controls(get_tree()))
 	controls.name = "Controls"
+	box.add_child(continue_b)
 	box.add_child(play)
 	box.add_child(settings)
 	box.add_child(how)
@@ -256,6 +265,30 @@ func _on_select_world(world_id: String) -> void:
 		return
 	_set_status("%s  ·  seed %d  ·  %s" % [row.get("name", ""), int(row.get("seed", 0)), row.get("progress", "")])
 	_refresh_world_list()
+
+
+func _on_continue() -> void:
+	var meta: Dictionary = _SaveGame.peek_continue()
+	if meta.is_empty():
+		return
+	var world_id := str(meta.get("world_id", ""))
+	var seed := int(meta.get("world_seed", 12349))
+	if world_id != "" and not _WorldManager.get_world(world_id).is_empty():
+		var loaded: Dictionary = _WorldManager.load_world(world_id)
+		if not bool(loaded.get("ok", false)):
+			return
+	else:
+		_WorldManager.pending_launch = {
+			"id": world_id,
+			"seed": seed,
+			"name": "Continue",
+		}
+		_WorldManager.active_world_id = world_id
+		_WorldManager.launched_from_catalog = world_id != ""
+	# Continue file is the alive-quit snapshot. Do not also apply the world file.
+	_WorldManager.pending_resume = false
+	_SaveGame.pending_continue = true
+	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
 func _on_play_selected() -> void:
