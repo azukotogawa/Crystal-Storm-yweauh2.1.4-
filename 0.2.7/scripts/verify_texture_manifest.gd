@@ -4,7 +4,7 @@ extends SceneTree
 const _Manifest = preload("res://tools/texture_manifest.gd")
 
 const _FIELDS: PackedStringArray = [
-	"path", "expected_size", "scale", "animation_frames", "appears_in", "category", "art",
+	"path", "expected_size", "scale", "animation_frames", "appears_in", "category", "art", "batch1",
 ]
 
 
@@ -22,8 +22,8 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	if _Manifest.classify_art("res://assets/art/crystal/amethyst.png") != "missing":
-		_fail("amethyst.png should be missing")
+	if _Manifest.classify_art("res://assets/art/crystal/amethyst.png") != "art":
+		_fail("amethyst.png should be art")
 	if _Manifest.classify_art("res://assets/tiles/Cube.png") != "art":
 		_fail("Cube.png should be art")
 	if _Manifest.classify_art("runtime://generated/crystal/amethyst") != "placeholder":
@@ -50,6 +50,8 @@ func _run() -> void:
 	var missing_n := 0
 	var placeholder_n := 0
 	var saw_amethyst := false
+	var saw_void := false
+	var saw_solar := false
 	var saw_runtime := false
 	var saw_cube := false
 	for slot in slots:
@@ -68,6 +70,16 @@ func _run() -> void:
 		var art := str(slot.get("art", ""))
 		if art != "art" and art != "missing" and art != "placeholder":
 			_fail("bad art flag %s" % art)
+		var batch = slot.get("batch1", null)
+		if not (batch is Dictionary):
+			_fail("batch1 missing on %s" % slot.get("path", "?"))
+		else:
+			var batch_status := str(batch.get("status", ""))
+			if batch_status != "present" and batch_status != "absent":
+				_fail("bad batch1 status on %s" % slot.get("path", "?"))
+			var batch_size = batch.get("size", [])
+			if not (batch_size is Array) or batch_size.size() != 2:
+				_fail("batch1 size invalid on %s" % slot.get("path", "?"))
 		var path := str(slot.get("path", ""))
 		if art == "art":
 			art_n += 1
@@ -79,14 +91,25 @@ func _run() -> void:
 				_fail("existing file marked missing %s" % path)
 		elif art == "placeholder":
 			placeholder_n += 1
-		if path == "res://assets/art/crystal/amethyst.png" and art == "missing":
+		if path == "res://assets/art/crystal/amethyst.png" and art == "art":
 			saw_amethyst = true
+			var crystal_size = slot.get("expected_size", [])
+			if int(crystal_size[0]) != 64 or int(crystal_size[1]) != 64:
+				_fail("amethyst size want 64x64")
+		if path == "res://assets/art/crystal/void_shard.png" and art == "art":
+			saw_void = true
+		if path == "res://assets/art/crystal/solar_crystal.png" and art == "art":
+			saw_solar = true
 		if path == "runtime://generated/crystal/amethyst" and art == "placeholder":
 			saw_runtime = true
 		if path == "res://assets/tiles/Cube.png" and art == "art":
 			saw_cube = true
 	if not saw_amethyst:
-		_fail("amethyst missing entry absent")
+		_fail("amethyst art entry absent")
+	if not saw_void:
+		_fail("void_shard art entry absent")
+	if not saw_solar:
+		_fail("solar_crystal art entry absent")
 	if not saw_runtime:
 		_fail("runtime crystal placeholder absent")
 	if not saw_cube:

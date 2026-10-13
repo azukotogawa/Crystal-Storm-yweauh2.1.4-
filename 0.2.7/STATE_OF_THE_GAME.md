@@ -152,6 +152,12 @@ Local single-player. Save schema reserves an authority field and does not sync a
 | `helpers/voxel_prop_builder.gd` | Box-stack creatures and plants. `unit()` is `voxel_scale * 0.62` | Procedural, already on the voxel knob |
 | `helpers/crystal_cluster_mesh.gd` | Crystal facet mesh | Procedural, no albedo texture |
 
+### Texture batch 1
+
+Settings > Graphics **Texture set** is Original (default) or Batch 1, stored as `texture_set` in player settings. `helpers/texture_set.gd` is the only remap: `res://assets/art/X` becomes `res://assets/art_batch1/X` when Batch 1 is on and the file exists. Item, vegetation, and mob sprites load through it. F6 blueprint still sits on top of the active set.
+
+`tools/gen_texture_batch.gd` writes 69 batch PNGs (items 13, vegetation 22, mobs 12, plus 22 corrupted vegetation variants) and the three missing crystal icons at `assets/art/crystal/` (`amethyst`, `void_shard`, `solar_crystal`, 64×64). Existing files under `assets/art/` are not overwritten. On Batch 1, a corrupted plant cell uses `corrupted_<original plant>` instead of the crystal-plant swap, including when voxel vegetation is on. `player.png` and the structure albedo plates are not in this batch. See `docs/TEXTURE_BATCH1.md`.
+
 Scale outliers that were **not** the character body, and are still true:
 
 - Orthographic camera size 24 against a 2-unit voxel. A person at 3.2 units is about 13% of the frame height. Readable relative to a block, still small in the wide iso view. Changing `size` would reshoot every camera probe; left alone on purpose.

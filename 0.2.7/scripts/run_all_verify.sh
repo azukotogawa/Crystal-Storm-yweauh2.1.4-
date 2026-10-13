@@ -23,6 +23,8 @@ SUITES=(
 	"res://scripts/verify_lighting_ao.gd"
 	"res://scripts/verify_texture_blueprint.gd"
 	"res://scripts/verify_texture_manifest.gd"
+	"res://scripts/verify_texture_batch.gd"
+	"res://scripts/verify_texture_batch_live.gd"
 	"res://scripts/verify_bootstrap_no_deadlock.gd"
 	"res://scripts/verify_composition_root.gd"
 	"res://scripts/verify_composition_boot.gd"
@@ -179,6 +181,7 @@ SUITES=(
 
 # Main-scene probes SIGKILL on OK to avoid Godot teardown abort(134); match terminal marker not exit code.
 declare -A ABRUPT_OK_MARKER=(
+	["res://scripts/verify_texture_batch_live.gd"]="All texture batch live tests OK"
 	["res://scripts/verify_bootstrap_no_deadlock.gd"]="All bootstrap deadlock tests OK"
 	["res://scripts/verify_main_runtime_health.gd"]="All main runtime health tests OK"
 	["res://scripts/verify_crystal_live_spread.gd"]="All crystal live spread tests OK"

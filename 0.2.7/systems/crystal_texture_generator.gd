@@ -14,6 +14,7 @@ extends Node
 const _GenConfig = preload("res://config/crystal_texture_gen_config.gd")
 const _Palette = preload("res://config/crystal_texture_palette.gd")
 const _PaletteJsonIO = preload("res://systems/texture_palette_json_io.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 
 enum Category {
 	CRYSTAL,
@@ -32,6 +33,8 @@ signal sprite_sheet_exported(path: String, metadata: Dictionary)
 var config: _GenConfig = _GenConfig.create_default()
 
 var _noise_cache: Dictionary = {}  # String -> FastNoiseLite
+## Set by the last authored load so generate_texture can stamp the resolved path.
+var _last_authored_path: String = ""
 
 
 func _ready() -> void:
@@ -88,7 +91,12 @@ func generate_texture(
 	if _trace_enabled:
 		_trace_generate_texture_count += 1
 	var image := generate_image(category, variant_id, size, seed_offset)
+	var authored_path := _last_authored_path
+	_last_authored_path = ""
 	var tex := ImageTexture.create_from_image(image)
+	if not authored_path.is_empty():
+		tex.set_meta("cs_art_path", authored_path)
+		tex.set_meta("cs_texture_set", _TextureSet.current())
 	tex.set_meta("category", category)
 	tex.set_meta("variant_id", variant_id)
 	tex.set_meta("seed", config.master_seed + seed_offset)
@@ -187,7 +195,13 @@ func generate_game_visual_bundle() -> Dictionary:
 func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
 	var authored := _load_authored_image("items", str(item_id), size)
 	if authored != null:
-		return ImageTexture.create_from_image(authored)
+		var authored_path := _last_authored_path
+		_last_authored_path = ""
+		var icon := ImageTexture.create_from_image(authored)
+		if not authored_path.is_empty():
+			icon.set_meta("cs_art_path", authored_path)
+			icon.set_meta("cs_texture_set", _TextureSet.current())
+		return icon
 	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
 	var px := maxi(size / 8, 2)
@@ -238,22 +252,19 @@ func _authored_folder(category: Category) -> String:
 			return ""
 
 
-## On-disk scout bricks win over the procedural fill. Missing files keep the old painter.
+## On-disk art wins over the procedural fill. The texture set resolver picks Batch 1 when it exists.
 func _load_authored_image(folder: String, variant_id: String, size: int) -> Image:
+	_last_authored_path = ""
 	if folder.is_empty() or variant_id.is_empty():
 		return null
 	var path := "res://assets/art/%s/%s.png" % [folder, variant_id]
-	var image: Image = null
-	if ResourceLoader.exists(path):
-		var tex := load(path) as Texture2D
-		if tex != null:
-			image = tex.get_image()
-	if image == null:
-		var abs_path := ProjectSettings.globalize_path(path)
-		if FileAccess.file_exists(abs_path):
-			image = Image.load_from_file(abs_path)
+	var tex := _TextureSet.resolve(path)
+	if tex == null:
+		return null
+	var image := tex.get_image()
 	if image == null or image.is_empty():
 		return null
+	_last_authored_path = str(tex.get_meta("cs_art_path", path))
 	if size > 0 and (image.get_width() != size or image.get_height() != size):
 		image = image.duplicate()
 		image.resize(size, size, Image.INTERPOLATE_NEAREST)

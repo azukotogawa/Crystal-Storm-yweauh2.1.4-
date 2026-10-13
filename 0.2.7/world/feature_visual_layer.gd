@@ -12,6 +12,7 @@ const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 
 var chunk_manager: ChunkManager
 var world: InfiniteNoiseWorld
@@ -305,9 +306,9 @@ func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: 
 	var sprite: Sprite3D = anchor.get_node_or_null("Billboard") as Sprite3D
 	if sprite == null:
 		return
-	var tex := _billboard_texture(str(plant_id), stage)
+	var tex := _plant_texture(plant_id, stage, world_pos.x, world_pos.y, true)
 	anchor.position = _anchor_pos(col_x, col_z, _sprite_height_offset_for_plant(plant_id, stage, tex))
-	_apply_plant_texture(sprite, plant_id, stage)
+	_apply_plant_texture(sprite, plant_id, stage, world_pos.x, world_pos.y, true)
 
 
 func _populate_chunk(coord: Vector2i) -> void:
@@ -517,14 +518,15 @@ func _make_vegetation_anchor(
 ) -> Node3D:
 	var anchor := Node3D.new()
 	anchor.name = "Veg_%d_%d" % [wx, wz]
-	if _use_voxel_vegetation(wx, wz, plant_id):
+	var corrupt_tex := _corrupted_texture(wx, wz, plant_id, stage)
+	if corrupt_tex == null and _use_voxel_vegetation(wx, wz, plant_id):
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
 		var biome_name := _biome_name_at(wx, wz)
 		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage, Color.WHITE, biome_name)
 		prop.name = "VoxelProp"
 		anchor.add_child(prop)
 		return anchor
-	var tex := _billboard_texture(str(plant_id), stage)
+	var tex := corrupt_tex if corrupt_tex != null else _billboard_texture(str(plant_id), stage)
 	if tex == null:
 		anchor.queue_free()
 		return null
@@ -532,7 +534,7 @@ func _make_vegetation_anchor(
 	var sprite := Sprite3D.new()
 	sprite.name = "Billboard"
 	anchor.add_child(sprite)
-	_apply_plant_texture(sprite, plant_id, stage)
+	_apply_plant_texture(sprite, plant_id, stage, wx, wz, true)
 	return anchor
 
 
@@ -568,11 +570,69 @@ func _make_building_anchor(
 	return anchor
 
 
-func _apply_plant_texture(sprite: Sprite3D, plant_id: StringName, stage: int) -> void:
+func _apply_plant_texture(
+	sprite: Sprite3D,
+	plant_id: StringName,
+	stage: int,
+	wx: int = 0,
+	wz: int = 0,
+	have_cell: bool = false
+) -> void:
 	if sprite == null or _registry == null:
 		return
-	var tex: Texture2D = _billboard_texture(str(plant_id), stage)
+	var tex: Texture2D = _plant_texture(plant_id, stage, wx, wz, have_cell)
 	_apply_sprite(sprite, tex, -1.0)
+
+
+## Batch 1 shows the corrupted sprite on a crystal-infected cell. Original keeps the crystal-plant swap.
+func _plant_texture(
+	plant_id: StringName,
+	stage: int,
+	wx: int = 0,
+	wz: int = 0,
+	have_cell: bool = false
+) -> Texture2D:
+	if have_cell:
+		var corrupt := _corrupted_texture(wx, wz, plant_id, stage)
+		if corrupt != null:
+			return corrupt
+	return _billboard_texture(str(plant_id), stage)
+
+
+func _corrupted_texture(wx: int, wz: int, plant_id: StringName, stage: int) -> Texture2D:
+	if not _TextureSet.is_batch1():
+		return null
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if not bool(feat.get("corrupt", false)):
+		return null
+	var src := str(feat.get("original_plant", "")).strip_edges()
+	if src.is_empty():
+		src = str(plant_id)
+	var st := int(feat.get("original_stage", stage))
+	var paths: Array[String] = [
+		"res://assets/art/vegetation/corrupted_%s_s%d.png" % [src, st],
+		"res://assets/art/vegetation/corrupted_%s_s%d.png" % [src, stage],
+		"res://assets/art/vegetation/corrupted_%s_s0.png" % src,
+		"res://assets/art/vegetation/corrupted_%s_s%d.png" % [str(plant_id), stage],
+	]
+	for path in paths:
+		var tex := _TextureSet.resolve(path)
+		if tex != null:
+			return tex
+	return null
+
+
+## Rebuild plant anchors so a texture-set change swaps billboards immediately.
+func refresh_texture_set() -> void:
+	var keys: Array = _nodes_by_cell.keys()
+	for key in keys:
+		if not (key is Vector2i):
+			continue
+		var cell: Vector2i = key
+		var feat: Dictionary = _FeatureRegistry.get_feature(cell.x, cell.y)
+		if feat.is_empty() or not feat.has("plant_id"):
+			continue
+		refresh_cell(cell.x, cell.y)
 
 
 func _apply_building_mesh(

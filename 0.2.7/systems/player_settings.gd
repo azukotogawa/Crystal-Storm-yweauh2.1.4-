@@ -31,6 +31,8 @@ static var resolution: String = "1280x720"
 static var camera_cutaway_enabled: bool = true
 ## Debug placeholders for every texture. Default off. F6 toggles it.
 static var texture_blueprint: bool = false
+## Graphics texture set. "original" or "batch1". Default original.
+static var texture_set: String = "original"
 static var keybinds: Dictionary = {}
 ## Times `_apply_display_now` was entered. Headless still counts; it does not touch the window.
 static var display_apply_count: int = 0
@@ -40,6 +42,10 @@ static var runtime_applied: bool = false
 
 static func reset_path() -> void:
 	settings_path = DEFAULT_PATH
+
+
+static func _normalize_texture_set(value: String) -> String:
+	return "batch1" if value == "batch1" else "original"
 
 
 static func defaults() -> Dictionary:
@@ -66,6 +72,7 @@ static func defaults() -> Dictionary:
 		"resolution": "1280x720",
 		"camera_cutaway_enabled": true,
 		"texture_blueprint": false,
+		"texture_set": "original",
 		"keybinds": {},
 	}
 
@@ -119,6 +126,7 @@ static func load_settings() -> Dictionary:
 		out["camera_cutaway_enabled"] = bool(data.camera_cutaway_enabled)
 	if data.has("texture_blueprint"):
 		out["texture_blueprint"] = bool(data.texture_blueprint)
+	out["texture_set"] = _normalize_texture_set(str(data.get("texture_set", "original")))
 	if data.has("keybinds") and data.keybinds is Dictionary:
 		out["keybinds"] = data.keybinds
 	_sync_runtime(out)
@@ -160,6 +168,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	resolution = str(data.get("resolution", "1280x720"))
 	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
 	texture_blueprint = bool(data.get("texture_blueprint", false))
+	texture_set = _normalize_texture_set(str(data.get("texture_set", "original")))
 	var binds = data.get("keybinds", {})
 	if binds is Dictionary:
 		keybinds = (binds as Dictionary).duplicate(true)
