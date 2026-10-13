@@ -1,5 +1,5 @@
 extends SceneTree
-## P1 regression: concave diagonal gap emits textured interior floor at cell surface.
+## Two-layer L-gap keeps a floor at the gap surface and no diagonal prism.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -18,13 +18,6 @@ func _init() -> void:
 
 func _run() -> void:
 	var failed := false
-
-	var cm_src := (load("res://chunks/chunk_manager.gd") as GDScript).source_code
-	if "_append_concave_interior_floor" not in cm_src:
-		push_error("chunk_manager must emit concave interior floor tops")
-		failed = true
-	else:
-		print("OK concave interior floor helper present")
 
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var old_chance: int = _TerrainRamps.placement_chance
@@ -63,14 +56,14 @@ func _run() -> void:
 		elif fc == FACE_TOP and is_equal_approx(float(q.get("y", -1)), gap_h):
 			floor_tops += 1
 
-	if diagonal != 1:
-		push_error("L-step gap must emit one diagonal prism, got %d" % diagonal)
+	if diagonal != 0:
+		push_error("L-step gap must not emit a diagonal prism, got %d" % diagonal)
 		failed = true
 	else:
-		print("OK diagonal prism at (%d,%d)" % [gx, gz])
+		print("OK no diagonal prism at (%d,%d)" % [gx, gz])
 
-	if floor_tops < 2:
-		push_error("gap floor needs >=2 TOP faces at y=%.2f, got %d" % [gap_h, floor_tops])
+	if floor_tops < 1:
+		push_error("gap floor needs FACE_TOP at y=%.2f, got %d" % [gap_h, floor_tops])
 		failed = true
 	else:
 		print("OK interior floor tops=%d at y=%.2f" % [floor_tops, gap_h])

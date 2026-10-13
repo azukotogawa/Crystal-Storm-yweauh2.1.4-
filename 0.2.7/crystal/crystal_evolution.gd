@@ -18,6 +18,17 @@ func configure(table: Array) -> void:
 			unlock_table.append(entry)
 	if unlock_table.is_empty():
 		unlock_table = _builtin_unlocks()
+	_apply_start_unlocks()
+
+
+func _apply_start_unlocks() -> void:
+	for entry in unlock_table:
+		var def: _AbsorptionUnlockDef = entry
+		if not def.unlock_at_start:
+			continue
+		if def.enemy_id in unlocked_enemies:
+			continue
+		unlocked_enemies.append(def.enemy_id)
 
 
 func record_absorption(source_id: StringName, amount: int = 1) -> Dictionary:
@@ -66,10 +77,14 @@ static func _builtin_unlocks() -> Array:
 	out.append(_row(&"farmland", "Farmland", 2, &"farm_bomber", 6.0, 2))
 	out.append(_row(&"tree", "Trees", 4, &"crystal_stag", 4.0, 1))
 	out.append(_row(&"bush", "Bushes", 6, &"thornling", 2.0, 1))
-	out.append(_row(&"grass", "Grass", 10, &"crystal_mite", 0.0, 0))
+	out.append(_row(&"grass", "Grass", 10, &"crystal_mite", 0.0, 0, true))
 	out.append(_row(&"animal", "Animals", 3, &"corrupted_beast", 3.0, 1))
 	out.append(_row(&"ruin", "Ruins", 1, &"shard_guard", 12.0, 2))
 	return out
+
+
+static func default_unlock_table() -> Array:
+	return _builtin_unlocks()
 
 
 static func _row(
@@ -78,7 +93,8 @@ static func _row(
 	threshold: int,
 	enemy: StringName,
 	power: float,
-	burst: int
+	burst: int,
+	unlock_at_start: bool = false
 ) -> _AbsorptionUnlockDef:
 	var d := _AbsorptionUnlockDef.new()
 	d.source_id = source
@@ -87,4 +103,5 @@ static func _row(
 	d.enemy_id = enemy
 	d.bonus_power = power
 	d.spawn_burst = burst
+	d.unlock_at_start = unlock_at_start
 	return d

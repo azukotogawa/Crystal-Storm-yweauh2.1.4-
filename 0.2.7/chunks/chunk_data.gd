@@ -34,6 +34,10 @@ static var s_macro_enabled_from_env: bool = true
 static var s_micro_enabled_from_env: bool = true
 # Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
+## Sparse player-forced ramps from FeatureRegistry (worker snapshot).
+var _worker_force_ramp: Dictionary = {}
+## Local/halo wet columns → body surface_y (0 if source tile with no extra lid).
+var _worker_water_lid: Dictionary = {}
 
 # Snapshotted on main thread before worker generation (avoids live WorldState races).
 var _worker_height_delta: Array = []
@@ -53,6 +57,13 @@ var _mesh_job_micro_skip: Dictionary = {}
 var preserve_column_maps: bool = false
 ## Skip MeshPlanCache so a preserved-map remesh cannot reuse stale quads.
 var skip_mesh_plan_cache: bool = false
+## Deep copy of surface/tile maps taken when a yard stamp must survive an in-flight regen.
+var _preserve_surface_snapshot: Array = []
+var _preserve_tile_snapshot: Array = []
+## Previous snapshot, kept so a worker still indexing it is not left with a freed array.
+var _preserve_surface_hold: Array = []
+var _preserve_tile_hold: Array = []
+var _has_preserve_map_snapshot: bool = false
 ## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
 ## Natural (pre-overlay) halo heights — baked base when available; used to recompose on dirty.
@@ -102,6 +113,8 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_worker_build_tile.clear()
 	_worker_feature_tile.clear()
 	_worker_feature_baked.clear()
+	_worker_force_ramp.clear()
+	_worker_water_lid.clear()
 	_worker_halo_height_delta.clear()
 	_halo_surface.clear()
 	_halo_base_surface.clear()
@@ -118,6 +131,7 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_macro_ramp_flags_dirty = false
 	_maps_resident = false
 	last_micro_examined = 0
+	clear_preserve_map_snapshot()
 
 ## Rebind zero-copy surface view after snapshot restore (outside timers).
 func touch_macro_view_pointers() -> void:
@@ -230,6 +244,8 @@ func capture_worker_snapshot() -> void:
 	var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_ensure_worker_overlay_storage()
+	_worker_force_ramp.clear()
+	_worker_water_lid.clear()
 	if _snap_measure:
 		_snap_add("ensure_worker_overlay_storage", Time.get_ticks_usec() - t0)
 		parts["ensure_worker_overlay_storage_us"] = Time.get_ticks_usec() - t0
@@ -268,12 +284,16 @@ func capture_worker_snapshot() -> void:
 				var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 					if "seeded_tile_keys" in ws else false
 				_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+				var bid := str(feat_entry.get("build_id", ""))
+				if bid == "cardinal_ramp" or bid == "corner_ramp":
+					_worker_force_ramp[Vector2i(x, z)] = feat_entry.duplicate()
 		if _snap_measure:
 			_snap_add("overlay_copy_dict_walk", Time.get_ticks_usec() - t0)
 			parts["overlay_path"] = "dict_walk"
 			parts["overlay_copy_us"] = Time.get_ticks_usec() - t0
 			parts["feature_cells_n"] = ws.feature_cells.size()
 			parts["seeded_tile_keys_n"] = ws.seeded_tile_keys.size() if "seeded_tile_keys" in ws else 0
+	_capture_water_lid_snapshot(ws)
 	_has_worker_snapshot = true
 	t0 = Time.get_ticks_usec() if _snap_measure else 0
 	_capture_halo_surface()
@@ -292,6 +312,21 @@ func capture_worker_snapshot() -> void:
 			parts["total_ms"] = float(tot) / 1000.0
 			parts["coord"] = [position.x, position.y]
 			_snap_worst = parts.duplicate(true)
+
+
+func _capture_water_lid_snapshot(ws) -> void:
+	_worker_water_lid.clear()
+	if ws == null:
+		return
+	for x in range(-1, SIZE + 1):
+		for z in range(-1, SIZE + 1):
+			var wkey := Vector2i(position.x * SIZE + x, position.y * SIZE + z)
+			var entry: Dictionary = ws.channels.get(wkey, {})
+			if entry.is_empty():
+				continue
+			if not entry.has("water_level") or float(entry.get("water_level", 0.0)) < 0.05:
+				continue
+			_worker_water_lid[Vector2i(x, z)] = float(entry.get("surface_y", 0.0))
 
 
 func _ensure_worker_overlay_storage() -> void:
@@ -651,6 +686,11 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 		var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 			if "seeded_tile_keys" in ws else false
 		_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
+		var bid := str(feat_entry.get("build_id", ""))
+		if bid == "cardinal_ramp" or bid == "corner_ramp":
+			_worker_force_ramp[Vector2i(x, z)] = feat_entry.duplicate()
+		else:
+			_worker_force_ramp.erase(Vector2i(x, z))
 		# Refresh frozen halo height-delta ring for dirty edge columns (main thread).
 		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
@@ -697,12 +737,15 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 	if _has_worker_snapshot:
 		hdelta = float(_worker_height_delta[x][z])
 		build_t = int(_worker_build_tile[x][z])
-		feat_t = int(_worker_feature_tile[x][z])
+		feat_t = mesh_feature_tile(x, z)
 	if _has_baked_base:
 		surface_map[x][z] = _WorldBakeService.compose_surface_height(
 			get_baked_base_height(x, z), hdelta
 		)
-		if build_t >= 0:
+		# Authored WorldObjects mark build_tile without raising — do not retile
+		# the floor under them. Feature tile overrides (water replace, paths,
+		# farmland) apply even when height is unchanged.
+		if build_t >= 0 and absf(hdelta) > 0.01:
 			tile_map[x][z] = build_t
 		elif feat_t >= 0:
 			tile_map[x][z] = feat_t
@@ -726,7 +769,7 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 			surface_map[x][z] = _WorldBakeService.compose_surface_height(
 				float(sample.get("surface", 0.0)), hdelta
 			)
-			if build_t >= 0:
+			if build_t >= 0 and absf(hdelta) > 0.01:
 				tile_map[x][z] = build_t
 			elif feat_t >= 0:
 				tile_map[x][z] = feat_t
@@ -742,7 +785,10 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 	var wz := float(wz_i)
 	if _has_worker_snapshot:
 		surface_map[x][z] = world.get_surface_height_worker(wx, wz, hdelta)
-		tile_map[x][z] = world.get_tile_type_worker(wx, wz, build_t, feat_t)
+		var mesh_build: int = build_t if absf(hdelta) > 0.01 else -1
+		# Feature overrides retile without a height edit (water-replace beside river).
+		var mesh_feat: int = mesh_feature_tile(x, z)
+		tile_map[x][z] = world.get_tile_type_worker(wx, wz, mesh_build, mesh_feat)
 	else:
 		surface_map[x][z] = world.get_surface_height_uncached(wx, wz)
 		tile_map[x][z] = world.get_tile_type_uncached(wx, wz)
@@ -814,10 +860,80 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 				_halo_surface[ix][iz] = -9999.0
 
 
+func snapshot_resident_maps() -> void:
+	if surface_map.is_empty() or tile_map.is_empty():
+		return
+	# Retain the array a worker may already be reading, then publish a new one.
+	_preserve_surface_hold = _preserve_surface_snapshot
+	_preserve_tile_hold = _preserve_tile_snapshot
+	_preserve_surface_snapshot = surface_map.duplicate(true)
+	_preserve_tile_snapshot = tile_map.duplicate(true)
+	_has_preserve_map_snapshot = true
+
+
+func has_preserve_map_snapshot() -> bool:
+	return _has_preserve_map_snapshot
+
+
+func clear_preserve_map_snapshot() -> void:
+	_has_preserve_map_snapshot = false
+	# Drop the reference. clear() in place races a worker that is indexing it.
+	# The hold keeps that array alive until the next snapshot replaces it.
+	_preserve_surface_hold = _preserve_surface_snapshot
+	_preserve_tile_hold = _preserve_tile_snapshot
+	_preserve_surface_snapshot = []
+	_preserve_tile_snapshot = []
+
+
+## Copy the yard/debug stamp back into the live maps. In-flight column regen
+## writes this same array; the snapshot is the authority until the remesh applies.
+func restore_resident_map_snapshot() -> void:
+	if not _has_preserve_map_snapshot:
+		return
+	# One read of the field. Later main-thread snapshots replace the field
+	# instead of mutating this array.
+	var snap_h: Array = _preserve_surface_snapshot
+	var snap_t: Array = _preserve_tile_snapshot
+	if snap_h.is_empty():
+		return
+	_ensure_surface_map_storage()
+	var x_count: int = mini(SIZE, mini(snap_h.size(), surface_map.size()))
+	for x in x_count:
+		if x >= snap_h.size() or x >= surface_map.size():
+			break
+		var src_h = snap_h[x]
+		var dst = surface_map[x]
+		if src_h == null or dst == null or not (src_h is Array) or not (dst is Array):
+			continue
+		var row: Array = src_h
+		var dst_row: Array = dst
+		var src_t: Array = []
+		if x < snap_t.size() and snap_t[x] is Array:
+			src_t = snap_t[x]
+		var dst_t: Array = []
+		if x < tile_map.size() and tile_map[x] is Array:
+			dst_t = tile_map[x]
+		var n: int = mini(SIZE, mini(row.size(), dst_row.size()))
+		for z in n:
+			if z >= row.size() or z >= dst_row.size():
+				break
+			dst_row[z] = row[z]
+			if z < src_t.size() and z < dst_t.size():
+				dst_t[z] = src_t[z]
+	_maps_resident = true
+
+
 func _compute_column_maps(use_uncached: bool = true):
 	# Local capture avoids mid-loop use of a field cleared by another thread/path.
 	var w = world
 	if w == null:
+		return
+	# A yard stamp landed while this regen was already queued. Do not overwrite it.
+	if preserve_column_maps or _has_preserve_map_snapshot:
+		restore_resident_map_snapshot()
+		preserve_column_maps = false
+		if _has_halo_surface:
+			_refresh_halo_interior_from_maps()
 		return
 
 	_ensure_surface_map_storage()
@@ -841,7 +957,7 @@ func _compute_column_maps(use_uncached: bool = true):
 				tile_map[x][z] = w.get_tile_type_worker(
 					wx, wz,
 					int(_worker_build_tile[x][z]),
-					int(_worker_feature_tile[x][z])
+					mesh_feature_tile(x, z)
 				)
 			elif use_uncached:
 				surface_map[x][z] = w.get_surface_height_uncached(wx, wz)
@@ -894,10 +1010,6 @@ func set_ramp_corner(x: int, z: int, dir_a: Vector2i, dir_b: Vector2i) -> void:
 	ramp_map[Vector2i(x, z)] = {"corner": true, "side": false, "dir": dir_a, "dir2": dir_b}
 
 
-func set_ramp_side(x: int, z: int, face_dir: Vector2i, climb_dir: Vector2i) -> void:
-	ramp_map[Vector2i(x, z)] = {"side": true, "corner": false, "dir": face_dir, "dir2": climb_dir}
-
-
 func set_concave_prism(x: int, z: int, leg_x: int, leg_z: int, surface_h: float = 0.0) -> void:
 	ramp_map[Vector2i(x, z)] = {
 		"concave": true,
@@ -913,8 +1025,19 @@ func has_ramp(x: int, z: int) -> bool:
 	return ramp_map.has(Vector2i(x, z))
 
 
+## One shared miss entry. Callers only read it. A fresh {} here is a heap alloc per lookup.
+static var _empty_ramp: Dictionary = {}
+
+
+static func empty_ramp_entry() -> Dictionary:
+	return _empty_ramp
+
+
 func get_ramp_entry(x: int, z: int) -> Dictionary:
-	return ramp_map.get(Vector2i(x, z), {})
+	var key := Vector2i(x, z)
+	if not ramp_map.has(key):
+		return _empty_ramp
+	return ramp_map[key]
 
 
 func is_ramp_corner(x: int, z: int) -> bool:
@@ -946,6 +1069,18 @@ func get_worker_build_tile(lx: int, lz: int) -> int:
 	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
 		return -1
 	return int(_worker_build_tile[lx][lz])
+
+
+## Feature tile that should retile the heightfield.
+## Baked plant decorations are drawn by the vegetation layer and must not
+## change the column the mesh plan was stored against.
+func mesh_feature_tile(lx: int, lz: int) -> int:
+	var ft: int = get_worker_feature_tile(lx, lz)
+	if ft < 0:
+		return -1
+	if get_worker_feature_is_baked(lx, lz) and VoxelTypes.is_plant_decoration_tile(ft):
+		return -1
+	return ft
 
 
 func get_worker_feature_tile(lx: int, lz: int) -> int:

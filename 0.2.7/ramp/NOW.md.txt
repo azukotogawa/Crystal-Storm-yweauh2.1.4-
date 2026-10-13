@@ -1,0 +1,18 @@
+# Ramp System
+
+## Current
+Ramp topology and geometry are under stabilization.
+
+## Recent fixes
+- Forced ramps validated against current topology.
+- Back-to-side perpendicular cardinal conflict filtered.
+- Mesh cache updated for current ramp metadata.
+
+## Known
+- Adjacent cardinal face artifact.
+- Missing full-voxel neighbor face.
+- Rare back-to-back cardinal pair.
+
+## Important
+Do not assume these are topology problems.
+Check face generation/culling first.

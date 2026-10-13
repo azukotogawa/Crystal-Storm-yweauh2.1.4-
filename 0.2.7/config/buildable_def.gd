@@ -8,6 +8,8 @@ enum Category { TERRAIN_WALL, STRUCTURE, TRAP, CRYSTAL_BAFFLE, PASSAGE, BRIDGE }
 @export var id: StringName = &"stone_wall"
 @export var display_name: String = "Stone Wall"
 @export var category: Category = Category.TERRAIN_WALL
+## Authored mesh / atlas key. Empty means `id` (Agent 2 can reuse an existing visual).
+@export var visual_id: StringName = &""
 
 @export_group("Cost")
 @export var material_id: String = "stone"
@@ -33,3 +35,7 @@ enum Category { TERRAIN_WALL, STRUCTURE, TRAP, CRYSTAL_BAFFLE, PASSAGE, BRIDGE }
 @export_group("Stats")
 @export var dig_speed_required: float = 0.0
 @export var placement_range: float = 2.0
+
+
+func resolved_visual_id() -> StringName:
+	return visual_id if visual_id != &"" else id

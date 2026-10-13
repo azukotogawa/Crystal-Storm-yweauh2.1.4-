@@ -10,6 +10,8 @@ signal boss_gate_blocked(spawn: CrystalSpawnPoint)
 
 var emit_weaken_mult: float = 1.0
 var last_destroyed_label: String = ""
+## True while the origin warden entity is alive. Tests leave this false.
+var origin_warden_alive: bool = false
 
 var _spawns: Array[CrystalSpawnPoint] = []
 var _active_cells: Dictionary = {}
@@ -48,6 +50,8 @@ func can_damage_spawn(spawn: CrystalSpawnPoint) -> bool:
 		return false
 	if spawn.is_boss and count_active_non_boss() > 0:
 		return false
+	if spawn.is_boss and origin_warden_alive:
+		return false
 	return true
 
 
@@ -72,6 +76,7 @@ func get_progress() -> Dictionary:
 		"emit_weaken_mult": emit_weaken_mult,
 		"boss_active": _is_boss_active(),
 		"boss_sealed": _is_boss_active() and count_active_non_boss() > 0,
+		"warden_alive": origin_warden_alive,
 	}
 
 
@@ -132,6 +137,10 @@ func _try_damage_spawn(spawn: CrystalSpawnPoint, amount: float) -> bool:
 	if not can_damage_spawn(spawn):
 		if spawn.is_boss:
 			var msg := "[Crystal] Origin boss sealed — destroy other spawns first"
+			if origin_warden_alive and count_active_non_boss() == 0:
+				msg = "[Crystal] Origin heart is guarded — defeat the warden first"
+			elif origin_warden_alive:
+				msg = "[Crystal] Origin heart is guarded — clear the other spawns, then the warden"
 			print(msg)
 			_CombatLog.push(msg)
 			boss_gate_blocked.emit(spawn)

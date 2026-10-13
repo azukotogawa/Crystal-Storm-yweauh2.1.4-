@@ -3,6 +3,14 @@ extends Control
 const _GameManager = preload("res://game/game_manager.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
+const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
+const _WorldBakeService = preload("res://world/world_bake_service.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -28,6 +36,33 @@ var _terrain_crystal_toast_cd: float = 0.0
 var _phase_label_pulse: float = 0.0
 var _phase_label_base_mod: Color = Color.WHITE
 var _bake_chip: Label = null
+var _objective_panel: PanelContainer = null
+var _objective_phase: Label = null
+var _objective_spawns: Label = null
+var _objective_coverage: Label = null
+var _objective_bearing: Label = null
+var _objective_arrow: Label = null
+var _boss: Node = null
+var _boss_panel: PanelContainer = null
+var _boss_label: Label = null
+var _boss_bar: ProgressBar = null
+var _boss_shown_hp: int = -1
+var _hud_player: Node = null
+var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
+var _run_summary: _RunSummaryPanel = null
+var _hud_frame: int = -999
+var _hud_skip: bool = false
+var _hk_cell: Vector2i = Vector2i(2147483647, 0)
+var _hk_tiles: int = -999999
+var _hk_phase: int = -999
+var _hk_run: int = -999
+var _hk_place: int = -999
+var _hk_biome: int = 0
+var _hk_relics: int = -1
+var _spawn_cell: Vector2i = Vector2i(999999, 999999)
+var _spawn_known: bool = false
+var _bake_done: int = -1
+var _bake_total: int = -1
 
 
 func _ready() -> void:
@@ -56,6 +91,10 @@ func _ready() -> void:
 		_phase_label_base_mod = _phase_label.modulate
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
+	_ensure_objective_hud()
+	_ThemeBuilder.apply(self)
+	apply_hud_palette(_PlayerSettings.colorblind_palette)
+	call_deferred("_maybe_show_tutorial")
 
 
 func _ensure_bake_chip() -> void:
@@ -84,22 +123,23 @@ func _update_bake_chip() -> void:
 	if _bake_chip == null:
 		return
 	if _GameplayInput.world_loading:
-		_bake_chip.visible = false
+		if _bake_chip.visible:
+			_bake_chip.visible = false
 		return
-	var wb = load("res://world/world_bake_service.gd")
-	if wb == null or not wb.has_method("get_active"):
-		_bake_chip.visible = false
+	var bake = _WorldBakeService.get_active()
+	if bake == null or not ("bake_in_progress" in bake) or not bool(bake.bake_in_progress):
+		if _bake_chip.visible:
+			_bake_chip.visible = false
+		_bake_done = -1
 		return
-	var bake = wb.get_active()
-	if bake == null or not bake.has_method("fill_status"):
-		_bake_chip.visible = false
-		return
-	var fs: Dictionary = bake.fill_status()
-	if not bool(fs.get("bake_in_progress", false)):
-		_bake_chip.visible = false
+	var done := int(bake._fill_done) if "_fill_done" in bake else -1
+	var total := int(bake._fill_total) if "_fill_total" in bake else -1
+	if _bake_chip.visible and done == _bake_done and total == _bake_total:
 		return
 	_bake_chip.visible = true
-	_bake_chip.text = "Background bake %d / %d" % [int(fs.get("done", 0)), int(fs.get("total", 0))]
+	_bake_chip.text = "Background bake %d / %d" % [done, total]
+	_bake_done = done
+	_bake_total = total
 
 
 func _ensure_leave_world_button() -> void:
@@ -175,6 +215,8 @@ func _on_terrain_edited_near_crystal(wx: int, wz: int, kind: StringName) -> void
 	var k := str(kind)
 	if k == "dig":
 		_show_toast("Trench cut — purple front follows lower ground")
+	elif k == "water":
+		_show_toast("Bank to water — crystal slows on wet ground")
 	elif k == "gate":
 		_show_toast("Gate holds a crawl path — crystal slows, you pass")
 	elif k == "bridge":
@@ -438,7 +480,7 @@ func _update_map_temp_label() -> void:
 	var goal := _spawn_goal_line()
 	var suffix := "%s%s" % [temp_label, biome_label]
 	if _game_manager and _game_manager.run_state == _GameManager.RunState.WON:
-		_phase_label.text = "Phase: Victory — all spawns destroyed%s" % suffix
+		_phase_label.text = _victory_phase_text(suffix)
 	elif _game_manager and _game_manager.run_state == _GameManager.RunState.LOST:
 		_phase_label.text = "Phase: Defeat%s" % suffix
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
@@ -474,6 +516,8 @@ func _process(delta: float) -> void:
 	if _crystal == null:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_update_game_hud()
+	_update_objective_hud()
+	_update_boss_bar()
 	_update_bake_chip()
 	if _GameplayInput.blocks_actions():
 		if profiler and profiler.has_method("end_func"):
@@ -490,10 +534,55 @@ func _process(delta: float) -> void:
 		profiler.end("ui_overlay")
 
 
+func _hud_should_skip() -> bool:
+	var frame := Engine.get_process_frames()
+	if frame == _hud_frame:
+		return _hud_skip
+	_hud_frame = frame
+	var cell := Vector2i(2147483647, 0)
+	var player := _cached_player()
+	if player and player.has_method("get_voxel_position"):
+		var v: Vector3 = player.get_voxel_position()
+		cell = Vector2i(floori(v.x), floori(v.z))
+	var tiles := 0
+	if _crystal and "covered_cells" in _crystal:
+		tiles = int(_crystal.covered_cells)
+	var phase := -1
+	var run_state := -1
+	if _game_manager:
+		phase = int(_game_manager.phase)
+		run_state = int(_game_manager.run_state)
+	var place := 0
+	if player:
+		var weapon = player.get_node_or_null("WeaponController")
+		if weapon and "place_index" in weapon:
+			place = int(weapon.place_index)
+	var biome_h := _current_biome.hash()
+	var relics := _equipped_relic_names.size()
+	var changed := (
+		cell != _hk_cell or tiles != _hk_tiles or phase != _hk_phase
+		or run_state != _hk_run or place != _hk_place or biome_h != _hk_biome
+		or relics != _hk_relics
+	)
+	if changed:
+		_hk_cell = cell
+		_hk_tiles = tiles
+		_hk_phase = phase
+		_hk_run = run_state
+		_hk_place = place
+		_hk_biome = biome_h
+		_hk_relics = relics
+	# Town HP and wet crawl still move while the player stands on one cell.
+	_hud_skip = (not changed) and (posmod(frame, 20) != 0)
+	return _hud_skip
+
+
 func _update_game_hud() -> void:
 	if _game_hud == null:
 		return
 	if _crystal == null or _game_manager == null:
+		return
+	if _hud_should_skip():
 		return
 	if _game_manager.run_state != _GameManager.RunState.PLAYING:
 		_game_hud.visible = false
@@ -511,6 +600,9 @@ func _update_game_hud() -> void:
 	var bearing := _crystal_bearing_bit()
 	if bearing != "":
 		crystal_bit = "%s · %s" % [crystal_bit, bearing]
+	var wet_bit := _wet_crawl_bit()
+	if wet_bit != "":
+		crystal_bit = "%s · %s" % [crystal_bit, wet_bit]
 	var prog: Dictionary = _crystal.get_spawn_progress() if _crystal.has_method("get_spawn_progress") else {}
 	var spawns_line := "%d/%d spawns" % [int(prog.get("active", 0)), int(prog.get("total", 0))]
 	var relic_line := ""
@@ -529,21 +621,29 @@ func _update_game_hud() -> void:
 		var rl: String = str(_living_world.get_ruins_hud_line())
 		if rl != "":
 			ruins_line = "  |  %s" % rl
-	var tool_line := "Pick dig · RMB wall · LMB fight · M map · I inv"
+	var tool_line := "WASD move · Space jump · LMB break · RMB place · Tab cycle"
 	var weapon = null
-	var player = get_tree().get_first_node_in_group("player")
+	var player := _cached_player()
 	if player:
 		weapon = player.get_node_or_null("WeaponController")
+	var place_name := "Fill"
+	if weapon and weapon.has_method("get_place_label"):
+		place_name = str(weapon.get_place_label())
 	if weapon and weapon.has_method("get_active_item"):
 		var slot = weapon.get_active_item()
 		if slot != null:
 			var sid := str(slot.id)
-			if sid == "stone_pick":
-				tool_line = "DIG · LMB carve · RMB wall · Shift gate · Ctrl bridge"
-			elif sid == "stone" or sid == "wood":
-				tool_line = "BUILD · RMB wall · Shift gate · Ctrl bridge"
-			elif sid == "wooden_sword" or sid == "shortbow":
-				tool_line = "FIGHT · LMB attack · RMB build"
+			if _is_fight_item(sid):
+				var verb := "LMB attack"
+				if int(_ItemTypes.get_def(sid).get("category", -1)) == _ItemTypes.Category.ARMOR:
+					verb = "LMB wear"
+				tool_line = "FIGHT · WASD · Space jump · %s · RMB place %s" % [verb, place_name]
+			else:
+				tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
+		else:
+			tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
+	else:
+		tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
 	var phase_tag := "MAZE"
 	if _game_manager.phase == _GameManager.Phase.ASSAULT:
 		phase_tag = "ASSAULT"
@@ -558,10 +658,340 @@ func _update_game_hud() -> void:
 	)
 
 
+func _is_fight_item(item_id: String) -> bool:
+	var def := _ItemTypes.get_def(item_id)
+	if def.is_empty():
+		return false
+	if bool(def.get("throwable", false)):
+		return true
+	var category := int(def.get("category", -1))
+	if category == _ItemTypes.Category.ARMOR:
+		return true
+	return category == _ItemTypes.Category.WEAPON and int(def.get("weapon_kind", -1)) != _ItemTypes.WeaponKind.DIG
+
+
+func _victory_reason() -> String:
+	if _game_manager and "victory_reason" in _game_manager:
+		return str(_game_manager.victory_reason)
+	return ""
+
+
+func _victory_phase_text(suffix: String) -> String:
+	if _victory_reason() == "boss":
+		return "Phase: Victory — the Origin Warden fell%s" % suffix
+	return "Phase: Victory — all spawns destroyed%s" % suffix
+
+
+## Cached by the warden. The bar is hidden until the player is close or the boss has been hit.
+func track_boss(boss: Node) -> void:
+	if boss == null:
+		return
+	_boss = boss
+	_boss_shown_hp = -1
+	_ensure_boss_bar()
+
+
+func _ensure_boss_bar() -> void:
+	if _boss_panel != null:
+		return
+	_boss_panel = PanelContainer.new()
+	_boss_panel.name = "BossHpBar"
+	_boss_panel.visible = false
+	_boss_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_panel.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_boss_panel.offset_left = -170.0
+	_boss_panel.offset_right = 170.0
+	_boss_panel.offset_top = 8.0
+	_boss_panel.offset_bottom = 52.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.08, 0.03, 0.06, 0.86)
+	panel_style.border_color = Color(0.9, 0.22, 0.38, 0.95)
+	panel_style.set_border_width_all(1)
+	panel_style.set_content_margin_all(6)
+	_boss_panel.add_theme_stylebox_override("panel", panel_style)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
+	_boss_panel.add_child(box)
+	_boss_label = Label.new()
+	_boss_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_label.add_theme_font_size_override("font_size", 13)
+	_boss_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.86))
+	_boss_label.text = "Origin Warden"
+	box.add_child(_boss_label)
+	_boss_bar = ProgressBar.new()
+	_boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boss_bar.custom_minimum_size = Vector2(300, 12)
+	_boss_bar.max_value = 240.0
+	_boss_bar.value = 240.0
+	_boss_bar.show_percentage = false
+	box.add_child(_boss_bar)
+	add_child(_boss_panel)
+	apply_hud_palette(_PlayerSettings.colorblind_palette)
+
+
+func _update_boss_bar() -> void:
+	if _boss_panel == null:
+		return
+	if _boss == null or not is_instance_valid(_boss):
+		_boss = null
+		_boss_panel.visible = false
+		return
+	var hp := float(_boss.get("health"))
+	var max_hp := maxf(float(_boss.get("max_health")), 1.0)
+	if hp <= 0.0:
+		_boss_panel.visible = false
+		_boss = null
+		return
+	var engaged := hp < max_hp - 0.5
+	if not engaged:
+		var player := _cached_player()
+		if player and player.has_method("get_voxel_position") and _boss is Node3D:
+			var pv: Vector3 = player.get_voxel_position()
+			var ws = _WorldSettings.get_active()
+			var body := _boss as Node3D
+			var flat := Vector2(
+				ws.world_to_column(body.global_position.x) - pv.x,
+				ws.world_to_column(body.global_position.z) - pv.z
+			)
+			engaged = flat.length() <= 22.0
+	_boss_panel.visible = engaged
+	if not engaged:
+		return
+	_boss_bar.max_value = max_hp
+	_boss_bar.value = hp
+	var shown := int(round(hp))
+	if shown != _boss_shown_hp:
+		_boss_shown_hp = shown
+		var phase := int(_boss.get("boss_phase"))
+		_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
+
+
+func _cached_player() -> Node:
+	if _hud_player != null and is_instance_valid(_hud_player):
+		return _hud_player
+	_hud_player = get_tree().get_first_node_in_group("player")
+	return _hud_player
+
+
+func _ensure_objective_hud() -> void:
+	if _objective_panel != null:
+		return
+	_objective_panel = PanelContainer.new()
+	_objective_panel.name = "ObjectiveHud"
+	_objective_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_objective_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_objective_panel.offset_left = 12.0
+	_objective_panel.offset_top = 12.0
+	_objective_panel.offset_right = 340.0
+	_objective_panel.offset_bottom = 148.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.06, 0.04, 0.1, 0.78)
+	panel_style.border_color = Color(0.62, 0.32, 0.9, 0.9)
+	panel_style.set_border_width_all(1)
+	panel_style.set_content_margin_all(8)
+	_objective_panel.add_theme_stylebox_override("panel", panel_style)
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_theme_constant_override("separation", 2)
+	_objective_panel.add_child(box)
+	var title := Label.new()
+	title.text = "OBJECTIVE"
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title.add_theme_font_size_override("font_size", 12)
+	title.add_theme_color_override("font_color", Color(0.78, 0.62, 1.0))
+	box.add_child(title)
+	_objective_phase = _objective_line(box, "Phase: Maze")
+	_objective_spawns = _objective_line(box, "Spawns: — remaining")
+	_objective_coverage = _objective_line(box, "Crystal: 0.00%")
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	_objective_arrow = Label.new()
+	_objective_arrow.name = "SpawnArrow"
+	_objective_arrow.text = "▲"
+	_objective_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_objective_arrow.custom_minimum_size = Vector2(28, 28)
+	_objective_arrow.pivot_offset = Vector2(14, 14)
+	_objective_arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_objective_arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_objective_arrow.add_theme_font_size_override("font_size", 20)
+	_objective_arrow.add_theme_color_override("font_color", Color(0.95, 0.75, 1.0))
+	row.add_child(_objective_arrow)
+	_objective_bearing = _objective_line(row, "Nearest spawn")
+	add_child(_objective_panel)
+
+
+func _objective_line(parent: Node, text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", Color(0.94, 0.92, 0.98))
+	parent.add_child(label)
+	return label
+
+
+func _update_objective_hud() -> void:
+	if _objective_panel == null:
+		_ensure_objective_hud()
+	if _objective_panel == null:
+		return
+	if _hud_should_skip():
+		_objective_panel.visible = true
+		_spin_objective_arrow()
+		return
+	_objective_panel.visible = true
+	var phase_name := "Maze"
+	var playing := true
+	if _game_manager:
+		playing = _game_manager.run_state == _GameManager.RunState.PLAYING
+		if _game_manager.run_state == _GameManager.RunState.WON:
+			phase_name = "Victory"
+		elif _game_manager.run_state == _GameManager.RunState.LOST:
+			phase_name = "Defeat"
+		elif _game_manager.phase == _GameManager.Phase.ASSAULT:
+			phase_name = "Assault"
+		elif _game_manager.phase == _GameManager.Phase.VICTORY:
+			phase_name = "Victory"
+	var active := 0
+	var total := 0
+	if _crystal and _crystal.has_method("get_spawn_progress"):
+		var prog: Dictionary = _crystal.get_spawn_progress()
+		active = int(prog.get("active", 0))
+		total = int(prog.get("total", 0))
+	var coverage := 0.0
+	var tiles := 0
+	if _crystal and _crystal.has_method("get_coverage_ratio"):
+		coverage = float(_crystal.get_coverage_ratio())
+	if _crystal and "covered_cells" in _crystal:
+		tiles = int(_crystal.covered_cells)
+	var bearing := _nearest_spawn_bearing()
+	var lines := build_objective_lines(phase_name, active, total, coverage, tiles, bearing.text)
+	var parts := lines.split("\n")
+	if parts.size() >= 4:
+		_objective_phase.text = parts[0]
+		_objective_spawns.text = parts[1]
+		_objective_coverage.text = parts[2]
+		_objective_bearing.text = parts[3]
+	if _objective_arrow:
+		_objective_arrow.rotation = bearing.rotation
+		_objective_arrow.modulate = _arrow_play_color if playing else Color(0.7, 0.7, 0.75)
+
+
+static func build_objective_lines(
+	phase_name: String,
+	spawns_remaining: int,
+	spawns_total: int,
+	coverage_ratio: float,
+	tiles: int,
+	bearing_text: String
+) -> String:
+	var pct := coverage_ratio * 100.0
+	var cov := "Crystal: %.2f%%" % pct
+	if tiles > 0:
+		cov = "%s · %d tiles" % [cov, tiles]
+	var spawns := "Spawns: %d remaining" % spawns_remaining
+	if spawns_total > 0:
+		spawns = "%s (%d/%d)" % [spawns, spawns_remaining, spawns_total]
+	var bearing := bearing_text if bearing_text != "" else "Nearest spawn: —"
+	return "Phase: %s\n%s\n%s\n%s" % [phase_name, spawns, cov, bearing]
+
+
+static func compass_from_delta(dx: float, dz: float) -> String:
+	var dist := Vector2(dx, dz).length()
+	if dist < 6.0:
+		return "Nearest spawn: here"
+	var deg := rad_to_deg(atan2(dx, -dz))
+	if deg < 0.0:
+		deg += 360.0
+	var dirs: PackedStringArray = PackedStringArray(["N", "NE", "E", "SE", "S", "SW", "W", "NW"])
+	var idx := int(round(deg / 45.0)) % 8
+	return "Nearest spawn: %s  %.0fc" % [dirs[idx], dist]
+
+
+static func arrow_rotation(world_delta: Vector2, cam_forward: Vector2, cam_right: Vector2) -> float:
+	if world_delta.length_squared() < 0.25:
+		return 0.0
+	var d := world_delta.normalized()
+	var f := cam_forward
+	if f.length_squared() < 0.0001:
+		return 0.0
+	f = f.normalized()
+	var r := cam_right
+	if r.length_squared() < 0.0001:
+		r = Vector2(f.y, -f.x)
+	else:
+		r = r.normalized()
+	return atan2(d.dot(r), d.dot(f))
+
+
+func _spin_objective_arrow() -> void:
+	if _objective_arrow == null or not _spawn_known:
+		return
+	var player := _cached_player()
+	if player == null or not player.has_method("get_voxel_position"):
+		return
+	var pv: Vector3 = player.get_voxel_position()
+	var dx := float(_spawn_cell.x) + 0.5 - pv.x
+	var dz := float(_spawn_cell.y) + 0.5 - pv.z
+	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	if cam == null:
+		return
+	var fwd := -cam.global_transform.basis.z
+	var right := cam.global_transform.basis.x
+	_objective_arrow.rotation = arrow_rotation(Vector2(dx, dz), Vector2(fwd.x, fwd.z), Vector2(right.x, right.z))
+
+
+func _nearest_spawn_bearing() -> Dictionary:
+	var empty := {"text": "Nearest spawn: —", "rotation": 0.0}
+	_spawn_known = false
+	var player := _cached_player() if is_inside_tree() else null
+	if player == null or not player.has_method("get_voxel_position"):
+		return empty
+	var pv: Vector3 = player.get_voxel_position()
+	var cell := Vector2i(999999, 999999)
+	if _crystal and _crystal.has_method("get_nearest_active_spawn"):
+		var info: Dictionary = _crystal.get_nearest_active_spawn(Vector2(pv.x, pv.z))
+		if info.is_empty():
+			return empty
+		cell = info.get("cell", cell)
+	elif _crystal and _crystal.has_method("get_origin_cell"):
+		cell = _crystal.get_origin_cell()
+	if cell.x == 999999:
+		return empty
+	_spawn_cell = cell
+	_spawn_known = true
+	var dx := float(cell.x) + 0.5 - pv.x
+	var dz := float(cell.y) + 0.5 - pv.z
+	var text := compass_from_delta(dx, dz)
+	var rotation := 0.0
+	var cam := get_viewport().get_camera_3d() if get_viewport() else null
+	if cam:
+		var fwd := -cam.global_transform.basis.z
+		var right := cam.global_transform.basis.x
+		rotation = arrow_rotation(Vector2(dx, dz), Vector2(fwd.x, fwd.z), Vector2(right.x, right.z))
+	return {"text": text, "rotation": rotation}
+
+
+func _wet_crawl_bit() -> String:
+	if _crystal == null or not _crystal.has_method("count_wet_crystal_near"):
+		return ""
+	var player := _cached_player()
+	if player == null or not player.has_method("get_voxel_position"):
+		return ""
+	var pv: Vector3 = player.get_voxel_position()
+	var info: Dictionary = _crystal.count_wet_crystal_near(floori(pv.x), floori(pv.z), 5)
+	if int(info.get("wet", 0)) <= 0:
+		return ""
+	return "wet crawl"
+
+
 func _crystal_bearing_bit() -> String:
 	if _crystal == null or not _crystal.has_method("get_origin_cell"):
 		return ""
-	var player = get_tree().get_first_node_in_group("player")
+	var player := _cached_player()
 	if player == null or not player.has_method("get_voxel_position"):
 		return ""
 	var pv: Vector3 = player.get_voxel_position()
@@ -597,12 +1027,16 @@ func _on_phase_changed(new_phase: int) -> void:
 func _on_run_state_changed(new_state: int) -> void:
 	_panel.visible = true
 	if new_state == _GameManager.RunState.WON:
-		_title.text = "Victory — Crystal Shattered"
-		var prog := ""
-		if _crystal and _crystal.has_method("get_spawn_progress"):
-			var p: Dictionary = _crystal.get_spawn_progress()
-			prog = "\nAll %d spawn points destroyed." % int(p.get("total", 0))
-		_subtitle.text = "You shattered every crystal heart.%s\nPress R to restart." % prog
+		if _victory_reason() == "boss":
+			_title.text = "Victory — Origin Warden Fell"
+			_subtitle.text = "The warden is down. The storm breaks.\nPress R to restart."
+		else:
+			_title.text = "Victory — Crystal Shattered"
+			var prog := ""
+			if _crystal and _crystal.has_method("get_spawn_progress"):
+				var p: Dictionary = _crystal.get_spawn_progress()
+				prog = "\nAll %d spawn points destroyed." % int(p.get("total", 0))
+			_subtitle.text = "You shattered every crystal heart.%s\nPress R to restart." % prog
 	elif new_state == _GameManager.RunState.LOST:
 		_title.text = "Run Over"
 		var reason := ""
@@ -612,4 +1046,39 @@ func _on_run_state_changed(new_state: int) -> void:
 			_subtitle.text = "%s\nPress R to restart." % reason
 		else:
 			_subtitle.text = "The corruption won this time.\nPress R to restart."
+	if new_state == _GameManager.RunState.WON or new_state == _GameManager.RunState.LOST:
+		_show_run_summary()
 	_update_map_temp_label()
+
+
+func _maybe_show_tutorial() -> void:
+	if not _TutorialOverlay.should_show():
+		return
+	_TutorialOverlay.open(get_tree(), false)
+
+
+func apply_hud_palette(colorblind: bool) -> void:
+	_arrow_play_color = _CrystalPalette.hud_arrow(colorblind)
+	if _objective_arrow:
+		_objective_arrow.add_theme_color_override("font_color", _arrow_play_color)
+		_objective_arrow.modulate = _arrow_play_color
+	if _boss_label:
+		_boss_label.add_theme_color_override("font_color", _CrystalPalette.boss_label_color(colorblind))
+
+
+func _show_run_summary() -> void:
+	if _game_manager == null or not _game_manager.has_method("run_summary"):
+		return
+	if _run_summary == null:
+		_run_summary = _RunSummaryPanel.new()
+		_run_summary.name = "RunSummary"
+		var box := get_node_or_null("Panel/VBox")
+		if box:
+			box.add_child(_run_summary)
+		else:
+			add_child(_run_summary)
+	_panel.offset_left = -260.0
+	_panel.offset_right = 260.0
+	_panel.offset_top = -230.0
+	_panel.offset_bottom = 230.0
+	_run_summary.show_summary(_game_manager.run_summary())

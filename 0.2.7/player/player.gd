@@ -11,6 +11,7 @@ const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _Juice = preload("res://systems/juice.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -34,6 +35,11 @@ var _body_collision: CollisionShape3D
 signal died
 
 var health := 100.0
+## Burst hits set this. Crystal-field damage sets it to crystal_field before take_damage.
+var damage_source_hint: StringName = &"hit"
+## Seconds of invulnerability after a burst hit. Crystal pressure does not use this.
+var _hit_iframes: float = 0.0
+const HIT_IFRAMES := 0.6
 
 ## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
@@ -46,6 +52,14 @@ var current_skew := 0.0
 enum State { IDLE, RUNNING, JUMPING, FALLING }
 var current_state := State.IDLE
 var landing_timer: float = 0.0
+var _bob_phase: float = 0.0
+var _mesh_rest_y: float = 0.0
+var _feet_wet: bool = false
+var _wet_ready: bool = false
+var _wet_cell: Vector2i = Vector2i(999999, 999999)
+var _wet_landed: bool = false
+var _audio: Node
+var _vfx: Node
 
 var is_input_locked: bool = false
 ## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
@@ -62,6 +76,11 @@ var camera: Camera3D
 var world_ready := false
 
 var _floor_probe: _VoxelFloorProbe
+## Overlap test runs every few physics frames (not a per-frame tree search).
+var _overlap_tick: int = 0
+var _unstuck_cooldown: float = 0.0
+const UNSTUCK_COOLDOWN := 0.45
+const OVERLAP_CHECK_FRAMES := 4
 
 ## Physics process exclusive breakdown (CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1).
 var _phys_measure: bool = false
@@ -79,6 +98,10 @@ var _phys_call_snap: int = 0
 var _phys_call_grounded: int = 0
 var _phys_call_collide: int = 0
 var _phys_call_slope: int = 0
+## Slope is flat on almost every column. Recompute on cell change, at most every 4 ticks.
+var _slope_mul: float = 1.0
+var _slope_cell: Vector2i = Vector2i(2147483647, 0)
+var _slope_age: int = 99
 
 
 func set_physics_measure_enabled(enabled: bool) -> void:
@@ -234,9 +257,22 @@ func _ready():
 		await crystal_manager.ensure_ready()
 
 	var spawn_col := _resolve_spawn_column()
+	# Publish the spawn column before the stream wait. ChunkManager follows
+	# voxel_position; leaving it at the origin loads the map centre while the
+	# crystal heart (and this body) sit in a corner.
+	var spawn_x := float(spawn_col.x) + 0.5
+	var spawn_z := float(spawn_col.y) + 0.5
+	voxel_position = Vector3(spawn_x, _ws().layer_height() * 4.0, spawn_z)
+	_sync_global_from_voxel()
 	_ensure_spawn_chunks_loaded(spawn_col)
-	for _warmup in 180:
-		if chunk_manager.spawn_area_ready(spawn_col.x, spawn_col.y):
+	var spawn_chunk := Vector2i(
+		floori(float(spawn_col.x) / float(_ChunkData.SIZE)),
+		floori(float(spawn_col.y) / float(_ChunkData.SIZE))
+	)
+	if chunk_manager.has_method("update_stream"):
+		chunk_manager.update_stream(spawn_chunk.x, spawn_chunk.y)
+	for _warmup in 360:
+		if chunk_manager.spawn_area_ready(spawn_chunk.x, spawn_chunk.y):
 			break
 		await get_tree().process_frame
 
@@ -252,20 +288,26 @@ func _ready():
 	player_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
 	player_material.alpha_scissor_threshold = 0.5
 	player_material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
+	player_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 
 	player_mesh.material_override = player_material
+	player_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	player_mesh.position.y = ph / 2.0
+	_mesh_rest_y = player_mesh.position.y
 
-	var spawn_x := float(spawn_col.x) + 0.5
-	var spawn_z := float(spawn_col.y) + 0.5
-	_floor_probe.feet_height_hint = _ws().layer_height()
+	# Hint must sit on the surface slab. A hint of one layer is below every real
+	# column, and the old cave-floor query then returned a Y inside the top voxel.
+	var natural := world.get_surface_height(spawn_x, spawn_z) if world else 0.0
+	_floor_probe.feet_height_hint = natural + _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
 	health = max_health
 	voxel_position = Vector3(spawn_x, surf, spawn_z)
-	while is_colliding_at(voxel_position) and voxel_position.y < surf + _ws().layer_height() * 3.0:
-		voxel_position.y += _ws().half_layer() * 0.1
+	var lift_guard := 0
+	while is_colliding_at(voxel_position) and voxel_position.y < surf + _ws().layer_height() * 6.0 and lift_guard < 48:
+		voxel_position.y += _ws().half_layer() * 0.5
+		lift_guard += 1
 
 	_sync_global_from_voxel()
 	world_ready = true
@@ -302,6 +344,7 @@ func _physics_process(delta: float) -> void:
 		profiler.begin("player_physics")
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("Player::_physics_process")
+	_tick_hit_iframes(delta)
 
 	var t0 := Time.get_ticks_usec() if measure else 0
 	_floor_probe.feet_height_hint = voxel_position.y
@@ -315,13 +358,13 @@ func _physics_process(delta: float) -> void:
 	t0 = Time.get_ticks_usec() if measure else 0
 	var input_dir := Vector2.ZERO
 	if not _GameplayInput.blocks_actions():
-		if Input.is_action_pressed("ui_right"):
+		if Input.is_action_pressed("move_right") or Input.is_action_pressed("ui_right"):
 			input_dir.x += 1
-		if Input.is_action_pressed("ui_left"):
+		if Input.is_action_pressed("move_left") or Input.is_action_pressed("ui_left"):
 			input_dir.x -= 1
-		if Input.is_action_pressed("ui_down"):
+		if Input.is_action_pressed("move_back") or Input.is_action_pressed("ui_down"):
 			input_dir.y += 1
-		if Input.is_action_pressed("ui_up"):
+		if Input.is_action_pressed("move_forward") or Input.is_action_pressed("ui_up"):
 			input_dir.y -= 1
 		input_dir = input_dir.normalized()
 	if measure:
@@ -337,19 +380,17 @@ func _physics_process(delta: float) -> void:
 	if measure:
 		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
-	if input_dir != Vector2.ZERO:
-		if not is_input_locked:
-			if camera and "yaw_degrees" in camera:
-				locked_yaw_degrees = float(camera.yaw_degrees)
-			elif camera:
-				locked_yaw_degrees = 45.0 + float(camera.orbit_rotation) * 90.0
-			is_input_locked = true
-	else:
-		is_input_locked = false
+	if camera and "yaw_degrees" in camera:
+		locked_yaw_degrees = float(camera.yaw_degrees)
+	elif camera:
+		locked_yaw_degrees = 45.0 + float(camera.orbit_rotation) * 90.0
+	is_input_locked = input_dir != Vector2.ZERO
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
-	speed *= _slope_speed_multiplier()
+	if inventory and inventory.has_method("armor_speed_multiplier"):
+		speed *= inventory.armor_speed_multiplier()
+	speed *= _slope_speed_multiplier(moving or _move_vel_xz.length_squared() > 0.0004)
 	if measure:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
 		_phys_call_slope += 1
@@ -380,21 +421,27 @@ func _physics_process(delta: float) -> void:
 	match current_state:
 		State.JUMPING:
 			velocity.y -= _gravity() * delta
-			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
-			if velocity.y > 0.0 and is_colliding_at(next_pos):
-				velocity.y = 0.0
+			if velocity.y <= 0.0:
+				# Gravity ate the impulse this frame. Do not step down into the slab.
 				current_state = State.FALLING
 			else:
-				voxel_position.y = next_pos.y
-			if velocity.y < 0.0:
-				current_state = State.FALLING
+				var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
+				if is_colliding_at(next_pos):
+					velocity.y = 0.0
+					current_state = State.FALLING
+				else:
+					voxel_position.y = next_pos.y
 
 		State.FALLING:
 			velocity.y -= _gravity() * delta
 			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
-			if is_colliding_at(next_pos):
+			# is_colliding allows a fraction of a layer of sink. Stop at the walkable
+			# top instead, or a landing step sits inside the rendered slab.
+			var feet_h := _sample_walkable_feet(voxel_position.x, voxel_position.z)
+			var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
+			if reached_feet or is_colliding_at(next_pos):
 				# Land with a firm settle (not a mid-air soft float).
-				voxel_position.y = _sample_walkable_feet(voxel_position.x, voxel_position.z)
+				voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
 				velocity.y = 0.0
 				_move_vel_xz *= 0.65
 				sprite_scale_modifier = Vector2(1.6, 0.5)
@@ -415,9 +462,15 @@ func _physics_process(delta: float) -> void:
 		phase_local["vertical_state"] = Time.get_ticks_usec() - t0
 
 	t0 = Time.get_ticks_usec() if measure else 0
+	_tick_unstuck(delta)
+	if measure:
+		phase_local["unstuck"] = Time.get_ticks_usec() - t0
+
+	t0 = Time.get_ticks_usec() if measure else 0
 	_sync_global_from_voxel()
-	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
+	_apply_walk_bob(delta)
 	player_mesh.rotation.y = current_skew
+	_tick_feet_water()
 	if measure:
 		phase_local["sync_visual"] = Time.get_ticks_usec() - t0
 
@@ -439,15 +492,27 @@ func _physics_process(delta: float) -> void:
 			_phys_worst_phases = phase_local.duplicate()
 
 
-func _slope_speed_multiplier() -> float:
+func _slope_speed_multiplier(moving: bool = true) -> float:
 	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
+	# Idle never applies the multiplier, so the slope sample stays off the standing tick.
+	if not moving:
+		_slope_age = 99
+		return 1.0
+	var cell := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	if cell == _slope_cell and _slope_age < 4:
+		_slope_age += 1
+		return _slope_mul
+	_slope_cell = cell
+	_slope_age = 0
 	var excess: float = _floor_probe.slope_excess_at(voxel_position.x, voxel_position.z)
 	var layer: float = _ws().layer_height()
-	var radius: float = _ws().player_floor_probe_radius
+	var radius: float = _ws().player_radius()
 	var slope_limit: float = tan(deg_to_rad(_ws().player_slope_limit_degrees)) * radius
 	if excess <= slope_limit * 1.35:
+		_slope_mul = 1.0
 		return 1.0
-	return clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
+	_slope_mul = clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
+	return _slope_mul
 
 
 func rotate_input_to_world(input: Vector2, yaw_degrees: float) -> Vector2:
@@ -541,6 +606,36 @@ func _snap_to_ground() -> void:
 	voxel_position = _floor_probe.snap_position_y(voxel_position)
 
 
+func _tick_unstuck(delta: float) -> void:
+	if _unstuck_cooldown > 0.0:
+		_unstuck_cooldown = maxf(_unstuck_cooldown - delta, 0.0)
+	if _floor_probe == null:
+		return
+	var manual := false
+	if not _GameplayInput.blocks_actions() and InputMap.has_action("unstuck"):
+		# Pressed, not just the edge: a tap between flushes still counts, and the cooldown blocks repeats.
+		manual = Input.is_action_pressed("unstuck") and _unstuck_cooldown <= 0.0
+	if manual:
+		_apply_safe_stand()
+		_unstuck_cooldown = UNSTUCK_COOLDOWN
+		return
+	_overlap_tick += 1
+	if _overlap_tick < OVERLAP_CHECK_FRAMES:
+		return
+	_overlap_tick = 0
+	if _floor_probe.body_overlaps_terrain(voxel_position, _player_height()):
+		_apply_safe_stand()
+
+
+func _apply_safe_stand() -> void:
+	var stand: Vector3 = _floor_probe.nearest_safe_stand(voxel_position, _player_height())
+	voxel_position = stand
+	velocity.y = 0.0
+	_move_vel_xz = Vector2.ZERO
+	if current_state == State.JUMPING or current_state == State.FALLING:
+		current_state = State.IDLE
+
+
 func _sample_walkable_feet(wx: float, wz: float) -> float:
 	return _floor_probe.sample_walkable_feet(wx, wz)
 
@@ -568,8 +663,16 @@ func _give_starting_loadout() -> void:
 	inventory.set_slot(1, "stone_pick", 1)
 	inventory.set_slot(2, "shortbow", 1)
 	inventory.set_slot(3, "wood", 16)
-	inventory.set_slot(4, "stone", 8)
+	inventory.set_slot(4, "stone", 16)
 	inventory.set_slot(5, "herb", 4)
+	# Extra kit lives in the bag. Leather is already worn. No crafting bench:
+	# sling spends stone, elites drop bombs and crystal weave.
+	inventory.set_slot(8, "spear", 1)
+	inventory.set_slot(9, "crystal_hammer", 1)
+	inventory.set_slot(10, "sling", 1)
+	inventory.set_slot(11, "crystal_bomb", 3)
+	inventory.set_slot(12, "stone_plate", 1)
+	inventory.armor_id = "leather_armor"
 
 
 func _ensure_spawn_chunks_loaded(spawn_col: Vector2i) -> void:
@@ -680,14 +783,39 @@ func apply_save_state(data: Dictionary) -> void:
 	_sync_global_from_voxel()
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, source: StringName = &"") -> void:
 	if amount <= 0.0:
 		return
+	var kind := source if source != &"" else damage_source_hint
+	damage_source_hint = &"hit"
+	var burst := kind != &"crystal_field"
+	if burst and _hit_iframes > 0.0:
+		return
+	if inventory and inventory.has_method("armor_damage_multiplier"):
+		amount *= inventory.armor_damage_multiplier()
 	var defense := get_stat(_StatIds.DEFENSE)
 	amount *= (1.0 - clampf(defense, 0.0, 0.9))
 	health = maxf(health - amount, 0.0)
+	if burst:
+		_hit_iframes = HIT_IFRAMES
+		var heavy := kind == &"boss" or amount >= 16.0
+		_Juice.request_hit_stop(0.08 if heavy else 0.04, get_tree())
+		_Juice.request_shake(0.5 if heavy else 0.14)
+		_play_sfx("player_death" if health <= 0.0 else "player_hurt")
 	if health <= 0.0:
 		died.emit()
+
+
+func _tick_hit_iframes(delta: float) -> void:
+	if _hit_iframes <= 0.0:
+		if player_mesh and not player_mesh.visible:
+			player_mesh.visible = true
+		return
+	_hit_iframes = maxf(_hit_iframes - delta, 0.0)
+	if player_mesh:
+		player_mesh.visible = fmod(_hit_iframes * 16.0, 2.0) >= 1.0 or _hit_iframes <= 0.0
+	if _hit_iframes <= 0.0 and player_mesh:
+		player_mesh.visible = true
 
 
 ## Restore health from existing consumables (e.g. herb). No new survival meters.
@@ -707,3 +835,67 @@ func change_state(new_state: State) -> void:
 		velocity.y = _jump_force()
 		sprite_scale_modifier = Vector2(0.6, 1.6)
 		current_skew = 0.2
+
+
+func _apply_walk_bob(delta: float) -> void:
+	if player_mesh == null:
+		return
+	if _mesh_rest_y <= 0.0:
+		_mesh_rest_y = player_mesh.position.y
+	var sx := 1.0
+	var sy := 1.0
+	var bob := 0.0
+	if current_state == State.RUNNING and _Juice.walk_bob_allowed():
+		_bob_phase += delta * 11.0
+		var s := sin(_bob_phase)
+		bob = s * _ws().voxel_scale * 0.04
+		sx = 1.0 + s * 0.06
+		sy = 1.0 - s * 0.08
+	else:
+		_bob_phase = 0.0
+	player_mesh.position.y = _mesh_rest_y + bob
+	player_mesh.scale = Vector3(sprite_scale_modifier.x * sx, sprite_scale_modifier.y * sy, 1.0)
+
+
+func _tick_feet_water() -> void:
+	if world == null or not world.has_method("get_tile_type"):
+		return
+	var cell := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	var landed := current_state == State.IDLE or current_state == State.RUNNING
+	if _wet_ready and cell == _wet_cell and landed == _wet_landed:
+		return
+	_wet_cell = cell
+	_wet_landed = landed
+	if not landed:
+		return
+	var wet := _CrystalTypes.is_water_tile(int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5)))
+	if not _wet_ready:
+		_feet_wet = wet
+		_wet_ready = true
+		return
+	if wet == _feet_wet:
+		return
+	_feet_wet = wet
+	_splash_here()
+
+
+func _splash_here() -> void:
+	if not is_instance_valid(_vfx):
+		_vfx = get_tree().get_first_node_in_group("combat_visual_feedback") if is_inside_tree() else null
+	if _vfx and _vfx.has_method("splash_at"):
+		_vfx.splash_at(global_position)
+	else:
+		_play_sfx("water_splash", global_position)
+
+
+func _play_sfx(id: String, at: Variant = null) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_audio):
+		_audio = get_node_or_null("/root/AudioManager")
+	if _audio == null or not _audio.has_method("play_sfx"):
+		return
+	if at is Vector3:
+		_audio.play_sfx(id, at)
+	else:
+		_audio.play_sfx(id)

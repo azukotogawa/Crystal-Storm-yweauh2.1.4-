@@ -139,7 +139,7 @@ environment = SubResource("Environment_tipki")
 transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
 light_color = Color(0.72, 0.78, 0.9, 1)
 light_energy = 0.58
-shadow_enabled = true
+shadow_enabled = false
 directional_shadow_mode = 1
 directional_shadow_max_distance = 80.0
 

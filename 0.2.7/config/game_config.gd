@@ -3,12 +3,7 @@ extends Resource
 
 const _WorldGenConfig = preload("res://config/world_gen_config.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
-const _BuildableDef = preload("res://config/buildable_def.gd")
-const _PlantableDef = preload("res://config/plantable_def.gd")
-const _EntityBrainConfig = preload("res://config/entity_brain_config.gd")
-const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
-const _AbsorptionUnlockDef = preload("res://config/absorption_unlock_def.gd")
-const _RelicDef = preload("res://config/relic_def.gd")
+const _CrystalEvolution = preload("res://crystal/crystal_evolution.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _CombatDef = preload("res://config/combat_def.gd")
 const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
@@ -31,6 +26,8 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 @export var maze_min_distance: float = 72.0
 @export var crystal_damage_per_second: float = 28.0
 @export var town_fall_depth: float = 0.45
+## Power added to the crystal when a town falls. The run does not end.
+@export var town_fall_power_surge: float = 40.0
 
 @export_group("Content")
 @export var buildables: Array = []
@@ -40,6 +37,7 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 @export var spawn_points: Array = []
 @export var absorption_unlocks: Array = []
 @export var relics: Array = []
+@export var items: Array = []
 
 
 func ensure_defaults() -> void:
@@ -73,6 +71,8 @@ func ensure_defaults() -> void:
 		performance = _PerformanceQualityConfig.create_default()
 	elif not performance is _PerformanceQualityConfig:
 		performance = _PerformanceQualityConfig.create_default()
+	if absorption_unlocks.is_empty():
+		absorption_unlocks = _CrystalEvolution.default_unlock_table()
 
 
 static func create_default() -> GameConfig:

@@ -24,10 +24,7 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	var cells := {
 		"flat": Vector2i(ox, oz),
 		"raised": Vector2i(ox + 2, oz),
-		"ramp_east": Vector2i(ox + 4, oz),
-		"ramp_west": Vector2i(ox + 7, oz),
-		"ramp_south": Vector2i(ox + 10, oz),
-		"ramp_north": Vector2i(ox + 13, oz),
+		# Ramps are filled in below from the chunk that contains the yard.
 		"wood_wall": Vector2i(ox, oz + 3),
 		"stone_wall": Vector2i(ox + 2, oz + 3),
 		"gate": Vector2i(ox + 4, oz + 3),
@@ -42,6 +39,9 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 		"dig_adj": Vector2i(ox + 9, oz + 6),
 		"slab": Vector2i(ox + 11, oz + 6),
 	}
+	var ramps := cardinal_ramp_cells(Vector2i(ox, oz))
+	for ramp_key in ramps.keys():
+		cells[ramp_key] = ramps[ramp_key]
 	# Raised column (player-built wall, not a ramp).
 	_TerrainEdits.build_wall(cells.raised.x, cells.raised.y, _VoxelTypes.STONE)
 	# Structures via gameplay editor when available.
@@ -88,6 +88,23 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	return {"origin": Vector2i(ox, oz), "cells": cells}
 
 
+## Four model-A landings whose plateau, landing, and 8-cell terrace all sit
+## inside the one chunk that contains `origin`. East/west share the high z
+## band; south/north stay on the low z band so the runs do not climb onto
+## each other or off the chunk (halo samples would reject the cardinal).
+static func cardinal_ramp_cells(origin: Vector2i) -> Dictionary:
+	var base := Vector2i(
+		int(floor(float(origin.x) / 16.0)) * 16,
+		int(floor(float(origin.y) / 16.0)) * 16
+	)
+	return {
+		"ramp_east": base + Vector2i(1, 13),
+		"ramp_west": base + Vector2i(14, 13),
+		"ramp_south": base + Vector2i(2, 2),
+		"ramp_north": base + Vector2i(13, 10),
+	}
+
+
 static func apply_generated_ramps(tree: SceneTree, cells: Dictionary) -> void:
 	_TerrainRamps.placement_chance = 100
 	var remesh: Dictionary = {}
@@ -132,27 +149,87 @@ static func _stamp_generated_step_maps(
 	tree: SceneTree, landing: Vector2i, toward_low: Vector2i, remesh: Dictionary
 ) -> void:
 	var cm = tree.get_first_node_in_group("chunk_manager")
-	if cm == null:
+	if cm == null or toward_low == Vector2i.ZERO:
 		return
 	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
-	var approach := landing + toward_low
-	for cell in [landing, approach]:
-		var coord := Vector2i(
-			int(floor(float(cell.x) / float(16))),
-			int(floor(float(cell.y) / float(16)))
-		)
-		if not cm.chunks.has(coord):
+	var landing_h := _resident_surface(cm, landing)
+	if landing_h < -9000.0:
+		return
+	# Model A draws a cardinal on a terrace: plateau behind the landing, and
+	# eight cells downhill that stay one layer lower (a one-cell ditch is a V
+	# or an inner corner and emits nothing). The strip is three cells wide so
+	# the approach has a single high neighbor.
+	var low_h := landing_h - layer
+	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if dir == toward_low:
 			continue
-		var data = cm.chunks[coord].chunk_data
-		if data == null:
-			continue
-		var lx: int = cell.x - coord.x * 16
-		var lz: int = cell.y - coord.y * 16
-		if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
-			continue
-		if cell == approach:
-			data.surface_map[lx][lz] = float(data.surface_map[lx][lz]) - layer
-		remesh[cell] = true
+		_write_resident_surface(cm, landing + dir, landing_h, remesh)
+	var perp := Vector2i(-toward_low.y, toward_low.x)
+	for step_i in range(1, 9):
+		var center: Vector2i = landing + toward_low * step_i
+		_write_resident_surface(cm, center, low_h, remesh)
+		_write_resident_surface(cm, center + perp, low_h, remesh)
+		_write_resident_surface(cm, center - perp, low_h, remesh)
+	remesh[landing] = true
+
+
+static func _resident_surface(cm, cell: Vector2i) -> float:
+	var data = _resident_chunk_data(cm, cell)
+	if data == null:
+		return -9999.0
+	var lx: int = cell.x - data.position.x * 16
+	var lz: int = cell.y - data.position.y * 16
+	if data.surface_map.size() <= lx or data.surface_map[lx] == null:
+		return -9999.0
+	if data.surface_map[lx].size() <= lz:
+		return -9999.0
+	return float(data.surface_map[lx][lz])
+
+
+static func _write_resident_surface(cm, cell: Vector2i, height: float, remesh: Dictionary) -> void:
+	var data = _resident_chunk_data(cm, cell)
+	if data == null:
+		return
+	var lx: int = cell.x - data.position.x * 16
+	var lz: int = cell.y - data.position.y * 16
+	if lx < 0 or lz < 0 or lx >= 16 or lz >= 16:
+		return
+	if data.surface_map.size() <= lx or data.surface_map[lx] == null:
+		return
+	if data.surface_map[lx].size() <= lz:
+		return
+	# Player walls and digs live in the worker snapshot. Leave them alone.
+	if data.get_worker_build_tile(lx, lz) >= 0:
+		return
+	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
+	if absf(data.get_worker_height_delta(lx, lz)) > layer * 0.08:
+		return
+	# Set before the write so a column regen that has not entered its loop
+	# keeps this stamp. Snapshot so one already inside the loop can be
+	# restored on the preserve remesh.
+	data.preserve_column_maps = true
+	data.surface_map[lx][lz] = height
+	# A water tile on the approach blocks the cardinal. The terrace is dry ground.
+	if lx < data.tile_map.size() and data.tile_map[lx] is Array and lz < data.tile_map[lx].size():
+		var tile: int = int(data.tile_map[lx][lz])
+		if tile == _VoxelTypes.WATER or tile == _VoxelTypes.RIVER \
+				or tile == _VoxelTypes.OCEAN or tile == _VoxelTypes.OCEAN2 or tile == _VoxelTypes.OCEAN3:
+			data.tile_map[lx][lz] = _VoxelTypes.GRASSLAND
+	data.snapshot_resident_maps()
+	remesh[cell] = true
+
+
+static func _resident_chunk_data(cm, cell: Vector2i):
+	var coord := Vector2i(
+		int(floor(float(cell.x) / 16.0)),
+		int(floor(float(cell.y) / 16.0))
+	)
+	if not cm.chunks.has(coord):
+		return null
+	var view = cm.chunks[coord]
+	if view == null:
+		return null
+	return view.chunk_data
 
 
 static func _seed_crystal(tree: SceneTree, cell: Vector2i) -> void:

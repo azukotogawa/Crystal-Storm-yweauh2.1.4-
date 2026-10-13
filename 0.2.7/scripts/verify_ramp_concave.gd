@@ -1,5 +1,5 @@
 extends SceneTree
-## Regression: diagonal concave ramps emit support fill + prism mesh; wedge stays in-column.
+## L-gaps are cliffs, not compound FACE_RAMP_SIDE wedges.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -21,21 +21,21 @@ func _run() -> void:
 	var layer: float = _WorldSettings.get_active().layer_height()
 
 	var ramp_src := (load("res://helpers/terrain_ramps.gd") as GDScript).source_code
-	if "CONCAVE_MESH_REV := 3" not in ramp_src:
-		push_error("terrain_ramps must use concave mesh rev 3")
+	if "WEDGE_MESH_REV := 8" not in ramp_src:
+		push_error("terrain_ramps must use the one-cell landing wedge rev 8")
 		failed = true
 	else:
-		print("OK concave mesh rev 3")
-	if "WEDGE_MESH_REV := 6" not in ramp_src:
-		push_error("terrain_ramps must use landing-anchored wedge rev 6")
+		print("OK wedge mesh rev 8 (one-cell landing)")
+	if "CORNER_STEP_MESH_REV := 3" not in ramp_src:
+		push_error("terrain_ramps must use the triangle corner top rev 3")
 		failed = true
 	else:
-		print("OK wedge mesh rev 6")
-	if "CORNER_STEP_MESH_REV := 1" not in ramp_src:
-		push_error("terrain_ramps must define corner step mesh rev 1")
+		print("OK corner step mesh rev 3 (triangle top)")
+	if "s * 2.0" in ramp_src or "flat shelf" in ramp_src:
+		push_error("model B shelf / 2-layer corner prism must stay out")
 		failed = true
 	else:
-		print("OK corner step mesh rev 1")
+		print("OK no wedge shelf or 2-layer corner prism")
 
 	var old_chance: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 100
@@ -65,35 +65,37 @@ func _run() -> void:
 
 	var diagonal := 0
 	var support_tops := 0
-	var side_walls := 0
+	var gap_floor := 0
 	for q in quads:
 		var fc := int(q.get("face_code", -1))
 		if fc == FACE_RAMP_SIDE:
 			diagonal += 1
-		elif fc == FACE_TOP and int(q.get("x", -1)) == gx and int(q.get("z", -1)) == gz:
+		if int(q.get("x", -1)) != gx or int(q.get("z", -1)) != gz:
+			continue
+		if fc == FACE_TOP:
 			var y: float = float(q.get("y", -999.0))
-			if y > gap_h + layer * 0.25 and y <= high_h + 0.01:
+			if y > gap_h + layer * 0.25:
 				support_tops += 1
-		elif fc in [3, 4, 5, 6] and int(q.get("x", -1)) == gx and int(q.get("z", -1)) == gz:
-			side_walls += 1
+			elif is_equal_approx(y, gap_h):
+				gap_floor += 1
 
-	if diagonal < 1:
-		push_error("concave L-corner must emit diagonal prism, got %d" % diagonal)
+	if diagonal != 0:
+		push_error("L-gap must not emit FACE_RAMP_SIDE compound prism, got %d" % diagonal)
 		failed = true
 	else:
-		print("OK concave diagonal prisms=%d" % diagonal)
+		print("OK no concave compound prism")
 
-	if support_tops < 2:
-		push_error("concave gap needs stacked support tops, got %d" % support_tops)
+	if support_tops != 0:
+		push_error("L-gap must not stack mid-height FACE_TOPs, got %d" % support_tops)
 		failed = true
 	else:
-		print("OK concave support tops=%d" % support_tops)
+		print("OK no stacked support tops")
 
-	if side_walls < 2:
-		push_error("concave gap needs inner side-wall fill, got %d" % side_walls)
+	if gap_floor < 1:
+		push_error("L-gap must keep its own floor FACE_TOP at gap_h, got %d" % gap_floor)
 		failed = true
 	else:
-		print("OK concave side walls=%d" % side_walls)
+		print("OK gap floor tops=%d" % gap_floor)
 
 	var dir := Vector2i(1, 0)
 	var xform := _TerrainRamps.wedge_transform(float(gx), float(gz), gap_h, dir)

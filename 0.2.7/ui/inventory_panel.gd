@@ -5,10 +5,13 @@ const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WeaponController = preload("res://weapons/weapon_controller.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 
 
 var _player: Player
 var _grid: GridContainer
+var _armor_button: Button
 var _visible_panel := false
 var _registry: _GameVisualRegistry
 
@@ -17,6 +20,7 @@ func _ready() -> void:
 	visible = false
 
 func _enter_tree() -> void:
+	_ThemeBuilder.apply(self)
 	_player = get_tree().get_first_node_in_group("player")
 	if _player and _player.inventory:
 		_player.inventory.changed.connect(_refresh)
@@ -37,6 +41,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("inventory_toggle"):
 		_visible_panel = not _visible_panel
 		visible = _visible_panel
+		_ui("ui_open" if _visible_panel else "ui_close")
 		if _visible_panel:
 			_refresh()
 
@@ -54,8 +59,8 @@ func _build_ui() -> void:
 	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.offset_left = -220
 	panel.offset_right = 220
-	panel.offset_top = -180
-	panel.offset_bottom = 180
+	panel.offset_top = -220
+	panel.offset_bottom = 220
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.1, 0.1, 0.14, 0.95)
@@ -74,6 +79,16 @@ func _build_ui() -> void:
 	title.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(title)
 
+	_armor_button = Button.new()
+	_armor_button.name = "ArmorSlot"
+	_armor_button.custom_minimum_size = Vector2(0, 36)
+	_armor_button.focus_mode = Control.FOCUS_NONE
+	_armor_button.text = "Armor: none"
+	_armor_button.pressed.connect(_on_armor_pressed)
+	_armor_button.mouse_entered.connect(_on_armor_hover)
+	_armor_button.mouse_exited.connect(_on_slot_unhover)
+	vbox.add_child(_armor_button)
+
 	_grid = GridContainer.new()
 	_grid.columns = 8
 	_grid.add_theme_constant_override("h_separation", 4)
@@ -85,17 +100,23 @@ func _build_ui() -> void:
 		btn.custom_minimum_size = Vector2(48, 40)
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.pressed.connect(_on_slot_pressed.bind(i))
+		btn.mouse_entered.connect(_on_slot_hover.bind(i))
+		btn.mouse_exited.connect(_on_slot_unhover)
 		_grid.add_child(btn)
 
 	add_child(panel)
 
 
 func _on_slot_pressed(index: int) -> void:
+	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return
 	# Simple click: move item to first empty hotbar slot
 	var slot = _player.inventory.get_slot(index)
 	if slot == null:
+		return
+	if _ItemTypes.is_armor(str(slot.id)):
+		_player.inventory.equip_armor(str(slot.id))
 		return
 	for h in _Inventory.HOTBAR_SIZE:
 		if _player.inventory.get_hotbar_item(h) == null:
@@ -106,9 +127,42 @@ func _on_slot_pressed(index: int) -> void:
 			return
 
 
+func _on_slot_hover(index: int) -> void:
+	if _player == null or _player.inventory == null:
+		return
+	var slot = _player.inventory.get_slot(index)
+	if slot == null:
+		_TooltipPanel.hide_tip()
+		return
+	_TooltipPanel.show_item(get_tree(), str(slot.id))
+
+
+func _on_armor_hover() -> void:
+	if _player == null or _player.inventory == null:
+		return
+	var worn := str(_player.inventory.armor_id)
+	if worn == "":
+		_TooltipPanel.hide_tip()
+		return
+	_TooltipPanel.show_item(get_tree(), worn)
+
+
+func _on_slot_unhover() -> void:
+	_TooltipPanel.hide_tip()
+
+
+func _on_armor_pressed() -> void:
+	_ui("ui_click")
+	if _player == null or _player.inventory == null:
+		return
+	_player.inventory.clear_armor()
+	_refresh()
+
+
 func _refresh() -> void:
 	if _grid == null or _player == null or _player.inventory == null:
 		return
+	_refresh_armor()
 	for i in _grid.get_child_count():
 		var btn := _grid.get_child(i) as Button
 		var slot = _player.inventory.get_slot(i)
@@ -121,7 +175,7 @@ func _refresh() -> void:
 			if _registry == null:
 				_registry = get_tree().get_first_node_in_group("game_visual_registry")
 			if _registry and _registry.has_method("get_item_texture"):
-				tex = _registry.get_item_texture(str(slot.id))
+				tex = _registry.get_item_texture(_ItemTypes.visual_key(str(slot.id)))
 			btn.icon = tex
 			btn.expand_icon = true
 			var count_suffix := ""
@@ -129,3 +183,27 @@ func _refresh() -> void:
 				count_suffix = "x%d" % int(slot.count)
 			btn.text = count_suffix
 			btn.tooltip_text = _ItemTypes.display_name(slot.id)
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
+
+
+func _refresh_armor() -> void:
+	if _armor_button == null:
+		return
+	var worn := str(_player.inventory.armor_id)
+	if worn == "":
+		_armor_button.text = "Armor: none"
+		_armor_button.icon = null
+		_armor_button.tooltip_text = "Click a leather, stone, or crystal armor in the bag to wear it."
+		return
+	_armor_button.text = "Armor: %s" % _ItemTypes.display_name(worn)
+	_armor_button.tooltip_text = "Worn. Click to put it back in the bag."
+	var tex: Texture2D = null
+	if _registry and _registry.has_method("get_item_texture"):
+		tex = _registry.get_item_texture(_ItemTypes.visual_key(worn))
+	_armor_button.icon = tex
+	_armor_button.expand_icon = true

@@ -1,0 +1,31 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Tool / session artifacts (large)
+session.json
+.tmp_stone_wall_capture/
+.tmp_gate_capture/
+.tmp_bridge_capture/
+.tmp_ruin_pillar_capture/
+.tmp_town_hall_capture/
+
+# Python venvs (project uses Godot, not Python primarily)
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Build output, logs, and local session scratch
+dist/
+*.log
+.tmp_*/
+accept_shots/
+.claude/settings.local.json
+conversation with supergrok
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~

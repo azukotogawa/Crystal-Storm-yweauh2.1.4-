@@ -18,7 +18,27 @@ static func ensure_builtins() -> void:
 	_register(_make(&"crystal_stag", &"crystal_stag", 14.0, 24.0, Color(0.55, 0.25, 0.9), 1.1))
 	_register(_make(&"thornling", &"thornling", 7.0, 14.0, Color(0.3, 0.75, 0.35), 0.9))
 	_register(_make(&"corrupted_beast", &"corrupted_beast", 9.0, 26.0, Color(0.45, 0.18, 0.55), 1.0))
+	_register(_make(&"crystal_wisp", &"crystal_wisp", 13.0, 10.0, Color(0.75, 0.45, 1.0), 0.7))
 	_register(_make(&"shard_guard", &"shard_guard", 8.0, 18.0, Color(0.82, 0.35, 1.0), 0.8, 1))
+	var warden := _make(&"origin_warden", &"origin_warden", 6.5, 18.0, Color(0.9, 0.12, 0.42), 0.0, 0)
+	warden.display_name = "Origin Warden"
+	warden.max_health = 240.0
+	warden.lifetime = 0.0
+	warden.mesh_radius = 0.55
+	warden.mesh_height = 1.65
+	warden.hit_radius = 0.72
+	warden.defense = 0.08
+	warden.visual_id = &"crystal_mite"
+	_register(warden)
+	var elite := _make(&"spawn_elite", &"spawn_elite", 7.5, 16.0, Color(1.0, 0.42, 0.12), 0.0, 0)
+	elite.display_name = "Shard Tyrant"
+	elite.max_health = 96.0
+	elite.lifetime = 0.0
+	elite.mesh_radius = 0.4
+	elite.mesh_height = 1.15
+	elite.hit_radius = 0.5
+	elite.visual_id = &"shard_guard"
+	_register(elite)
 
 
 static func register_all(defs: Array) -> void:

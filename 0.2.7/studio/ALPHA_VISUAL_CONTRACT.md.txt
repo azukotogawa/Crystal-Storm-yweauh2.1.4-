@@ -1,0 +1,77 @@
+# Crystal Storm — Alpha Visual Contract
+
+## Terrain
+The rendered world must faithfully represent the current terrain state.
+F4/data agreement is not sufficient if the camera disagrees.
+
+A terrain column must correctly render:
+- full voxels
+- arbitrary excavation depth
+- exposed sides
+- cardinal ramps
+- corner ramps
+- terrain beneath ramps
+
+## Scale
+Terrain is the reference scale.
+
+Vegetation, enemies, player, items, buildings, settlements and other world
+features must be visually proportionate to the terrain voxel scale.
+
+Features must not default to tiny decorative objects approximately 1/5
+the apparent scale of the terrain.
+
+## Underground
+Future caves must remain readable from the gameplay camera.
+
+Future requirements:
+- camera control appropriate for deep excavation
+- visibility/occlusion solution for terrain above the player
+- local underground lighting
+- torches/light sources
+- readable player position and excavated space
+
+Do not implement these until surface terrain geometry is stable.
+
+## Crystal
+The crystal is not merely an enemy/spawn visual.
+
+Future world presentation must support:
+- crystal spreading across terrain
+- conversion/infection of terrain
+- infection of vegetation/wildlife
+- crystal accumulating vertically
+- crystal growing into mounds/volumes above terrain
+
+The system should therefore remain compatible with terrain whose visual
+appearance and height can change as crystal spreads.
+
+CORNER RAMP
+
+A corner ramp is NOT a V-shaped ramp.
+
+A valid corner ramp exists only when:
+- the low cell is adjacent to two full blocks of equal higher height;
+- those supporting blocks meet at a corner;
+- neither supporting direction is itself a ramp;
+- the geometry improves the large-scale hexagonal/isometric silhouette.
+
+Rendered geometry:
+- one diagonal square vertical face on the low cell;
+- one triangular top face;
+- the two high edges meet the tops of the two supporting full blocks;
+- the low cell has solid terrain beneath it;
+- no hole beneath the corner;
+- no second downward or upward slope;
+- no extra triangular funnel/prism geometry.
+
+Invalid:
+- full block + cardinal ramp;
+- cardinal ramp + cardinal ramp;
+- isolated L-shaped geometry;
+- two opposing slopes;
+- generic two-cell corner;
+- stacked/compound triangular wedges;
+- any geometry that visually produces a V or diamond ramp.
+
+Corner ramps should be uncommon. They exist to create the large-scale diagonal/hexagonal character of the terrain, not to replace ordinary terrain corners.

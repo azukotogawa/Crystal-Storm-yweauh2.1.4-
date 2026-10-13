@@ -12,8 +12,6 @@ const _CrystalPresentation = preload("res://crystal/crystal_presentation.gd")
 const _CrystalSimSnapshot = preload("res://crystal/crystal_sim_snapshot.gd")
 const _CrystalSimEvents = preload("res://crystal/crystal_sim_events.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
-const _PlantableRegistry = preload("res://world/plantable_registry.gd")
-const _PlantableDef = preload("res://config/plantable_def.gd")
 const _SpawnPointRegistry = preload("res://config/spawn_point_registry.gd")
 const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
@@ -22,6 +20,12 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldState = preload("res://world/world_state.gd")
+const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
+const _RelicChoice = preload("res://relics/relic_choice.gd")
+const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
+const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
 signal fluid_changed(world_pos: Vector2i)
@@ -31,6 +35,8 @@ signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
 signal all_spawns_destroyed
 signal crystal_touched_player
 signal absorption_completed(source_id: StringName, world_pos: Vector2i)
+## Player broke into the crystal mass. broken=true when the cell is removed.
+signal crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool)
 
 @export var expansion_enabled: bool = true
 @export var flow_substeps: int = 2
@@ -59,6 +65,8 @@ var _absorption: Dictionary = {}  # mirrored from simulation for save export
 var _ruin_absorption: Dictionary = {}
 var _absorbed_ruin_centers: Dictionary = {}
 var evolution: _CrystalEvolution
+## Enemy ids whose unlock relic was already handled this run.
+var _unlock_relics_granted: Dictionary = {}
 var _spawn_points: Array[CrystalSpawnPoint] = []
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
@@ -68,7 +76,10 @@ var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
 var _initialized: bool = false
+var _stop_bootstrap: bool = false
+var _scars_reindexed: bool = false
 var _spawn_ctrl: _SpawnPointController
+var _juice_vfx: Node
 var _perf_skip_counter: int = 0
 var _perf_max_rebuilds_per_frame: int = 5
 var _perf_crystal_skip_frames: int = 0
@@ -324,7 +335,13 @@ func ensure_ready() -> void:
 		await get_tree().process_frame
 
 
+func cancel_bootstrap() -> void:
+	_stop_bootstrap = true
+
+
 func _bootstrap_when_ready() -> void:
+	if _stop_bootstrap or not is_inside_tree():
+		return
 	var _STP = load("res://systems/startup_total_profiler.gd")
 	if _STP and _STP.is_enabled():
 		_STP.begin("CrystalManager.bootstrap_when_ready", "synchronous_main")
@@ -332,15 +349,27 @@ func _bootstrap_when_ready() -> void:
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] _bootstrap_when_ready ENTER t_ms=%d (started by CrystalManager._ready call_deferred)" % t_boot0)
 	while world == null:
+		if _stop_bootstrap or not is_inside_tree():
+			return
 		world = get_tree().get_first_node_in_group("world")
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	while chunk_manager == null:
+		if _stop_bootstrap or not is_inside_tree():
+			return
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] waiting spawn_area_ready(0,0) t_ms=%d" % Time.get_ticks_msec())
 	while not chunk_manager.spawn_area_ready(0, 0):
+		if _stop_bootstrap or not is_inside_tree():
+			return
 		await get_tree().process_frame
+		if _stop_bootstrap or not is_inside_tree():
+			return
 	if _crystal_measure_enabled():
 		print("[CrystalStartupMeasure] spawn_area_ready OK t_ms=%d" % Time.get_ticks_msec())
 
@@ -389,8 +418,12 @@ func configure_evolution() -> void:
 	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
 	if not evolution.is_unlocked(&"crystal_mite"):
 		evolution.unlocked_enemies.append(&"crystal_mite")
-	if evolution.has_signal("enemy_unlocked") and not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
+	# A later absorption milestone that unlocks a new enemy grants its mapped relic
+	# once per run. crystal_mite is already unlocked here, so it does not grant.
+	# Spawn destruction and ruin expeditions still grant relics on their own path.
+	if not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
 		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
+	_seed_unlock_relics_granted()
 
 
 ## Map absorption enemy unlocks → starter relics for progression feedback.
@@ -406,7 +439,20 @@ static func relic_for_enemy_unlock(enemy_id: StringName) -> StringName:
 			return &""
 
 
+func _seed_unlock_relics_granted() -> void:
+	if evolution == null:
+		return
+	for id in evolution.unlocked_enemies:
+		_unlock_relics_granted[id] = true
+
+
 func _on_enemy_unlocked_grant_relic(enemy_id: StringName) -> void:
+	# crystal_mite is unlocked at run start. Direct _grant_relic_for_unlock still equips it.
+	if enemy_id == &"crystal_mite":
+		return
+	if _unlock_relics_granted.has(enemy_id):
+		return
+	_unlock_relics_granted[enemy_id] = true
 	_grant_relic_for_unlock(enemy_id)
 
 
@@ -414,16 +460,46 @@ func _grant_relic_for_unlock(enemy_id: StringName) -> StringName:
 	var relic_id: StringName = relic_for_enemy_unlock(enemy_id)
 	if relic_id == &"":
 		return &""
-	var player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
-	if player == null:
+	var relic_mgr = _player_relic_manager()
+	if relic_mgr == null or not relic_mgr.has_method("equip"):
 		return &""
+	if relic_mgr.equip(relic_id):
+		return relic_id
+	# Slots are full. With an overlay, offer replace for this relic only.
+	# Headless (no overlay) does not force-unequip.
+	if not is_inside_tree():
+		return &""
+	var tree := get_tree()
+	if tree == null or tree.get_first_node_in_group("game_overlay") == null:
+		return &""
+	_RelicChoicePanel.open_replace(tree, relic_mgr, relic_id, "Relic unlocked — replace one")
+	return &""
+
+
+func _player_relic_manager():
+	if not is_inside_tree():
+		return null
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return null
 	var relic_mgr = player.get_node_or_null("RelicManager")
 	if relic_mgr == null:
-		relic_mgr = get_tree().get_first_node_in_group("relic_manager") if is_inside_tree() else null
-	if relic_mgr and relic_mgr.has_method("equip"):
-		if relic_mgr.equip(relic_id):
-			return relic_id
-	return &""
+		relic_mgr = get_tree().get_first_node_in_group("relic_manager")
+	return relic_mgr
+
+
+## Deterministic relic from a destroyed spawn. Skips relics already equipped.
+func set_origin_warden_alive(alive: bool) -> void:
+	if _spawn_ctrl:
+		_spawn_ctrl.origin_warden_alive = alive
+
+
+func _grant_relic_for_spawn(spawn: CrystalSpawnPoint) -> StringName:
+	var relic_mgr = _player_relic_manager()
+	if relic_mgr == null or not relic_mgr.has_method("equip"):
+		return &""
+	var tree: SceneTree = get_tree() if is_inside_tree() else null
+	return _RelicChoice.present(tree, relic_mgr, spawn.id, "Spawn destroyed — choose a relic")
 
 
 func apply_sim_config(cfg: _CrystalSimConfig) -> void:
@@ -579,22 +655,62 @@ func get_presentation():
 func _setup_materials() -> void:
 	_crystal_material = StandardMaterial3D.new()
 	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	# Brighter mass so the purple front is readable in the first minute (presentation only).
-	_crystal_material.albedo_color = Color(0.72, 0.28, 1.0, 0.88)
+	# Scissor keeps the mass solid enough to cast and receive shadows.
+	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	_crystal_material.alpha_scissor_threshold = 0.35
+	# Brighter mass so the front is readable in the first minute (presentation only).
 	_crystal_material.emission_enabled = true
-	_crystal_material.emission = Color(0.55, 0.18, 0.95)
+	_CrystalPalette.paint_mass(_crystal_material, _PlayerSettings.colorblind_palette)
 	_crystal_material.emission_energy_multiplier = 2.15
-	_crystal_material.roughness = 0.14
-	_crystal_material.metallic = 0.28
+	_crystal_material.roughness = 0.08
+	_crystal_material.metallic = 0.42
+	_crystal_material.rim_enabled = true
+	_crystal_material.rim = 0.42
+	_crystal_material.rim_tint = 0.65
+	_crystal_material.clearcoat_enabled = true
+	_crystal_material.clearcoat = 0.35
+	_crystal_material.clearcoat_roughness = 0.12
+	# Overlapping cell facets stay visible from either side of the mass.
+	_crystal_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var facet := load("res://assets/art/crystal/facet.png") as Texture2D
+	if facet != null:
+		_crystal_material.albedo_texture = facet
+		_crystal_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_marker_material.albedo_color = Color(1.0, 0.35, 0.9, 0.85)
 	_marker_material.emission_enabled = true
-	_marker_material.emission = Color(1.0, 0.2, 0.8)
+	_CrystalPalette.paint_marker(_marker_material, _PlayerSettings.colorblind_palette)
 	_marker_material.emission_energy_multiplier = 2.5
 	_marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+
+
+## Recolour the live mass, markers, and spawn bars. No textures are swapped.
+func apply_color_palette(colorblind: bool) -> void:
+	if _crystal_material:
+		_CrystalPalette.paint_mass(_crystal_material, colorblind)
+	if _marker_material:
+		_CrystalPalette.paint_marker(_marker_material, colorblind)
+	for key in _spawn_markers.keys():
+		var anchor := _spawn_markers[key] as Node3D
+		if anchor:
+			_repaint_spawn_anchor(anchor, colorblind)
+
+
+func _repaint_spawn_anchor(anchor: Node3D, colorblind: bool) -> void:
+	var boss := bool(anchor.get_meta("spawn_is_boss", false))
+	var sprite := anchor.get_node_or_null("Sprite") as Sprite3D
+	if sprite:
+		sprite.modulate = _CrystalPalette.marker_modulate(colorblind, boss)
+		if sprite.material_override is StandardMaterial3D:
+			_CrystalPalette.paint_marker(sprite.material_override as StandardMaterial3D, colorblind)
+	var prism := anchor.get_node_or_null("FallbackPrism") as MeshInstance3D
+	if prism and prism.material_override is StandardMaterial3D:
+		_CrystalPalette.paint_mass(prism.material_override as StandardMaterial3D, colorblind)
+	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
+	if fill and fill.material_override is StandardMaterial3D:
+		var mat := fill.material_override as StandardMaterial3D
+		mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, boss, false)
 
 
 func _initialize_spawns() -> void:
@@ -732,18 +848,73 @@ func pick_origin_spawn_cell() -> Vector2i:
 func get_origin_cell() -> Vector2i:
 	if _spawn_points.size() > 0:
 		return _spawn_points[0].world_pos
-	# Map-center threat before spawn init. Relocated land (e.g. (−10,10))
-	# still sits in chunk (−1,0), covered by origin ±1 stream extras.
-	return Vector2i.ZERO
+	# Corner threat before spawn init. Stream extras keep that corner resident.
+	return _resolve_origin_spawn_position()
+
+
+## Inset from the playable edge so the heart sits in a corner, not on the border wall.
+const _ORIGIN_CORNER_INSET := 72
+
+
+## Same seed always picks the same corner (NW, NE, SW, SE).
+func origin_corner_for_seed(seed_value: int) -> Vector2i:
+	var half_x := _WorldBorder.PLAYABLE_HALF_X - _ORIGIN_CORNER_INSET
+	var half_z := _WorldBorder.PLAYABLE_HALF_Z - _ORIGIN_CORNER_INSET
+	var corners: Array[Vector2i] = [
+		Vector2i(-half_x, -half_z),
+		Vector2i(half_x, -half_z),
+		Vector2i(-half_x, half_z),
+		Vector2i(half_x, half_z),
+	]
+	return corners[posmod(seed_value, 4)]
+
+
+func _preferred_origin_corner() -> Vector2i:
+	var seed_value := 1
+	if world != null and "world_seed" in world:
+		seed_value = int(world.world_seed)
+	return origin_corner_for_seed(seed_value)
 
 
 func _resolve_origin_spawn_position() -> Vector2i:
-	var preferred := Vector2i.ZERO
-	if _origin_cell_unsuitable(preferred):
-		var land := _pick_nearest_land_spawn(preferred)
-		if land != preferred:
-			print("[Crystal] Origin relocated %s → %s (avoid water at map center)" % [preferred, land])
-		return land
+	var preferred := _preferred_origin_corner()
+	if world == null:
+		return preferred
+	var land := _find_corner_land(preferred)
+	if land != preferred:
+		print("[Crystal] Origin corner %s → land %s" % [preferred, land])
+	return land
+
+
+## Walk from the chosen corner toward the map center until the cell is dry land.
+## Search stays inside that corner so the heart cannot drift back to the center.
+func _find_corner_land(preferred: Vector2i) -> Vector2i:
+	if not _origin_cell_unsuitable(preferred):
+		return preferred
+	var sign_x := -1 if preferred.x < 0 else 1
+	var sign_z := -1 if preferred.y < 0 else 1
+	var min_abs := int(float(mini(_WorldBorder.PLAYABLE_HALF_X, _WorldBorder.PLAYABLE_HALF_Z)) * 0.58)
+	var offsets: Array[Vector2i] = [
+		Vector2i.ZERO,
+		Vector2i(4, 0), Vector2i(-4, 0), Vector2i(0, 4), Vector2i(0, -4),
+		Vector2i(8, 8), Vector2i(-8, 8), Vector2i(8, -8), Vector2i(-8, -8),
+		Vector2i(16, 0), Vector2i(0, 16), Vector2i(-16, 0), Vector2i(0, -16),
+	]
+	var step := 0
+	while step <= 420:
+		var base := Vector2i(preferred.x - sign_x * step, preferred.y - sign_z * step)
+		if absi(base.x) < min_abs or absi(base.y) < min_abs:
+			break
+		for off in offsets:
+			var pos: Vector2i = base + off
+			if absi(pos.x) < min_abs or absi(pos.y) < min_abs:
+				continue
+			if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
+				continue
+			if not _origin_cell_unsuitable(pos):
+				return pos
+		step += 16
+	push_warning("[Crystal] No dry land in corner %s — keeping the corner cell" % preferred)
 	return preferred
 
 
@@ -1006,6 +1177,15 @@ func _tick_trace_finish() -> void:
 func _process(delta: float) -> void:
 	if not _initialized:
 		return
+	if not _scars_reindexed:
+		_CrystalCorruption.reindex_scars()
+		_scars_reindexed = true
+	if _CrystalCorruption.scar_count() > 0:
+		var healed: Array = _CrystalCorruption.tick_scars(delta, 8)
+		for cell_v in healed:
+			var healed_cell: Vector2i = cell_v
+			_pending_absorption_rebuilds[healed_cell] = true
+			_refresh_feature_visual(healed_cell)
 	if _tick_trace_env() and not _tick_trace_armed and not _tick_trace_done:
 		begin_tick_trace_arm()
 	var measure := _crystal_measure_enabled() and _measure_frame_i < _MEASURE_FRAMES
@@ -1597,12 +1777,7 @@ func _terrain_at(pos: Vector2i) -> float:
 func _crystal_floor_at(pos: Vector2i) -> float:
 	if world == null:
 		return 0.0
-	var col_x := float(pos.x) + 0.5
-	var col_z := float(pos.y) + 0.5
-	var entry: Dictionary = {}
-	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
-		entry = chunk_manager.get_ramp_entry_at_world(col_x, col_z)
-	return TerrainRamps.walkable_height_from_entry(world, col_x, col_z, entry)
+	return VoxelFloorProbe.cached_column_center_walkable(world, chunk_manager, pos.x, pos.y)
 
 
 func _tile_at(pos: Vector2i) -> int:
@@ -1797,16 +1972,19 @@ func _refresh_spawn_markers() -> void:
 	for spawn in _spawn_points:
 		if not spawn.active:
 			continue
-		var marker_size: float = 2.4 if spawn.is_boss else 1.6
+		var vs: float = _WorldSettings.get_active().voxel_scale
+		var marker_size: float = vs * (1.2 if spawn.is_boss else 0.8)
 
 		var anchor := Node3D.new()
 		anchor.name = "SpawnMarker_%d" % spawn.id
+		anchor.set_meta("spawn_is_boss", spawn.is_boss)
+		var colorblind := _PlayerSettings.colorblind_palette
 
 		var marker := Sprite3D.new()
 		marker.name = "Sprite"
 		marker.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-		marker.pixel_size = 0.022 if spawn.is_boss else 0.028
-		marker.modulate = Color(1.0, 0.92, 1.0, 0.95) if spawn.is_boss else Color(0.88, 0.78, 1.0, 0.88)
+		marker.pixel_size = vs * (0.011 if spawn.is_boss else 0.014)
+		marker.modulate = _CrystalPalette.marker_modulate(colorblind, spawn.is_boss)
 		var vis = get_tree().get_first_node_in_group("game_visual_registry")
 		var has_tex := false
 		if vis and vis.spawn_marker_textures_enabled:
@@ -1826,9 +2004,8 @@ func _refresh_spawn_markers() -> void:
 			box.size = Vector3(marker_size, marker_size * 1.4, marker_size)
 			prism.mesh = box
 			var pmat := StandardMaterial3D.new()
-			pmat.albedo_color = Color(0.78, 0.28, 1.0, 0.92)
 			pmat.emission_enabled = true
-			pmat.emission = Color(0.55, 0.18, 0.95)
+			_CrystalPalette.paint_mass(pmat, colorblind)
 			pmat.emission_energy_multiplier = 2.0
 			prism.material_override = pmat
 			prism.position.y = marker_size * 0.15
@@ -1843,8 +2020,64 @@ func _refresh_spawn_markers() -> void:
 			walkable + marker_size * 0.5 + 0.12,
 			col_z
 		)
+		_attach_spawn_hp_bar(anchor, spawn, marker_size)
 		_marker_root.add_child(anchor)
 		_spawn_markers[spawn.id] = anchor
+
+
+func _attach_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint, marker_size: float) -> void:
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	var width := vs * (1.45 if spawn.is_boss else 1.1)
+	var height := vs * 0.14
+	var bg := MeshInstance3D.new()
+	bg.name = "HpBarBg"
+	var bg_mesh := BoxMesh.new()
+	bg_mesh.size = Vector3(width, height, vs * 0.08)
+	bg.mesh = bg_mesh
+	var bg_mat := StandardMaterial3D.new()
+	bg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bg_mat.albedo_color = Color(0.08, 0.05, 0.12, 0.92)
+	bg.material_override = bg_mat
+	bg.position = Vector3(0.0, marker_size * 1.25, 0.0)
+	anchor.add_child(bg)
+
+	var fill := MeshInstance3D.new()
+	fill.name = "HpFill"
+	var fill_mesh := BoxMesh.new()
+	fill_mesh.size = Vector3(width * 0.92, height * 0.62, vs * 0.1)
+	fill.mesh = fill_mesh
+	var fill_mat := StandardMaterial3D.new()
+	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fill_mat.albedo_color = _CrystalPalette.spawn_fill(_PlayerSettings.colorblind_palette, spawn.is_boss, false)
+	fill.material_override = fill_mat
+	fill.position = Vector3(0.0, marker_size * 1.25, vs * 0.02)
+	fill.set_meta("bar_width", width * 0.92)
+	anchor.add_child(fill)
+	_apply_spawn_hp_bar(anchor, spawn)
+
+
+func _apply_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint) -> void:
+	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
+	if fill == null:
+		return
+	var ratio := 0.0
+	if spawn.max_health > 0.0:
+		ratio = clampf(spawn.health / spawn.max_health, 0.0, 1.0)
+	fill.visible = spawn.active and ratio > 0.001
+	var bg := anchor.get_node_or_null("HpBarBg")
+	if bg:
+		bg.visible = spawn.active
+	var full_w := float(fill.get_meta("bar_width", 1.0))
+	fill.scale = Vector3(maxf(ratio, 0.001), 1.0, 1.0)
+	# Shrink toward the left edge so the bar reads as draining, not compressing in place.
+	fill.position.x = -full_w * (1.0 - ratio) * 0.5
+	if fill.material_override is StandardMaterial3D:
+		var mat := fill.material_override as StandardMaterial3D
+		var colorblind := _PlayerSettings.colorblind_palette
+		if ratio <= 0.3:
+			mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, spawn.is_boss, true)
+		else:
+			mat.albedo_color = _CrystalPalette.spawn_fill(colorblind, spawn.is_boss, false)
 
 
 func _check_player_contact() -> void:
@@ -1862,6 +2095,25 @@ func _check_player_contact() -> void:
 
 func get_depth_at(wx: int, wz: int) -> float:
 	return _sim.get_depth_at(wx, wz) if _sim else 0.0
+
+
+## Nearby crystal sitting on water/channels — HUD "wet crawl" read.
+func count_wet_crystal_near(wx: int, wz: int, radius: int = 5) -> Dictionary:
+	var crystal_n := 0
+	var wet_n := 0
+	if _sim == null:
+		return {"crystal": 0, "wet": 0}
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	for dx in range(-radius, radius + 1):
+		for dz in range(-radius, radius + 1):
+			var pos := Vector2i(wx + dx, wz + dz)
+			if float(_sim.depth.get(pos, 0.0)) < min_d:
+				continue
+			crystal_n += 1
+			if _terrain_query and _terrain_query.has_method("get_standing_water_level"):
+				if float(_terrain_query.get_standing_water_level(pos)) >= 0.05:
+					wet_n += 1
+	return {"crystal": crystal_n, "wet": wet_n}
 
 
 func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:
@@ -1895,15 +2147,29 @@ func get_crystal_top(wx: float, wz: float) -> float:
 	return _crystal_floor_at(key) + depth
 
 
+## Crystal top only. -INF when the column has no walkable crystal, so callers
+## that already sampled the terrain base do not walk the ramp a second time.
+func crystal_walkable_floor(wx: float, wz: float) -> float:
+	var depth := get_depth_at(floori(wx), floori(wz))
+	var min_d := 0.04
+	if sim_config:
+		min_d = sim_config.min_depth
+	if depth < min_d:
+		return -INF
+	return _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05
+
+
+## True when no crystal fluid is stored. Town scans can skip an empty disk.
+func spread_depth_empty() -> bool:
+	return _sim == null or _sim.depth.is_empty()
+
+
 func get_walkable_height(wx: float, wz: float) -> float:
-	var ramp_entry: Dictionary = {}
+	var ramp_entry: Dictionary = ChunkData.empty_ramp_entry()
 	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
 		ramp_entry = chunk_manager.get_ramp_entry_at_world(wx, wz)
 	var base := TerrainRamps.walkable_height_from_entry(world, wx, wz, ramp_entry) if world else 1.0
-	var depth := get_depth_at(floori(wx), floori(wz))
-	if depth >= sim_config.min_depth:
-		return maxf(base, _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05)
-	return base
+	return maxf(base, crystal_walkable_floor(wx, wz))
 
 
 func get_active_spawns() -> Array[CrystalSpawnPoint]:
@@ -1955,8 +2221,93 @@ func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) ->
 	return _spawn_ctrl.damage_spawn_at_world(pos, amount, radius)
 
 
+## Reduce crystal depth on one cell. Removes the cell when depth falls under min_depth.
+## Returns hit/broken/shards so weapons and probes can read the result without signals.
+func damage_crystal_at(cell: Vector2i, amount: float) -> Dictionary:
+	var result := {
+		"hit": false,
+		"broken": false,
+		"depth_before": 0.0,
+		"depth_after": 0.0,
+		"shards": 0,
+		"shards_stored": 0,
+	}
+	if amount <= 0.0 or _sim == null:
+		return result
+	var min_d: float = sim_config.min_depth if sim_config else 0.04
+	var before := get_depth_at(cell.x, cell.y)
+	if before < min_d:
+		return result
+	var after := before - amount
+	var broken := after < min_d
+	var spawn_id := int(_sim.spawn_id_by_cell.get(cell, -1))
+	if _simulation:
+		_simulation.set_depth(cell, 0.0 if broken else after, spawn_id, false)
+	else:
+		_sim.set_depth(cell, 0.0 if broken else after, spawn_id, false)
+	if broken:
+		_on_sim_depth_cleared(cell)
+		var heal_s := sim_config.scar_heal_seconds if sim_config else 18.0
+		_CrystalCorruption.begin_scar(cell, heal_s)
+		_refresh_feature_visual(cell)
+	else:
+		_on_sim_depth_changed(cell)
+	_flush_dirty_chunks()
+	_recalc_stats()
+	var shards := 1
+	if broken:
+		shards += 1
+	var stored := _grant_crystal_shards(shards)
+	var floor_y := _terrain_at(cell)
+	var hit_pos := Vector3(float(cell.x) + 0.5, floor_y + maxf(before, 0.2) * 0.5, float(cell.y) + 0.5)
+	crystal_mass_hit.emit(hit_pos, amount, broken)
+	result.hit = true
+	result.broken = broken
+	result.depth_before = before
+	result.depth_after = 0.0 if broken else get_depth_at(cell.x, cell.y)
+	result.shards = shards
+	result.shards_stored = stored
+	return result
+
+
+func _grant_crystal_shards(count: int) -> int:
+	if count <= 0 or not is_inside_tree():
+		return 0
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null or not ("inventory" in player):
+		return 0
+	var inv = player.inventory
+	if inv == null or not inv.has_method("add_item"):
+		return 0
+	var leftover: int = int(inv.add_item("crystal_shard", count))
+	return count - leftover
+
+
+func get_nearest_active_spawn(from_xz: Vector2) -> Dictionary:
+	var best: CrystalSpawnPoint = null
+	var best_d := INF
+	for spawn in get_active_spawns():
+		var d := from_xz.distance_to(Vector2(float(spawn.world_pos.x) + 0.5, float(spawn.world_pos.y) + 0.5))
+		if d < best_d:
+			best_d = d
+			best = spawn
+	if best == null:
+		return {}
+	return {
+		"cell": best.world_pos,
+		"distance": best_d,
+		"name": best.display_name,
+		"is_boss": best.is_boss,
+		"health": best.health,
+		"max_health": best.max_health,
+	}
+
+
 func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:
 	spawn_damaged.emit(spawn, amount)
+	var marker = _spawn_markers.get(spawn.id)
+	if marker and is_instance_valid(marker):
+		_apply_spawn_hp_bar(marker, spawn)
 
 
 func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
@@ -1969,6 +2320,7 @@ func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 		power = maxf(power - spawn.power_drain, 0.0)
 		strength_tier = sim_config.tier_from_power(power)
 		power_changed.emit(power, strength_tier)
+	_grant_relic_for_spawn(spawn)
 
 
 func _on_all_spawns_destroyed() -> void:
@@ -2055,70 +2407,6 @@ func _is_frontier_cell(pos: Vector2i, min_d: float) -> bool:
 	return false
 
 
-func _tick_absorption(delta: float) -> void:
-	if _sim == null or _sim.depth.is_empty():
-		return
-	var cells: Array = _sim.depth.keys()
-	if cells.is_empty():
-		return
-	var completed: Array[Vector2i] = []
-	var scanned := 0
-	var start := _absorption_scan_offset % cells.size()
-	while scanned < _absorption_cells_per_tick and scanned < cells.size():
-		var pos: Vector2i = cells[(start + scanned) % cells.size()]
-		scanned += 1
-		if not _is_cell_sim_active(pos):
-			continue
-		var depth: float = float(_sim.depth.get(pos, 0.0))
-		if depth < sim_config.min_depth:
-			continue
-		var tile_id := _tile_at(pos)
-		if not _is_absorbable_tile(tile_id):
-			continue
-		var rate: float = _absorption_rate_for(pos, tile_id)
-		var progress: float = float(_absorption.get(pos, 0.0)) + delta * rate * depth
-		if progress >= 1.0:
-			completed.append(pos)
-		else:
-			_absorption[pos] = progress
-	_absorption_scan_offset += scanned
-	for pos in completed:
-		_complete_absorption(pos)
-
-
-func _is_absorbable_tile(tile_id: int) -> bool:
-	return tile_id in [
-		VoxelTypes.GRASS_TUFT,
-		VoxelTypes.BUSH,
-		VoxelTypes.TREE_TRUNK,
-		VoxelTypes.FARMLAND,
-	]
-
-
-func _absorption_rate_for(pos: Vector2i, tile_id: int) -> float:
-	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
-	if feat.has("plant_id"):
-		var def = _PlantableRegistry.get_def(StringName(str(feat.plant_id))) as _PlantableDef
-		if def:
-			var stage: int = int(feat.get("growth_stage", def.mature_stage()))
-			return def.absorb_rate_for_stage(stage)
-	return _absorption_rate(tile_id)
-
-
-func _absorption_rate(tile_id: int) -> float:
-	match tile_id:
-		VoxelTypes.GRASS_TUFT:
-			return sim_config.grass_absorb_rate
-		VoxelTypes.BUSH:
-			return sim_config.bush_absorb_rate
-		VoxelTypes.TREE_TRUNK:
-			return sim_config.tree_absorb_rate
-		VoxelTypes.FARMLAND:
-			return sim_config.farmland_absorb_rate
-		_:
-			return 0.08
-
-
 func _relic_flow_mult() -> float:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
@@ -2150,21 +2438,22 @@ func _complete_absorption(pos: Vector2i) -> void:
 	if _tick_trace_active:
 		_tick_trace["clear_tile_calls"] = int(_tick_trace.get("clear_tile_calls", 0)) + 1
 		_tick_trace["clear_feature_calls"] = int(_tick_trace.get("clear_feature_calls", 0)) + 1
-	# Batch tile+feature clears so SpatialQuery sees one WorldState.changed, not two.
+		_tick_trace["corrupt_calls"] = int(_tick_trace.get("corrupt_calls", 0)) + 1
+	# One WorldState bump for the ground swap and the plant swap.
 	var ws = _WorldState.get_active() if _WorldState else null
 	if ws and ws.has_method("begin_batch"):
 		ws.begin_batch()
-	_FeatureRegistry.clear_tile_override(pos.x, pos.y)
-	_FeatureRegistry.clear_feature(pos.x, pos.y)
+	if _CrystalCorruption.corrupt_absorbed_cell(pos, tile_id, feat):
+		_pulse_corruption_juice(pos)
 	if ws and ws.has_method("end_batch"):
 		ws.end_batch()
+	_refresh_feature_visual(pos)
 	_add_power(_absorption_power_boost(tile_id))
 	var source_id := _absorption_source_for(tile_id, feat)
 	if evolution:
 		var unlock: Dictionary = evolution.record_absorption(source_id)
 		if unlock.has("bonus_power"):
 			_add_power(float(unlock.bonus_power))
-		# enemy_unlocked signal grants relic via _on_enemy_unlocked_grant_relic
 	absorption_completed.emit(source_id, pos)
 	if world and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(pos.x, pos.y)
@@ -2173,6 +2462,23 @@ func _complete_absorption(pos: Vector2i) -> void:
 	_pending_absorption_rebuilds[pos] = true
 	if _tick_trace_active:
 		_tick_trace["rebuild_chunk_calls"] = int(_tick_trace.get("rebuild_chunk_calls", 0)) + 1
+
+
+func _pulse_corruption_juice(pos: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	if not is_instance_valid(_juice_vfx):
+		_juice_vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
+	if _juice_vfx and _juice_vfx.has_method("pulse_corruption"):
+		_juice_vfx.pulse_corruption(pos, _terrain_at(pos))
+
+
+func _refresh_feature_visual(pos: Vector2i) -> void:
+	if not is_inside_tree():
+		return
+	var layer = get_tree().get_first_node_in_group("feature_visual_layer")
+	if layer and layer.has_method("refresh_cell"):
+		layer.refresh_cell(pos.x, pos.y)
 
 
 func _drain_one_absorption_rebuild() -> void:
@@ -2201,54 +2507,6 @@ func _absorption_source_for(tile_id: int, feat: Dictionary) -> StringName:
 			return &"bush"
 		_:
 			return &"grass"
-
-
-func _tick_animal_absorption(delta: float) -> void:
-	if _sim == null or _sim.depth.is_empty():
-		return
-	var cells: Array = _sim.depth.keys()
-	var scanned := 0
-	var start := _absorption_scan_offset % maxi(cells.size(), 1)
-	while scanned < _absorption_cells_per_tick and scanned < cells.size():
-		var pos: Vector2i = cells[(start + scanned) % cells.size()]
-		scanned += 1
-		if not _is_cell_sim_active(pos):
-			continue
-		if float(_sim.depth.get(pos, 0.0)) < sim_config.min_depth:
-			continue
-		var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
-		if not feat.has("kind") or int(feat.kind) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
-			continue
-		var progress: float = float(_absorption.get(pos, 0.0)) + delta * 0.25
-		if progress >= 1.0:
-			_complete_absorption(pos)
-		else:
-			_absorption[pos] = progress
-
-
-func _tick_ruin_absorption(delta: float) -> void:
-	if _sim == null:
-		return
-	for center in _FeatureRegistry.get_ruin_centers():
-		if _absorbed_ruin_centers.has(center):
-			continue
-		if not _is_cell_sim_active(center):
-			continue
-		if float(_sim.depth.get(center, 0.0)) < sim_config.min_depth:
-			continue
-		var progress: float = float(_ruin_absorption.get(center, 0.0)) + delta * 0.12
-		if progress >= 1.0:
-			_absorbed_ruin_centers[center] = true
-			_ruin_absorption.erase(center)
-			_add_power(18.0)
-			if evolution:
-				var unlock: Dictionary = evolution.record_absorption(&"ruin")
-				if unlock.has("bonus_power"):
-					_add_power(float(unlock.bonus_power))
-			absorption_completed.emit(&"ruin", center)
-			_clear_ruin_at(center)
-		else:
-			_ruin_absorption[center] = progress
 
 
 func _clear_ruin_at(center: Vector2i) -> void:
@@ -2355,6 +2613,8 @@ func import_state(data: Dictionary) -> void:
 		evolution.unlocked_enemies.clear()
 		for entry in evo.get("unlocked_enemies", []):
 			evolution.unlocked_enemies.append(StringName(str(entry)))
+		# Restored unlocks did not emit. Mark them so a later re-emit does not grant twice.
+		_seed_unlock_relics_granted()
 
 	# Only replace spawn points when the save explicitly carries a spawns list.
 	# Missing key must not wipe live win targets (empty {} import used to clear all).
@@ -2400,6 +2660,8 @@ func import_state(data: Dictionary) -> void:
 		_rebuild_cell_index()
 	refresh_spawn_marker_textures()
 	_flush_dirty_chunks()
+	_CrystalCorruption.reindex_scars()
+	_scars_reindexed = true
 	_log_spawn_status("restored")
 
 

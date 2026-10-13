@@ -14,8 +14,9 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
-const REBUILD_EDGE_BAND := 2
+const REBUILD_EDGE_BAND := 1
 
 signal structure_placed(wx: int, wz: int, build_id: StringName, world_pos: Vector3)
 signal terrain_edited(wx: int, wz: int, kind: StringName)
@@ -138,6 +139,26 @@ func try_dig(world_pos: Vector3) -> bool:
 	if not _TerrainEdits.can_edit(wx, wz):
 		last_fail_reason = "Outside playable area"
 		return false
+	if _is_water_source_column(wx, wz):
+		last_fail_reason = "Can't dig water"
+		return false
+	var inv = null
+	var player := get_tree().get_first_node_in_group("player")
+	if player and "inventory" in player:
+		inv = player.inventory
+	# Next to water: replace this block with water — do not dig a cavity and
+	# do not region-flood neighbors into water lids.
+	if _has_adjacent_water(wx, wz):
+		_grant_dig_loot(wx, wz, inv)
+		if not _replace_cell_with_water_block(wx, wz):
+			last_fail_reason = "Can't place water here"
+			return false
+		var profiler_w = get_node_or_null("/root/PerfProfiler")
+		if profiler_w and profiler_w.has_method("inc_frame"):
+			profiler_w.inc_frame("terrain_edits")
+		_invalidate_and_rebuild(wx, wz)
+		terrain_edited.emit(wx, wz, &"water")
+		return true
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
 	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
 	if edited_h <= min_h:
@@ -149,13 +170,8 @@ func try_dig(world_pos: Vector3) -> bool:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("inc_frame"):
 		profiler.inc_frame("terrain_edits")
-	var inv = null
-	var player := get_tree().get_first_node_in_group("player")
-	if player and "inventory" in player:
-		inv = player.inventory
 	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
-	# Immediate water response so trenches redirect/fill without waiting a tick.
 	_notify_water_reflow(wx, wz, true)
 	terrain_edited.emit(wx, wz, &"dig")
 	return true
@@ -222,8 +238,13 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 		last_fail_reason = "Outside playable area"
 		return false
 
-	# Gates need open ground (no stacked wall) so the player can walk through.
+	# Gates need open ground (no wall/bridge WorldObject) so the player can walk through.
 	if def.is_passage:
+		var blocking: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+		var blocking_id := str(blocking.get("build_id", "")).strip_edges()
+		if blocking_id in ["wood_wall", "stone_wall", "bridge"]:
+			last_fail_reason = "Clear wall before placing a gate"
+			return false
 		var layers: int = int(round(_TerrainEdits.get_height_delta(wx, wz) / maxf(_WorldSettings.get_active().layer_height(), 0.001)))
 		if layers > 0 and _TerrainEdits.get_build_tile(wx, wz) >= 0:
 			last_fail_reason = "Clear wall before placing a gate"
@@ -237,6 +258,12 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 		build_cost_mult = maxf(player.get_stat(_StatIds.BUILD_COST), 0.1)
 		flow_block = clampf(player.get_stat(_StatIds.BUILD_FLOW_BLOCK), 0.0, 1.0)
 	mat_count = maxi(1, int(ceil(float(mat_count) * build_cost_mult)))
+
+	var existing: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	var existing_id := str(existing.get("build_id", "")).strip_edges()
+	if existing_id != "" and not def.raises_terrain:
+		last_fail_reason = "Already built"
+		return false
 
 	var paid_with: String = str(def.material_id)
 	var paid_count: int = mat_count
@@ -262,8 +289,10 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 			return false
 
 	var resist := clampf(def.flow_resistance * flow_block, 0.02, 0.98)
+	var visual_id := str(def.resolved_visual_id()) if def.has_method("resolved_visual_id") else str(buildable_id)
 	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
 		"build_id": str(buildable_id),
+		"visual_id": visual_id,
 		"flow_resistance": resist,
 		"player_built": true,
 		"is_passage": bool(def.is_passage),
@@ -273,7 +302,7 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 	var _StructOri = load("res://helpers/structure_orientation.gd")
 	if _StructOri:
 		_StructOri.persist_yaw_neighborhood(wx, wz)
-	if def.is_passage or def.is_bridge:
+	if def.is_passage and not def.is_bridge:
 		_FeatureRegistry.set_tile_override(wx, wz, def.tile_id)
 	_invalidate_and_rebuild(wx, wz)
 	_notify_water_reflow(wx, wz, true)
@@ -281,6 +310,257 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 	var place_pos := Vector3(float(wx) + 0.5, world.get_surface_height(float(wx), float(wz)), float(wz) + 0.5)
 	structure_placed.emit(wx, wz, buildable_id, place_pos)
 	terrain_edited.emit(wx, wz, buildable_id)
+	return true
+
+
+func try_fill(world_pos: Vector3, inventory, tile_id: int = -1) -> bool:
+	last_fail_reason = ""
+	last_build_id = &"fill"
+	if world == null or chunk_manager == null or inventory == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var wx := floori(world_pos.x)
+	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
+		return false
+	var use_tile: int = tile_id
+	var paid := "stone"
+	if use_tile < 0:
+		if inventory.count_item("stone") > 0:
+			use_tile = _VoxelTypes.STONE
+			paid = "stone"
+		elif inventory.count_item("wood") > 0:
+			use_tile = _VoxelTypes.DIRT
+			paid = "wood"
+		else:
+			last_fail_reason = "Need stone or wood"
+			return false
+	if not inventory.consume_item(paid, 1):
+		last_fail_reason = "Need 1 %s" % paid
+		return false
+	# Filling a flooded dig must remove the stamped water block / channel.
+	_clear_flood_water_block(wx, wz)
+	if not _TerrainEdits.build_wall(wx, wz, use_tile):
+		inventory.add_item(paid, 1)
+		last_fail_reason = "Stack full"
+		return false
+	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
+	terrain_edited.emit(wx, wz, &"fill")
+	return true
+
+
+func try_place_cardinal_ramp(world_pos: Vector3, inventory = null) -> bool:
+	last_fail_reason = ""
+	last_build_id = &"cardinal_ramp"
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var wx := floori(world_pos.x)
+	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
+		return false
+	var self_h: float = world.get_surface_height(float(wx), float(wz))
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var dir := Vector2i.ZERO
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var nh: float = world.get_surface_height(float(wx + d.x), float(wz + d.y))
+		if nh >= self_h - layer * 1.15 and nh <= self_h - layer * 0.85:
+			dir = d
+			break
+	if dir == Vector2i.ZERO:
+		last_fail_reason = "Ramp needs a one-layer step-down neighbor"
+		return false
+	var far_h: float = world.get_surface_height(float(wx + dir.x * 2), float(wz + dir.y * 2))
+	if absf(far_h - self_h) <= layer * 0.15:
+		last_fail_reason = "Opposing ramps would form a V"
+		return false
+	if inventory != null and not inventory.consume_item("stone", 1):
+		if inventory == null or not inventory.consume_item("wood", 1):
+			last_fail_reason = "Need 1 stone or wood"
+			return false
+	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
+		"build_id": "cardinal_ramp",
+		"player_built": true,
+		"dir": dir,
+		"raises_terrain": false,
+	})
+	_invalidate_and_rebuild(wx, wz)
+	terrain_edited.emit(wx, wz, &"cardinal_ramp")
+	return true
+
+
+func try_place_corner_ramp(world_pos: Vector3, inventory = null) -> bool:
+	last_fail_reason = ""
+	last_build_id = &"corner_ramp"
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var wx := floori(world_pos.x)
+	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
+		return false
+	var self_h: float = world.get_surface_height(float(wx), float(wz))
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var highs: Array = []
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var nh: float = world.get_surface_height(float(wx + d.x), float(wz + d.y))
+		if nh >= self_h + layer * 0.85 and nh <= self_h + layer * 1.15:
+			highs.append(d)
+	var picked: Array = []
+	for i in highs.size():
+		for j in range(i + 1, highs.size()):
+			var a: Vector2i = highs[i]
+			var b: Vector2i = highs[j]
+			if a.x * b.x + a.y * b.y == 0:
+				picked = [a, b]
+				break
+		if not picked.is_empty():
+			break
+	if picked.size() != 2:
+		last_fail_reason = "Corner ramp needs two perpendicular higher neighbors"
+		return false
+	var diag: Vector2i = picked[0] + picked[1]
+	var diag_h: float = world.get_surface_height(float(wx + diag.x), float(wz + diag.y))
+	if diag_h < self_h + layer * 0.85 or diag_h > self_h + layer * 1.15:
+		last_fail_reason = "Corner ramp needs a supporting high plateau"
+		return false
+	if inventory != null and not inventory.consume_item("stone", 1):
+		if inventory == null or not inventory.consume_item("wood", 1):
+			last_fail_reason = "Need 1 stone or wood"
+			return false
+	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
+		"build_id": "corner_ramp",
+		"player_built": true,
+		"corner": true,
+		"dir": picked[0],
+		"dir2": picked[1],
+		"raises_terrain": false,
+	})
+	_invalidate_and_rebuild(wx, wz)
+	terrain_edited.emit(wx, wz, &"corner_ramp")
+	return true
+
+
+func can_remove(world_pos: Vector3) -> bool:
+	if world == null or chunk_manager == null:
+		return false
+	var wx := floori(world_pos.x)
+	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		return false
+	if _is_water_source_column(wx, wz):
+		return false
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	var build_id := str(feat.get("build_id", "")).strip_edges()
+	var player_built: bool = bool(feat.get("player_built", false)) or bool(feat.get("player_placed", false))
+	if build_id in ["wood_wall", "stone_wall", "gate", "bridge", "cardinal_ramp", "corner_ramp"]:
+		player_built = true
+	var kind: int = int(feat.get("kind", 0))
+	if not player_built and kind in [
+		_WorldFeatureTypes.FeatureKind.TOWN,
+		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING,
+		_WorldFeatureTypes.FeatureKind.RUIN,
+		_WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN,
+	]:
+		return false
+	var is_channel: bool = bool(feat.get("channel", false)) or _ChannelRegistry.is_channel(wx, wz)
+	var is_plant: bool = str(feat.get("plant_id", "")) != "" and bool(feat.get("player_placed", false))
+	return player_built or is_channel or is_plant
+
+
+## Remove player-placed wall/gate/bridge/plant/channel on this cell. One wall layer per call.
+func try_remove(world_pos: Vector3, inventory = null) -> bool:
+	last_fail_reason = ""
+	last_build_id = &""
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var wx := floori(world_pos.x)
+	var wz := floori(world_pos.z)
+	if not _TerrainEdits.can_edit(wx, wz):
+		last_fail_reason = "Outside playable area"
+		return false
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	var protected_kind: int = int(feat.get("kind", 0))
+	var protected_built: bool = bool(feat.get("player_built", false)) or bool(feat.get("player_placed", false))
+	if not protected_built and protected_kind in [
+		_WorldFeatureTypes.FeatureKind.TOWN,
+		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING,
+		_WorldFeatureTypes.FeatureKind.RUIN,
+		_WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN,
+	]:
+		last_fail_reason = "Nothing to remove"
+		return false
+	if _is_water_source_column(wx, wz) and not bool(feat.get("player_built", false)):
+		last_fail_reason = "Can't remove water"
+		return false
+	var build_id := str(feat.get("build_id", "")).strip_edges()
+	var player_built: bool = bool(feat.get("player_built", false)) or bool(feat.get("player_placed", false))
+	if build_id in ["wood_wall", "stone_wall", "gate", "bridge", "cardinal_ramp", "corner_ramp"]:
+		player_built = true
+	var kind: int = int(feat.get("kind", 0))
+	if not player_built and kind in [
+		_WorldFeatureTypes.FeatureKind.TOWN,
+		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING,
+		_WorldFeatureTypes.FeatureKind.RUIN,
+		_WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN,
+	]:
+		last_fail_reason = "Nothing to remove"
+		return false
+	var is_channel: bool = bool(feat.get("channel", false)) or _ChannelRegistry.is_channel(wx, wz)
+	var is_plant: bool = str(feat.get("plant_id", "")) != "" and bool(feat.get("player_placed", false))
+	if not player_built and not is_channel and not is_plant and _TerrainEdits.get_build_tile(wx, wz) < 0:
+		last_fail_reason = "Nothing to remove"
+		return false
+
+	var refund_id := ""
+	var refund_n := 0
+	if is_plant:
+		var pdef = _PlantableRegistry.get_def(StringName(str(feat.get("plant_id", ""))))
+		if pdef:
+			refund_id = str(pdef.material_id)
+			refund_n = 1
+		_FeatureRegistry.clear_feature(wx, wz)
+		_FeatureRegistry.clear_tile_override(wx, wz)
+	elif is_channel:
+		_ChannelRegistry.unregister_channel(wx, wz)
+		_FeatureRegistry.clear_feature(wx, wz)
+		_FeatureRegistry.clear_tile_override(wx, wz)
+	else:
+		var def = _BuildingRegistry.get_def(StringName(build_id)) if build_id != "" else null
+		var raises: bool = bool(feat.get("raises_terrain", def != null and bool(def.raises_terrain)))
+		# Only unstack height that this structure actually added. Do not dig
+		# the supporting terrain under a WorldObject-only wall/gate/bridge.
+		if raises and _TerrainEdits.get_height_delta(wx, wz) > 0.01:
+			if not _TerrainEdits.unstack_build(wx, wz):
+				last_fail_reason = "Can't unstack"
+				return false
+		else:
+			_TerrainEdits.clear_build_tile(wx, wz)
+		var remaining := _TerrainEdits.get_height_delta(wx, wz) > 0.01 \
+			and _TerrainEdits.get_build_tile(wx, wz) >= 0
+		if not remaining:
+			_FeatureRegistry.clear_feature(wx, wz)
+			_FeatureRegistry.clear_tile_override(wx, wz)
+		if def:
+			refund_id = str(def.material_id)
+			refund_n = 1
+		var _StructOri = load("res://helpers/structure_orientation.gd")
+		if _StructOri:
+			_StructOri.persist_yaw_neighborhood(wx, wz)
+
+	if inventory != null and refund_id != "" and refund_n > 0 and inventory.has_method("add_item"):
+		inventory.add_item(refund_id, refund_n)
+	_invalidate_and_rebuild(wx, wz)
+	_notify_water_reflow(wx, wz, true)
+	var feat_layer = get_tree().get_first_node_in_group("feature_visual_layer") if is_inside_tree() else null
+	if feat_layer and feat_layer.has_method("refresh_cell"):
+		feat_layer.refresh_cell(wx, wz)
+	terrain_edited.emit(wx, wz, &"remove")
 	return true
 
 
@@ -302,6 +582,7 @@ func try_plant(world_pos: Vector3, inventory, plant_id: StringName = &"grass_tuf
 	_FeatureRegistry.register_feature(wx, wz, def.feature_kind, {
 		"player_placed": true,
 		"plant_id": str(plant_id),
+		"visual_id": str(def.resolved_visual_id()) if def.has_method("resolved_visual_id") else str(plant_id),
 		"growth_stage": 0,
 		"growth_progress": 0.0,
 	})
@@ -453,7 +734,42 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 				return true
 			if _ChannelRegistry.is_channel(wx + dx, wz + dz):
 				return true
+			if _ChannelRegistry.has_fluid(wx + dx, wz + dz, _ChannelRegistry.FLUID_WATER):
+				return true
 	return false
+
+
+## Replace this land cell with a water/river tile (no dig, no neighbor flood).
+func _replace_cell_with_water_block(wx: int, wz: int) -> bool:
+	if world == null:
+		return false
+	if _is_water_source_column(wx, wz):
+		return false
+	var tile: int = VoxelTypes.WATER
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			if dx == 0 and dz == 0:
+				continue
+			var nt: int = world.get_tile_type(float(wx + dx), float(wz + dz))
+			if nt in [VoxelTypes.RIVER, VoxelTypes.OCEAN, VoxelTypes.OCEAN2, VoxelTypes.OCEAN3]:
+				tile = VoxelTypes.RIVER
+				break
+		if tile == VoxelTypes.RIVER:
+			break
+	_FeatureRegistry.set_tile_override(wx, wz, tile)
+	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
+		"flood_from_dig": true,
+		"water_tile": tile,
+	})
+	return true
+
+
+func _clear_flood_water_block(wx: int, wz: int) -> void:
+	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
+	if not bool(feat.get("flood_from_dig", false)):
+		return
+	_FeatureRegistry.clear_tile_override(wx, wz)
+	_FeatureRegistry.clear_feature(wx, wz)
 
 
 static func rebuild_ring_for_cell(wx: int, wz: int) -> int:
@@ -497,9 +813,7 @@ func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
 
 
 func _region_needs_immediate_water(wx: int, wz: int) -> bool:
-	# Only player channels / registered fluid — natural river tiles alone should not
-	# force interactive multi-step recompute on every nearby dig (major hitch).
-	if _ChannelRegistry.is_channel(wx, wz):
+	if _is_water_source_column(wx, wz):
 		return true
 	if _ChannelRegistry.has_fluid(wx, wz, _ChannelRegistry.FLUID_WATER):
 		return true
@@ -507,8 +821,18 @@ func _region_needs_immediate_water(wx: int, wz: int) -> bool:
 		for dz in range(-2, 3):
 			if dx == 0 and dz == 0:
 				continue
-			if _ChannelRegistry.is_channel(wx + dx, wz + dz):
+			if _is_water_source_column(wx + dx, wz + dz):
 				return true
 			if _ChannelRegistry.has_fluid(wx + dx, wz + dz, _ChannelRegistry.FLUID_WATER):
 				return true
 	return false
+
+
+func _is_water_source_column(wx: int, wz: int) -> bool:
+	if world == null:
+		return false
+	var t: int = world.get_tile_type(float(wx), float(wz))
+	return t in [
+		VoxelTypes.RIVER, VoxelTypes.WATER,
+		VoxelTypes.OCEAN, VoxelTypes.OCEAN2, VoxelTypes.OCEAN3,
+	]

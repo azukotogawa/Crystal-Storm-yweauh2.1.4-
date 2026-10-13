@@ -44,11 +44,16 @@ static func run_column_stage(
 	var column_source := "none"
 	if data == null or not data.has_worker_overlay_snapshot():
 		return {"examined": 0, "column_us": 0, "ok": false, "column_source": column_source}
-	if data.preserve_column_maps:
+	if data.preserve_column_maps or data.has_preserve_map_snapshot():
 		data.preserve_column_maps = false
 		data.skip_mesh_plan_cache = true
+		data.restore_resident_map_snapshot()
 		if data.has_method("_bind_macro_surface_if_needed"):
 			data._bind_macro_surface_if_needed()
+		if data.has_method("_refresh_halo_interior_from_maps"):
+			data._refresh_halo_interior_from_maps()
+		if host != null and host.has_method("_refresh_preserve_halo"):
+			host._refresh_preserve_halo(data)
 		column_source = "resident"
 		examined = ChunkData.SIZE * ChunkData.SIZE
 		var preserve_us := Time.get_ticks_usec() - t0
@@ -149,6 +154,8 @@ static func run_mesh_stage(
 				count = quads.size()
 				mesh_source = "cache"
 				rebuild_reason = "hit"
+				if host.has_method("_rehydrate_ramp_map_from_quads"):
+					host._rehydrate_ramp_map_from_quads(data, quads)
 			else:
 				rebuild_reason = str(plan_decision.get("rebuild_reason", "other"))
 		plan_lookup_us = Time.get_ticks_usec() - t_plan
@@ -296,6 +303,12 @@ static func run_worker_job(
 	var patch_quads: Array = mesh.get("quads", [])
 	var merged_quads: Array = keep_quads.duplicate(true)
 	merged_quads.append_array(patch_quads)
+	# Full rebuild already synced inside _build_mesh. Incremental and cache
+	# hits must sync the merged list, which is what the chunk will draw.
+	if host != null and host.has_method("sync_ramp_map_to_mesh") and not full_rebuild:
+		host.sync_ramp_map_to_mesh(data, merged_quads)
+	elif host != null and host.has_method("sync_ramp_map_to_mesh") and str(mesh.get("mesh_source", "")) == "cache":
+		host.sync_ramp_map_to_mesh(data, merged_quads)
 	var buf: Dictionary = run_buffer_stage(
 		data,
 		merged_quads,

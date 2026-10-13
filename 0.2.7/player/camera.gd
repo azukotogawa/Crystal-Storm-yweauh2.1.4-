@@ -1,9 +1,16 @@
 extends Camera3D
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _Juice = preload("res://systems/juice.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _Cutaway = preload("res://helpers/camera_cutaway.gd")
 
 const ISO_PITCH_DEG := -35.264
 const ISO_YAW0_DEG := 45.0
+## Steep top-down, still short of straight down (picking and the rig stay stable).
+const PITCH_MIN_DEG := -78.0
+## Shallow look-down. Positive pitch would put the camera under the ground.
+const PITCH_MAX_DEG := -18.0
 
 @export var target: Node3D
 @export var use_smoothing := true
@@ -13,8 +20,8 @@ var follow_target: Vector3
 @export var distance := 100.0
 @export var height_offset := 101.0   # Fine-tune this for best cube look
 
-## Edge scroll: pan look-at when the mouse sits near the screen border.
-@export var edge_scroll_enabled: bool = true
+## Disabled: mouse at the screen edge must not pan or rotate the camera. Q/E yaw.
+@export var edge_scroll_enabled: bool = false
 @export var edge_scroll_margin_px: float = 28.0
 @export var edge_scroll_speed: float = 42.0
 @export var edge_scroll_max_lead: float = 48.0
@@ -24,6 +31,18 @@ var follow_target: Vector3
 @export var yaw_smooth: float = 12.0
 var yaw_target_degrees: float = ISO_YAW0_DEG
 var yaw_degrees: float = ISO_YAW0_DEG
+
+@export var pitch_speed_deg: float = 70.0
+@export var pitch_smooth: float = 12.0
+@export var pitch_drag_deg: float = 0.18
+var pitch_target_degrees: float = ISO_PITCH_DEG
+var pitch_degrees: float = ISO_PITCH_DEG
+var _pitch_dragging: bool = false
+var _cutaway_globals_ready: bool = false
+var _cutaway_pushed: bool = false
+var _cutaway_enabled: float = -1.0
+var _cutaway_feet: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
+var _cutaway_cam: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
 
 ## Compat: old 0–3 orbit index. Writing snaps yaw to that 90° stop.
 var orbit_rotation: int:
@@ -69,8 +88,9 @@ func _ready():
 func _find_target():
 	target = get_tree().get_first_node_in_group("player")
 	player = target
-	if target:
-		_update_camera_transform()
+	if target == null:
+		return
+	_update_camera_transform()
 	follow_target = target.global_position
 
 func _process(delta: float):
@@ -88,10 +108,12 @@ func _process(delta: float):
 
 	if not _GameplayInput.blocks_actions():
 		_apply_hold_rotate(delta)
+		_apply_pitch_keys(delta)
 		_apply_edge_scroll(delta)
 	_smooth_yaw(delta)
+	_smooth_pitch(delta)
 
-	var anchor: Vector3 = target.global_position + _scroll_lead
+	var anchor: Vector3 = _frame_anchor()
 	var desired_pos = anchor + get_offset_from_rotation()
 
 	if use_smoothing:
@@ -102,9 +124,41 @@ func _process(delta: float):
 		follow_target = anchor
 		global_position = desired_pos
 
-	rotation_degrees = Vector3(ISO_PITCH_DEG, yaw_degrees, 0.0)
+	rotation_degrees = Vector3(pitch_degrees, yaw_degrees, 0.0)
+	global_position += _Juice.shake_offset(delta)
+	update_cutaway_uniforms()
 	if profiler and profiler.has_method("end"):
 		profiler.end("camera_update")
+
+
+func _apply_pitch_keys(delta: float) -> void:
+	var dir := 0.0
+	if InputMap.has_action("camera_pitch_up") and Input.is_action_pressed("camera_pitch_up"):
+		dir += 1.0
+	if InputMap.has_action("camera_pitch_down") and Input.is_action_pressed("camera_pitch_down"):
+		dir -= 1.0
+	if is_zero_approx(dir):
+		return
+	pitch_target_degrees = clampf(
+		pitch_target_degrees + dir * pitch_speed_deg * delta,
+		PITCH_MIN_DEG,
+		PITCH_MAX_DEG
+	)
+
+
+func _smooth_pitch(delta: float) -> void:
+	pitch_target_degrees = clampf(pitch_target_degrees, PITCH_MIN_DEG, PITCH_MAX_DEG)
+	if not use_smoothing:
+		pitch_degrees = pitch_target_degrees
+		return
+	var k: float = 1.0 - exp(-pitch_smooth * delta)
+	pitch_degrees = lerpf(pitch_degrees, pitch_target_degrees, k)
+
+
+func snap_pitch_degrees(deg: float) -> void:
+	pitch_target_degrees = clampf(float(deg), PITCH_MIN_DEG, PITCH_MAX_DEG)
+	pitch_degrees = pitch_target_degrees
+	_update_camera_transform()
 
 
 func _apply_hold_rotate(delta: float) -> void:
@@ -116,6 +170,12 @@ func _apply_hold_rotate(delta: float) -> void:
 	if is_zero_approx(dir):
 		return
 	yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
+
+
+func _frame_anchor() -> Vector3:
+	var anchor: Vector3 = target.global_position + _scroll_lead
+	anchor.y += WorldSettings.get_active().player_height() * 0.5
+	return anchor
 
 
 func _smooth_yaw(delta: float) -> void:
@@ -180,10 +240,18 @@ func _apply_edge_scroll(delta: float) -> void:
 
 
 ## Single isometric offset from displayed yaw. No even/odd branches.
+## Default pitch keeps the legacy height_offset exactly so yaw probes stay stable.
 func get_offset_from_rotation() -> Vector3:
 	var yaw_rad := deg_to_rad(yaw_degrees)
-	var hdist: float = distance * sqrt(2.0)
-	return Vector3(sin(yaw_rad) * hdist, height_offset, cos(yaw_rad) * hdist)
+	if absf(pitch_degrees - ISO_PITCH_DEG) < 0.02:
+		var hdist: float = distance * sqrt(2.0)
+		return Vector3(sin(yaw_rad) * hdist, height_offset, cos(yaw_rad) * hdist)
+	var legacy_h: float = distance * sqrt(2.0)
+	var orbit: float = sqrt(height_offset * height_offset + legacy_h * legacy_h)
+	var elev: float = deg_to_rad(-pitch_degrees)
+	var hdist_p: float = orbit * cos(elev)
+	var y: float = orbit * sin(elev)
+	return Vector3(sin(yaw_rad) * hdist_p, y, cos(yaw_rad) * hdist_p)
 
 
 func _apply_orbit_rotation() -> void:
@@ -194,10 +262,81 @@ func _update_camera_transform():
 	if not target:
 		return
 	global_position = target.global_position + _scroll_lead + get_offset_from_rotation()
-	rotation_degrees = Vector3(ISO_PITCH_DEG, yaw_degrees, 0.0)
+	rotation_degrees = Vector3(pitch_degrees, yaw_degrees, 0.0)
+	update_cutaway_uniforms()
+
+
+## Player feet and camera, once per frame. Shaders read these globals; no per-chunk materials.
+func update_cutaway_uniforms() -> void:
+	_ensure_cutaway_globals()
+	var enabled := 1.0 if _PlayerSettings.camera_cutaway_enabled else 0.0
+	var feet := global_position
+	if target:
+		feet = target.global_position
+	var cam_pos := global_position
+	if _cutaway_pushed and enabled == _cutaway_enabled \
+			and feet.distance_squared_to(_cutaway_feet) < 0.0004 \
+			and cam_pos.distance_squared_to(_cutaway_cam) < 0.0004:
+		return
+	_cutaway_pushed = true
+	_cutaway_enabled = enabled
+	_cutaway_feet = feet
+	_cutaway_cam = cam_pos
+	_Cutaway.submitted_enabled = enabled
+	_Cutaway.submitted_player = feet
+	_Cutaway.submitted_camera = global_position
+	_Cutaway.submitted_radius = _Cutaway.RADIUS_AT_PLAYER
+	_Cutaway.submitted_radius_near = _Cutaway.RADIUS_AT_CAMERA
+	_Cutaway.submitted_feet_clear = _Cutaway.FEET_CLEAR
+	_Cutaway.submitted_past = _Cutaway.PAST_DISTANCE
+	_Cutaway.submit_count += 1
+	RenderingServer.global_shader_parameter_set("cutaway_enabled", enabled)
+	RenderingServer.global_shader_parameter_set("cutaway_player", feet)
+	RenderingServer.global_shader_parameter_set("cutaway_camera", global_position)
+	RenderingServer.global_shader_parameter_set("cutaway_radius", _Cutaway.RADIUS_AT_PLAYER)
+	RenderingServer.global_shader_parameter_set("cutaway_radius_near", _Cutaway.RADIUS_AT_CAMERA)
+	RenderingServer.global_shader_parameter_set("cutaway_feet_clear", _Cutaway.FEET_CLEAR)
+	RenderingServer.global_shader_parameter_set("cutaway_past", _Cutaway.PAST_DISTANCE)
+
+
+## Project shader globals are not always registered on the headless server.
+## Add them once when missing so the first gameplay frame still has the uniforms.
+func _ensure_cutaway_globals() -> void:
+	if _cutaway_globals_ready:
+		return
+	_cutaway_globals_ready = true
+	var have: PackedStringArray = RenderingServer.global_shader_parameter_get_list()
+	_add_cutaway_global(have, &"cutaway_enabled", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
+	_add_cutaway_global(have, &"cutaway_player", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
+	_add_cutaway_global(have, &"cutaway_camera", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3.ZERO)
+	_add_cutaway_global(have, &"cutaway_radius", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, _Cutaway.RADIUS_AT_PLAYER)
+	_add_cutaway_global(have, &"cutaway_radius_near", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, _Cutaway.RADIUS_AT_CAMERA)
+	_add_cutaway_global(have, &"cutaway_feet_clear", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, _Cutaway.FEET_CLEAR)
+	_add_cutaway_global(have, &"cutaway_past", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, _Cutaway.PAST_DISTANCE)
+
+
+func _add_cutaway_global(have: PackedStringArray, param: StringName, type: int, default_value: Variant) -> void:
+	if have.has(String(param)):
+		return
+	RenderingServer.global_shader_parameter_add(param, type, default_value)
+
 
 func _input(event):
 	if _GameplayInput.blocks_actions():
+		return
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			_pitch_dragging = event.pressed
+			if event.pressed:
+				get_viewport().set_input_as_handled()
+			return
+	if event is InputEventMouseMotion and _pitch_dragging:
+		pitch_target_degrees = clampf(
+			pitch_target_degrees - event.relative.y * pitch_drag_deg,
+			PITCH_MIN_DEG,
+			PITCH_MAX_DEG
+		)
+		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:

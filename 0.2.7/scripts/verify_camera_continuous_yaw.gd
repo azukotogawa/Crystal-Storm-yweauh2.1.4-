@@ -56,8 +56,13 @@ func _run() -> void:
 		_fail("start region not ready")
 		_finish()
 		return
-	for _w in 6:
+	# Loading fade keeps world_loading set for ~0.35s after the stream is ready.
+	# Rotate checks have to run after that, or hold-to-yaw never moves.
+	var _GI = load("res://helpers/gameplay_input.gd")
+	for _w in 90:
 		await process_frame
+		if _GI and not _GI.blocks_actions():
+			break
 
 	var player = get_first_node_in_group("player")
 	var cam: Camera3D = player.get("camera") if player else null
@@ -106,6 +111,12 @@ func _run() -> void:
 		_fail("get_offset_from_rotation still has even/odd orbit branches")
 	else:
 		_ok("single isometric offset (no even/odd)")
+	if "edge_scroll_enabled: bool = true" in src:
+		_fail("mouse at screen edge must not pan/rotate the camera")
+	else:
+		_ok("edge scroll disabled; Q/E rotate")
+	if bool(cam.get("edge_scroll_enabled")):
+		_fail("live camera edge_scroll_enabled must be false")
 	var off22: Vector3 = cam.get_offset_from_rotation()
 	cam.snap_yaw_degrees(45.0)
 	var off45: Vector3 = cam.get_offset_from_rotation()

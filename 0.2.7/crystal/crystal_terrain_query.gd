@@ -15,6 +15,10 @@ var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 ## Headless tests: base height per cell when world is null.
 var test_base_heights: Dictionary = {}
+## Headless tests: biome name per cell, used for spread and reserve.
+var test_biome_names: Dictionary = {}
+## Headless tests: tile id per cell when world is null / to override.
+var test_tiles: Dictionary = {}
 ## Single-sample cached height (faster than smooth bilinear for flow sim).
 var use_fast_terrain_height: bool = true
 
@@ -23,6 +27,7 @@ var _height_cache: Dictionary = {}
 var _tile_cache: Dictionary = {}
 var _flow_cache: Dictionary = {}
 var _channel_mult_cache: Dictionary = {}
+var _reserve_cache: Dictionary = {}
 
 ## Optional query measurement (CRYSTALSTORM_TERRAIN_QUERY_MEASURE=1).
 var _measure_enabled: bool = false
@@ -46,6 +51,7 @@ func begin_sim_tick(tick_id: int) -> void:
 	_tile_cache.clear()
 	_flow_cache.clear()
 	_channel_mult_cache.clear()
+	_reserve_cache.clear()
 
 
 ## Call after player dig/build so crystal flow uses live height immediately.
@@ -55,6 +61,7 @@ func invalidate_terrain_caches() -> void:
 	_tile_cache.clear()
 	_flow_cache.clear()
 	_channel_mult_cache.clear()
+	_reserve_cache.clear()
 
 
 func set_query_measure_enabled(enabled: bool) -> void:
@@ -133,6 +140,8 @@ func get_terrain_height(pos: Vector2i) -> float:
 
 func get_tile(pos: Vector2i) -> int:
 	_inc_profiler_frame("terrain_queries")
+	if test_tiles.has(pos):
+		return int(test_tiles[pos])
 	if world == null:
 		return VoxelTypes.AIR
 	var t0 := Time.get_ticks_usec() if _measure_enabled else 0
@@ -171,6 +180,7 @@ func get_flow_factor_at(pos: Vector2i, tile_id: int) -> float:
 		_flow_misses += 1
 	var factor := _base_flow_factor(pos, tile_id)
 	factor *= _denial_mult_at(pos)
+	factor *= _biome_spread_mult(pos)
 	factor = clampf(factor, 0.02, 1.0)
 	_flow_cache[cache_key] = factor
 	if _measure_enabled:
@@ -215,6 +225,31 @@ func get_channel_water_level(pos: Vector2i) -> float:
 
 
 ## Effective standing water for crystal interaction (channels + natural water tiles).
+func biome_name_at(pos: Vector2i) -> String:
+	if test_biome_names.has(pos):
+		return str(test_biome_names[pos])
+	if world != null and world.has_method("get_biome"):
+		var biome: Dictionary = world.get_biome(float(pos.x), 0.0, float(pos.y))
+		return str(biome.get("name", "plains"))
+	return "plains"
+
+
+func reserve_depth_mult(pos: Vector2i) -> float:
+	if _reserve_cache.has(pos):
+		return float(_reserve_cache[pos])
+	var mult := 1.0
+	if sim_config and sim_config.has_method("biome_reserve_mult"):
+		mult = sim_config.biome_reserve_mult(biome_name_at(pos))
+	_reserve_cache[pos] = mult
+	return mult
+
+
+func _biome_spread_mult(pos: Vector2i) -> float:
+	if sim_config == null or not sim_config.has_method("biome_spread_mult"):
+		return 1.0
+	return sim_config.biome_spread_mult(biome_name_at(pos))
+
+
 func get_standing_water_level(pos: Vector2i) -> float:
 	if _ChannelRegistry.is_channel(pos.x, pos.y):
 		return _ChannelRegistry.get_water_level(pos.x, pos.y)

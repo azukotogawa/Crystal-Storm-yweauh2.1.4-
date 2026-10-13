@@ -7,6 +7,7 @@ const _FluidRegistry = preload("res://helpers/fluid_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _VoxelFluidService = preload("res://fluids/voxel_fluid_service.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 
 var _failed: int = 0
@@ -102,16 +103,27 @@ func _run() -> void:
 
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
-	_ChannelRegistry.register_channel(2, 2, Vector2i(1, 0), 0.85)
-	_ChannelRegistry.register_channel(3, 2, Vector2i.ZERO, 0.08)
+	var q2 = svc.get("_terrain_query")
+	var heights2 := {}
+	var tiles2 := {}
+	for x2 in 8:
+		for z2 in 8:
+			heights2[Vector2i(x2, z2)] = 10.0
+			tiles2[Vector2i(x2, z2)] = _VoxelTypes.GRASSLAND
+	tiles2[Vector2i(2, 2)] = _VoxelTypes.RIVER
+	heights2[Vector2i(3, 2)] = 8.0
+	if q2:
+		q2.test_base_heights = heights2
+		q2.test_tiles = tiles2
 	svc.set("_dirty_cells", {})
-	svc.call("recompute_region_now", 2, 2, 2, 10)
+	svc.call("recompute_region_now", 3, 2, 2, 8)
 	var dest: float = _ChannelRegistry.get_water_level(3, 2)
-	var src: float = _ChannelRegistry.get_water_level(2, 2)
-	if dest <= 0.12:
-		_fail("recompute_region_now should move water downhill dest=%.3f src=%.3f" % [dest, src])
+	if dest < 0.05:
+		_fail("recompute_region_now should flood from river source dest=%.3f" % dest)
+	elif _ChannelRegistry.has_fluid(2, 2, _ChannelRegistry.FLUID_WATER):
+		_fail("source river must not persist as overlay")
 	else:
-		print("OK local reflow dest=%.3f src=%.3f" % [dest, src])
+		print("OK local reflow dest=%.3f" % dest)
 
 	# A river-tile field must not become a 3000-cell dirty wave.
 	_ChannelRegistry.reset()

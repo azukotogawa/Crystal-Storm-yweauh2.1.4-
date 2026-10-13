@@ -3,6 +3,8 @@ extends Control
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
@@ -24,6 +26,7 @@ func _ready() -> void:
 		if _player.inventory:
 			_player.inventory.changed.connect(_refresh)
 			_player.inventory.hotbar_changed.connect(_on_hotbar_changed)
+	_ThemeBuilder.apply(self)
 	_build_slots()
 	call_deferred("_bind_registry")
 	call_deferred("_refresh")
@@ -54,8 +57,8 @@ func _build_slots() -> void:
 		panel.position = Vector2(i * (SLOT_SIZE + SLOT_GAP), 0)
 
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.08, 0.08, 0.12, 0.82)
-		style.border_color = Color(0.35, 0.35, 0.45, 1.0)
+		style.bg_color = Color(0.1, 0.08, 0.07, 0.88)
+		style.border_color = Color(0.22, 0.16, 0.1, 1.0)
 		style.set_border_width_all(2)
 		style.set_corner_radius_all(4)
 		panel.add_theme_stylebox_override("panel", style)
@@ -66,6 +69,7 @@ func _build_slots() -> void:
 		icon.custom_minimum_size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
 		icon.size = Vector2(SLOT_SIZE - 8, SLOT_SIZE - 8)
 		icon.position = Vector2(4, 2)
+		icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(icon)
 
@@ -78,10 +82,26 @@ func _build_slots() -> void:
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		panel.add_child(label)
 
+		panel.mouse_entered.connect(_on_slot_hover.bind(i))
+		panel.mouse_exited.connect(_on_slot_unhover)
 		add_child(panel)
 		_slot_nodes.append(panel)
 		_icon_nodes.append(icon)
 		_label_nodes.append(label)
+
+
+func _on_slot_hover(index: int) -> void:
+	if _player == null or _player.inventory == null:
+		return
+	var slot = _player.inventory.get_hotbar_item(index)
+	if slot == null:
+		_TooltipPanel.hide_tip()
+		return
+	_TooltipPanel.show_item(get_tree(), str(slot.id))
+
+
+func _on_slot_unhover() -> void:
+	_TooltipPanel.hide_tip()
 
 
 func _on_hotbar_changed(_index: int) -> void:
@@ -117,7 +137,7 @@ func _refresh() -> void:
 		else:
 			var tex: Texture2D = null
 			if _registry and _registry.has_method("get_item_texture"):
-				tex = _registry.get_item_texture(str(slot.id))
+				tex = _registry.get_item_texture(_ItemTypes.visual_key(str(slot.id)))
 			icon.texture = tex
 			if int(slot.count) > 1:
 				label.text = "x%d" % int(slot.count)

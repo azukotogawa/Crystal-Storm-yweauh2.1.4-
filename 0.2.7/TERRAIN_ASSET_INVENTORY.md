@@ -124,7 +124,7 @@ Columns: ID, name, atlas `(col,row)`, top / side / bottom (after `get_atlas_coor
 | 44 | CRYSTAL | (6,2) | (6,2) | own | (0,6) | Atlas placeholder. **Live crystal is off-atlas** (cluster mesh + emissive material). | n/a on terrain | crystal | no (keep off-atlas) | n/a | black/unused cell | P2 |
 | 45 | GRASS_TUFT | (5,2) | (5,2) | DIRT | (0,6) | Veg tile override. **Batch 05 unshared from GRASSLAND2.** | top+side | vegetation / solid | own | GRASSLAND2 | bright tufts | P1 |
 | 46 | BUSH | (5,3) | (5,3) | own | (0,6) | Veg tile override. **Batch 05 unshared from HILLS4.** | top+side | vegetation / solid | own | HILLS4 | round pad | P1 |
-| 47 | TREE_TRUNK | (2,3) | (2,3) | own | (0,6) | Forest **sides** + **tree-base tops** (veg override on TREE cells). Shares cell with HILLS3. | top+side | vegetation / solid | yes as forest side + tree pad | HILLS3 | dark green/bark | P0 |
+| 47 | TREE_TRUNK | (2,3) | (2,3) | own | (0,6) | Forest **sides** + **tree-base tops**. **Batch 05 HILLS3 unshared.** | top+side | vegetation / solid | yes as forest side + tree pad | own | bark ribs | P0 |
 | 48 | FARMLAND | (4,1) | (4,1) | DIRT | (0,6) | Town plots. **Batch 03 unshared from DIRT.** | top+side | solid / grass | yes | own | furrowed rows | P1 |
 | 49 | TOWN_PATH | (5,1) | (5,1) | DIRT | (0,6) | Town center disks. **Batch 03 unshared from GRASSLAND3.** | top+side | solid / grass | yes | own | packed earth | P1 |
 
@@ -196,21 +196,15 @@ No P0 row is an ID the current mesh never draws.
 
 ## Shared-cell collisions (authoring blockers)
 
-These IDs **point at the same `Cube.png` cell today**. First-author work must either accept a shared material or assign new atlas slots (that assignment is a later pipeline change — not this audit).
+These IDs **still share a `Cube.png` cell**. Live clash occupants were unshared in Batches 03 and 05.
 
 | Cell | IDs sharing it |
 | --- | --- |
 | (0,0) | OCEAN, OCEAN2, OCEAN3 |
 | (1,0) | RIVER, WATER |
-| (2,2) | GRASSLAND3, TOWN_PATH |
-| (3,2) | GRASSLAND4, DIRT, FARMLAND |
-| (2,3) | HILLS3, TREE_TRUNK |
-| (4,3) | HILLS4, BUSH |
-| (0,4) | MOUNTAIN, STONE |
-| (2,4) | MOUNTAIN3, STONE2 |
-| (4,4) | MOUNTAIN5, CAVE_STONE |
-| (0,6) | VALLEY, DIRT2 |
-| (1,2) | GRASSLAND2, GRASS_TUFT |
+| (0,4) | MOUNTAIN (unused), STONE |
+| (4,4) | MOUNTAIN5 (unused), CAVE_STONE |
+| (0,6) | VALLEY (unused), DIRT2 |
 
 ---
 

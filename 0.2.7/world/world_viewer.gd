@@ -8,7 +8,7 @@
 #   Drag (LMB/MMB) or WASD/Arrows (+Shift faster) : pan
 #   Mouse wheel : zoom (in/out for detail vs macro)
 #   R / + / - / Numpad+/- : change seed (instant regen of current view)
-#   Space : random new seed
+#   N : random new seed (Space is the game jump key)
 #   1-4 or M / Tab : cycle view modes (Composite is the main "does the world look good?" design view)
 #   S : print detailed design snapshot + river quality hints to console
 #   Mouse move : live inspector (biome, height, river strength, carve, etc.)
@@ -167,7 +167,7 @@ func _input(event):
 		elif event.keycode in [KEY_MINUS, KEY_KP_SUBTRACT]:
 			seed_value -= 1
 			_change_seed()
-		elif event.keycode == KEY_SPACE:
+		elif event.keycode == KEY_N:
 			seed_value = randi() % 1000000
 			_change_seed()
 		elif event.keycode == KEY_S:
@@ -544,7 +544,7 @@ func _update_hud():
 	var view_width := get_viewport_rect().size.x * units_per_pixel
 	hud_label.text = """Seed: %d    View center: (%.0f, %.0f)
 Units/pixel: %.2f   (view ~%.0f units wide)    %s
-Drag/WASD: pan   Wheel: zoom   R/+/Space: seed   1-4/M: mode   S: stats""" % [
+Drag/WASD: pan   Wheel: zoom   R/+/N: seed   1-4/M: mode   S: stats""" % [
 		seed_value, view_center.x, view_center.y, units_per_pixel, view_width, mode_names[current_mode]
 	]
 	

@@ -8,18 +8,13 @@ const LOD_MID := 1
 const LOD_NEAR := 2
 const LOD_FULL := 3
 
-const MESH_REV := 3
+const MESH_REV := 4
 const TRANSFORM_BYTES_PER_INSTANCE := 64
 const VERTEX_BYTES_PER_TRIANGLE := 96
 const DRAW_CALL_OVERHEAD_BYTES := 256
 
-const _PYRAMID_SPECS: Array = [
-	{"base": Vector3(0.52, 0.08, 0.48), "half": 0.92, "height": 0.88, "hint": Vector3(0.15, 1.0, 0.1)},
-	{"base": Vector3(0.22, 0.05, 0.68), "half": 0.55, "height": 0.52, "hint": Vector3(-0.35, 0.9, 0.25)},
-	{"base": Vector3(0.74, 0.04, 0.26), "half": 0.48, "height": 0.46, "hint": Vector3(0.4, 0.85, -0.3)},
-	{"base": Vector3(0.38, 0.06, 0.22), "half": 0.42, "height": 0.38, "hint": Vector3(-0.2, 0.75, -0.55)},
-	{"base": Vector3(0.66, 0.05, 0.72), "half": 0.4, "height": 0.34, "hint": Vector3(0.55, 0.7, 0.45)},
-]
+## One body plus four fused facets. LOD still drops pyramids; tri counts stay 6/12/12/30.
+const _PYRAMID_COUNT := 5
 
 static var _meshes: Dictionary = {}
 static var _mesh_rev: int = -1
@@ -41,7 +36,7 @@ static func pyramid_count_for_lod(lod_tier: int) -> int:
 		LOD_MID, LOD_NEAR:
 			return 2
 		_:
-			return _PYRAMID_SPECS.size()
+			return _PYRAMID_COUNT
 
 
 static func lod_tier_for_chunk_distance(chunk_dist: int) -> int:
@@ -133,19 +128,27 @@ static func _ensure_meshes() -> void:
 		_tri_counts[tier] = count * 6
 
 
+## Facets share one vertical span centered on the origin so the instance mid-height
+## sits the base on the terrain. Smaller pyramids are embedded in the body.
+static func _facet_specs(s: float) -> Array:
+	var natural_h := s * 0.88
+	var y0 := -natural_h * 0.5
+	return [
+		{"base": Vector3(0.0, y0, 0.0), "half": s * 0.64, "height": natural_h * 0.70},
+		{"base": Vector3(0.0, y0 + natural_h * 0.28, 0.0), "half": s * 0.20, "height": natural_h * 0.72},
+		{"base": Vector3(s * 0.14, y0 + natural_h * 0.20, s * 0.08), "half": s * 0.13, "height": natural_h * 0.46},
+		{"base": Vector3(-s * 0.12, y0 + natural_h * 0.18, -s * 0.07), "half": s * 0.12, "height": natural_h * 0.40},
+		{"base": Vector3(s * 0.04, y0 + natural_h * 0.24, -s * 0.13), "half": s * 0.11, "height": natural_h * 0.36},
+	]
+
+
 static func _build_mesh(s: float, pyramid_count: int) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var u := s * 0.5
+	var specs := _facet_specs(s)
 	for i in pyramid_count:
-		var spec: Dictionary = _PYRAMID_SPECS[i]
-		_add_pyramid(
-			st,
-			Vector3(s * spec.base.x, s * spec.base.y, s * spec.base.z),
-			u * float(spec.half),
-			s * float(spec.height),
-			spec.hint
-		)
+		var spec: Dictionary = specs[i]
+		_add_pyramid(st, spec.base, float(spec.half), float(spec.height))
 	return st.commit()
 
 
@@ -153,8 +156,7 @@ static func _add_pyramid(
 	st: SurfaceTool,
 	base_center: Vector3,
 	half: float,
-	height: float,
-	normal_hint: Vector3
+	height: float
 ) -> void:
 	var bx0 := base_center.x - half
 	var bx1 := base_center.x + half
@@ -168,14 +170,10 @@ static func _add_pyramid(
 	var d := Vector3(bx0, by, bz1)
 	_add_tri(st, a, b, c, Vector3.DOWN, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
 	_add_tri(st, a, c, d, Vector3.DOWN, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
-	var n_ab := normal_hint.cross(b - a).normalized()
-	var n_bc := normal_hint.cross(c - b).normalized()
-	var n_cd := normal_hint.cross(d - c).normalized()
-	var n_da := normal_hint.cross(a - d).normalized()
-	_add_tri(st, a, b, apex, n_ab, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
-	_add_tri(st, b, c, apex, n_bc, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
-	_add_tri(st, c, d, apex, n_cd, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
-	_add_tri(st, d, a, apex, n_da, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
+	_add_tri(st, a, b, apex, Vector3.FORWARD, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
+	_add_tri(st, b, c, apex, Vector3.RIGHT, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
+	_add_tri(st, c, d, apex, Vector3.BACK, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
+	_add_tri(st, d, a, apex, Vector3.LEFT, Vector2(0, 1), Vector2(1, 1), Vector2(0.5, 0))
 
 
 static func _add_tri(
@@ -188,10 +186,16 @@ static func _add_tri(
 	uv_b: Vector2,
 	uv_c: Vector2
 ) -> void:
-	st.set_normal(normal)
+	var face := (b - a).cross(c - a)
+	var n := normal
+	if face.length_squared() > 0.0000001:
+		n = face.normalized()
+	st.set_normal(n)
 	st.set_uv(uv_a)
 	st.add_vertex(a)
+	st.set_normal(n)
 	st.set_uv(uv_b)
 	st.add_vertex(b)
+	st.set_normal(n)
 	st.set_uv(uv_c)
 	st.add_vertex(c)

@@ -7,6 +7,8 @@ const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _CombatDef = preload("res://config/combat_def.gd")
 const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _AbsorptionUnlockDef = preload("res://config/absorption_unlock_def.gd")
+const _ItemDef = preload("res://config/item_def.gd")
 
 const DEFAULT_EXPORT_PATH := "user://crystal_storm_config.json"
 
@@ -41,6 +43,8 @@ static func _serialize_game_config(cfg) -> Dictionary:
 		"crystal_sim": _resource_to_dict(cfg.crystal_sim),
 		"combat": _resource_to_dict(cfg.combat),
 		"spawn_points": _resource_array_to_dicts(cfg.spawn_points),
+		"absorption_unlocks": _resource_array_to_dicts(cfg.absorption_unlocks),
+		"items": _resource_array_to_dicts(cfg.items),
 		"performance": _resource_to_dict(cfg.performance),
 	}
 
@@ -63,6 +67,12 @@ static func _deserialize_game_config(data: Dictionary):
 	var spawn_rows: Array = data.get("spawn_points", [])
 	if not spawn_rows.is_empty():
 		cfg.spawn_points = _dicts_to_resource_array(spawn_rows, _SpawnPointDef.new())
+	var unlock_rows: Array = data.get("absorption_unlocks", [])
+	if not unlock_rows.is_empty():
+		cfg.absorption_unlocks = _dicts_to_resource_array(unlock_rows, _AbsorptionUnlockDef.new())
+	var item_rows: Array = data.get("items", [])
+	if not item_rows.is_empty():
+		cfg.items = _dicts_to_resource_array(item_rows, _ItemDef.new())
 	var perf_data: Dictionary = data.get("performance", {})
 	if not perf_data.is_empty():
 		cfg.performance = _dict_to_resource(_PerformanceQualityConfig.create_default(), perf_data)
@@ -99,6 +109,8 @@ static func _resource_to_dict(res: Resource) -> Dictionary:
 		var val = res.get(prop.name)
 		if val is PackedFloat32Array:
 			out[prop.name] = Array(val)
+		elif typeof(val) == TYPE_STRING_NAME:
+			out[prop.name] = str(val)
 		elif typeof(val) in [TYPE_DICTIONARY, TYPE_ARRAY, TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_STRING]:
 			out[prop.name] = val
 	return out

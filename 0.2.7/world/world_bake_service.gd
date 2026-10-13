@@ -3051,7 +3051,9 @@ func _apply_pack_to_data(data, surface: PackedFloat32Array, tiles: PackedInt32Ar
 			if data.has_method("has_worker_overlay_snapshot") and data.has_worker_overlay_snapshot():
 				hdelta = float(data.get_worker_height_delta(lx, lz))
 				build_t = int(data.get_worker_build_tile(lx, lz))
-				if data.has_method("get_worker_feature_tile"):
+				if data.has_method("mesh_feature_tile"):
+					feat_t = int(data.mesh_feature_tile(lx, lz))
+				elif data.has_method("get_worker_feature_tile"):
 					feat_t = int(data.get_worker_feature_tile(lx, lz))
 			var h: float = base_h + hdelta
 			h = round(h / layer) * layer

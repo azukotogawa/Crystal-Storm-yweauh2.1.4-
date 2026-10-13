@@ -72,6 +72,42 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var tree_absorb_power: float = 8.0
 @export var farmland_absorb_power: float = 6.5
 
+@export_group("Corruption")
+## Spread pace. Plains and steppe run ahead; highland and mountain crawl.
+## Keys are canonical biome names. Empty entries fall back to DEFAULT_BIOME_*.
+@export var biome_spread: Dictionary = {}
+@export var biome_reserve: Dictionary = {}
+@export var biome_mob: Dictionary = {}
+## Seconds a broken crystal cell stays scarred before the biome tile returns.
+@export var scar_heal_seconds: float = 18.0
+## Seconds a passive animal must stand in crystal before it converts.
+@export var animal_convert_seconds: float = 3.5
+
+const DEFAULT_BIOME_SPREAD := {
+	"plains": 1.35,
+	"steppe": 1.28,
+	"forest": 1.0,
+	"marsh": 0.85,
+	"highland": 0.55,
+	"mountain": 0.5,
+}
+const DEFAULT_BIOME_RESERVE := {
+	"plains": 1.0,
+	"steppe": 1.0,
+	"forest": 1.05,
+	"marsh": 1.1,
+	"highland": 1.65,
+	"mountain": 1.75,
+}
+const DEFAULT_BIOME_MOB := {
+	"plains": 1.55,
+	"steppe": 1.4,
+	"forest": 1.0,
+	"marsh": 0.9,
+	"highland": 0.65,
+	"mountain": 0.6,
+}
+
 @export_group("Lose / Win")
 @export var max_coverage_ratio: float = 0.72
 @export var player_contact_defeat_enabled: bool = false
@@ -97,6 +133,42 @@ func tier_from_power(power: float) -> int:
 		if power >= tier_thresholds[i]:
 			tier += 1
 	return maxi(tier - 1, 0)
+
+
+func canonical_biome(biome_name: String) -> String:
+	var n := biome_name.strip_edges().to_lower()
+	if n.contains("highland") or n.contains("hill"):
+		return "highland"
+	if n.contains("mountain") or n.contains("peak") or n.contains("alpine"):
+		return "mountain"
+	if n.contains("steppe") or n.contains("savanna"):
+		return "steppe"
+	if n.contains("plain"):
+		return "plains"
+	if n.contains("marsh") or n.contains("swamp") or n.contains("wetland"):
+		return "marsh"
+	if n.contains("forest") or n.contains("pine") or n.contains("woods"):
+		return "forest"
+	return n
+
+
+func biome_spread_mult(biome_name: String) -> float:
+	return _biome_value(biome_spread, DEFAULT_BIOME_SPREAD, biome_name)
+
+
+func biome_reserve_mult(biome_name: String) -> float:
+	return _biome_value(biome_reserve, DEFAULT_BIOME_RESERVE, biome_name)
+
+
+func biome_mob_mult(biome_name: String) -> float:
+	return _biome_value(biome_mob, DEFAULT_BIOME_MOB, biome_name)
+
+
+func _biome_value(override: Dictionary, defaults: Dictionary, biome_name: String) -> float:
+	var key := canonical_biome(biome_name)
+	if override.has(key):
+		return float(override[key])
+	return float(defaults.get(key, 1.0))
 
 
 func vegetation_flow_factor(tile_id: int) -> float:

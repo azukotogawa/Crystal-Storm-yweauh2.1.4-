@@ -1,5 +1,5 @@
 extends SceneTree
-## P0 contract: terrain edits use ring=0 interior, ring=1 near chunk edges (ramp lip halo).
+## P0 contract: terrain edits use ring=0 interior, ring=1 on the chunk-face cell only.
 
 
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
@@ -32,7 +32,7 @@ func _run() -> void:
 
 	var interior := Vector2i(8, 8)
 	var edge_x := Vector2i(0, 8)
-	var edge_z := Vector2i(8, 1)
+	var edge_z := Vector2i(8, 0)
 	var far_edge := Vector2i(_ChunkData.SIZE - 1, 8)
 	var neg_edge := Vector2i(-1, 8)
 

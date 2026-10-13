@@ -171,12 +171,17 @@ func _run() -> void:
 	for _w in 40:
 		await process_frame
 	var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
-	if build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
+	var wall_feat: Dictionary = _FeatureRegistry.get_feature(build_wx, build_wz)
+	var wall_id := str(wall_feat.get("build_id", ""))
+	if wall_id == "stone_wall" and absf(build_delta) <= 0.01:
+		lines.append("PASS build wall WorldObject wx=%d wz=%d delta=%.2f" % [build_wx, build_wz, build_delta])
+		print("OK build wall WorldObject")
+	elif build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0:
 		lines.append("PASS build wall wx=%d wz=%d delta=%.2f" % [build_wx, build_wz, build_delta])
 		print("OK build wall delta=%.2f" % build_delta)
 	else:
-		lines.append("FAIL build delta=%.2f tile=%s editor=%s" % [
-			build_delta, _TerrainEdits.get_build_tile(build_wx, build_wz), terrain_editor != null
+		lines.append("FAIL build delta=%.2f tile=%s build_id=%s editor=%s" % [
+			build_delta, _TerrainEdits.get_build_tile(build_wx, build_wz), wall_id, terrain_editor != null
 		])
 		push_error("build wall failed")
 		failed = true
@@ -228,7 +233,7 @@ func _run() -> void:
 				ramp_counts[fc] += 1
 	# Synthetic L-step proves corner prisms emit (spawn area may have corner=0 at 28% placement).
 	var corner_synth_ok := _synthetic_corner_ramp_ok()
-	if ramp_counts[FACE_RAMP] >= 1 and ramp_counts[FACE_RAMP_SIDE] >= 1 and corner_synth_ok:
+	if ramp_counts[FACE_RAMP] >= 1 and ramp_counts[FACE_RAMP_SIDE] == 0 and corner_synth_ok:
 		lines.append("PASS ramps cardinal=%d corner=%d concave=%d synth_corner=1" % [
 			ramp_counts[FACE_RAMP], ramp_counts[FACE_RAMP_CORNER], ramp_counts[FACE_RAMP_SIDE]
 		])
@@ -237,7 +242,7 @@ func _run() -> void:
 		lines.append("FAIL ramps cardinal=%d corner=%d concave=%d synth_corner=%s" % [
 			ramp_counts[FACE_RAMP], ramp_counts[FACE_RAMP_CORNER], ramp_counts[FACE_RAMP_SIDE], corner_synth_ok
 		])
-		push_error("ramp mesh missing face codes or synthetic corner failed")
+		push_error("ramp mesh missing face codes, leftover concave prism, or synthetic corner failed")
 		failed = true
 
 	# Vegetation / entities voxel
@@ -344,7 +349,7 @@ func _synthetic_corner_ramp_ok() -> bool:
 	var high_h := low_h + layer
 	data.surface_map[cx][cz] = low_h
 	data.tile_map[cx][cz] = _VoxelTypes.GRASSLAND
-	for d in [Vector2i(1, 0), Vector2i(0, 1)]:
+	for d in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
 		data.surface_map[cx + d.x][cz + d.y] = high_h
 		data.tile_map[cx + d.x][cz + d.y] = _VoxelTypes.GRASSLAND
 

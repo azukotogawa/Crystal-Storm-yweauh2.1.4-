@@ -4,7 +4,7 @@
 
 The production scene (`scenes/main.tscn`) contains a controllable player, chunk-streamed terrain, camera rotation/zoom, mouse-aware action targeting, inventory/hotbar, terrain dig/build paths, basic melee/ranged/tool weapons, entities, crystal simulation and spawn points, world features, a topographical map, save/load, visual feedback, and developer tools.
 
-Current item definitions include a wooden sword, stone pick, shortbow, and material stacks. The player uses WASD/arrow movement, `M` jump, `Q`/`E` camera rotation, wheel zoom, attack, interaction/build actions, hotbar selection, and map/inventory/dev/debug bindings defined in `project.godot`. Target highlights communicate dig (orange), build (green), and attack (red) modes.
+Current item definitions include a wooden sword, stone pick, shortbow, and material stacks. The player uses WASD/arrow movement, Space to jump, `Q`/`E` camera rotation, wheel zoom, attack, interaction/build actions, hotbar selection, and map/inventory/dev/debug bindings defined in `project.godot`. Target highlights communicate dig (orange), build (green), and attack (red) modes.
 
 Terrain edits are column-based. `TerrainEdits` records height deltas and build tiles; `TerrainEditor` applies edits through the chunk manager so affected chunks rebuild. This is not arbitrary full-volume block placement or destruction.
 

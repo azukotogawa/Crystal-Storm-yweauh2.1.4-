@@ -14,7 +14,8 @@ const _EntityBrainConfig = preload("res://config/entity_brain_config.gd")
 @export var max_health: float = 24.0
 @export var contact_damage: float = 22.0
 @export var lifetime: float = 45.0
-@export var hit_radius: float = 0.38
+## Hit radius in voxels. World size is hit_radius * voxel_scale.
+@export var hit_radius: float = 0.32
 @export_range(0.0, 0.85, 0.01)
 var defense: float = 0.0
 
@@ -24,6 +25,13 @@ var defense: float = 0.0
 @export var absorption_tag: StringName = &"crystal_enemy"
 
 @export_group("Visual")
+## Voxel/billboard key. Empty means `id` (reuse another enemy's authored visual).
+@export var visual_id: StringName = &""
 @export var tint: Color = Color(0.72, 0.2, 0.95, 1.0)
-@export var mesh_radius: float = 0.28
-@export var mesh_height: float = 0.7
+## Body size in voxels (one voxel = voxel_scale world units).
+@export var mesh_radius: float = 0.22
+@export var mesh_height: float = 0.70
+
+
+func resolved_visual_id() -> StringName:
+	return visual_id if visual_id != &"" else id

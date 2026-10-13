@@ -248,7 +248,7 @@ func get_relics_found_count() -> int:
 
 
 func get_ruins_hud_line() -> String:
-	var total: int = _FeatureRegistry.get_ruin_centers().size()
+	var total: int = _FeatureRegistry.ruin_center_count()
 	var n: int = _discovered_ruins.size()
 	if total <= 0:
 		return ""

@@ -133,6 +133,8 @@ func _apply_flow_batch(changed: Array, mesh_dirty: Array) -> void:
 
 
 func on_chunk_loaded(coord: Vector2i) -> void:
+	if not _cells_by_chunk.has(coord):
+		rebuild_cell_index()
 	if _cells_by_chunk.has(coord):
 		_dirty_chunks[coord] = true
 		_chunk_needs_full_rebuild[coord] = true
@@ -175,7 +177,8 @@ func flush(profiler = null) -> int:
 	for coord_variant in keys:
 		var coord: Vector2i = coord_variant
 		if not _chunk_active(coord):
-			_dirty_chunks.erase(coord)
+			# Keep the dirty bit until the chunk is resident — erasing here dropped
+			# origin-crystal meshes when stream extras were not yet "loaded".
 			continue
 		var layer_t0 := Time.get_ticks_usec()
 		if _chunk_needs_full_rebuild.has(coord):
@@ -298,6 +301,8 @@ func _make_render_cell(pos: Vector2i, depth: float, spawn_id: int):
 		)
 		# Frontier = active purple front (open edge). Interior has all 4 cardinals filled.
 		cell.is_frontier = (cell.neighbor_mask & 15) != 15
+		if "terrain" in fluid and fluid.terrain and fluid.terrain.has_method("get_standing_water_level"):
+			cell.is_wet = float(fluid.terrain.get_standing_water_level(pos)) >= 0.05
 	return cell
 
 

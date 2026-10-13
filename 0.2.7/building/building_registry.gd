@@ -55,8 +55,8 @@ static func _make_stone_wall() -> _BuildableDef:
 	d.material_count = 1
 	d.wood_fallback_count = 2
 	d.tile_id = _VoxelTypes.STONE
-	d.height_delta = 1
-	d.raises_terrain = true
+	d.height_delta = 0
+	d.raises_terrain = false
 	d.flow_resistance = 0.85
 	d.placement_range = 3.0
 	return d
@@ -70,8 +70,8 @@ static func _make_wood_wall() -> _BuildableDef:
 	d.material_id = "wood"
 	d.material_count = 2
 	d.tile_id = _VoxelTypes.DIRT
-	d.height_delta = 1
-	d.raises_terrain = true
+	d.height_delta = 0
+	d.raises_terrain = false
 	d.flow_resistance = 0.55
 	d.placement_range = 3.0
 	return d
@@ -104,8 +104,8 @@ static func _make_bridge() -> _BuildableDef:
 	d.material_count = 1
 	d.wood_fallback_count = 0
 	d.tile_id = _VoxelTypes.DIRT
-	d.height_delta = 1
-	d.raises_terrain = true
+	d.height_delta = 0
+	d.raises_terrain = false
 	d.is_bridge = true
 	d.flow_resistance = 0.28
 	d.placement_range = 3.0

@@ -1,0 +1,25 @@
+# Input Contract
+
+Movement:
+WASD = camera-relative movement
+Space = jump
+Q/E = camera yaw
+Page Up / Page Down = camera pitch (middle-mouse drag tilts too)
+V = unstuck (nearest safe stand above or beside you; short cooldown)
+
+Interaction:
+LMB = primary interaction/removal
+RMB = placement
+Tab = cycle placement catalog
+
+Interaction range:
+8 voxels.
+
+Combat:
+Sword attack must never invoke terrain/building removal.
+
+Building:
+LMB = remove selected/intersected authored object
+RMB = place selected catalog item
+
+Changing one system must not silently change these bindings.

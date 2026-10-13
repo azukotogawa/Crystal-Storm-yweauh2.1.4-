@@ -38,10 +38,19 @@ static func ensure_builtins() -> void:
 	_register(_enemy_brain(&"crystal_stag", "Crystal Stag", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 14.0, 22.0, 24.0))
 	_register(_enemy_brain(&"thornling", "Thornling", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 7.0, 8.0, 20.0, 14.0))
 	_register(_enemy_brain(&"corrupted_beast", "Corrupted Beast", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 9.0, 12.0, 30.0, 26.0))
+	_register(_enemy_brain(&"crystal_wisp", "Crystal Wisp", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 13.0, 18.0, 12.0, 10.0))
 	var guard := _enemy_brain(&"shard_guard", "Shard Guard", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 8.0, 6.0, 16.0, 18.0)
 	guard.patrol_radius = 10.0
 	guard.max_health = 55.0
 	_register(guard)
+
+	var warden := _enemy_brain(&"origin_warden", "Origin Warden", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 6.5, 28.0, 240.0, 18.0)
+	warden.attack_cooldown = 1.4
+	_register(warden)
+	var tyrant := _enemy_brain(&"spawn_elite", "Shard Tyrant", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 7.5, 14.0, 96.0, 16.0)
+	tyrant.patrol_radius = 6.0
+	tyrant.attack_cooldown = 1.3
+	_register(tyrant)
 
 
 static func register_all(defs: Array) -> void:

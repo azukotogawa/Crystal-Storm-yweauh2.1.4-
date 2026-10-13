@@ -3,7 +3,9 @@ extends Control
 
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
-const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _SettingsMenu = preload("res://ui/settings_menu.gd")
+const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 
 enum Screen { MAIN, WORLD_SELECT, NEW_WORLD, SETTINGS }
 
@@ -24,16 +26,14 @@ var _name_edit: LineEdit
 var _seed_edit: LineEdit
 var _rename_edit: LineEdit
 var _confirm_layer: Control
-var _preset_opt: OptionButton
-var _rd_slider: HSlider
-var _veg_slider: HSlider
-var _fx_check: CheckBox
 
 
 func _ready() -> void:
 	add_to_group("frontend_root")
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	_ThemeBuilder.apply(self)
+	_PlayerSettings.apply_to_tree(get_tree())
 	_build_chrome()
 	if _WorldManager.consume_return_to_select():
 		_show(Screen.WORLD_SELECT)
@@ -73,6 +73,7 @@ func _clear_stack() -> void:
 
 func _show(which: Screen) -> void:
 	_screen = which
+	_ui("ui_open")
 	_clear_stack()
 	match which:
 		Screen.MAIN:
@@ -134,8 +135,16 @@ func _btn(text: String, on_press: Callable, danger: bool = false) -> Button:
 		b.add_theme_color_override("font_color", COL_DANGER)
 	else:
 		b.add_theme_color_override("font_color", COL_ACCENT)
+	b.pressed.connect(func(): _ui("ui_click"))
 	b.pressed.connect(on_press)
+	b.mouse_entered.connect(func(): _ui("ui_hover"))
 	return b
+
+
+func _ui(id: String) -> void:
+	var audio := get_node_or_null("/root/AudioManager")
+	if audio and audio.has_method("play_ui"):
+		audio.play_ui(id)
 
 
 func _set_status(msg: String) -> void:
@@ -155,9 +164,23 @@ func _build_main() -> void:
 	settings.name = "Settings"
 	var quit_b := _btn("Quit", func(): get_tree().quit())
 	quit_b.name = "Quit"
+	var how := _btn("How to play", func(): _TutorialOverlay.open(get_tree(), true))
+	how.name = "HowToPlay"
+	var controls := _btn("Controls", func(): _TutorialOverlay.open_controls(get_tree()))
+	controls.name = "Controls"
 	box.add_child(play)
 	box.add_child(settings)
+	box.add_child(how)
+	box.add_child(controls)
 	box.add_child(quit_b)
+	var credit := Label.new()
+	credit.name = "FontCredit"
+	credit.text = "Pixelify Sans, Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans), SIL Open Font License 1.1."
+	credit.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	credit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	credit.add_theme_font_size_override("font_size", 12)
+	credit.add_theme_color_override("font_color", COL_MUTED)
+	box.add_child(credit)
 
 
 func _build_world_select() -> void:
@@ -356,65 +379,11 @@ func _on_create_world() -> void:
 
 func _build_settings() -> void:
 	var box := _card()
-	_title(box, "Settings", "Existing graphics and view options")
-	var data: Dictionary = _PlayerSettings.load_settings()
-	var preset_l := Label.new()
-	preset_l.text = "Graphics quality"
-	preset_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(preset_l)
-	_preset_opt = OptionButton.new()
-	_preset_opt.add_item("Low", int(_PerformanceQualityConfig.Preset.LOW))
-	_preset_opt.add_item("Medium", int(_PerformanceQualityConfig.Preset.MEDIUM))
-	_preset_opt.add_item("High", int(_PerformanceQualityConfig.Preset.HIGH))
-	_preset_opt.add_item("Safe", int(_PerformanceQualityConfig.Preset.SAFE))
-	var want: int = int(data.get("quality_preset", _PerformanceQualityConfig.Preset.MEDIUM))
-	for i in _preset_opt.item_count:
-		if _preset_opt.get_item_id(i) == want:
-			_preset_opt.select(i)
-			break
-	box.add_child(_preset_opt)
-	var rd_l := Label.new()
-	rd_l.text = "Render distance"
-	rd_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(rd_l)
-	_rd_slider = HSlider.new()
-	_rd_slider.min_value = 1
-	_rd_slider.max_value = 8
-	_rd_slider.step = 1
-	_rd_slider.value = int(data.get("render_distance", 2))
-	box.add_child(_rd_slider)
-	var veg_l := Label.new()
-	veg_l.text = "Vegetation density"
-	veg_l.add_theme_color_override("font_color", COL_SUB)
-	box.add_child(veg_l)
-	_veg_slider = HSlider.new()
-	_veg_slider.min_value = 0
-	_veg_slider.max_value = 1
-	_veg_slider.step = 0.05
-	_veg_slider.value = float(data.get("vegetation_scatter_multiplier", 1.0))
-	box.add_child(_veg_slider)
-	_fx_check = CheckBox.new()
-	_fx_check.text = "Combat effects"
-	_fx_check.button_pressed = bool(data.get("combat_visuals_enabled", true))
-	box.add_child(_fx_check)
-	box.add_child(_btn("Save", _on_save_settings))
+	box.get_parent().custom_minimum_size = Vector2(640, 560)
+	_title(box, "Settings", "Controls, audio, display, and accessibility")
+	var menu := _SettingsMenu.new()
+	menu.name = "SettingsMenu"
+	menu.custom_minimum_size = Vector2(520, 360)
+	menu.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(menu)
 	box.add_child(_btn("Back", func(): _show(Screen.MAIN)))
-	_status = Label.new()
-	_status.add_theme_color_override("font_color", COL_MUTED)
-	box.add_child(_status)
-
-
-func _on_save_settings() -> void:
-	var preset := int(_PerformanceQualityConfig.Preset.MEDIUM)
-	if _preset_opt:
-		preset = _preset_opt.get_item_id(_preset_opt.selected)
-	var data := {
-		"quality_preset": preset,
-		"render_distance": int(_rd_slider.value) if _rd_slider else 2,
-		"vegetation_scatter_multiplier": float(_veg_slider.value) if _veg_slider else 1.0,
-		"combat_visuals_enabled": bool(_fx_check.button_pressed) if _fx_check else true,
-	}
-	if _PlayerSettings.save_settings(data):
-		_set_status("Settings saved.")
-	else:
-		_set_status("Could not save settings.")

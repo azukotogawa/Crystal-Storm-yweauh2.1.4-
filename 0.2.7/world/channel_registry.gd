@@ -33,6 +33,23 @@ static func get_water_level(wx: int, wz: int) -> float:
 	return get_fluid_level(wx, wz, FLUID_WATER)
 
 
+## Runtime body surface (world Y). Not written to the save bundle.
+static func get_runtime_surface_y(wx: int, wz: int) -> float:
+	var entry: Dictionary = get_channel(wx, wz)
+	return float(entry.get("surface_y", 0.0))
+
+
+static func set_runtime_surface_y(wx: int, wz: int, surface_y: float) -> void:
+	var ws = _ws()
+	var key := Vector2i(wx, wz)
+	if not ws.channels.has(key):
+		return
+	var entry: Dictionary = ws.channels[key]
+	entry["surface_y"] = surface_y
+	ws.channels[key] = entry
+	ws.bump(_WorldState.DOMAIN_CHANNEL)
+
+
 static func get_flow_dir(wx: int, wz: int, fluid_id: StringName = FLUID_WATER) -> Vector2i:
 	var entry: Dictionary = get_channel(wx, wz)
 	if entry.is_empty():

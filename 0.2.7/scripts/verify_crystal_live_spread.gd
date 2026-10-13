@@ -37,22 +37,23 @@ func _run() -> void:
 
 
 func _test_origin_relocated_off_river() -> bool:
+	# Rivers are ribbons, not a lake on (0,0). The heart still has to sit on dry
+	# land, and a water corner has to walk inward until it finds that land.
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	world.world_seed = 12349
 	var cm := _CrystalManager.new()
 	cm.world = world
+	var preferred: Vector2i = cm.origin_corner_for_seed(12349)
 	var origin: Vector2i = cm.pick_origin_spawn_cell()
-	var center_tile: int = world.get_tile_type(0.0, 0.0)
-	if center_tile != _VoxelTypes.RIVER:
-		push_error("expected seed 12349 center to be RIVER for regression, got %d" % center_tile)
+	var origin_tile: int = world.get_tile_type(float(origin.x), float(origin.y))
+	if _CrystalTypes.is_water_tile(origin_tile):
+		push_error("origin spawn %s is water tile %d" % [origin, origin_tile])
 		return false
-	if origin == Vector2i.ZERO:
-		push_error("origin spawn must relocate off river at (0,0)")
+	var preferred_tile: int = world.get_tile_type(float(preferred.x), float(preferred.y))
+	if _CrystalTypes.is_water_tile(preferred_tile) and origin == preferred:
+		push_error("water corner %s must relocate, stayed on tile %d" % [preferred, preferred_tile])
 		return false
-	if _CrystalTypes.is_water_tile(world.get_tile_type(float(origin.x), float(origin.y))):
-		push_error("relocated origin %s is still water" % origin)
-		return false
-	print("OK origin relocated (0,0) river → %s tile=%d" % [origin, world.get_tile_type(float(origin.x), float(origin.y))])
+	print("OK origin land %s tile=%d preferred %s tile=%d" % [origin, origin_tile, preferred, preferred_tile])
 	return true
 
 

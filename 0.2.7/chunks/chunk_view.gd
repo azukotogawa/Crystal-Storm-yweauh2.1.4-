@@ -7,6 +7,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _CHUNK_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkView.tres")
 const _SURFACE_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkSurfaceMesh.tres")
+const _RAMP_SHADER: Shader = preload("res://shaders/ChunkRamp.gdshader")
 const _ChunkSurfaceMeshBuilder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
 const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
@@ -46,6 +47,15 @@ func _ensure_chunk_material() -> void:
 		_shared_chunk_material = seed_mat.duplicate() as ShaderMaterial
 	_bind_chunk_atlas(_shared_chunk_material)
 	chunk_material = _shared_chunk_material
+
+
+static func _ensure_ramp_material() -> ShaderMaterial:
+	if _shared_ramp_material == null:
+		_shared_ramp_material = ShaderMaterial.new()
+		_shared_ramp_material.shader = _RAMP_SHADER
+		_shared_ramp_material.render_priority = 1
+	_bind_chunk_atlas(_shared_ramp_material)
+	return _shared_ramp_material
 
 
 static func _bind_chunk_atlas(mat: ShaderMaterial) -> void:
@@ -105,7 +115,16 @@ func emit_quads():
 	var upload_t0 := Time.get_ticks_usec()
 	if keep_surface:
 		_emit_surface_mesh()
-		_emit_ramp_multimeshes_from_payload()
+		# Cardinal/corner ramps are triangles in the terrain ArrayMesh so F4
+		# FACE_RAMP and the camera cannot disagree. No concave MultiMesh wedges.
+		var diagonal_count: int = int(mesh_data.get("diagonal_count", 0))
+		if diagonal_count > 0:
+			_assign_buffer_multimesh(
+				mesh_data.get("diagonal_buffer", PackedFloat32Array()),
+				diagonal_count,
+				"diagonal_mm_instance",
+				"diagonal"
+			)
 		_free_unused_layer_children()
 		_last_upload_us = Time.get_ticks_usec() - upload_t0
 		_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
@@ -219,6 +238,7 @@ func _emit_surface_mesh() -> void:
 	if mesh_instance == null:
 		mesh_instance = MeshInstance3D.new()
 		mesh_instance.name = "terrain_surface_mesh"
+		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var t_tree := Time.get_ticks_usec()
 		layer_container.add_child(mesh_instance)
 		_mesh_phase_record("scenetree_insert", Time.get_ticks_usec() - t_tree)
@@ -331,6 +351,7 @@ func _assign_buffer_multimesh(
 	if mm_instance == null:
 		mm_instance = MultiMeshInstance3D.new()
 		mm_instance.name = node_name
+		mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if mesh_kind != "box":
 			mm_instance.sorting_offset = 1.0
 		var t_tree := Time.get_ticks_usec()
@@ -371,10 +392,7 @@ func _assign_buffer_multimesh(
 		if mesh_kind == "box":
 			mm_instance.material_override = chunk_material
 		else:
-			if _shared_ramp_material == null:
-				_shared_ramp_material = chunk_material.duplicate()
-				_bind_chunk_atlas(_shared_ramp_material)
-			mm_instance.material_override = _shared_ramp_material
+			mm_instance.material_override = _ensure_ramp_material()
 	_mesh_phase_record("material_assign", Time.get_ticks_usec() - t_mat)
 
 	var t_pop := Time.get_ticks_usec()
@@ -582,6 +600,7 @@ func _emit_ramp_multimesh(quads: Array, ramp_kind: String = "cardinal") -> void:
 	var mm_instance := MultiMeshInstance3D.new()
 	mm_instance.name = "%s_mm_instance" % ramp_kind
 	mm_instance.sorting_offset = 1.0
+	mm_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	layer_container.add_child(mm_instance)
 
 	var mm := MultiMesh.new()
@@ -598,11 +617,7 @@ func _emit_ramp_multimesh(quads: Array, ramp_kind: String = "cardinal") -> void:
 	mm_instance.multimesh = mm
 
 	if chunk_material:
-		if _shared_ramp_material == null:
-			_shared_ramp_material = chunk_material.duplicate()
-			_bind_chunk_atlas(_shared_ramp_material)
-			_shared_ramp_material.render_priority = 1
-		mm_instance.material_override = _shared_ramp_material
+		mm_instance.material_override = _ensure_ramp_material()
 
 	var ws = _WorldSettings.get_active()
 	var chunk_offset_x: float = ws.column_to_world(float(chunk_data.position.x * ChunkData.SIZE))

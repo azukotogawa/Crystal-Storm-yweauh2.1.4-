@@ -25,7 +25,8 @@ func _run() -> void:
 		print("OK weapon melee uses resolve_action attack")
 
 	var targeting_src := (load("res://player/action_targeting.gd") as GDScript).source_code
-	if '&"dig", &"build", &"attack", &"ranged"' not in targeting_src or "mouse_only = false" not in targeting_src:
+	# Off-screen mouse returns no column; target_column then walks _target_column_forward.
+	if "_target_column_forward" not in targeting_src or '&"attack", &"ranged"' not in targeting_src:
 		push_error("action_targeting must forward-fallback tool modes without mouse")
 		failed = true
 	else:
@@ -144,7 +145,7 @@ func _run() -> void:
 		push_error("attack must resolve via forward fallback with mouse off-screen")
 		failed = true
 	else:
-		print("OK attack resolves without mouse at cells=%s" % resolve_cells.keys())
+		print("OK attack resolves without mouse at cells=%s" % str(resolve_cells.keys()))
 
 	# Production melee must damage a spawned entity ahead along attack_forward (not co-located).
 	var entity_mgr = get_first_node_in_group("entity_manager")

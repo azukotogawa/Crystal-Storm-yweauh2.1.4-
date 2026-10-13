@@ -102,6 +102,10 @@ func is_any_town_fallen() -> bool:
 	return false
 
 
+func is_town_fallen(center: Vector2i) -> bool:
+	return int(_town_states.get(center, TownState.SAFE)) == TownState.FALLEN
+
+
 func get_status_summary() -> Array:
 	var out: Array = []
 	for town in _FeatureRegistry.get_towns():
@@ -186,6 +190,10 @@ func _state_from_depth(depth: float) -> int:
 
 
 func _max_crystal_depth_in_radius(center: Vector2i, radius: int) -> float:
+	if _crystal == null:
+		return 0.0
+	if _crystal.has_method("spread_depth_empty") and _crystal.spread_depth_empty():
+		return 0.0
 	var best := 0.0
 	for dx in range(-radius, radius + 1):
 		for dz in range(-radius, radius + 1):

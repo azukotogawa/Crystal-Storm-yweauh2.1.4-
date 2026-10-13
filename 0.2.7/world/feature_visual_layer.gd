@@ -10,6 +10,7 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
+const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
 
 var chunk_manager: ChunkManager
@@ -435,7 +436,15 @@ func _is_ruin_visual_cell(wx: int, wz: int, feat: Dictionary) -> bool:
 
 ## Gate/bridge/wood_wall/stone_wall identity from feature metadata (gameplay DIRT tile unchanged).
 func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> String:
+	var explicit := str(feat.get("visual_id", "")).strip_edges()
+	if explicit != "":
+		return explicit
 	var build_id := str(feat.get("build_id", "")).strip_edges()
+	var def = _BuildingRegistry.get_def(StringName(build_id)) if build_id != "" else null
+	if def and def.has_method("resolved_visual_id"):
+		var from_def := str(def.resolved_visual_id())
+		if from_def != "":
+			return from_def
 	if bool(feat.get("is_passage", false)) or build_id == "gate":
 		return "gate"
 	if bool(feat.get("is_bridge", false)) or build_id == "bridge":
@@ -444,7 +453,8 @@ func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> Stri
 		return "wood_wall"
 	if build_id == "stone_wall":
 		return "stone_wall"
-	# Legacy tile_override fallback (not used for gate/bridge after build_id fix).
+	# Explicit ids win above. A bare DIRT/STONE override is the legacy wall
+	# stamp (no build_id). Gate and bridge never reach this: they return above.
 	var tile_override: int = _FeatureRegistry.get_tile_override(wx, wz)
 	if tile_override == VoxelTypes.STONE:
 		return "stone_wall"

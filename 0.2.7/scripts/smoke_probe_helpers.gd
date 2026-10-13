@@ -217,6 +217,219 @@ static func combat_vfx_active(combat_vfx: Node) -> Dictionary:
 	return {"damage_labels": damage_labels, "burst_sprites": burst_sprites, "ok": ok}
 
 
+## Live floor probe: a 1-layer build can be stepped; a 2-layer stack blocks.
+static func check_built_wall_collision(
+	floor_probe,
+	wx: int,
+	wz: int,
+	expect_step: bool,
+	expect_blocks: bool
+) -> Dictionary:
+	if floor_probe == null or not floor_probe.has_method("can_step_to"):
+		return {"ok": false, "reason": "no floor probe", "raise": 0.0, "can_step": false}
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var wall_feet: float = float(floor_probe.walkable_height_at(float(wx) + 0.5, float(wz) + 0.5))
+	var approach := Vector2i(wx - 1, wz)
+	var approach_feet := wall_feet
+	var found := false
+	for dir in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var n := Vector2i(wx + dir.x, wz + dir.y)
+		var feet: float = float(floor_probe.walkable_height_at(float(n.x) + 0.5, float(n.y) + 0.5))
+		if feet >= wall_feet - layer * 0.15:
+			continue
+		if not found or feet > approach_feet:
+			found = true
+			approach = n
+			approach_feet = feet
+	if not found:
+		approach_feet = float(floor_probe.walkable_height_at(float(approach.x) + 0.5, float(approach.y) + 0.5))
+	var raise: float = wall_feet - approach_feet
+	var from_pos := Vector3(float(approach.x) + 0.5, approach_feet, float(approach.y) + 0.5)
+	var to_pos := Vector3(float(wx) + 0.5, approach_feet, float(wz) + 0.5)
+	var can_step: bool = bool(floor_probe.can_step_to(
+		from_pos,
+		to_pos,
+		ws.player_height(),
+		ws.player_radius(),
+		ws.max_step_up_walk(),
+		false
+	))
+	var blocks := not can_step
+	var ok := can_step == expect_step and blocks == expect_blocks
+	var reason := ""
+	if not ok:
+		reason = "step=%s want %s block=%s want %s raise=%.2f from %s" % [
+			str(can_step), str(expect_step), str(blocks), str(expect_blocks), raise, str(approach)
+		]
+	return {"ok": ok, "reason": reason, "raise": raise, "can_step": can_step}
+
+
+## Production melee swing at an entity already standing on the aimed column.
+static func try_forward_arc_melee_damage(
+	player: Node,
+	_world,
+	_chunk_manager,
+	weapon: Node,
+	entity: Node,
+	item_id: String,
+	def: Dictionary
+) -> Dictionary:
+	if player == null or weapon == null or entity == null or not weapon.has_method("_do_melee_attack"):
+		return {"ok": false, "reason": "missing melee nodes", "dist_cells": 0.0, "hp_before": 0.0, "hp_after": 0.0, "player_cell": Vector2i.ZERO, "pre_hits": 0}
+	var voxel: Vector3 = player.get("voxel_position")
+	var player_cell := Vector2i(floori(voxel.x), floori(voxel.z))
+	var home: Vector2i = entity.get("home_cell") if "home_cell" in entity else Vector2i.ZERO
+	var dist_cells: float = Vector2(float(player_cell.x - home.x), float(player_cell.y - home.y)).length()
+	var hp_before: float = float(entity.get("health"))
+	var pre_hits := 0
+	if weapon.has_method("_attack_origin") and weapon.has_method("_attack_forward"):
+		var origin: Vector3 = weapon.call("_attack_origin", 0.5)
+		var forward: Vector3 = weapon.call("_attack_forward")
+		var range_v: float = float(def.get("range", 2.0))
+		var range_w: float = range_v * _WorldSettings.get_active().voxel_scale
+		var seen: Array = CombatHitResolver.query_melee(weapon, origin, forward, range_w, null, 180.0)
+		for node in seen:
+			if node == entity:
+				pre_hits += 1
+	weapon.call("_do_melee_attack", item_id, def)
+	var hp_after: float = float(entity.get("health"))
+	var ok := hp_after < hp_before - 0.01
+	var reason := ""
+	if not ok:
+		reason = "no damage" if pre_hits > 0 else "arc missed"
+	return {
+		"ok": ok,
+		"reason": reason,
+		"dist_cells": dist_cells,
+		"hp_before": hp_before,
+		"hp_after": hp_after,
+		"player_cell": player_cell,
+		"pre_hits": pre_hits,
+	}
+
+
+## Production floor probe: an L of one-layer landings is a corner prism you can step up.
+static func audit_ramp_step_corner_walk(floor_probe) -> Dictionary:
+	var result := {
+		"ok": false,
+		"reason": "no floor probe",
+		"corner_feet": 0.0,
+		"center_h": 0.0,
+		"steps": 0,
+	}
+	if floor_probe == null or not floor_probe.has_method("can_step_to"):
+		return result
+	var cm = floor_probe.get("chunk_manager")
+	if cm == null or not ("chunks" in cm) or (cm.chunks as Dictionary).is_empty():
+		result.reason = "no loaded chunks"
+		return result
+	var _TerrainRamps = load("res://helpers/terrain_ramps.gd")
+	var _WorldBorder = load("res://helpers/world_border.gd")
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var old_chance: int = int(_TerrainRamps.placement_chance)
+	var old_cm_chance: int = int(cm.ramp_placement_chance) if "ramp_placement_chance" in cm else old_chance
+	_TerrainRamps.placement_chance = 100
+	if "ramp_placement_chance" in cm:
+		cm.ramp_placement_chance = 100
+	var stamped := false
+	for coord in cm.chunks.keys():
+		var view = cm.chunks[coord]
+		var data: ChunkData = view.chunk_data if view != null else null
+		if data == null or not data._has_resident_column_maps():
+			continue
+		var origin := Vector2i(coord.x * ChunkData.SIZE, coord.y * ChunkData.SIZE)
+		var pad := _step_corner_pad(cm, data, origin)
+		if pad == Vector2i(-1, -1):
+			continue
+		if not _WorldBorder.is_playable(float(origin.x + pad.x), float(origin.y + pad.y)):
+			continue
+		_stamp_step_corner(data, pad.x, pad.y, layer)
+		if data.has_method("_refresh_halo_interior_from_maps"):
+			data._refresh_halo_interior_from_maps()
+		if cm.has_method("_build_mesh"):
+			cm._build_mesh(data)
+		if floor_probe.has_method("reset_measure"):
+			floor_probe.reset_measure()
+		var world = floor_probe.get("world")
+		if world != null and world.has_method("get_surface_height"):
+			floor_probe.feet_height_hint = float(world.get_surface_height(float(origin.x + pad.x) + 0.5, float(origin.y + pad.y) + 0.5)) + layer
+		stamped = true
+		var wx: int = origin.x + pad.x
+		var wz: int = origin.y + pad.y
+		if not data.is_ramp_corner(pad.x, pad.y):
+			result.reason = "L low cell (%d,%d) is not a corner ramp" % [wx, wz]
+			break
+		var ph: float = ws.player_height()
+		var pr: float = ws.player_radius()
+		var max_step: float = ws.max_step_up_walk()
+		var outer := Vector3(float(wx) + 0.28, 0.0, float(wz) + 0.28)
+		outer.y = float(floor_probe.walkable_height_at(outer.x, outer.z))
+		var inner := Vector3(float(wx) + 0.72, 0.0, float(wz) + 0.72)
+		inner.y = float(floor_probe.walkable_height_at(inner.x, inner.z))
+		var steps := 0
+		if inner.y >= outer.y + layer * 0.25 and floor_probe.can_step_to(outer, inner, ph, pr, max_step, false):
+			steps += 1
+		var land_x := Vector3(float(wx + 1) + 0.5, 0.0, float(wz) + 0.35)
+		land_x.y = float(floor_probe.walkable_height_at(land_x.x, land_x.z))
+		if floor_probe.can_step_to(inner, land_x, ph, pr, max_step, false):
+			steps += 1
+		var land_z := Vector3(float(wx) + 0.35, 0.0, float(wz + 1) + 0.5)
+		land_z.y = float(floor_probe.walkable_height_at(land_z.x, land_z.z))
+		if floor_probe.can_step_to(inner, land_z, ph, pr, max_step, false):
+			steps += 1
+		var center_h: float = float(floor_probe.walkable_height_at(float(wx) + 0.5, float(wz) + 0.5))
+		var corner_feet: float = float(floor_probe.sample_walkable_feet(inner.x, inner.z))
+		result.corner_feet = corner_feet
+		result.center_h = center_h
+		result.steps = steps
+		if steps < 1:
+			result.reason = "cannot step up corner prism at (%d,%d)" % [wx, wz]
+			break
+		if corner_feet < center_h - layer * 0.25:
+			result.reason = "feet %.2f below center %.2f" % [corner_feet, center_h]
+			break
+		result.ok = true
+		result.reason = ""
+		break
+	_TerrainRamps.placement_chance = old_chance
+	if "ramp_placement_chance" in cm:
+		cm.ramp_placement_chance = old_cm_chance
+	if not stamped and result.reason == "no floor probe":
+		result.reason = "no clear loaded pad for an L step"
+	elif not stamped and result.reason == "":
+		result.reason = "no clear loaded pad for an L step"
+	return result
+
+
+static func _step_corner_pad(cm, data: ChunkData, _origin: Vector2i) -> Vector2i:
+	var margin := 2
+	for x in range(margin, ChunkData.SIZE - margin):
+		for z in range(margin, ChunkData.SIZE - margin):
+			var clear := true
+			for dx in range(-1, 3):
+				for dz in range(-1, 3):
+					if cm.has_method("_has_player_build_at") and cm._has_player_build_at(data, x + dx, z + dz):
+						clear = false
+						break
+				if not clear:
+					break
+			if clear:
+				return Vector2i(x, z)
+	return Vector2i(-1, -1)
+
+
+static func _stamp_step_corner(data: ChunkData, cx: int, cz: int, layer: float) -> void:
+	var low_h: float = float(data.surface_map[cx][cz])
+	for dx in range(-1, 3):
+		for dz in range(-1, 3):
+			data.surface_map[cx + dx][cz + dz] = low_h
+	data.surface_map[cx + 1][cz] = low_h + layer
+	data.surface_map[cx][cz + 1] = low_h + layer
+	data.surface_map[cx + 1][cz + 1] = low_h + layer
+
+
 static func session_seconds() -> float:
 	var raw := OS.get_environment("SMOKE_SESSION_SEC").strip_edges()
 	if raw.is_empty():

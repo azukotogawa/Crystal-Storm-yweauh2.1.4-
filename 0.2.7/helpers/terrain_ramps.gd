@@ -16,8 +16,8 @@ static var _concave_mesh: ArrayMesh
 static var _corner_step_mesh: ArrayMesh
 static var _mesh_scale_key: float = -1.0
 const CONCAVE_MESH_REV := 3
-const WEDGE_MESH_REV := 6
-const CORNER_STEP_MESH_REV := 1
+const WEDGE_MESH_REV := 8
+const CORNER_STEP_MESH_REV := 3
 static var _concave_mesh_rev: int = -1
 static var _wedge_mesh_rev: int = -1
 static var _corner_step_mesh_rev: int = -1
@@ -53,6 +53,17 @@ static func should_place_ramp(world_x: int, world_z: int, dir: Vector2i) -> bool
 	return bucket < placement_chance
 
 
+## Corners are uncommon (hex silhouette), not every inner 2×2.
+static func should_place_corner(world_x: int, world_z: int) -> bool:
+	if _WorldBorder.should_force_ramp(world_x, world_z):
+		return true
+	if placement_chance >= 100:
+		return true
+	var seed_val := world_x * 92837111 ^ world_z * 44556677 ^ 99112233
+	var bucket: int = int(seed_val & 0x7fffffff) % 100
+	return bucket < maxi(placement_chance / 4, 6)
+
+
 static func should_place_concave_prism(world_x: int, world_z: int, leg_x: int, leg_z: int) -> bool:
 	var seed_val := world_x * 92837111 ^ world_z * 1234567 ^ leg_x * 44556677 ^ leg_z * 99112233
 	return int(seed_val & 0x7fffffff) % 100 < maxi(placement_chance / 2, 12)
@@ -86,8 +97,8 @@ static func _ensure_mesh_scale() -> void:
 	_corner_step_mesh_rev = CORNER_STEP_MESH_REV
 
 
-## Step wedge: half-block diagonal cut, cell-centered.
-## Local y is in layer units from surface_y: 0 = column base, 1 = low walkable, 2 = high walkable toward +X.
+## Step wedge: one landing column only. Local +X is the high edge (away from the low neighbor).
+## Collision uses the same column: voxel_top at t=0, voxel_top-layer at t=1 toward the low neighbor.
 static func get_wedge_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _wedge_mesh != null:
@@ -95,16 +106,18 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Landing-anchored wedge spanning landing + approach columns (2 cells along slope axis).
-	# Only sloped walkable face + underside — no vertical box walls.
-	_add_quad_uv(st,
-		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
-		Vector3(0, 0.70710678, 0.70710678),
-		Vector2(0, 0), Vector2(1, 1), Vector2(1, 1), Vector2(0, 0)
+	# Occupies the landing cell AABB only. Approach keeps its own top face.
+	# Winding A,D,C,B so the slope normal is (-1, 1, 0) — toward +Y. The previous
+	# A,B,C,D winding faced -Y, so the iso camera lit the underside (black diamonds).
+	var a := Vector3(-0.5, -1, -0.5) * s
+	var b := Vector3(0.5, 0, -0.5) * s
+	var c := Vector3(0.5, 0, 0.5) * s
+	var d := Vector3(-0.5, -1, 0.5) * s
+	var slope_n := Vector3(-1, 1, 0).normalized()
+	_add_quad_uv(st, a, d, c, b, slope_n,
+		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
 	)
-	_add_quad_uv(st,
-		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, -1, -0.5) * s, Vector3(0.5, -1, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
-		Vector3.DOWN,
+	_add_quad_uv(st, a, b, c, d, Vector3.DOWN,
 		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
 	)
 	_wedge_mesh = st.commit()
@@ -144,19 +157,13 @@ static func get_corner_step_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var c0 := Vector3.ZERO
-	var a0 := Vector3(s, 0.0, 0.0)
-	var b0 := Vector3(0.0, 0.0, s)
-	var c1 := Vector3(0.0, s, 0.0)
-	var a1 := Vector3(s, s, 0.0)
-	var b1 := Vector3(0.0, s, s)
-	var d1 := Vector3(s, s, s)
-	_add_tri_uv(st, c0, a0, b0, Vector3.DOWN, Vector2(0, 0), Vector2(1, 0), Vector2(0, 1))
-	_add_tri_uv(st, c1, a1, d1, Vector3.UP, Vector2(0, 0), Vector2(1, 0), Vector2(1, 1))
-	_add_tri_uv(st, c1, d1, b1, Vector3.UP, Vector2(0, 0), Vector2(1, 1), Vector2(0, 1))
-	_add_quad_uv(st, a0, c0, c1, a1, Vector3(0, 0, -1), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
-	_add_quad_uv(st, b0, c0, c1, b1, Vector3(-1, 0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0))
-	_add_quad_uv(st, a0, b0, b1, a1, Vector3(0.70710678, 0.0, 0.70710678), Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1))
+	# Low corner at origin. Legs +X/+Z point at the two higher neighbors.
+	# Exposed top is ONE triangle — not a square cap at y=s.
+	var low := Vector3.ZERO
+	var high_x := Vector3(s, s, 0.0)
+	var high_z := Vector3(0.0, s, s)
+	_add_tri_uv(st, low, high_z, high_x, Vector3(-0.5, 0.707, -0.5).normalized(), Vector2(0, 0), Vector2(0, 1), Vector2(1, 0))
+	_add_tri_uv(st, low, high_x, high_z, Vector3.DOWN, Vector2(0, 0), Vector2(1, 0), Vector2(0, 1))
 	_corner_step_mesh = st.commit()
 	return _corner_step_mesh
 
@@ -236,16 +243,21 @@ static func walkable_height_from_entry(
 		return voxel_top_y(ref_h)
 	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
 	var dir2: Vector2i = entry.get("dir2", Vector2i.ZERO)
+	# Model A corner: the drawn cap is the inner triangle at the plateau, flush
+	# with both landings. The outer half stays on this column's own top.
+	# surface_h is the resident column the mesh was built from.
 	if entry.get("corner", false) and dir != Vector2i.ZERO and dir2 != Vector2i.ZERO:
+		var column_h: float = float(entry.get("surface_h", base))
 		var layer: float = _ws().layer_height()
-		var t: float = maxf(axis_t(wx, wz, dir), axis_t(wx, wz, dir2))
-		return voxel_top_y(base) + t * layer
-	if entry.get("approach", false) and dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
-		var layer_a: float = _ws().layer_height()
-		var t_a: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
-		return voxel_top_y(base) + t_a * layer_a
+		var toward: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0) + clampf(axis_t(wx, wz, dir2), 0.0, 1.0)
+		if toward >= 1.0:
+			return voxel_top_y(column_h) + layer
+		return voxel_top_y(column_h)
+	if entry.get("approach", false):
+		return voxel_top_y(base)
 	if dir != Vector2i.ZERO and dir2 == Vector2i.ZERO:
-		return surface_height_on_ramp(wx, wz, base, dir)
+		var landing_surface_c: float = float(entry.get("surface_h", base))
+		return surface_height_on_ramp(wx, wz, landing_surface_c, dir)
 	if entry.get("side", false) and dir != Vector2i.ZERO:
 		return surface_height_on_ramp(wx, wz, base, entry.get("dir2", dir))
 	return voxel_top_y(base)
@@ -317,17 +329,22 @@ static func corner_ramp_transform(
 static func _corner_prism_transform(
 	world_x: float, world_z: float, surface_y: float, leg_x: int, leg_z: int
 ) -> Transform3D:
+	# Right-handed yaw only — negative-scale bases inverted lighting/UVs on two of four corners.
+	var lx: int = 1 if leg_x >= 0 else -1
+	var lz: int = 1 if leg_z >= 0 else -1
+	var yaw := 0.0
+	if lx < 0 and lz > 0:
+		yaw = -PI * 0.5
+	elif lx < 0 and lz < 0:
+		yaw = PI
+	elif lx > 0 and lz < 0:
+		yaw = PI * 0.5
 	var ws = _ws()
-	var corner_x: float = world_x if leg_x > 0 else world_x + 1.0
-	var corner_z: float = world_z if leg_z > 0 else world_z + 1.0
-	var basis := Basis(
-		Vector3(float(leg_x), 0.0, 0.0),
-		Vector3.UP,
-		Vector3(0.0, 0.0, float(leg_z))
-	)
+	var corner_x: float = world_x if lx > 0 else world_x + 1.0
+	var corner_z: float = world_z if lz > 0 else world_z + 1.0
 	var origin := Vector3(
 		ws.column_to_world(corner_x),
 		surface_y,
 		ws.column_to_world(corner_z)
 	)
-	return Transform3D(basis, origin)
+	return Transform3D(Basis(Vector3.UP, yaw), origin)

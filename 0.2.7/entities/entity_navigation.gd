@@ -10,6 +10,7 @@ const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 static var use_lightweight_nav: bool = true
 
 static var _shared_probe: _VoxelFloorProbe
+static var _crystal_api: int = 0
 
 
 static func _get_probe(
@@ -34,11 +35,27 @@ static func walkable_y_light(
 ) -> float:
 	if world == null:
 		return _WorldSettings.get_active().layer_height()
-	var entry: Dictionary = {}
-	if chunk_manager and chunk_manager.has_method("get_ramp_entry_at_world"):
-		entry = chunk_manager.get_ramp_entry_at_world(wx, wz)
-	var base := _TerrainRamps.walkable_height_from_entry(world, wx, wz, entry)
-	if crystal_manager and crystal_manager.has_method("get_walkable_height"):
+	var col_x := floori(wx)
+	var col_z := floori(wz)
+	var at_center := absf(wx - (float(col_x) + 0.5)) < 0.002 and absf(wz - (float(col_z) + 0.5)) < 0.002
+	var base: float
+	if at_center:
+		base = _VoxelFloorProbe.cached_column_center_walkable(world, chunk_manager, col_x, col_z)
+	else:
+		var entry: Dictionary = _VoxelFloorProbe.cached_ramp_entry(chunk_manager, wx, wz)
+		base = _TerrainRamps.walkable_height_from_entry(world, wx, wz, entry)
+	if crystal_manager == null:
+		return base
+	if _crystal_api == 0:
+		if crystal_manager.has_method("crystal_walkable_floor"):
+			_crystal_api = 1
+		elif crystal_manager.has_method("get_walkable_height"):
+			_crystal_api = 2
+		else:
+			_crystal_api = 3
+	if _crystal_api == 1:
+		return maxf(base, float(crystal_manager.crystal_walkable_floor(wx, wz)))
+	if _crystal_api == 2:
 		return maxf(base, crystal_manager.get_walkable_height(wx, wz))
 	return base
 
@@ -88,6 +105,51 @@ static func snap_to_ground(
 	return Vector3(world_pos.x, y, world_pos.z)
 
 
+## First tied cardinal in NEIGHBOR_DIRS order. That is the cell the full scan keeps.
+static func _cardinal_toward(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
+	var dx := target_cell.x - from_cell.x
+	var dz := target_cell.y - from_cell.y
+	var adx := absi(dx)
+	var adz := absi(dz)
+	if adx == 0 and adz == 0:
+		return Vector2i.ZERO
+	var step := Vector2i.ZERO
+	if adx > adz:
+		step.x = 1 if dx > 0 else -1
+	elif adz > adx:
+		step.y = 1 if dz > 0 else -1
+	elif dx > 0:
+		step.x = 1
+	elif dx < 0:
+		step.x = -1
+	elif dz > 0:
+		step.y = 1
+	else:
+		step.y = -1
+	return step
+
+
+static func _neighbor_step_ok(
+	candidate: Vector2i,
+	current_y: float,
+	max_step_up: float,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	crystal_manager
+) -> bool:
+	if _VoxelFloorProbe.blocking_build_column(candidate.x, candidate.y):
+		return false
+	var cand_x := float(candidate.x) + 0.5
+	var cand_z := float(candidate.y) + 0.5
+	var cand_y: float
+	if use_lightweight_nav:
+		cand_y = walkable_y_light(world, chunk_manager, crystal_manager, cand_x, cand_z)
+	else:
+		var probe := _get_probe(world, chunk_manager, crystal_manager, current_y)
+		cand_y = probe.sample_walkable_feet(cand_x, cand_z)
+	return absf(cand_y - current_y) <= max_step_up + 0.05
+
+
 static func step_toward_cell(
 	current: Vector3,
 	target_cell: Vector2i,
@@ -105,28 +167,28 @@ static func step_toward_cell(
 	if from_cell == target_cell:
 		return snap_to_ground(current, world, chunk_manager, crystal_manager)
 
-	var probe: _VoxelFloorProbe = null
 	var best_cell := from_cell
-	var best_score := INF
 	var current_y := current.y
-
-	for dir in _CrystalTypes.NEIGHBOR_DIRS:
-		var candidate: Vector2i = from_cell + dir
-		var cand_x := float(candidate.x) + 0.5
-		var cand_z := float(candidate.y) + 0.5
-		var cand_y: float
-		if use_lightweight_nav:
-			cand_y = walkable_y_light(world, chunk_manager, crystal_manager, cand_x, cand_z)
-		else:
-			if probe == null:
-				probe = _get_probe(world, chunk_manager, crystal_manager, current.y)
-			cand_y = probe.sample_walkable_feet(cand_x, cand_z)
-		if absf(cand_y - current_y) > max_step_up + 0.05:
-			continue
-		var score := Vector2(candidate).distance_squared_to(Vector2(target_cell))
-		if score < best_score:
-			best_score = score
-			best_cell = candidate
+	# Cardinal neighbors only. The closest open step is unique (ties follow
+	# NEIGHBOR_DIRS order). Other directions are checked only when that step is
+	# walled or steeper than max_step_up, which is the same cell the full scan picks.
+	var direct := _cardinal_toward(from_cell, target_cell)
+	if direct != Vector2i.ZERO and _neighbor_step_ok(
+		from_cell + direct, current_y, max_step_up, world, chunk_manager, crystal_manager
+	):
+		best_cell = from_cell + direct
+	else:
+		var best_score := -1
+		for dir in _CrystalTypes.NEIGHBOR_DIRS:
+			var candidate: Vector2i = from_cell + dir
+			if not _neighbor_step_ok(candidate, current_y, max_step_up, world, chunk_manager, crystal_manager):
+				continue
+			var sdx := candidate.x - target_cell.x
+			var sdz := candidate.y - target_cell.y
+			var score := sdx * sdx + sdz * sdz
+			if best_score < 0 or score < best_score:
+				best_score = score
+				best_cell = candidate
 
 	var goal_col_x := float(best_cell.x) + 0.5
 	var goal_col_z := float(best_cell.y) + 0.5
@@ -135,22 +197,21 @@ static func step_toward_cell(
 	if use_lightweight_nav:
 		goal.y = walkable_y_light(world, chunk_manager, crystal_manager, goal_col_x, goal_col_z)
 	else:
-		if probe == null:
-			probe = _get_probe(world, chunk_manager, crystal_manager, current.y)
-		goal.y = probe.sample_walkable_feet(goal_col_x, goal_col_z)
+		goal.y = _get_probe(world, chunk_manager, crystal_manager, current.y).sample_walkable_feet(goal_col_x, goal_col_z)
 	var to_goal := goal - current
 	var dist := to_goal.length()
 	if dist <= 0.02:
 		return goal
 	var step := minf(move_speed * delta, dist)
 	var next := current + to_goal.normalized() * step
+	var next_cell := column_pos(next)
+	if next_cell != from_cell and _VoxelFloorProbe.blocking_build_column(next_cell.x, next_cell.y):
+		return snap_to_ground(current, world, chunk_manager, crystal_manager)
 	var next_col := _column_xz_from_world(next)
 	if use_lightweight_nav:
 		next.y = walkable_y_light(world, chunk_manager, crystal_manager, next_col.x, next_col.y)
 	else:
-		if probe == null:
-			probe = _get_probe(world, chunk_manager, crystal_manager, current.y)
-		next.y = probe.sample_walkable_feet(next_col.x, next_col.y)
+		next.y = _get_probe(world, chunk_manager, crystal_manager, current.y).sample_walkable_feet(next_col.x, next_col.y)
 	return next
 
 
@@ -162,4 +223,65 @@ static func flee_cell(from_cell: Vector2i, threat_cell: Vector2i, distance: int 
 	return from_cell + Vector2i(
 		int(round(dir.x * float(distance))),
 		int(round(dir.y * float(distance)))
+	)
+
+
+## Shove in world space. A step that would climb more than one layer stays put.
+## WorldObject walls block the segment, not only the destination column.
+## A world with sample_knock_ground(x, z) is a test stub. Live worlds use the walkable query.
+static func knockback_step(
+	current: Vector3,
+	dir: Vector3,
+	distance: float,
+	world,
+	chunk_manager,
+	crystal
+) -> Vector3:
+	if distance <= 0.0:
+		return current
+	var flat := Vector3(dir.x, 0.0, dir.z)
+	if flat.length_squared() < 0.0001:
+		return current
+	flat = flat.normalized()
+	var dest := current + flat * distance
+	if _segment_hits_blocking_wall(current, dest):
+		return current
+	var ground := _knock_ground_y(world, chunk_manager, crystal, dest, current.y)
+	var max_up: float = _WorldSettings.get_active().max_step_up_walk()
+	if absf(ground - current.y) > max_up + 0.05:
+		return current
+	dest.y = ground
+	return dest
+
+
+## Samples the segment in column space. The start cell is allowed so a body can leave a wall.
+static func _segment_hits_blocking_wall(from_pos: Vector3, to_pos: Vector3) -> bool:
+	var a := _column_xz_from_world(from_pos)
+	var b := _column_xz_from_world(to_pos)
+	var dx := b.x - a.x
+	var dz := b.y - a.y
+	var steps := maxi(1, int(ceil(maxf(absf(dx), absf(dz)))))
+	var start := Vector2i(floori(a.x), floori(a.y))
+	for i in steps + 1:
+		var t := float(i) / float(steps)
+		var p := a.lerp(b, t)
+		var col := Vector2i(floori(p.x), floori(p.y))
+		if col == start:
+			continue
+		if _VoxelFloorProbe.blocking_build_column(col.x, col.y):
+			return true
+	return false
+
+
+static func _knock_ground_y(world, chunk_manager, crystal, dest: Vector3, hint: float) -> float:
+	if world != null and world.has_method("sample_knock_ground"):
+		return float(world.sample_knock_ground(dest.x, dest.z))
+	var ws = _WorldSettings.get_active()
+	return walkable_y(
+		world,
+		chunk_manager,
+		crystal,
+		ws.world_to_column(dest.x),
+		ws.world_to_column(dest.z),
+		hint
 	)

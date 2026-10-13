@@ -827,7 +827,13 @@ func _enqueue_chunk_mesh_work(
 	if world == null:
 		return
 	if pending.has(coord) or _chunk_tasks.has(coord):
-		_merge_patch_pending(coord, dirty_local, full_rebuild)
+		# A resident remesh sets preserve_column_maps before enqueue. If this
+		# chunk is still in flight, the flush that set the flag returns here
+		# and used to record a fresh patch with preserve_maps=false. The
+		# follow-up then recaptured bake columns and MeshPlanCache-hit quads
+		# with no FACE_RAMP, while ramp_map from the preserved pass stayed.
+		var preserve_maps := _chunk_wants_preserved_maps(coord)
+		_merge_patch_pending(coord, dirty_local, full_rebuild, preserve_maps)
 		_schedule_rebuild_flush()
 		return
 
@@ -866,6 +872,12 @@ func _enqueue_chunk_mesh_work(
 				prior_surface_cache = _TerrainSurfaceCache.duplicate_cache(
 					_TerrainSurfaceCache.cache_from_payload(view.mesh_data)
 				)
+		# Step tests prefer halo over surface_map. Capture leaves the interior
+		# unset (fallback works) but the border halo is world-gen height, so a
+		# stamp on the far side of a chunk edge never becomes a FACE_RAMP.
+		# Freeze resident columns, including loaded neighbors, before the worker.
+		if data.preserve_column_maps:
+			_refresh_preserve_halo(data)
 
 	pending[coord] = true
 	var token: int = int(_chunk_gen_tokens.get(coord, 0)) + 1
@@ -931,7 +943,9 @@ func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
 
 
 func _build_mesh(data: ChunkData) -> Dictionary:
-	return _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
+	var built := _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
+	sync_ramp_map_to_mesh(data, built.get("quads", []))
+	return built
 
 
 func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false) -> Dictionary:
@@ -943,6 +957,14 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	var x1 := rect.position.x + rect.size.x
 	var z1 := rect.position.y + rect.size.y
 
+	# Column mesh contract (heightfield, not a full voxel grid):
+	# surface_map is the base of the current top voxel. Visual top = surface + layer.
+	# - full column: FACE_TOP at surface; sides span any drop to neighbors
+	# - N-layer dig: only that new FACE_TOP; no leftover tops at old heights
+	# - cardinal ramp (landing): one slope high→low plus floor at the low edge
+	# - corner ramp (low inner 2×2): FACE_TOP floor + one diagonal half-block
+	#   only when both supporting highs and the inner diagonal are full height.
+	# - never FACE_RAMP_SIDE concave prisms (those were compound wedges)
 	# Job-local micro skip on this ChunkData (exclusive to the in-flight worker for this data).
 	data._mesh_job_micro_skip = {}
 	if _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
@@ -951,16 +973,13 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	if not full_chunk:
 		_clear_ramp_map_in_rect(data, rect)
 
-	var concave_cells := (
-		_find_concave_corner_cells(data)
-		if full_chunk
-		else _find_concave_corner_cells_in_rect(data, rect)
-	)
+	# Concave L-gap prisms are not ramps: they stacked FACE_TOP + FACE_RAMP_SIDE
+	# MultiMesh wedges. Inner 2×2 corners and cardinals are the only slope kinds.
+	var concave_cells := {}
 	if full_chunk:
 		_emit_ramps(data, out_quads, concave_cells)
 	else:
 		_emit_ramps_in_rect(data, out_quads, concave_cells, rect)
-	_emit_concave_corner_prisms(data, out_quads, concave_cells)
 	_emit_dug_strata_region(data, out_quads, x0, z0, x1, z1)
 	_emit_build_strata_region(data, out_quads, x0, z0, x1, z1)
 	# Horizontal slabs are FACE_TOP only. Y-down + side face_codes reused the top
@@ -970,6 +989,7 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	_greedy_mesh_plane_region(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads, x0, z0, x1, z1)
+	_emit_water_lids_region(data, out_quads, x0, z0, x1, z1)
 	if MESH_CAVES and full_chunk:
 		_emit_cave_faces(data, out_quads)
 	var micro_skip: Dictionary = data._mesh_job_micro_skip
@@ -982,13 +1002,30 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 		"count": out_quads.size()
 	}
 
-func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int) -> bool:
+func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int, for_top: bool = true) -> bool:
 	if data != null and not data._mesh_job_micro_skip.is_empty() \
 			and data._mesh_job_micro_skip.has(Vector2i(x, z)):
 		return true
-	if data.has_ramp(x, z):
+	# Flooded indent: water lid on the dug bed replaces the dirt top.
+	if for_top and data != null and data._worker_water_lid.has(Vector2i(x, z)):
+		var lid_y: float = float(data._worker_water_lid[Vector2i(x, z)])
+		var bed: float = _surface_y_at(data, x, z)
+		var layer: float = _WorldSettings.get_active().layer_height()
+		# Only skip dirt when a water lid will actually emit (waterline above this voxel).
+		if lid_y > bed + layer + 0.05:
+			return true
+	if not data.has_ramp(x, z):
+		return false
+	var entry: Dictionary = data.get_ramp_entry(x, z)
+	if bool(entry.get("approach", false)):
+		return false
+	# Corner occupies the low column: keep FACE_TOP as floor support and keep
+	# real neighbor side faces. Cardinal landing slope replaces the lid only.
+	if bool(entry.get("corner", false)):
+		return false
+	if bool(entry.get("concave", false)):
 		return true
-	return _is_ramp_approach_from_landing(data, x, z)
+	return for_top
 
 
 func _build_micro_mesh_region(data: ChunkData, rect: Rect2i) -> Dictionary:
@@ -1131,6 +1168,10 @@ func _should_place_ramp(world_x: int, world_z: int, dir: Vector2i, surface_h: fl
 	return TerrainRamps.should_place_ramp(world_x, world_z, dir)
 
 
+func _should_place_corner(world_x: int, world_z: int) -> bool:
+	return TerrainRamps.should_place_corner(world_x, world_z)
+
+
 func apply_world_gen_config(cfg) -> void:
 	if cfg == null:
 		return
@@ -1199,21 +1240,294 @@ func _step_out_dirs(data: ChunkData, x: int, z: int, low_h: float, world_x: int,
 	return out
 
 
-## Cardinal ramps sit on the landing (higher) column, sloping down toward the lower neighbor.
-func _step_in_dirs(data: ChunkData, x: int, z: int, cell_h: float, world_x: int, world_z: int) -> Array:
+func _column_blocks_ramp(data: ChunkData, x: int, z: int) -> bool:
+	if data != null and data._worker_water_lid.has(Vector2i(x, z)):
+		return true
+	var tile: int = _sample_tile_type(data, x, z)
+	return tile == VoxelTypes.RIVER or tile == VoxelTypes.WATER \
+		or tile == VoxelTypes.OCEAN or tile == VoxelTypes.OCEAN2 or tile == VoxelTypes.OCEAN3
+
+
+## Topology only (no random chance): neighbors one layer higher. Used for corners.
+func _high_step_dirs(data: ChunkData, x: int, z: int, low_h: float) -> Array:
+	if _has_player_build_at(data, x, z) or _column_blocks_ramp(data, x, z):
+		return []
+	var out: Array = []
+	for d in _RAMP_DIRS:
+		var nx: int = x + d.x
+		var nz: int = z + d.y
+		if _has_player_build_at(data, nx, nz) or _column_blocks_ramp(data, nx, nz):
+			continue
+		var in_chunk := nx >= 0 and nx < ChunkData.SIZE and nz >= 0 and nz < ChunkData.SIZE
+		if in_chunk and _tile_type_at(data, nx, nz) == VoxelTypes.AIR:
+			continue
+		var nh: float = _sample_height(data, nx, nz)
+		if _is_step_height(nh - low_h):
+			out.append(d)
+	return out
+
+
+## Inner corner of a 2×2 plateau: two perpendicular highs plus the diagonal high.
+func _is_inner_plateau_corner(data: ChunkData, x: int, z: int, d_a: Vector2i, d_b: Vector2i) -> bool:
+	if not _dirs_perpendicular(d_a, d_b):
+		return false
+	if _column_blocks_ramp(data, x, z) \
+			or _column_blocks_ramp(data, x + d_a.x, z + d_a.y) \
+			or _column_blocks_ramp(data, x + d_b.x, z + d_b.y) \
+			or _column_blocks_ramp(data, x + d_a.x + d_b.x, z + d_a.y + d_b.y):
+		return false
+	var ha: float = _sample_height(data, x + d_a.x, z + d_a.y)
+	var hb: float = _sample_height(data, x + d_b.x, z + d_b.y)
+	if absf(ha - hb) > 0.15:
+		return false
+	var dx: int = x + d_a.x + d_b.x
+	var dz: int = z + d_a.y + d_b.y
+	var in_chunk := dx >= 0 and dx < ChunkData.SIZE and dz >= 0 and dz < ChunkData.SIZE
+	if in_chunk and _tile_type_at(data, dx, dz) == VoxelTypes.AIR:
+		return false
+	return absf(_sample_height(data, dx, dz) - ha) <= 0.15
+
+
+## True for a low column that is the inner corner of a 2×2 plateau (halo-aware).
+func _is_inner_corner_low_at(data: ChunkData, x: int, z: int) -> bool:
 	if _has_player_build_at(data, x, z):
+		return false
+	var in_chunk := x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE
+	if in_chunk and _tile_type_at(data, x, z) == VoxelTypes.AIR:
+		return false
+	var low_h: float = _sample_height(data, x, z)
+	if low_h < 0.0:
+		return false
+	var highs: Array = _high_step_dirs(data, x, z, low_h)
+	if highs.size() < 2:
+		return false
+	for i in highs.size():
+		for j in range(i + 1, highs.size()):
+			var d_a: Vector2i = highs[i]
+			var d_b: Vector2i = highs[j]
+			if _dirs_perpendicular(d_a, d_b) and _is_inner_plateau_corner(data, x, z, d_a, d_b):
+				return true
+	return false
+
+
+## Cardinal on a supporting high of a 2×2 would replace a required full block
+## with a second slope meeting the corner (funnel / compound wedge).
+func _cardinal_blocked_by_inner_corner(
+	data: ChunkData,
+	landing: Vector2i,
+	toward_low: Vector2i,
+	corner_low_cells: Dictionary
+) -> bool:
+	if corner_low_cells.has(landing) or _would_place_corner_at(data, landing.x, landing.y):
+		return true
+	var approach: Vector2i = landing + toward_low
+	if corner_low_cells.has(approach) or _would_place_corner_at(data, approach.x, approach.y):
+		return true
+	if _is_inner_corner_support_cell(data, landing.x, landing.y, corner_low_cells):
+		return true
+	return false
+
+
+func _would_place_corner_at(data: ChunkData, x: int, z: int) -> bool:
+	if not _is_inner_corner_low_at(data, x, z):
+		return false
+	var wx: int = data.position.x * ChunkData.SIZE + x
+	var wz: int = data.position.y * ChunkData.SIZE + z
+	return _should_place_corner(wx, wz)
+
+
+## True when (x,z) is one of the two supporting highs or the inner diagonal of a 2×2 corner.
+func _is_inner_corner_support_cell(
+	data: ChunkData,
+	x: int,
+	z: int,
+	corner_low_cells: Dictionary
+) -> bool:
+	var cell := Vector2i(x, z)
+	for low_v in corner_low_cells.keys():
+		var low: Vector2i = low_v
+		var dirs: Array = corner_low_cells[low]
+		if dirs.size() != 2:
+			continue
+		var da: Vector2i = dirs[0]
+		var db: Vector2i = dirs[1]
+		if cell == low + da or cell == low + db or cell == low + da + db:
+			return true
+	for d in _RAMP_DIRS:
+		var lx: int = x - d.x
+		var lz: int = z - d.y
+		if not _would_place_corner_at(data, lx, lz):
+			continue
+		var low_h: float = _sample_height(data, lx, lz)
+		var highs: Array = _high_step_dirs(data, lx, lz, low_h)
+		for i in highs.size():
+			for j in range(i + 1, highs.size()):
+				var da: Vector2i = highs[i]
+				var db: Vector2i = highs[j]
+				if not _dirs_perpendicular(da, db):
+					continue
+				if not _is_inner_plateau_corner(data, lx, lz, da, db):
+					continue
+				if d == da or d == db:
+					return true
+	for ox in [-1, 1]:
+		for oz in [-1, 1]:
+			var lx2: int = x - ox
+			var lz2: int = z - oz
+			if _would_place_corner_at(data, lx2, lz2) \
+					and _is_inner_plateau_corner(data, lx2, lz2, Vector2i(ox, 0), Vector2i(0, oz)):
+				return true
+	return false
+
+
+func _apply_forced_ramps(data: ChunkData, planned: Dictionary, corner_low_cells: Dictionary) -> void:
+	for key_v in data._worker_force_ramp.keys():
+		var cell: Vector2i = key_v
+		var e: Dictionary = data._worker_force_ramp[key_v]
+		if bool(e.get("corner", false)):
+			var da: Vector2i = e.get("dir", Vector2i.ZERO)
+			var db: Vector2i = e.get("dir2", Vector2i.ZERO)
+			# FeatureRegistry preserves placement intent, but a corner is renderable
+			# only while the current frozen terrain still satisfies the same inner
+			# 2x2 plateau topology used by procedural corners.
+			if _corner_dirs_are_topologically_valid(data, cell.x, cell.y, da, db):
+				corner_low_cells[cell] = [da, db]
+				planned.erase(cell)
+		else:
+			var d: Vector2i = e.get("dir", Vector2i.ZERO)
+			# A forced cardinal bypasses placement chance, not current step/support
+			# geometry. Conflict pruning still runs immediately after this function.
+			if _cardinal_dir_is_topologically_valid(data, cell.x, cell.y, d):
+				planned[cell] = d
+				corner_low_cells.erase(cell)
+
+
+func _drop_opposing_cardinals(planned: Dictionary, data: ChunkData = null) -> void:
+	var approach_owner := {}
+	var drop: Dictionary = {}
+	for cell_v in planned.keys():
+		var cell: Vector2i = cell_v
+		var d: Vector2i = planned[cell]
+		var ap: Vector2i = cell + d
+		if approach_owner.has(ap):
+			drop[cell] = true
+			drop[approach_owner[ap]] = true
+		else:
+			approach_owner[ap] = cell
+		if planned.has(ap):
+			var nd: Vector2i = planned[ap]
+			if nd == Vector2i(-d.x, -d.y):
+				drop[cell] = true
+				drop[ap] = true
+		var back := Vector2i(cell.x - d.x, cell.y - d.y)
+		if planned.has(back):
+			var bd: Vector2i = planned[back]
+			if _dirs_perpendicular(d, bd):
+				drop[cell] = true
+				drop[back] = true
+		if data != null and _has_opposing_plateau_across_valley(data, cell.x, cell.y, d):
+			drop[cell] = true
+	for c_v in drop.keys():
+		planned.erase(c_v)
+	_drop_cardinal_on_another_approach(planned)
+
+
+## A cardinal's approach column is a floor. It must not also be a cardinal
+## (that is the second slope immediately off the first landing).
+func _drop_cardinal_on_another_approach(planned: Dictionary) -> void:
+	var drop: Dictionary = {}
+	for cell_v in planned.keys():
+		var cell: Vector2i = cell_v
+		var ap: Vector2i = cell + planned[cell]
+		if planned.has(ap):
+			drop[ap] = true
+	for c_v in drop.keys():
+		planned.erase(c_v)
+
+
+## True when walking downhill along dir hits another same-height plateau (a V-valley).
+func _has_opposing_plateau_across_valley(data: ChunkData, x: int, z: int, dir: Vector2i) -> bool:
+	if dir == Vector2i.ZERO:
+		return false
+	var land_h: float = _surface_y_at(data, x, z)
+	var seen_low := false
+	for k in range(1, 9):
+		var h: float = _sample_height(data, x + dir.x * k, z + dir.y * k)
+		if absf(h - land_h) <= 0.15:
+			return seen_low
+		if h > land_h + 0.15:
+			return false
+		if land_h - h > 0.15:
+			seen_low = true
+	return false
+
+
+func _is_plateau_back(data: ChunkData, x: int, z: int, toward_low: Vector2i, cell_h: float) -> bool:
+	var bx: int = x - toward_low.x
+	var bz: int = z - toward_low.y
+	var bh: float = _sample_height(data, bx, bz)
+	return bh >= cell_h - 0.15
+
+
+## Cardinal eligibility before procedural placement chance and planned-ramp conflict pruning.
+func _cardinal_topology_dirs(data: ChunkData, x: int, z: int, cell_h: float) -> Array:
+	if _has_player_build_at(data, x, z) or _column_blocks_ramp(data, x, z):
 		return []
 	var out: Array = []
 	for d in _RAMP_DIRS:
 		var lx: int = x - d.x
 		var lz: int = z - d.y
-		if _has_player_build_at(data, lx, lz):
+		if _has_player_build_at(data, lx, lz) or _column_blocks_ramp(data, lx, lz):
 			continue
-		var lh: float = _sample_height(data, lx, lz)
 		var toward_low := Vector2i(-d.x, -d.y)
-		if _is_step_height(cell_h - lh) and _should_place_ramp(world_x, world_z, toward_low, cell_h):
+		if not _is_step_height(cell_h - _sample_height(data, lx, lz)):
+			continue
+		if _is_plateau_back(data, x, z, toward_low, cell_h):
 			out.append(toward_low)
 	return out
+
+
+## A landing cannot face toward both sides of the same step. Procedural ramps
+## apply this after their placement-chance roll; forced features apply it to the
+## current topology because they intentionally bypass that roll.
+func _without_opposing_ramp_dirs(dirs: Array) -> Array:
+	if dirs.size() >= 2:
+		for i in dirs.size():
+			for j in range(i + 1, dirs.size()):
+				var a: Vector2i = dirs[i]
+				var b: Vector2i = dirs[j]
+				if a.x * b.x + a.y * b.y < 0:
+					return []
+	return dirs
+
+
+func _cardinal_dir_is_topologically_valid(data: ChunkData, x: int, z: int, dir: Vector2i) -> bool:
+	if dir == Vector2i.ZERO:
+		return false
+	var cell_h: float = _surface_y_at(data, x, z)
+	return dir in _without_opposing_ramp_dirs(_cardinal_topology_dirs(data, x, z, cell_h))
+
+
+## Exactly the topology predicate used by procedural corner discovery.
+func _corner_dirs_are_topologically_valid(
+	data: ChunkData, x: int, z: int, d_a: Vector2i, d_b: Vector2i
+) -> bool:
+	if d_a == Vector2i.ZERO or d_b == Vector2i.ZERO or not _dirs_perpendicular(d_a, d_b):
+		return false
+	if _has_player_build_at(data, x, z) or _tile_type_at(data, x, z) == VoxelTypes.AIR:
+		return false
+	var low_h: float = _surface_y_at(data, x, z)
+	var highs: Array = _high_step_dirs(data, x, z, low_h)
+	return d_a in highs and d_b in highs and _is_inner_plateau_corner(data, x, z, d_a, d_b)
+
+
+## Cardinal ramps sit on the landing (higher) column, sloping down toward the lower neighbor.
+func _step_in_dirs(data: ChunkData, x: int, z: int, cell_h: float, world_x: int, world_z: int) -> Array:
+	var out: Array = []
+	for toward_low in _cardinal_topology_dirs(data, x, z, cell_h):
+		if _should_place_ramp(world_x, world_z, toward_low, cell_h):
+			out.append(toward_low)
+	return _without_opposing_ramp_dirs(out)
 
 
 func _pick_corner_dirs(data: ChunkData, x: int, z: int, planned: Dictionary) -> Array:
@@ -1244,10 +1558,17 @@ func _pick_corner_dirs(data: ChunkData, x: int, z: int, planned: Dictionary) -> 
 	return []
 
 
-func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int, entry: Dictionary) -> void:
+func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int, entry: Dictionary, data: ChunkData = null) -> void:
 	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
 	var dir2: Vector2i = entry.get("dir2", Vector2i.ZERO)
 	var is_corner: bool = dir2 != Vector2i.ZERO
+	var flank_a := 0
+	var flank_b := 0
+	if not is_corner and data != null and dir != Vector2i.ZERO:
+		var perp_a := Vector2i(-dir.y, dir.x)
+		var perp_b := Vector2i(dir.y, -dir.x)
+		flank_a = 1 if _flank_exposed(data, x, z, perp_a) else 0
+		flank_b = 1 if _flank_exposed(data, x, z, perp_b) else 0
 	var quad := {
 		"x": x,
 		"y": low_h,
@@ -1259,12 +1580,25 @@ func _append_ramp_quad(out_quads: Array, x: int, z: int, low_h: float, vox: int,
 		"ramp_dir_z": dir.y,
 		"ramp_dir2_x": dir2.x,
 		"ramp_dir2_z": dir2.y,
+		"flank_a": flank_a,
+		"flank_b": flank_b,
 		"uv_w": 1.0,
 		"uv_h": 1.0,
 		"type": vox,
 		"face_code": FACE_RAMP_CORNER if is_corner else FACE_RAMP,
 	}
 	out_quads.append(quad)
+
+
+func _flank_exposed(data: ChunkData, x: int, z: int, side: Vector2i) -> bool:
+	var self_h: float = _surface_y_at(data, x, z)
+	var nh: float = _sample_height(data, x + side.x, z + side.y)
+	return self_h - nh > 0.1
+
+
+func _rehydrate_ramp_map_from_quads(data: ChunkData, quads: Array) -> void:
+	# One sync path. Cache hits and live rebuilds both call this.
+	sync_ramp_map_to_mesh(data, quads)
 
 
 func _is_concave_corner_cell(data: ChunkData, x: int, z: int, fill_h: float) -> bool:
@@ -1291,98 +1625,14 @@ const _CONCAVE_L_PATTERNS := [
 ]
 
 
-func _find_concave_corner_cells(data: ChunkData) -> Dictionary:
-	# Three solids in an L; concave cell (x,z) is the gap. Prism touches the two inner faces.
-	var result: Dictionary = {}
-	for x in range(ChunkData.SIZE):
-		for z in range(ChunkData.SIZE):
-			var cell := Vector2i(x, z)
-			if result.has(cell) or _has_player_build_at(data, x, z):
-				continue
-			var world_x: int = data.position.x * ChunkData.SIZE + x
-			var world_z: int = data.position.y * ChunkData.SIZE + z
-			for pat in _CONCAVE_L_PATTERNS:
-				var arms: Array = pat["arms"]
-				var leg_x: int = pat["leg_x"]
-				var leg_z: int = pat["leg_z"]
-				var h: float = _sample_height(data, x + arms[2].x, z + arms[2].y)
-				if h < 0.0:
-					continue
-				var valid := true
-				for arm in arms:
-					if not is_equal_approx(_sample_height(data, x + arm.x, z + arm.y), h):
-						valid = false
-						break
-				if not valid:
-					continue
-				if not _is_concave_corner_cell(data, x, z, h):
-					continue
-				if not TerrainRamps.should_place_concave_prism(world_x, world_z, leg_x, leg_z):
-					continue
-				var vox: int = _tile_type_at(data, x + arms[2].x, z + arms[2].y)
-				if vox == VoxelTypes.AIR:
-					vox = _tile_type_at(data, x + arms[0].x, z + arms[0].y)
-				result[cell] = {
-					"h": h,
-					"leg_x": leg_x,
-					"leg_z": leg_z,
-					"vox": vox,
-				}
-				break
-	return result
+func _find_concave_corner_cells(_data: ChunkData) -> Dictionary:
+	# Retired: FACE_RAMP_SIDE MultiMesh prisms + stacked FACE_TOPs were the
+	# compound triangular wedges attached to cardinals. L-gaps are cliffs.
+	return {}
 
 
-func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cells: Dictionary) -> void:
-	for cell in concave_cells:
-		if _skips_greedy_surface_cell(data, cell.x, cell.y):
-			continue
-		if _has_player_build_at(data, cell.x, cell.y):
-			continue
-		var entry: Dictionary = concave_cells[cell]
-		var x: int = cell.x
-		var z: int = cell.y
-		var leg_x: int = entry["leg_x"]
-		var leg_z: int = entry["leg_z"]
-		var h: float = entry["h"]
-		var vox: int = entry["vox"]
-		data.set_concave_prism(x, z, leg_x, leg_z, h)
-		var gap_h: float = _surface_y_at(data, x, z)
-		var layer: float = _WorldSettings.get_active().layer_height()
-		var gap_tile: int = _tile_type_at(data, x, z)
-		if gap_tile == VoxelTypes.AIR:
-			gap_tile = vox
-		_append_voxel_face(out_quads, float(x), gap_h + layer, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, gap_tile, FACE_TOP)
-		if gap_h < h - layer * 0.1:
-			var fill_y: float = gap_h
-			while fill_y < h - layer * 0.05:
-				fill_y += layer
-				_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
-				if leg_x > 0:
-					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_NEG_X)
-				else:
-					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_POS_X)
-				if leg_z > 0:
-					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_NEG_Z)
-				else:
-					_append_voxel_face(out_quads, float(x), fill_y, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_POS_Z)
-		# Solid support under the diagonal prism (fills the hole + walkable collision).
-		_append_voxel_face(out_quads, float(x), h, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
-		out_quads.append({
-			"x": x,
-			"y": entry["h"],
-			"z": z,
-			"dim_x": 1.0,
-			"dim_y": 1.0,
-			"dim_z": 1.0,
-			"ramp_dir_x": leg_x,
-			"ramp_dir_z": 0,
-			"ramp_dir2_x": 0,
-			"ramp_dir2_z": leg_z,
-			"uv_w": 1.0,
-			"uv_h": 1.0,
-			"type": entry["vox"],
-			"face_code": FACE_RAMP_SIDE,
-		})
+func _emit_concave_corner_prisms(_data: ChunkData, _out_quads: Array, _concave_cells: Dictionary) -> void:
+	return
 
 
 func _find_corner_low_cells(data: ChunkData) -> Dictionary:
@@ -1392,15 +1642,27 @@ func _find_corner_low_cells(data: ChunkData) -> Dictionary:
 			if _has_player_build_at(data, x, z) or _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
 			var low_h: float = _surface_y_at(data, x, z)
-			var world_x: int = data.position.x * ChunkData.SIZE + x
-			var world_z: int = data.position.y * ChunkData.SIZE + z
-			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
-			if step_outs.size() != 2:
+			var step_outs: Array = _high_step_dirs(data, x, z, low_h)
+			if step_outs.size() < 2:
 				continue
-			var d_a: Vector2i = step_outs[0]
-			var d_b: Vector2i = step_outs[1]
-			if _dirs_perpendicular(d_a, d_b):
-				result[Vector2i(x, z)] = [d_a, d_b]
+			var picked: Array = []
+			for i in step_outs.size():
+				for j in range(i + 1, step_outs.size()):
+					var d_a: Vector2i = step_outs[i]
+					var d_b: Vector2i = step_outs[j]
+					if not _dirs_perpendicular(d_a, d_b):
+						continue
+					if not _is_inner_plateau_corner(data, x, z, d_a, d_b):
+						continue
+					picked = [d_a, d_b]
+					break
+				if not picked.is_empty():
+					break
+			if not picked.is_empty():
+				var wx: int = data.position.x * ChunkData.SIZE + x
+				var wz: int = data.position.y * ChunkData.SIZE + z
+				if _should_place_corner(wx, wz):
+					result[Vector2i(x, z)] = picked
 	return result
 
 
@@ -1424,6 +1686,9 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			var step_ins: Array = _step_in_dirs(data, x, z, cell_h, world_x, world_z)
 			if not step_ins.is_empty():
 				planned[cell] = step_ins[0]
+	_drop_opposing_cardinals(planned, data)
+	_apply_forced_ramps(data, planned, corner_low_cells)
+	_drop_opposing_cardinals(planned, data)
 
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
@@ -1440,24 +1705,15 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			if not planned.has(cell):
 				continue
 
-			# True two-high L corners get a prism, not a cardinal. A planned
-			# landing that also has one high neighbor (terrace / cascade) must
-			# still emit FACE_RAMP — _pick_corner_dirs' side-entry path used
-			# to skip those, then a later neighbor marked the cell approach
-			# and the corner pass skipped it (_skips_greedy).
-			if corner_low_cells.has(cell):
-				continue
-
 			var d: Vector2i = planned[cell]
-			var approach_cell := Vector2i(x + d.x, z + d.y)
-			if corner_low_cells.has(approach_cell):
+			if _cardinal_blocked_by_inner_corner(data, cell, d, corner_low_cells):
 				continue
 			data.set_ramp_cardinal(x, z, d)
-			_clear_ramp_approach_block(data, x, z, d, planned)
 			_append_ramp_quad(out_quads, x, z, low_h, vox, {
 				"dir": d,
 				"dir2": Vector2i.ZERO,
-			})
+			}, data)
+			_clear_ramp_approach_block(data, x, z, d, planned)
 
 	# Corner + side-entry ramps that blend into step faces (not only outward steps).
 	for x in range(ChunkData.SIZE):
@@ -1468,10 +1724,10 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			var low_h: float = _surface_y_at(data, x, z)
 			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var corner_dirs: Array = corner_low_cells.get(cell, _pick_corner_dirs(data, x, z, planned))
-			if corner_dirs.size() != 2:
+			if not corner_low_cells.has(cell):
 				continue
-			if _skips_greedy_surface_cell(data, x, z) and not corner_low_cells.has(cell):
+			var corner_dirs: Array = corner_low_cells[cell]
+			if corner_dirs.size() != 2:
 				continue
 			var d_a: Vector2i = corner_dirs[0]
 			var d_b: Vector2i = corner_dirs[1]
@@ -1480,7 +1736,7 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 			_append_ramp_quad(out_quads, x, z, low_h, vox_corner, {
 				"dir": d_a,
 				"dir2": d_b,
-			})
+			}, data)
 
 
 func _quad_intersects_rect(q: Dictionary, rect: Rect2i) -> bool:
@@ -1597,14 +1853,22 @@ func _emit_ramps_in_rect(
 			if _has_player_build_at(data, x, z) or _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
 			var low_h: float = _surface_y_at(data, x, z)
-			var world_x: int = data.position.x * ChunkData.SIZE + x
-			var world_z: int = data.position.y * ChunkData.SIZE + z
-			var step_outs: Array = _step_out_dirs(data, x, z, low_h, world_x, world_z)
-			if step_outs.size() == 2:
-				var d_a: Vector2i = step_outs[0]
-				var d_b: Vector2i = step_outs[1]
-				if _dirs_perpendicular(d_a, d_b):
-					corner_low_cells[Vector2i(x, z)] = [d_a, d_b]
+			var highs: Array = _high_step_dirs(data, x, z, low_h)
+			if highs.size() >= 2:
+				for i in highs.size():
+					for j in range(i + 1, highs.size()):
+						var d_a: Vector2i = highs[i]
+						var d_b: Vector2i = highs[j]
+						if not _dirs_perpendicular(d_a, d_b):
+							continue
+						if _is_inner_plateau_corner(data, x, z, d_a, d_b):
+							var wx: int = data.position.x * ChunkData.SIZE + x
+							var wz: int = data.position.y * ChunkData.SIZE + z
+							if _should_place_corner(wx, wz):
+								corner_low_cells[Vector2i(x, z)] = [d_a, d_b]
+							break
+					if corner_low_cells.has(Vector2i(x, z)):
+						break
 
 	for x in range(rect.position.x, rect.position.x + rect.size.x):
 		for z in range(rect.position.y, rect.position.y + rect.size.y):
@@ -1621,6 +1885,9 @@ func _emit_ramps_in_rect(
 			var step_ins: Array = _step_in_dirs(data, x, z, cell_h, world_x, world_z)
 			if not step_ins.is_empty():
 				planned[cell] = step_ins[0]
+	_drop_opposing_cardinals(planned, data)
+	_apply_forced_ramps(data, planned, corner_low_cells)
+	_drop_opposing_cardinals(planned, data)
 
 	for x in range(rect.position.x, rect.position.x + rect.size.x):
 		for z in range(rect.position.y, rect.position.y + rect.size.y):
@@ -1631,31 +1898,28 @@ func _emit_ramps_in_rect(
 			var vox := _tile_type_at(data, x, z)
 			if vox == VoxelTypes.AIR or not planned.has(cell):
 				continue
-			if corner_low_cells.has(cell):
-				continue
 			var d: Vector2i = planned[cell]
-			var approach_cell := Vector2i(x + d.x, z + d.y)
-			if corner_low_cells.has(approach_cell):
+			if _cardinal_blocked_by_inner_corner(data, cell, d, corner_low_cells):
 				continue
 			data.set_ramp_cardinal(x, z, d)
-			_clear_ramp_approach_block(data, x, z, d, planned)
 			_append_ramp_quad(out_quads, x, z, low_h, vox, {
 				"dir": d,
 				"dir2": Vector2i.ZERO,
-			})
+			}, data)
+			_clear_ramp_approach_block(data, x, z, d, planned)
 
 	for x in range(rect.position.x, rect.position.x + rect.size.x):
 		for z in range(rect.position.y, rect.position.y + rect.size.y):
 			var cell := Vector2i(x, z)
 			if concave_cells.has(cell) or _has_player_build_at(data, x, z):
 				continue
+			if not corner_low_cells.has(cell):
+				continue
 			var low_h: float = _surface_y_at(data, x, z)
 			if _tile_type_at(data, x, z) == VoxelTypes.AIR:
 				continue
-			var corner_dirs: Array = corner_low_cells.get(cell, _pick_corner_dirs(data, x, z, planned))
+			var corner_dirs: Array = corner_low_cells[cell]
 			if corner_dirs.size() != 2:
-				continue
-			if _skips_greedy_surface_cell(data, x, z) and not corner_low_cells.has(cell):
 				continue
 			var d_a: Vector2i = corner_dirs[0]
 			var d_b: Vector2i = corner_dirs[1]
@@ -1664,10 +1928,10 @@ func _emit_ramps_in_rect(
 			_append_ramp_quad(out_quads, x, z, low_h, vox_corner, {
 				"dir": d_a,
 				"dir2": d_b,
-			})
+			}, data)
 
 
-func _emit_dug_strata_region(
+func _emit_water_lids_region(
 	data: ChunkData,
 	out_quads: Array,
 	x0: int,
@@ -1675,43 +1939,40 @@ func _emit_dug_strata_region(
 	x1: int,
 	z1: int
 ) -> void:
-	if data.world == null:
+	if data == null or data._worker_water_lid.is_empty():
 		return
 	var layer: float = _WorldSettings.get_active().layer_height()
-	if layer <= 0.001:
-		return
 	for x in range(x0, x1):
 		for z in range(z0, z1):
-			if _skips_greedy_surface_cell(data, x, z):
+			if not data._worker_water_lid.has(Vector2i(x, z)):
 				continue
-			var delta: float = data.get_worker_height_delta(x, z)
-			if delta >= -layer * 0.15:
+			var sy: float = float(data._worker_water_lid[Vector2i(x, z)])
+			if sy <= 0.01:
 				continue
-			var cur_h: float = _surface_y_at(data, x, z)
-			var natural_h: float = _natural_surface_y(data, x, z)
-			var depth_layers: int = maxi(1, int(round((natural_h - cur_h) / layer)))
-			var top_tile: int = _tile_type_at(data, x, z)
-			if top_tile == VoxelTypes.AIR:
+			var bed: float = _surface_y_at(data, x, z)
+			# Need open volume above the dug bed (indent). Flat ground stays dry.
+			if sy <= bed + layer + 0.05:
 				continue
-			for step in range(1, depth_layers + 1):
-				var layer_y: float = cur_h + float(step) * layer
-				if layer_y > natural_h + 0.01:
-					break
-				if layer_y >= natural_h - layer * 0.05:
-					continue
-				var tile: int = _strata_tile(top_tile) if step < depth_layers else top_tile
-				out_quads.append({
-					"x": x,
-					"y": layer_y,
-					"z": z,
-					"dim_x": 1.0,
-					"dim_y": 1.0,
-					"dim_z": 1.0,
-					"uv_w": 1.0,
-					"uv_h": 1.0,
-					"type": tile,
-					"face_code": FACE_TOP,
-				})
+			# Sit the water voxel on the dug bed so the pool reads inside the hole,
+			# not flush with surrounding ground (sy - layer == undug surface_map).
+			_append_voxel_face(
+				out_quads, float(x), bed, float(z),
+				1.0, 1.0, 1.0, 1.0, 1.0, VoxelTypes.WATER, FACE_TOP
+			)
+
+
+func _emit_dug_strata_region(
+	_data: ChunkData,
+	_out_quads: Array,
+	_x0: int,
+	_z0: int,
+	_x1: int,
+	_z1: int
+) -> void:
+	# Deep digs only lower surface_map. Do not emit leftover FACE_TOPs at
+	# mid-heights — that kept the old terrain visible in the pit. The new
+	# floor is the column FACE_TOP; pit walls are neighbor side faces.
+	return
 
 
 func _natural_surface_y(data: ChunkData, x: int, z: int) -> float:
@@ -1834,6 +2095,134 @@ func _greedy_mesh_plane_region(
 	_emit_surface_side_walls_region(data, normal_dir, face_code, out_quads, x0, z0, x1, z1)
 
 
+## Exposed side of a full voxel: spans from the neighbor's visual top up to this
+## column's visual top (or to the wedge base on a cardinal landing).
+func _side_wall_spec(data: ChunkData, x: int, z: int, nx: int, nz: int, toward_high: Vector2i) -> Dictionary:
+	if _skips_greedy_surface_cell(data, x, z, false):
+		return {}
+	var curr_h: float = _surface_y_at(data, x, z)
+	var curr_t: int = _tile_type_at(data, x, z)
+	if curr_t == VoxelTypes.AIR:
+		return {}
+	var neighbor_h: float = _sample_height(data, nx, nz)
+	var diff: float = curr_h - neighbor_h
+	var layer: float = _WorldSettings.get_active().layer_height()
+	# Same-height neighbor of a cardinal landing: the ramp cut exposes this
+	# block's face toward the wedge. Fill that rectangle — unless this column
+	# is itself a parallel cardinal: both wedges share one slope profile across
+	# the seam, the gap between them is empty, and a filled square becomes an
+	# interior seam face.
+	if nx >= 0 and nx < ChunkData.SIZE and nz >= 0 and nz < ChunkData.SIZE \
+			and _is_ramp_landing(data, nx, nz) and absf(diff) <= 0.15:
+		var rdir: Vector2i = data.get_ramp_entry(nx, nz).get("dir", Vector2i.ZERO)
+		var to_ramp := Vector2i(nx - x, nz - z)
+		if rdir != Vector2i.ZERO and to_ramp.x * rdir.x + to_ramp.y * rdir.y == 0 \
+				and not (_is_ramp_landing(data, x, z) \
+				and data.get_ramp_dir(x, z) == rdir):
+			var y0s: float = neighbor_h
+			var y1s: float = curr_h + layer
+			if y1s - y0s > 0.05:
+				return {
+					"h": curr_h,
+					"t": curr_t,
+					"y": y0s,
+					"dim_y": (y1s - y0s) / layer,
+				}
+	elif (nx < 0 or nx >= ChunkData.SIZE or nz < 0 or nz >= ChunkData.SIZE) \
+			and absf(diff) <= 0.15:
+		# Cross-border neighbor: heights come from the halo; far ramp identity
+		# is re-derived deterministically from reachable samples. Non-ramp
+		# columns always fill — any far cut exposes this face, and a solid far
+		# cell just buries the quad. Ramp-owned columns fill only against a
+		# crossing far slope: a parallel far cardinal shares this column's
+		# slope profile, so that seam must stay unfilled.
+		var fill_cut := true
+		if _is_ramp_landing(data, x, z):
+			var far_dir := _halo_landing_dir(data, nx, nz, neighbor_h)
+			fill_cut = far_dir != Vector2i.ZERO \
+					and far_dir != data.get_ramp_dir(x, z)
+		if fill_cut:
+			var y0b: float = neighbor_h
+			var y1b: float = curr_h + layer
+			if y1b - y0b > 0.05:
+				return {
+					"h": curr_h,
+					"t": curr_t,
+					"y": y0b,
+					"dim_y": (y1b - y0b) / layer,
+				}
+	if diff <= 0.1:
+		return {}
+	if _ramp_covers_drop(data, nx, nz, toward_high):
+		return {}
+	if _is_ramp_landing(data, x, z) and diff <= layer * 1.2:
+		return {}
+	var y0: float = neighbor_h + layer
+	var y1: float = curr_h + layer
+	if _is_ramp_landing(data, x, z):
+		y1 = curr_h
+	if y1 - y0 <= 0.05:
+		return {}
+	return {
+		"h": curr_h,
+		"t": curr_t,
+		"y": y0,
+		"dim_y": (y1 - y0) / layer,
+	}
+
+
+## Best-effort replica of the cardinal a neighboring chunk would plan at an
+## out-of-chunk halo cell: same topology predicates, candidate order, and
+## deterministic placement hash as _step_in_dirs, restricted to samples this
+## chunk can reach (in-chunk maps + 1-cell halo). Returns ZERO when no landing
+## is provable. Directions pointing deeper into the far chunk and far forced
+## features stay unknowable; wrong guesses degrade to buried overdraw or the
+## conservative skip — never to a new visible seam.
+func _halo_landing_dir(data: ChunkData, nx: int, nz: int, n_h: float) -> Vector2i:
+	if n_h <= -9000.0:
+		return Vector2i.ZERO
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if data._worker_water_lid.has(Vector2i(nx, nz)):
+		return Vector2i.ZERO
+	if absf(_halo_build_delta(data, nx, nz)) > layer * 0.08:
+		return Vector2i.ZERO
+	var wx: int = data.position.x * ChunkData.SIZE + nx
+	var wz: int = data.position.y * ChunkData.SIZE + nz
+	var dirs: Array = []
+	for d in _RAMP_DIRS:
+		var t := Vector2i(-d.x, -d.y)
+		if data._worker_water_lid.has(Vector2i(nx + t.x, nz + t.y)):
+			continue
+		if absf(_halo_build_delta(data, nx + t.x, nz + t.y)) > layer * 0.08:
+			continue
+		if not _is_step_height(n_h - _sample_height(data, nx + t.x, nz + t.y)):
+			continue
+		if not _is_plateau_back(data, nx, nz, t, n_h):
+			continue
+		if not _should_place_ramp(wx, wz, t, n_h):
+			continue
+		dirs.append(t)
+	dirs = _without_opposing_ramp_dirs(dirs)
+	if dirs.is_empty():
+		return Vector2i.ZERO
+	return dirs[0]
+
+
+func _halo_build_delta(data: ChunkData, lx: int, lz: int) -> float:
+	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
+		return data.get_worker_height_delta(lx, lz)
+	if data._worker_halo_height_delta.is_empty():
+		return 0.0
+	var ix: int = lx + ChunkData.HALO
+	var iz: int = lz + ChunkData.HALO
+	if ix < 0 or iz < 0 or ix >= data._worker_halo_height_delta.size():
+		return 0.0
+	var col: Array = data._worker_halo_height_delta[ix]
+	if iz < 0 or iz >= col.size():
+		return 0.0
+	return float(col[iz])
+
+
 func _emit_surface_side_walls_region(
 	data: ChunkData,
 	normal_dir: Vector3i,
@@ -1852,90 +2241,70 @@ func _emit_surface_side_walls_region(
 	if abs(dx) == 1:
 		for x in range(x0, x1):
 			var run_start = -1
-			var run_h: float = 0.0
-			var run_t = 0
+			var run_spec: Dictionary = {}
 			for z in range(z0, z1 + 1):
-				var has_wall = false
-				var curr_h: float = 0.0
-				var curr_t = 0
-				if z < z1 and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = _surface_y_at(data, x, z)
-					curr_t = _tile_type_at(data, x, z)
-					var nx = x + dx
-					var nz = z
-					var neighbor_h: float = _sample_height(data, nx, nz)
-					var diff: float = curr_h - neighbor_h
-					if diff > _cliff_height():
-						has_wall = true
-					elif diff > 0.1:
-						var toward_high := Vector2i(-dx, 0)
-						has_wall = not _ramp_covers_drop(data, nx, nz, toward_high)
-				if has_wall and (run_start == -1 or is_equal_approx(curr_h, run_h) and curr_t == run_t):
+				var spec: Dictionary = {}
+				if z < z1:
+					spec = _side_wall_spec(data, x, z, x + dx, z, Vector2i(-dx, 0))
+				var same := (not spec.is_empty() and not run_spec.is_empty()
+						and is_equal_approx(float(spec.y), float(run_spec.y))
+						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
+						and int(spec.t) == int(run_spec.t))
+				if not spec.is_empty() and (run_start == -1 or same):
 					if run_start == -1:
 						run_start = z
-						run_h = curr_h
-						run_t = curr_t
+						run_spec = spec
 				else:
 					if run_start != -1:
 						out_quads.append({
 							"x": x,
-							"y": run_h,
+							"y": float(run_spec.y),
 							"z": run_start,
 							"dim_x": 1.0,
-							"dim_y": 1.0,
+							"dim_y": float(run_spec.dim_y),
 							"dim_z": float(z - run_start),
 							"uv_w": float(z - run_start),
-							"uv_h": 1.0,
-							"type": run_t,
+							"uv_h": float(run_spec.dim_y),
+							"type": int(run_spec.t),
 							"face_code": face_code
 						})
-					run_start = -1
+					run_start = -1 if spec.is_empty() else z
+					run_spec = spec
 	elif abs(dz) == 1:
 		for z in range(z0, z1):
 			var run_start = -1
-			var run_h: float = 0.0
-			var run_t = 0
+			var run_spec: Dictionary = {}
 			for x in range(x0, x1 + 1):
-				var has_wall = false
-				var curr_h: float = 0.0
-				var curr_t = 0
-				if x < x1 and not _skips_greedy_surface_cell(data, x, z):
-					curr_h = _surface_y_at(data, x, z)
-					curr_t = _tile_type_at(data, x, z)
-					var nx = x
-					var nz = z + dz
-					var neighbor_h: float = _sample_height(data, nx, nz)
-					var diff: float = curr_h - neighbor_h
-					if diff > _cliff_height():
-						has_wall = true
-					elif diff > 0.1:
-						var toward_high := Vector2i(0, -dz)
-						has_wall = not _ramp_covers_drop(data, nx, nz, toward_high)
-				if has_wall and (run_start == -1 or is_equal_approx(curr_h, run_h) and curr_t == run_t):
+				var spec: Dictionary = {}
+				if x < x1:
+					spec = _side_wall_spec(data, x, z, x, z + dz, Vector2i(0, -dz))
+				var same := (not spec.is_empty() and not run_spec.is_empty()
+						and is_equal_approx(float(spec.y), float(run_spec.y))
+						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
+						and int(spec.t) == int(run_spec.t))
+				if not spec.is_empty() and (run_start == -1 or same):
 					if run_start == -1:
 						run_start = x
-						run_h = curr_h
-						run_t = curr_t
+						run_spec = spec
 				else:
 					if run_start != -1:
 						out_quads.append({
 							"x": run_start,
-							"y": run_h,
+							"y": float(run_spec.y),
 							"z": z,
 							"dim_x": float(x - run_start),
-							"dim_y": 1.0,
+							"dim_y": float(run_spec.dim_y),
 							"dim_z": 1.0,
 							"uv_w": float(x - run_start),
-							"uv_h": 1.0,
-							"type": run_t,
+							"uv_h": float(run_spec.dim_y),
+							"type": int(run_spec.t),
 							"face_code": face_code
 						})
-					run_start = -1
+					run_start = -1 if spec.is_empty() else x
+					run_spec = spec
 
 
-## Remove the approach-column box so only the landing wedge renders (no z-fight).
-## A cell that is itself a planned cardinal landing keeps that landing — do not
-## steal it as this ramp's approach (terrace / cascade: 8→6→4).
+## Mark the lower neighbor as approach floor (not a second slope).
 func _clear_ramp_approach_block(
 	data: ChunkData,
 	landing_x: int,
@@ -2000,8 +2369,8 @@ func _emit_build_strata(data: ChunkData, out_quads: Array) -> void:
 
 
 func _emit_dug_strata(data: ChunkData, out_quads: Array) -> void:
-	if data.world == null:
-		return
+	_emit_dug_strata_region(data, out_quads, 0, 0, ChunkData.SIZE, ChunkData.SIZE)
+	return
 	var layer: float = _WorldSettings.get_active().layer_height()
 	if layer <= 0.001:
 		return
@@ -2386,10 +2755,12 @@ func _drain_deferred_mesh_buffers() -> void:
 	var budget_us := chunk_upload_budget_us
 	var t0 := Time.get_ticks_usec()
 	if ChunkView.pending_surface_upload_count() > 0:
-		ChunkView.drain_pending_surface_uploads(1, budget_us)
+		ChunkView.drain_pending_surface_uploads(2, budget_us)
 	var remaining_us := maxi(budget_us - (Time.get_ticks_usec() - t0), 500)
 	if ChunkView.pending_buffer_upload_count() > 0:
-		ChunkView.drain_pending_buffer_uploads(1, remaining_us)
+		# Terrain + ramp + corner + diagonal can queue together; 1/frame left
+		# landing columns as black holes after dig/remesh.
+		ChunkView.drain_pending_buffer_uploads(8, remaining_us)
 	if profiler and profiler.has_method("end"):
 		profiler.end("chunk_upload")
 
@@ -2512,16 +2883,25 @@ func _player_column_pos() -> Vector2:
 
 
 func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
+	# One height inside the chunk: the resident surface map (tops, ramps, walls).
+	# The halo is only the neighbor ring frozen for the worker. It must not
+	# override an interior column the walk mesh was built from.
+	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
+		return _surface_y_at(data, lx, lz)
 	var halo_h: float = data.get_halo_surface_y(lx, lz)
 	if halo_h > -9000.0:
 		return halo_h
-	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
-		return _surface_y_at(data, lx, lz)
-	# Worker path: rely on halo snapshot only (see capture_worker_snapshot).
 	return 0.0
 
 
 func _ramp_covers_drop(data: ChunkData, low_x: int, low_z: int, toward_high: Vector2i) -> bool:
+	if low_x >= 0 and low_x < ChunkData.SIZE and low_z >= 0 and low_z < ChunkData.SIZE:
+		var low_entry: Dictionary = data.get_ramp_entry(low_x, low_z)
+		if bool(low_entry.get("corner", false)):
+			var da: Vector2i = low_entry.get("dir", Vector2i.ZERO)
+			var db: Vector2i = low_entry.get("dir2", Vector2i.ZERO)
+			if da == toward_high or db == toward_high:
+				return true
 	var hx: int = low_x + toward_high.x
 	var hz: int = low_z + toward_high.y
 	if hx < 0 or hx >= ChunkData.SIZE or hz < 0 or hz >= ChunkData.SIZE:
@@ -2529,10 +2909,16 @@ func _ramp_covers_drop(data: ChunkData, low_x: int, low_z: int, toward_high: Vec
 	if not data.has_ramp(hx, hz):
 		return false
 	var entry: Dictionary = data.get_ramp_entry(hx, hz)
+	if bool(entry.get("approach", false)) or bool(entry.get("corner", false)):
+		return false
 	return entry.get("dir", Vector2i.ZERO) == Vector2i(-toward_high.x, -toward_high.y)
 
 
 func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: int, out_quads: Array):
+	_emit_surface_side_walls_region(
+		data, normal_dir, face_code, out_quads, 0, 0, ChunkData.SIZE, ChunkData.SIZE
+	)
+	return
 	var dx = normal_dir.x
 	var dz = normal_dir.z
 	if dx == 0 and dz == 0:
@@ -2547,18 +2933,23 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if z < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
+				if z < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z, false):
 					curr_h = _surface_y_at(data, x, z)
 					curr_t = _tile_type_at(data, x, z)
 					var nx = x + dx
 					var nz = z
 					var neighbor_h: float = _sample_height(data, nx, nz)
 					var diff: float = curr_h - neighbor_h
+					var toward_high := Vector2i(-dx, 0)
 					if diff > _cliff_height():
 						has_wall = true
 					elif diff > 0.1:
-						var toward_high := Vector2i(-dx, 0)
-						has_wall = not _ramp_covers_drop(data, nx, nz, toward_high)
+						if _ramp_covers_drop(data, nx, nz, toward_high):
+							has_wall = false
+						elif _is_ramp_landing(data, x, z) and diff <= _WorldSettings.get_active().layer_height() * 1.2:
+							has_wall = false
+						else:
+							has_wall = true
 				if has_wall and (run_start == -1 or is_equal_approx(curr_h, run_h) and curr_t == run_t):
 					if run_start == -1:
 						run_start = z
@@ -2588,18 +2979,23 @@ func _emit_surface_side_walls(data: ChunkData, normal_dir: Vector3i, face_code: 
 				var has_wall = false
 				var curr_h: float = 0.0
 				var curr_t = 0
-				if x < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z):
+				if x < ChunkData.SIZE and not _skips_greedy_surface_cell(data, x, z, false):
 					curr_h = _surface_y_at(data, x, z)
 					curr_t = _tile_type_at(data, x, z)
 					var nx = x
 					var nz = z + dz
 					var neighbor_h: float = _sample_height(data, nx, nz)
 					var diff: float = curr_h - neighbor_h
+					var toward_high := Vector2i(0, -dz)
 					if diff > _cliff_height():
 						has_wall = true
 					elif diff > 0.1:
-						var toward_high := Vector2i(0, -dz)
-						has_wall = not _ramp_covers_drop(data, nx, nz, toward_high)
+						if _ramp_covers_drop(data, nx, nz, toward_high):
+							has_wall = false
+						elif _is_ramp_landing(data, x, z) and diff <= _WorldSettings.get_active().layer_height() * 1.2:
+							has_wall = false
+						else:
+							has_wall = true
 				if has_wall and (run_start == -1 or is_equal_approx(curr_h, run_h) and curr_t == run_t):
 					if run_start == -1:
 						run_start = x
@@ -2732,6 +3128,7 @@ func _on_chunk_ready(
 			if profiler and profiler.has_method("begin_func"):
 				profiler.begin_func("ChunkView::setup")
 			existing.setup(data, packed_quad_data)
+			_clear_preserve_snapshot_after_apply(data, packed_quad_data)
 			if profiler and profiler.has_method("end_func"):
 				profiler.end_func("ChunkView::setup")
 			if profiler and profiler.has_method("record_us"):
@@ -2769,6 +3166,7 @@ func _on_chunk_ready(
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("ChunkView::setup")
 	view.setup(data, packed_quad_data)
+	_clear_preserve_snapshot_after_apply(data, packed_quad_data)
 	if profiler and profiler.has_method("end_func"):
 		profiler.end_func("ChunkView::setup")
 	if profiler and profiler.has_method("record_us"):
@@ -3056,15 +3454,20 @@ func _on_chunk_task_complete(
 	# Reap pool task id first (wait_for_task_completion). Must not only erase.
 	_reap_chunk_task(coord)
 	if _shutting_down or is_mesh_job_stale(coord, data, token):
+		var token_stale := token >= 0 and int(_chunk_gen_tokens.get(coord, -1)) != token
 		var stamp_stale := (
 			data != null
 			and token >= 0
-			and int(_chunk_gen_tokens.get(coord, -1)) == token
+			and not token_stale
 			and data.has_method("is_overlay_mesh_stamp_current")
 			and not data.is_overlay_mesh_stamp_current()
 		)
 		if data != null and _telemetry_trigger in ["stream", "movement"]:
 			_ChunkDataPool.release(data)
+		# A resident remesh bumps the token while this job is in flight. Leaving
+		# pending set blocks the follow-up forever, so the stamped maps never remesh.
+		if token_stale and not _chunk_tasks.has(coord):
+			pending.erase(coord)
 		if stamp_stale and not _shutting_down:
 			pending.erase(coord)
 			call_deferred("rebuild_chunk", coord)
@@ -3124,6 +3527,53 @@ func _on_chunk_task_complete(
 	if profiler and profiler.has_method("end"):
 		profiler.end("chunk_task_complete")
 
+## ramp_map matches the ramps actually drawn in the terrain mesh.
+## Model A: cardinal wedges and triangle corner caps only. Approach cells keep
+## their own flat top and are not a second slope. surface_h is the resident
+## column height the quad was built from, so walk height follows the mesh.
+func sync_ramp_map_to_mesh(data: ChunkData, quads: Array) -> void:
+	if data == null:
+		return
+	var owned: Dictionary = {}
+	for q_v in quads:
+		var q: Dictionary = q_v
+		var fc: int = int(q.get("face_code", FACE_TOP))
+		if fc != FACE_RAMP and fc != FACE_RAMP_CORNER:
+			continue
+		var x: int = int(floor(float(q.get("x", 0.0))))
+		var z: int = int(floor(float(q.get("z", 0.0))))
+		if x < 0 or z < 0 or x >= ChunkData.SIZE or z >= ChunkData.SIZE:
+			continue
+		var dir := Vector2i(int(q.get("ramp_dir_x", 0)), int(q.get("ramp_dir_z", 0)))
+		if dir == Vector2i.ZERO:
+			continue
+		var dir2 := Vector2i(int(q.get("ramp_dir2_x", 0)), int(q.get("ramp_dir2_z", 0)))
+		var cell := Vector2i(x, z)
+		if fc == FACE_RAMP_CORNER:
+			if dir2 == Vector2i.ZERO:
+				continue
+			owned[cell] = {
+				"corner": true,
+				"side": false,
+				"approach": false,
+				"dir": dir,
+				"dir2": dir2,
+				"surface_h": float(q.get("y", 0.0)),
+			}
+		else:
+			owned[cell] = {
+				"corner": false,
+				"side": false,
+				"approach": false,
+				"dir": dir,
+				"dir2": Vector2i.ZERO,
+				"surface_h": float(q.get("y", 0.0)),
+			}
+	data.ramp_map = owned
+	if data.has_method("finalize_macro_metadata"):
+		data.finalize_macro_metadata(true)
+
+
 func get_ramp_dir_at_world(wx: float, wz: float) -> Vector2i:
 	var entry := get_ramp_entry_at_world(wx, wz)
 	return entry.get("dir", Vector2i.ZERO)
@@ -3137,13 +3587,13 @@ func get_ramp_entry_at_world(wx: float, wz: float) -> Dictionary:
 		floori(float(iz) / float(ChunkData.SIZE))
 	)
 	if not chunks.has(chunk_coord):
-		return {}
+		return ChunkData.empty_ramp_entry()
 	var data: ChunkData = chunks[chunk_coord].chunk_data
 	var lx := ix - chunk_coord.x * ChunkData.SIZE
 	var lz := iz - chunk_coord.y * ChunkData.SIZE
 	if data.has_ramp(lx, lz):
 		return data.get_ramp_entry(lx, lz)
-	return {}
+	return ChunkData.empty_ramp_entry()
 
 
 func get_chunk_data_at_world_pos(world_pos: Vector3) -> ChunkData:
@@ -3177,15 +3627,14 @@ func remesh_resident_maps_at_world(wx: float, wz: float) -> void:
 		return
 	view.chunk_data.preserve_column_maps = true
 	view.chunk_data.skip_mesh_plan_cache = true
+	view.chunk_data.snapshot_resident_maps()
 	# A second remesh on a busy chunk used to merge as a normal full rebuild.
 	# That follow-up recaptured bake columns and MeshPlanCache-hit the baked
 	# quads, dropping FACE_RAMP while leftover ramp_map stayed true.
+	# Bump the token so an in-flight generate cannot apply that mesh after the stamp.
 	if pending.has(key) or _chunk_tasks.has(key):
-		_merge_patch_pending(key, [], true)
-		if _patch_pending.has(key):
-			var entry: Dictionary = _patch_pending[key]
-			entry["preserve_maps"] = true
-			_patch_pending[key] = entry
+		_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
+		_merge_patch_pending(key, [], true, true)
 		_schedule_rebuild_flush()
 		return
 	rebuild_chunk(key)
@@ -3214,6 +3663,12 @@ func invalidate_columns_at_world(wx: int, wz: int) -> void:
 		var coord: Vector2i = coord_variant
 		var local_cells: Array = by_chunk[coord]
 		var full := _TerrainDirtyScope.should_full_rebuild(local_cells)
+		# Gameplay edits must regenerate from WorldState, not a yard stamp snapshot.
+		if chunks.has(coord):
+			var edit_view: ChunkView = chunks[coord] as ChunkView
+			if edit_view and edit_view.chunk_data:
+				edit_view.chunk_data.clear_preserve_map_snapshot()
+				edit_view.chunk_data.preserve_column_maps = false
 		_merge_patch_pending(coord, local_cells, full)
 	_schedule_rebuild_flush()
 
@@ -3222,7 +3677,24 @@ func rebuild_region_at_world(wx: float, wz: float, _ring: int = 1) -> void:
 	invalidate_columns_at_world(int(wx), int(wz))
 
 
-func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool) -> void:
+func _clear_preserve_snapshot_after_apply(data: ChunkData, payload: Dictionary) -> void:
+	if data == null or not data.has_preserve_map_snapshot():
+		return
+	# Only drop the stamp once a remesh that kept it has been uploaded.
+	if str(payload.get("column_source", "")) == "resident":
+		data.clear_preserve_map_snapshot()
+
+
+func _chunk_wants_preserved_maps(coord: Vector2i) -> bool:
+	if not chunks.has(coord):
+		return false
+	var view: ChunkView = chunks[coord] as ChunkView
+	if view == null or view.chunk_data == null:
+		return false
+	return view.chunk_data.preserve_column_maps or view.chunk_data.has_preserve_map_snapshot()
+
+
+func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool, preserve_maps: bool = false) -> void:
 	if _patch_pending.has(coord):
 		var entry: Dictionary = _patch_pending[coord]
 		var bucket: Array = entry.get("local", [])
@@ -3232,13 +3704,59 @@ func _merge_patch_pending(coord: Vector2i, local_cells: Array, full: bool) -> vo
 				bucket.append(cell)
 		entry["local"] = bucket
 		entry["full"] = bool(entry.get("full", false)) or full
+		entry["preserve_maps"] = bool(entry.get("preserve_maps", false)) or preserve_maps
 		_patch_pending[coord] = entry
 	else:
 		_patch_pending[coord] = {
 			"local": local_cells.duplicate(),
 			"full": full,
-			"preserve_maps": false,
+			"preserve_maps": preserve_maps,
 		}
+
+
+## Resident remesh authority: halo must match stamped surface maps.
+## _sample_height prefers a populated halo cell, and capture_worker_snapshot
+## fills the border from world gen, so a neighbor-chunk stamp would not emit
+## FACE_RAMP until that border is copied from the loaded chunk.
+func _refresh_preserve_halo(data: ChunkData) -> void:
+	if data == null:
+		return
+	data._refresh_halo_interior_from_maps()
+	if not data._has_halo_surface:
+		return
+	var size := ChunkData.SIZE
+	var halo := ChunkData.HALO
+	var dim := size + halo * 2
+	for ix in dim:
+		for iz in dim:
+			var lx := ix - halo
+			var lz := iz - halo
+			if lx >= 0 and lx < size and lz >= 0 and lz < size:
+				continue
+			var wx := data.position.x * size + lx
+			var wz := data.position.y * size + lz
+			var ncoord := world_to_chunk_coord(wx, wz)
+			if not chunks.has(ncoord):
+				continue
+			var nview: ChunkView = chunks[ncoord] as ChunkView
+			if nview == null or nview.chunk_data == null:
+				continue
+			var nd: ChunkData = nview.chunk_data
+			var nlx := wx - ncoord.x * size
+			var nlz := wz - ncoord.y * size
+			if nlx < 0 or nlz < 0 or nlx >= size or nlz >= size:
+				continue
+			if nd.surface_map.size() <= nlx:
+				continue
+			var row_v = nd.surface_map[nlx]
+			if row_v == null or not (row_v is Array) or (row_v as Array).size() <= nlz:
+				continue
+			var row: Array = row_v
+			if ix >= data._halo_surface.size() or data._halo_surface[ix] == null:
+				continue
+			if iz >= data._halo_surface[ix].size():
+				continue
+			data._halo_surface[ix][iz] = float(row[nlz])
 
 
 func _rebuild_high_priority(coord: Vector2i) -> bool:
@@ -3313,6 +3831,15 @@ func await_rebuild_idle(max_frames: int = 2400) -> void:
 		or not _chunk_tasks.is_empty()
 		or not pending.is_empty()
 	) and frames < max_frames:
+		await get_tree().process_frame
+		frames += 1
+	var CV = load("res://chunks/chunk_view.gd")
+	while frames < max_frames and CV and (
+		int(CV.pending_buffer_upload_count()) > 0
+		or int(CV.pending_surface_upload_count()) > 0
+	):
+		CV.drain_pending_surface_uploads(8, 2_000_000)
+		CV.drain_pending_buffer_uploads(16, 2_000_000)
 		await get_tree().process_frame
 		frames += 1
 	await get_tree().process_frame
@@ -3394,6 +3921,90 @@ func get_stream_status() -> Dictionary:
 		"rebuild_pending": _patch_pending.size(),
 		"unload_pending": _stream_unload_pending.size(),
 	}
+
+
+## True while a coalesced terrain flush has not run yet. Not per-chunk.
+func mesh_pipeline_busy() -> bool:
+	return (
+		_rebuild_flush_needed
+		or has_meta("_rebuild_flush_scheduled")
+		or not _rebuild_pending.is_empty()
+	)
+
+
+## Monotonic remesh token for the chunk that owns this column.
+## Unchanged across two settled frames means no newer job has started.
+func column_mesh_generation(wx: int, wz: int) -> int:
+	return int(_chunk_gen_tokens.get(world_to_chunk_coord(wx, wz), 0))
+
+
+## Why this column's chunk mesh is not safe to read yet.
+## Empty string: resident, not queued for load/unload/remesh/apply, quads non-empty.
+## A settled chunk can still leave the column geometrically uncovered.
+func column_mesh_block_reason(wx: int, wz: int) -> String:
+	var coord := world_to_chunk_coord(wx, wz)
+	if coord in _stream_unload_pending:
+		return "unloading"
+	if _mesh_apply_queued(coord):
+		return "awaiting_apply"
+	var resident := chunks.has(coord)
+	var inflight := pending.has(coord) or _chunk_tasks.has(coord)
+	if resident and inflight:
+		return "remesh_inflight"
+	if _patch_pending.has(coord) or _rebuild_pending.has(coord):
+		return "rebuild"
+	if not resident:
+		if inflight:
+			return "baking"
+		if _stream_load_pending.has(coord):
+			return "queued"
+		return "missing"
+	if _resident_mesh_quad_count(coord) <= 0:
+		return "empty_mesh"
+	return ""
+
+
+## True when every column's chunk is resident with a mesh and no stream or
+## remesh work is queued for it. Does not mean each column is covered.
+func columns_mesh_settled(cells: Array) -> bool:
+	if mesh_pipeline_busy():
+		return false
+	for cell_v in cells:
+		var cell := _column_from_variant(cell_v)
+		if column_mesh_block_reason(cell.x, cell.y) != "":
+			return false
+	return true
+
+
+func _column_from_variant(cell) -> Vector2i:
+	if cell is Vector2i:
+		return cell
+	if cell is Vector2:
+		var v: Vector2 = cell
+		return Vector2i(int(v.x), int(v.y))
+	return Vector2i.ZERO
+
+
+func _mesh_apply_queued(coord: Vector2i) -> bool:
+	for item_v in _mesh_completion_queue:
+		if typeof(item_v) != TYPE_DICTIONARY:
+			continue
+		if (item_v as Dictionary).get("coord", null) == coord:
+			return true
+	return false
+
+
+func _resident_mesh_quad_count(coord: Vector2i) -> int:
+	var view = chunks.get(coord, null)
+	if view == null or not ("mesh_data" in view):
+		return 0
+	var md = view.mesh_data
+	if typeof(md) != TYPE_DICTIONARY:
+		return 0
+	var quads = (md as Dictionary).get("quads", [])
+	if quads is Array:
+		return (quads as Array).size()
+	return 0
 
 
 func get_chunk_lifecycle(coord: Vector2i) -> String:

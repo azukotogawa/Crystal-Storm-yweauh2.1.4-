@@ -12,6 +12,8 @@ var panel_open: bool = false:
 		panel_open = v
 		if is_inside_tree():
 			_apply_open_state()
+			if v:
+				refresh_now()
 		if closing:
 			clear_pin()
 var toggles: Dictionary = {
@@ -32,6 +34,10 @@ var pin_cell: Vector2i = Vector2i(2147483647, 2147483647):
 	set(v):
 		pin_cell = v
 		_shown_cell = Vector2i(2147483647, 2147483647)
+		# Harness screenshots are taken around the pin write. Waiting for a
+		# later _process left the panel on the previous cell for that draw.
+		if is_inside_tree() and panel_open:
+			refresh_now()
 var _shown_cell: Vector2i = Vector2i(2147483647, 2147483647)
 var _label: RichTextLabel
 var _toggle_box: HFlowContainer
@@ -143,12 +149,15 @@ func _ensure_markers() -> void:
 		_marker.name = "LiveInspectorMarker"
 		var box := BoxMesh.new()
 		var vs: float = _WorldVisualCoords.voxel_scale()
-		box.size = Vector3(vs * 1.02, 0.08, vs * 1.02)
+		# Wire-thin slab. A full-cell BoxMesh with failed alpha reads as a
+		# black voxel top and was mistaken for missing terrain.
+		box.size = Vector3(vs * 0.92, 0.04, vs * 0.92)
 		_marker.mesh = box
 		var mat := StandardMaterial3D.new()
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = Color(0.2, 0.95, 1.0, 0.55)
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_color = Color(0.15, 1.0, 0.95, 1.0)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		_marker.material_override = mat
 		game.add_child(_marker)
 	if _im_inst == null or not is_instance_valid(_im_inst):
@@ -163,13 +172,28 @@ func _ensure_markers() -> void:
 		game.add_child(_im_inst)
 
 
+func refresh_now() -> void:
+	if not is_inside_tree() or not panel_open or _label == null:
+		return
+	_ensure_markers()
+	var want: Vector2i = pin_cell
+	if want.x == 2147483647:
+		last_snapshot = _LiveWorldQuery.inspect_targeted(get_tree())
+		want = Vector2i(int(last_snapshot.get("wx", 0)), int(last_snapshot.get("wz", 0)))
+	else:
+		last_snapshot = _LiveWorldQuery.inspect_cell(get_tree(), want.x, want.y)
+	_shown_cell = Vector2i(int(last_snapshot.get("wx", want.x)), int(last_snapshot.get("wz", want.y)))
+	_refresh_label()
+	_update_marker()
+	_draw_overlays()
+
+
 func _process(_delta: float) -> void:
 	_frame += 1
 	if not panel_open:
 		if _marker and _marker.visible:
 			_marker.visible = false
 		return
-	_ensure_markers()
 	var want: Vector2i = pin_cell
 	if want.x == 2147483647:
 		var snap0: Dictionary = _LiveWorldQuery.inspect_targeted(get_tree())
@@ -184,14 +208,7 @@ func _process(_delta: float) -> void:
 	var force: bool = want != _shown_cell
 	if not force and _frame % 4 != 0:
 		return
-	if pin_cell.x != 2147483647:
-		last_snapshot = _LiveWorldQuery.inspect_cell(get_tree(), pin_cell.x, pin_cell.y)
-	else:
-		last_snapshot = _LiveWorldQuery.inspect_targeted(get_tree())
-	_shown_cell = Vector2i(int(last_snapshot.get("wx", want.x)), int(last_snapshot.get("wz", want.y)))
-	_refresh_label()
-	_update_marker()
-	_draw_overlays()
+	refresh_now()
 
 
 func _refresh_label() -> void:
@@ -281,7 +298,8 @@ func _update_marker() -> void:
 	if not bool(s.get("ok", false)):
 		_marker.visible = false
 		return
-	_marker.visible = true
+	# Do not draw a filled cell slab — it reads as a black voxel top on camera.
+	_marker.visible = false
 	var p: Vector3 = s.get("world_pos", Vector3.ZERO)
 	_marker.global_position = p
 

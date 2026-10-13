@@ -42,15 +42,18 @@ static func emit_micro_column_mesh(
 	out_quads: Array,
 	cm
 ) -> bool:
-	if data == null or cm == null or data.has_ramp(lx, lz):
+	if data == null or cm == null:
 		return false
+	if data.has_ramp(lx, lz):
+		var entry: Dictionary = data.get_ramp_entry(lx, lz)
+		# Cardinal landing slope replaces the lid. Approach and corner keep a floor.
+		if not bool(entry.get("approach", false)) and not bool(entry.get("corner", false)):
+			return false
 	var x1: int = lx + 1
 	var z1: int = lz + 1
 	cm._emit_dug_strata_region(data, out_quads, lx, lz, x1, z1)
 	cm._emit_build_strata_region(data, out_quads, lx, lz, x1, z1)
 	cm._emit_single_surface_top_quad(data, out_quads, lx, lz)
-	cm._greedy_mesh_plane_region(data, Vector3i(0, -1, 0), 6, out_quads, lx, lz, x1, z1)
-	cm._greedy_mesh_plane_region(data, Vector3i(0, -1, 0), 4, out_quads, lx, lz, x1, z1)
 	cm._emit_surface_side_walls_region(data, Vector3i(-1, 0, 0), FACE_NEG_X, out_quads, lx, lz, x1, z1)
 	cm._emit_surface_side_walls_region(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads, lx, lz, x1, z1)
 	cm._emit_surface_side_walls_region(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads, lx, lz, x1, z1)

@@ -12,6 +12,9 @@ static var catalog_path: String = DEFAULT_CATALOG_PATH
 static var pending_launch: Dictionary = {}
 static var launched_from_catalog: bool = false
 static var return_to_select: bool = false
+## Set for the duration of a catalog play session (survives take_pending_launch).
+static var active_world_id: String = ""
+static var pending_resume: bool = false
 
 
 static func reset_paths() -> void:
@@ -182,7 +185,10 @@ static func load_world(world_id: String) -> Dictionary:
 		"seed": int(row.get("seed", 12349)),
 		"name": str(row.get("name", "World")),
 	}
+	active_world_id = world_id
 	launched_from_catalog = true
+	var SaveGame = load("res://systems/save_game_service.gd")
+	pending_resume = SaveGame != null and bool(SaveGame.has_world_save(world_id))
 	row["ok"] = true
 	row["last_played_unix"] = now
 	return row
@@ -197,6 +203,8 @@ static func take_pending_launch() -> Dictionary:
 static func request_return_to_select() -> void:
 	return_to_select = true
 	launched_from_catalog = false
+	active_world_id = ""
+	pending_resume = false
 
 
 static func consume_return_to_select() -> bool:

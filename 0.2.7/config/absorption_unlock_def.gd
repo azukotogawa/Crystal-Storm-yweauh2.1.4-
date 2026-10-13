@@ -9,3 +9,5 @@ extends Resource
 @export var enemy_id: StringName = &"crystal_mite"
 @export var bonus_power: float = 0.0
 @export var spawn_burst: int = 0
+## When true, CrystalEvolution.configure unlocks this enemy without absorption.
+@export var unlock_at_start: bool = false
