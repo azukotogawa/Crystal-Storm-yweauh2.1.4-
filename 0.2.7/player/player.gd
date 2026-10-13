@@ -64,6 +64,9 @@ var _audio: Node
 var _vfx: Node
 
 var is_input_locked: bool = false
+## True after a jump tap is consumed. is_action_just_pressed misses a press that
+## lands between flushes (smoke action_press + one frame + release).
+var _jump_latched: bool = false
 ## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
 var _locked_rotation: int = 0
 var locked_rotation: int:
@@ -361,11 +364,17 @@ func _physics_process(delta: float) -> void:
 
 	var moving := input_dir != Vector2.ZERO
 	t0 = Time.get_ticks_usec() if measure else 0
-	if not _GameplayInput.blocks_actions() \
+	var jump_down := false
+	if not _GameplayInput.blocks_actions():
+		jump_down = Input.is_action_pressed("jump")
+	if jump_down \
+			and not _jump_latched \
 			and current_state in [State.IDLE, State.RUNNING] \
-			and Input.is_action_just_pressed("jump"):
-		if _can_initiate_jump(moving):
-			change_state(State.JUMPING)
+			and _can_initiate_jump(moving):
+		change_state(State.JUMPING)
+		_jump_latched = true
+	elif not jump_down:
+		_jump_latched = false
 	if measure:
 		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
