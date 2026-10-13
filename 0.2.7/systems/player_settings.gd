@@ -29,6 +29,11 @@ static var vsync_enabled: bool = true
 static var resolution: String = "1280x720"
 ## Hide terrain and structures between the camera and the player. Default on.
 static var camera_cutaway_enabled: bool = true
+## Matches player/camera.gd ISO_PITCH_DEG. Restored on load; the camera clamps it.
+const CAMERA_PITCH_DEFAULT := -35.264
+static var camera_pitch_degrees: float = CAMERA_PITCH_DEFAULT
+## Times set_camera_pitch actually wrote the file. Headless probes count writes.
+static var camera_pitch_save_count: int = 0
 ## Debug placeholders for every texture. Default off. F6 toggles it.
 static var texture_blueprint: bool = false
 ## Graphics texture set. "original" or "batch1". Default original.
@@ -71,6 +76,7 @@ static func defaults() -> Dictionary:
 		"vsync": true,
 		"resolution": "1280x720",
 		"camera_cutaway_enabled": true,
+		"camera_pitch_degrees": CAMERA_PITCH_DEFAULT,
 		"texture_blueprint": false,
 		"texture_set": "original",
 		"keybinds": {},
@@ -124,6 +130,8 @@ static func load_settings() -> Dictionary:
 		out["resolution"] = str(data.resolution)
 	if data.has("camera_cutaway_enabled"):
 		out["camera_cutaway_enabled"] = bool(data.camera_cutaway_enabled)
+	if data.has("camera_pitch_degrees"):
+		out["camera_pitch_degrees"] = float(data.camera_pitch_degrees)
 	if data.has("texture_blueprint"):
 		out["texture_blueprint"] = bool(data.texture_blueprint)
 	out["texture_set"] = _normalize_texture_set(str(data.get("texture_set", "original")))
@@ -167,6 +175,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	vsync_enabled = bool(data.get("vsync", true))
 	resolution = str(data.get("resolution", "1280x720"))
 	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
+	camera_pitch_degrees = float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
 	texture_blueprint = bool(data.get("texture_blueprint", false))
 	texture_set = _normalize_texture_set(str(data.get("texture_set", "original")))
 	var binds = data.get("keybinds", {})

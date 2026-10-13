@@ -13,6 +13,7 @@ const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
+const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager

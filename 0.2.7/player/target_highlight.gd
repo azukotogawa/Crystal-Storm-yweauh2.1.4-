@@ -5,6 +5,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _LivingForce = preload("res://world/living_force.gd")
 
 var player: Player
@@ -35,6 +36,23 @@ var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
 ## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
+var _crystal = null
+## Skip the mouse-ray and both resolve passes while aim, cell, and edits are still.
+var _aim_cache_ok: bool = false
+var _aim_from_cache: bool = false
+var _aim_mouse: Vector2 = Vector2(99999.0, 99999.0)
+var _aim_pxz: Vector2 = Vector2(99999.0, 99999.0)
+var _aim_yaw: float = 99999.0
+var _aim_pitch: float = 99999.0
+var _aim_range: float = -1.0
+var _aim_build: bool = false
+var _aim_item: String = ""
+var _aim_edit: float = 99999.0
+var _aim_depth: float = 99999.0
+var _aim_cell: Vector2i = Vector2i(999999, 999999)
+var _aim_hover: Vector3 = Vector3.ZERO
+var _aim_stable: Vector3 = Vector3.ZERO
+var _aim_info: Dictionary = {}
 ## Reused footprint boxes. Hidden at radius 1 so the single-cell highlight is unchanged.
 const BRUSH_MARK_POOL := 12
 var _brush_marks: Array[MeshInstance3D] = []
@@ -363,6 +381,73 @@ func pulse_place_success() -> void:
 ## Column dig/build must use — matches the visible cursor (column-space).
 func get_action_column() -> Vector3:
 	return _action_column
+
+
+func _aim_is_static(range_v: float, build_held: bool) -> bool:
+	if not _aim_cache_ok or player == null:
+		return false
+	var mouse := get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	if mouse.distance_squared_to(_aim_mouse) > 1.0:
+		return false
+	var pxz := Vector2(player.voxel_position.x, player.voxel_position.z)
+	if pxz.distance_squared_to(_aim_pxz) > 0.0016:
+		return false
+	var yaw := 0.0
+	var pitch := 0.0
+	if player.camera:
+		if "yaw_degrees" in player.camera:
+			yaw = float(player.camera.yaw_degrees)
+		if "pitch_degrees" in player.camera:
+			pitch = float(player.camera.pitch_degrees)
+	if absf(yaw - _aim_yaw) > 0.15 or absf(pitch - _aim_pitch) > 0.15:
+		return false
+	if not is_equal_approx(range_v, _aim_range) or build_held != _aim_build:
+		return false
+	var item_id := _active_item_id()
+	if item_id != _aim_item:
+		return false
+	if not is_equal_approx(_TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y), _aim_edit):
+		return false
+	if _crystal and _crystal.has_method("get_depth_at"):
+		if not is_equal_approx(float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y)), _aim_depth):
+			return false
+	return true
+
+
+func _active_item_id() -> String:
+	if player == null:
+		return ""
+	var weapon := player.get_node_or_null("WeaponController")
+	if weapon == null or not weapon.has_method("get_active_item"):
+		return ""
+	var slot = weapon.get_active_item()
+	if slot == null:
+		return ""
+	return str(slot.id)
+
+
+func _remember_aim(range_v: float, build_held: bool, hover_col: Vector3, stable_col: Vector3, info: Dictionary) -> void:
+	_aim_cache_ok = true
+	_aim_mouse = get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	_aim_pxz = Vector2(player.voxel_position.x, player.voxel_position.z)
+	_aim_yaw = 0.0
+	_aim_pitch = 0.0
+	if player.camera:
+		if "yaw_degrees" in player.camera:
+			_aim_yaw = float(player.camera.yaw_degrees)
+		if "pitch_degrees" in player.camera:
+			_aim_pitch = float(player.camera.pitch_degrees)
+	_aim_range = range_v
+	_aim_build = build_held
+	_aim_item = _active_item_id()
+	_aim_hover = hover_col
+	_aim_stable = stable_col
+	_aim_info = info
+	_aim_cell = info.get("cell", _stable_cell)
+	_aim_edit = _TerrainEdits.get_height_delta(_aim_cell.x, _aim_cell.y)
+	_aim_depth = 0.0
+	if _crystal and _crystal.has_method("get_depth_at"):
+		_aim_depth = float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y))
 
 
 ## Cells the dig brush would edit. Radius 1 is just the aimed column.
