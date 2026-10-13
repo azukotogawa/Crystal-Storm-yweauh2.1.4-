@@ -101,29 +101,26 @@ func _run() -> void:
 	# --- Pickaxe via WeaponController (production dig path) ---
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging (WeaponController)")
-	var dig_anchor := _solid_probe_near_player(player, world, chunk_manager)
-	player.set("voxel_position", Vector3(float(dig_anchor.x) + 0.5, player.get("voxel_position").y, float(dig_anchor.y) + 0.5))
-	if player.has_method("_sync_global_from_voxel"):
-		player.call("_sync_global_from_voxel")
-
 	var weapon: Node = player.get_node_or_null("WeaponController")
 	var pick_def: Dictionary = _ItemTypes.get_def("stone_pick")
 	var dug := false
 	var dig_wx := -1
 	var dig_wz := -1
-	if weapon != null and pick_def and weapon.has_method("_do_dig_attack"):
-		var inv = player.get("inventory")
-		if inv:
-			inv.set_slot(1, "stone_pick", 1)
-		if weapon.has_method("set_active_hotbar_index"):
-			weapon.set_active_hotbar_index(1)
-		var range_v: float = float(pick_def.get("range", 2.0))
-		_ActionTargeting.warp_mouse_to_column(player, world, float(dig_anchor.x) + 0.5, float(dig_anchor.y) + 0.5)
-		for _w in 8:
-			await process_frame
-		var dig_pick: Vector2i = _ActionTargeting.target_cell(player, range_v)
-		dig_wx = dig_pick.x
-		dig_wz = dig_pick.y
+	# _do_dig_attack aims with INTERACTION_RANGE, not the stone pick's item range.
+	# Score that resolved column. Map center is river; a water source does not change height.
+	var range_v: float = _ActionTargeting.INTERACTION_RANGE
+	var aimed := Vector3.ZERO
+	if weapon != null and not pick_def.is_empty() and weapon.has_method("_do_dig_attack") and weapon.has_method("_resolve_terrain_target"):
+		aimed = await _aim_dry_dig_column(player, world, chunk_manager, terrain, crystal, weapon, range_v)
+	if weapon == null or pick_def.is_empty() or not weapon.has_method("_do_dig_attack"):
+		lines.append("- **Dig FAIL**: WeaponController missing dig API")
+		failed = true
+	elif aimed == Vector3.ZERO:
+		lines.append("- **Dig FAIL**: no dry column in interaction range (river and water-adjacent cells are not height edits)")
+		failed = true
+	else:
+		dig_wx = floori(aimed.x)
+		dig_wz = floori(aimed.z)
 		var before_h: float = world.get_surface_height(float(dig_wx), float(dig_wz))
 		weapon.set("_cooldown_timer", 0.0)
 		weapon.call("_do_dig_attack", "stone_pick", pick_def)
@@ -152,9 +149,6 @@ func _run() -> void:
 				dig_wx, dig_wz, before_h, after_h, delta, mesh_sy
 			])
 			failed = true
-	else:
-		lines.append("- **Dig FAIL**: WeaponController missing dig API")
-		failed = true
 
 	# --- Entities: EntityManager._spawn_world_entity + registry refresh (production path) ---
 	lines.append("")
@@ -534,17 +528,62 @@ func _run() -> void:
 	await _finish(lines, failed)
 
 
-func _solid_probe_near_player(player: Node, world: InfiniteNoiseWorld, chunk_manager: ChunkManager) -> Vector2i:
+## Stand behind a dry column and return the cell WeaponController will actually edit.
+## River and water-adjacent land stay put on purpose (try_dig refuses a water source
+## and replaces a bank cell with water without a height delta).
+func _aim_dry_dig_column(
+	player: Node,
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	terrain: TerrainEditor,
+	crystal: CrystalManager,
+	weapon: Node,
+	range_v: float
+) -> Vector3:
 	var start := Vector2i(2, 4)
 	if player != null and player.get("voxel_position") is Vector3:
 		var vp: Vector3 = player.get("voxel_position")
 		start = Vector2i(floori(vp.x), floori(vp.z))
+	var tried := 0
 	for radius in range(0, 18):
 		for gx in range(start.x - radius, start.x + radius + 1):
 			for gz in range(start.y - radius, start.y + radius + 1):
-				if _ActionTargeting._is_solid_column(world, chunk_manager, gx, gz):
-					return Vector2i(gx, gz)
-	return start
+				if radius > 0 and absi(gx - start.x) != radius and absi(gz - start.y) != radius:
+					continue
+				if not _is_height_dig_column(world, chunk_manager, terrain, crystal, gx, gz):
+					continue
+				tried += 1
+				_SmokeProbeHelpers.position_player_for_forward_dig(
+					player, world, chunk_manager, gx, gz, range_v, &"dig"
+				)
+				_SmokeProbeHelpers.clear_mouse_offscreen(player)
+				for _w in 8:
+					await process_frame
+				var resolved: Vector3 = weapon.call("_resolve_terrain_target", range_v)
+				var rx := floori(resolved.x)
+				var rz := floori(resolved.z)
+				if resolved != Vector3.ZERO and _is_height_dig_column(world, chunk_manager, terrain, crystal, rx, rz):
+					return resolved
+				if tried >= 12:
+					return Vector3.ZERO
+	return Vector3.ZERO
+
+
+func _is_height_dig_column(
+	world: InfiniteNoiseWorld,
+	chunk_manager: ChunkManager,
+	terrain: TerrainEditor,
+	crystal: CrystalManager,
+	wx: int,
+	wz: int
+) -> bool:
+	if not _ActionTargeting._can_dig_column(world, chunk_manager, wx, wz):
+		return false
+	if terrain != null and terrain.has_method("_has_adjacent_water") and terrain._has_adjacent_water(wx, wz):
+		return false
+	if crystal != null and crystal.has_method("get_depth_at") and float(crystal.get_depth_at(wx, wz)) >= 0.04:
+		return false
+	return true
 
 
 func _finish(lines: PackedStringArray, failed: bool) -> void:
