@@ -2,12 +2,12 @@
 
 Verification skill for this repo. An agent follows this file as a contract: same commands, same markers, same PASS rule. A window that opens, or a single script that exits 0, is not a pass.
 
-This tree is a Godot 4.7 game. There is no Cargo, npm, or Makefile build. Importing `0.2.7/` is the build. Tests are headless Godot scripts. The playable check is a headless smoke of `res://scenes/main.tscn`.
+This tree is a Godot 4.7 game. There is no Cargo, npm, or Makefile build. Importing `0.2.8/` is the build. Tests are headless Godot scripts. The playable check is a headless smoke of `res://scenes/main.tscn`.
 
 ## Repo
 
 - Git root: `/mnt/c/Users/cwith/Crystal-Storm-yweauh2.1.4-`
-- Project directory for every command in this file: `0.2.7/`
+- Project directory for every command in this file: `0.2.8/`
 - `project.godot`: name `Crystalstorm`, features `4.7` / Forward Plus, main scene `res://scenes/frontend.tscn`
 - Engine binary that actually works from WSL: `/home/cwith/csmerge-bin/godot` (Godot 4.7.x console wrapper around `C:\Godot\Godot.exe`)
 
@@ -37,7 +37,7 @@ godot --version
 The wrapper converts `/mnt/<drive>/...` arguments to Windows paths. It forwards `APPDATA` and every `CRYSTALSTORM_*` variable into Windows Godot. Any other variable reaches Godot only when it is already listed in `WSLENV`. `SMOKE_SESSION_SEC` is listed above so the smoke duration crosses that boundary.
 
 ```bash
-ROOT="/mnt/c/Users/cwith/Crystal-Storm-yweauh2.1.4-/0.2.7"
+ROOT="/mnt/c/Users/cwith/Crystal-Storm-yweauh2.1.4-/0.2.8"
 cd "$ROOT"
 mkdir -p /tmp/crystalstorm-verify /mnt/d/csmerge/verify-scratch
 export CRYSTALSTORM_SCRATCH='D:/csmerge/verify-scratch'
@@ -158,7 +158,7 @@ unset CRYSTALSTORM_PROBE_ABRUPT_EXIT
 bash scripts/run_all_verify.sh | tee /tmp/crystalstorm-verify/all.log
 ```
 
-The script lives at `0.2.7/scripts/run_all_verify.sh`. It runs 120 headless suites. Suites in `ABRUPT_OK_MARKER` pass on their marker string. Every other suite must exit 0; their output is discarded, and a failure is printed as `FAIL (exit N)` or `FAIL (missing OK marker)` plus the last 8 lines. PASS for the gate is exit 0 and a final line:
+The script lives at `0.2.8/scripts/run_all_verify.sh`. It runs 120 headless suites. Suites in `ABRUPT_OK_MARKER` pass on their marker string. Every other suite must exit 0; their output is discarded, and a failure is printed as `FAIL (exit N)` or `FAIL (missing OK marker)` plus the last 8 lines. PASS for the gate is exit 0 and a final line:
 
 ```text
 === ALL VERIFY SUITES PASSED (120) ===
@@ -168,9 +168,9 @@ If the suite list changes, the number in that line changes with `"${#SUITES[@]}"
 
 ## Last run
 
-Date: 2026-10-13T09:03:51-07:00 to 2026-10-13T09:05:41-07:00 (local). Branch `verify/skill` at parent `59160e5` (`0.2.7`). Godot `4.7.1.stable.official.a13da4feb` via `/home/cwith/csmerge-bin/godot`. Screenshot step skipped (headless recipe only).
+Date: 2026-10-13T09:03:51-07:00 to 2026-10-13T09:05:41-07:00 (local). Branch `verify/skill` at parent `59160e5` (`0.2.8`). Godot `4.7.1.stable.official.a13da4feb` via `/home/cwith/csmerge-bin/godot`. Screenshot step skipped (headless recipe only).
 
-Commands (from `0.2.7/`, after the Setup block in this file):
+Commands (from `0.2.8/`, after the Setup block in this file):
 
 ```bash
 godot --headless --path "$ROOT" --import > /tmp/crystalstorm-verify/import.log 2>&1

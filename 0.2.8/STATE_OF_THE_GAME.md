@@ -134,7 +134,7 @@ Local single-player. Save schema reserves an authority field and does not sync a
 
 ## Assets
 
-62 PNGs under `0.2.7/assets`. No audio files.
+62 PNGs under `0.2.8/assets`. No audio files.
 
 | Path | What it is | Placeholder or real |
 | --- | --- | --- |

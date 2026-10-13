@@ -1,6 +1,6 @@
 # Crystal Storm Multiplayer Plan
 
-Status: **plan only**. No networking code exists. The sole hook is `SaveSchema.future_extension_stubs()` in `systems/save_schema.gd`: `authority.mode = local_singleplayer`. This document is grounded in the 0.2.7 tree (`cs/m7-cleanup` snapshot). Godot 4.7 / GDScript. Steam is the ship target (`export_presets.cfg` currently Windows Desktop only).
+Status: **plan only**. No networking code exists. The sole hook is `SaveSchema.future_extension_stubs()` in `systems/save_schema.gd`: `authority.mode = local_singleplayer`. This document is grounded in the 0.2.8 tree (`cs/m7-cleanup` snapshot). Godot 4.7 / GDScript. Steam is the ship target (`export_presets.cfg` currently Windows Desktop only).
 
 ## Assumptions
 

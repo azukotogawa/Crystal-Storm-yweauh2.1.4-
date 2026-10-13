@@ -1,6 +1,6 @@
 extends SceneTree
 ## Readable voxel scout, 32x48, nearest-filtered on the player box.
-## Run: godot --headless --path 0.2.7 -s res://assets/player/author_player.gd
+## Run: godot --headless --path 0.2.8 -s res://assets/player/author_player.gd
 
 
 func _init() -> void:
