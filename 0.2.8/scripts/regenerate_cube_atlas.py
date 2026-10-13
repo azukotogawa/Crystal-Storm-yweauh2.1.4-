@@ -1,19 +1,48 @@
 #!/usr/bin/env python3
-"""Author assets/tiles/Cube.png as 4px voxel bricks, scout-style outlines.
+"""Author assets/tiles/Cube.png as flat 4px bricks plus a few interior marks.
 
 Grid stays 7x10 x 32. Voxel IDs and ATLAS_COORDS are not remapped.
+A dark top/left pixel on every brick reads as a grid on every block face,
+so bricks are flat. Interior specks keep tiles from collapsing to one color.
 Also writes assets/tiles/water_surface.png for the channel fill overlay.
 """
 from __future__ import annotations
 
+import struct
+import zlib
 from pathlib import Path
-
-from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "assets" / "tiles" / "Cube.png"
 WATER = ROOT / "assets" / "tiles" / "water_surface.png"
 COLS, ROWS, TW = 7, 10, 32
+
+
+class Image:
+    """RGBA8 buffer. Enough for this atlas writer; no Pillow dependency."""
+
+    def __init__(self, w: int, h: int, fill: tuple[int, int, int, int]) -> None:
+        self.size = (w, h)
+        self._px = bytearray(fill * (w * h))
+
+    def putpixel(self, xy: tuple[int, int], rgba: tuple[int, int, int, int]) -> None:
+        x, y = xy
+        i = (y * self.size[0] + x) * 4
+        self._px[i:i + 4] = bytes(rgba)
+
+    def save(self, path: Path) -> None:
+        w, h = self.size
+        raw = bytearray()
+        stride = w * 4
+        for y in range(h):
+            raw.append(0)
+            raw.extend(self._px[y * stride:(y + 1) * stride])
+        def chunk(tag: bytes, data: bytes) -> bytes:
+            crc = zlib.crc32(tag + data) & 0xFFFFFFFF
+            return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", crc)
+        ihdr = struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0)
+        png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b"")
+        path.write_bytes(png)
 
 
 def clamp(c: int) -> int:
@@ -24,41 +53,52 @@ def shade(rgb: tuple[int, int, int], t: float) -> tuple[int, int, int]:
     return tuple(clamp(int(c * t)) for c in rgb)
 
 
-def paint_brick(img: Image.Image, x: int, y: int, fill: tuple[int, int, int]) -> None:
-    outline = shade(fill, 0.45)
-    edge = shade(fill, 0.78)
+def paint_brick(img: Image, x: int, y: int, fill: tuple[int, int, int]) -> None:
+    # Flat. Outlining px==0/py==0 on every 4px brick draws a dark grid across
+    # every terrain face (nearest sampling shows that line on each block).
     for py in range(4):
         for px in range(4):
-            c = fill
-            if px == 0 or py == 0:
-                c = outline
-            elif px == 3 or py == 3:
-                c = edge
-            img.putpixel((x + px, y + py), c + (255,))
+            img.putpixel((x + px, y + py), fill + (255,))
 
 
-def paint_tile(img: Image.Image, col: int, row: int, a: tuple[int, int, int], b: tuple[int, int, int] | None = None) -> None:
+def _speck(img: Image, ox: int, oy: int, base: tuple[int, int, int]) -> None:
+    # 2x2 marks inset from the tile edge so fract() tiling stays seamless
+    # and no mark becomes a full horizontal or vertical line.
+    marks = (
+        (6, 10, shade(base, 0.62)),
+        (18, 6, shade(base, 0.82)),
+        (12, 22, shade(base, 1.18)),
+        (24, 16, shade(base, 0.74)),
+    )
+    for cx, cy, color in marks:
+        for dy in range(2):
+            for dx in range(2):
+                img.putpixel((ox + cx + dx, oy + cy + dy), color + (255,))
+
+
+def paint_tile(img: Image, col: int, row: int, a: tuple[int, int, int], b: tuple[int, int, int] | None = None) -> None:
     ox, oy = col * TW, row * TW
     alt = b if b is not None else a
     for gy in range(8):
         for gx in range(8):
             use = alt if (gx + gy) % 5 == 0 else a
             paint_brick(img, ox + gx * 4, oy + gy * 4, use)
+    _speck(img, ox, oy, a)
 
 
-def fill_river_tile(img: Image.Image, col: int, row: int) -> None:
+def fill_river_tile(img: Image, col: int, row: int) -> None:
     paint_tile(img, col, row, (64, 156, 196), (96, 188, 214))
 
 
-def fill_marsh_grass(img: Image.Image, col: int, row: int) -> None:
+def fill_marsh_grass(img: Image, col: int, row: int) -> None:
     paint_tile(img, col, row, (42, 78, 36), (58, 96, 40))
 
 
-def fill_sparse_grass(img: Image.Image, col: int, row: int, dry: tuple[int, int, int], tuft: tuple[int, int, int]) -> None:
+def fill_sparse_grass(img: Image, col: int, row: int, dry: tuple[int, int, int], tuft: tuple[int, int, int]) -> None:
     paint_tile(img, col, row, dry, tuft)
 
 
-def fill_ocean(img: Image.Image, col: int, row: int, deep: bool) -> None:
+def fill_ocean(img: Image, col: int, row: int, deep: bool) -> None:
     if deep:
         paint_tile(img, col, row, (16, 42, 84), (22, 58, 108))
     else:
@@ -66,7 +106,7 @@ def fill_ocean(img: Image.Image, col: int, row: int, deep: bool) -> None:
 
 
 def main() -> None:
-    img = Image.new("RGBA", (COLS * TW, ROWS * TW), (0, 0, 0, 255))
+    img = Image(COLS * TW, ROWS * TW, (0, 0, 0, 255))
 
     # Row 0 — water. (1,0) is the river / WATER slot and must read lighter than ocean (0,0).
     fill_ocean(img, 0, 0, True)
@@ -158,7 +198,7 @@ def main() -> None:
     img.save(OUT)
     print(f"Wrote {OUT} ({img.size[0]}x{img.size[1]})")
 
-    water = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    water = Image(32, 32, (0, 0, 0, 0))
     paint_tile(water, 0, 0, (48, 140, 186), (88, 186, 214))
     water.save(WATER)
     print(f"Wrote {WATER}")
