@@ -10,6 +10,7 @@ const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 func _init() -> void:
@@ -90,8 +91,10 @@ func _run() -> void:
 	else:
 		var anchor_b: Node3D = building_root.get_child(0) as Node3D
 		var mesh: MeshInstance3D = anchor_b.get_node_or_null("Mesh") as MeshInstance3D if anchor_b else null
-		var mesh_ok := mesh != null and mesh.visible and mesh.material_override is StandardMaterial3D \
-			and (mesh.material_override as StandardMaterial3D).albedo_texture != null
+		var mesh_ok := mesh != null and mesh.visible \
+			and _StructureMat.is_cutaway(mesh.material_override) \
+			and _StructureMat.binds_albedo(mesh.material_override) \
+			and _StructureMat.uses_nearest_filter(mesh.material_override)
 		if not mesh_ok:
 			push_error("building mesh missing textured material_override")
 			failed = true

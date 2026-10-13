@@ -13,6 +13,7 @@ const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 const BRIDGE_MESH_PATH := "res://assets/structures/bridge/bridge.obj"
@@ -162,10 +163,9 @@ func _test_configure_binds_authored() -> void:
 		_fail("mesh meta authored_resource_path=%s" % mi.get_meta("authored_resource_path", ""))
 	if mi.mesh == null:
 		_fail("bridge mesh not assigned")
-	var mat := mi.material_override as StandardMaterial3D
-	if mat == null or mat.albedo_texture == null:
+	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
 		_fail("bridge material missing albedo")
-	elif mat.texture_filter != BaseMaterial3D.TEXTURE_FILTER_NEAREST:
+	elif not _StructureMat.uses_nearest_filter(mi.material_override):
 		_fail("bridge must use nearest texture filter")
 	if mi.scale.y < 1.0 or mi.scale.y > 1.4:
 		_fail("bridge Y scale should be a low deck (~1.15), got %.3f" % mi.scale.y)

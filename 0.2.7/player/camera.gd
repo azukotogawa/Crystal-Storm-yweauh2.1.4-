@@ -38,6 +38,9 @@ var yaw_degrees: float = ISO_YAW0_DEG
 var pitch_target_degrees: float = ISO_PITCH_DEG
 var pitch_degrees: float = ISO_PITCH_DEG
 var _pitch_dragging: bool = false
+## Seconds after the last pitch input before the settings file is written.
+var pitch_save_delay: float = 0.4
+var _pitch_persist_wait: float = -1.0
 var _cutaway_globals_ready: bool = false
 var _cutaway_pushed: bool = false
 var _cutaway_enabled: float = -1.0
@@ -83,6 +86,7 @@ func _ready():
 	if not target:
 		call_deferred("_find_target")
 	add_to_group("camera")
+	_restore_saved_pitch()
 	
 
 func _find_target():
@@ -127,6 +131,7 @@ func _process(delta: float):
 	rotation_degrees = Vector3(pitch_degrees, yaw_degrees, 0.0)
 	global_position += _Juice.shake_offset(delta)
 	update_cutaway_uniforms()
+	_tick_pitch_save(delta)
 	if profiler and profiler.has_method("end"):
 		profiler.end("camera_update")
 
@@ -139,11 +144,46 @@ func _apply_pitch_keys(delta: float) -> void:
 		dir -= 1.0
 	if is_zero_approx(dir):
 		return
-	pitch_target_degrees = clampf(
-		pitch_target_degrees + dir * pitch_speed_deg * delta,
-		PITCH_MIN_DEG,
-		PITCH_MAX_DEG
-	)
+	apply_pitch_input(dir * pitch_speed_deg * delta)
+
+
+## User pitch. Programmatic snap_pitch_degrees does not write the settings file.
+func apply_pitch_input(delta_deg: float) -> void:
+	var next := clampf(pitch_target_degrees + delta_deg, PITCH_MIN_DEG, PITCH_MAX_DEG)
+	if is_equal_approx(next, pitch_target_degrees):
+		return
+	pitch_target_degrees = next
+	_pitch_persist_wait = pitch_save_delay
+
+
+func _tick_pitch_save(delta: float) -> void:
+	if _pitch_persist_wait < 0.0:
+		return
+	_pitch_persist_wait -= delta
+	if _pitch_persist_wait <= 0.0:
+		_pitch_persist_wait = 0.0
+		flush_pitch_save()
+
+
+func pitch_save_pending() -> bool:
+	return _pitch_persist_wait >= 0.0
+
+
+func flush_pitch_save() -> void:
+	if _pitch_persist_wait < 0.0:
+		return
+	_pitch_persist_wait = -1.0
+	_PlayerSettings.set_camera_pitch(pitch_target_degrees)
+
+
+func _restore_saved_pitch() -> void:
+	var deg := float(_PlayerSettings.camera_pitch_degrees)
+	pitch_target_degrees = clampf(deg, PITCH_MIN_DEG, PITCH_MAX_DEG)
+	pitch_degrees = pitch_target_degrees
+
+
+func _exit_tree() -> void:
+	flush_pitch_save()
 
 
 func _smooth_pitch(delta: float) -> void:
@@ -327,15 +367,13 @@ func _input(event):
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_MIDDLE:
 			_pitch_dragging = event.pressed
+			if not event.pressed:
+				flush_pitch_save()
 			if event.pressed:
 				get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseMotion and _pitch_dragging:
-		pitch_target_degrees = clampf(
-			pitch_target_degrees - event.relative.y * pitch_drag_deg,
-			PITCH_MIN_DEG,
-			PITCH_MAX_DEG
-		)
+		apply_pitch_input(-event.relative.y * pitch_drag_deg)
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed:

@@ -11,7 +11,7 @@ The renderer is not a fully stored 3D block grid. It is primarily a heightfield 
 - `ChunkManager` builds terrain mesh payloads.
 - `ChunkMeshBufferBuilder` prepares render buffers.
 - `ChunkView` owns terrain visual instances.
-- `shaders/ChunkView.gdshader`, `ChunkSurfaceMesh.gdshader`, and `ChunkRamp.gdshader` handle atlas and face shading. They stay unshaded. A cave cutaway discards fragments in a cone between the camera and the player (screen-door at the rim). `player/camera.gd` writes the shader globals once per frame. Feet, one-layer steps, ramps underfoot, and foot-level water lids stay (`cutaway_feet_clear`). Authored structure materials (`StandardMaterial3D` on world objects) are not cut away.
+- `shaders/ChunkView.gdshader`, `ChunkSurfaceMesh.gdshader`, and `ChunkRamp.gdshader` handle atlas and face shading. They stay unshaded. A cave cutaway discards fragments in a cone between the camera and the player (screen-door at the rim). `player/camera.gd` writes the shader globals once per frame. Feet, one-layer steps, ramps underfoot, and foot-level water lids stay (`cutaway_feet_clear`). Authored structures (walls, gates, bridges, ruins, halls) use `shaders/StructureCutaway.gdshader` through `StructureCutawayMaterial`: the same cone and the same globals, cached once per look. That shader stays lit so the albedo, tint, roughness, metallic, and emission match the old material when the cone is not discarding. Instances still do not cast shadows.
 - `WorldVisuals` owns runtime visual layers: entities, vegetation, buildings, spawn markers, combat VFX, and feature visuals.
 - `GameVisualRegistry` generates/caches visual assets.
 - `CrystalChunkLayer` renders crystal coverage by chunk.
@@ -35,7 +35,7 @@ Rendering communicates:
 
 - Visual feedback for strategic channel/crystal-flow effectiveness is limited.
 - Spawn-point health/status presentation is minimal.
-- Cave ceilings and tall terrain between the camera and the player are cut away when Camera cutaway is on (Graphics settings, default on). Authored walls and bridges that use their own `StandardMaterial3D` are not part of that cone.
+- Cave ceilings, tall terrain, and authored structures between the camera and the player are cut away when Camera cutaway is on (Graphics settings, default on). The floor under the feet, including foot-level water lids, stays.
 - Visual refresh ownership is split across several systems.
 
 ## Isolated mechanics

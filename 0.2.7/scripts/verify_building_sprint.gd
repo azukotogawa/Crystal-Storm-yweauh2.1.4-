@@ -14,6 +14,7 @@ const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _DryDigCells = preload("res://scripts/dry_dig_cells.gd")
 
 
 var _failed: int = 0
@@ -89,16 +90,25 @@ func _test_instant_wall() -> void:
 
 	var inv := _Inventory.new()
 	inv.add_item("stone", 6)
+	# (10, 12) is a river tile, and try_build then pays an immediate water reflow.
+	var cell: Vector2i = _DryDigCells.find_cell(world, Vector2i(10, 12))
+	if not _DryDigCells.is_found(cell):
+		_fail("no dry cell for instant wall")
+		holder.queue_free()
+		return
+	print("instant wall cell %s" % cell)
+	var natural: float = world.get_surface_height(float(cell.x), float(cell.y))
+	var target := Vector3(float(cell.x) + 0.5, natural, float(cell.y) + 0.5)
+	# try_build load()s this on the first place. Parse it outside the budget.
+	load("res://helpers/structure_orientation.gd")
 	var t0 := Time.get_ticks_usec()
-	var natural: float = world.get_surface_height(10.0, 12.0)
-	var target := Vector3(10.5, natural, 12.5)
 	if not editor.try_build_wall(target, inv, true):
 		_fail("instant wall place failed")
 	else:
 		var us: int = Time.get_ticks_usec() - t0
-		if not is_equal_approx(_TerrainEdits.get_height_delta(10, 12), 0.0):
-			_fail("wall must not raise a terrain voxel (delta=%.3f)" % _TerrainEdits.get_height_delta(10, 12))
-		elif _FeatureRegistry.get_feature(10, 12).get("build_id", "") != "stone_wall":
+		if not is_equal_approx(_TerrainEdits.get_height_delta(cell.x, cell.y), 0.0):
+			_fail("wall must not raise a terrain voxel (delta=%.3f)" % _TerrainEdits.get_height_delta(cell.x, cell.y))
+		elif _FeatureRegistry.get_feature(cell.x, cell.y).get("build_id", "") != "stone_wall":
 			_fail("wall feature missing")
 		elif us > 50_000:
 			_fail("wall place took too long %dus (not instant)" % us)

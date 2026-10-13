@@ -6,6 +6,7 @@ const _GeneratorScript = preload("res://systems/crystal_texture_generator.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 ## Small lift above walkable surface to avoid z-fighting with voxel tops.
 const SURFACE_LIFT: float = 0.12
@@ -562,21 +563,28 @@ func configure_building_mesh(
 		mesh_inst.material_override = null
 		mesh_inst.visible = false
 		return
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	mat.albedo_texture = albedo
-	mat.albedo_color = structure_material_tint(id, tint)
-	mat.roughness = structure_roughness(id)
-	mat.metallic = structure_metallic(id)
+	# Cached cutaway material. Same albedo, tint, roughness, metallic, and
+	# emission as the old StandardMaterial3D. Built once per look, not per frame.
+	var tint_color := structure_material_tint(id, tint)
+	var emission := Color(0, 0, 0, 1)
+	var emission_energy := 0.0
 	if id == "gate" or id == "town_hall":
-		mat.emission_enabled = true
-		mat.emission = mat.albedo_color * 0.35
-		mat.emission_energy_multiplier = 0.45 if id == "gate" else 0.55
-	# Authored wood: keep material path explicit for verifies.
+		emission = tint_color * 0.35
+		emission_energy = 0.45 if id == "gate" else 0.55
+	var authored_path := ""
 	if used_authored:
-		mat.set_meta("authored_albedo_path", str(AUTHORED_BUILDING_ALBEDO_PATHS.get(id, "")))
-	mesh_inst.material_override = mat
+		authored_path = str(AUTHORED_BUILDING_ALBEDO_PATHS.get(id, ""))
+	mesh_inst.material_override = _StructureMat.make(
+		albedo,
+		tint_color,
+		structure_roughness(id),
+		structure_metallic(id),
+		emission,
+		emission_energy,
+		false,
+		0.0,
+		authored_path
+	)
 	mesh_inst.visible = true
 
 

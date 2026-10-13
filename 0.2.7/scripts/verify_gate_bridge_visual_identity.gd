@@ -21,6 +21,10 @@ var _failed: int = 0
 
 
 func _init() -> void:
+	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
+	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
+	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")
 	call_deferred("_run")
 
 

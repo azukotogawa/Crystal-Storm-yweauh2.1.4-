@@ -11,6 +11,7 @@ const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _DryDigCells = preload("res://scripts/dry_dig_cells.gd")
 
 
 var _failed: int = 0
@@ -100,16 +101,23 @@ func _test_rapid_dig_build_loop() -> void:
 	var inv := _Inventory.new()
 	inv.add_item("stone", 20)
 
+	# The old row (4+i, 4) is river now that the dry disk sits on the heart.
+	var run: Array[Vector2i] = _DryDigCells.find_run(world, 8, Vector2i(4, 4))
+	if run.size() < 8:
+		_fail("no dry 8-cell dig run near (4, 4) or the heart disk")
+		holder.queue_free()
+		return
+	print("rapid reshape cells %s .. %s" % [run[0], run[run.size() - 1]])
+
 	var t0 := Time.get_ticks_usec()
 	var digs := 0
 	var builds := 0
-	for i in 8:
-		var wx := 4 + i
-		var wz := 4
-		var h: float = world.get_surface_height(float(wx), float(wz))
-		if editor.try_dig(Vector3(float(wx) + 0.5, h, float(wz) + 0.5)):
+	for cell in run:
+		var h: float = world.get_surface_height(float(cell.x), float(cell.y))
+		var pos := Vector3(float(cell.x) + 0.5, h, float(cell.y) + 0.5)
+		if editor.try_dig(pos):
 			digs += 1
-		if editor.try_build_wall(Vector3(float(wx) + 0.5, h, float(wz) + 0.5), inv, true):
+		if editor.try_build_wall(pos, inv, true):
 			builds += 1
 	var us: int = Time.get_ticks_usec() - t0
 	if digs < 6:

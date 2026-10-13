@@ -13,6 +13,8 @@ const PLAYABLE_HALF_X := 1024
 const PLAYABLE_HALF_Z := 1024
 const TRANSITION_WIDTH := 240.0
 const DEEP_BORDER := 384.0
+## Inset from the playable edge so the crystal heart sits in a corner, not on the border.
+const ORIGIN_CORNER_INSET := 72
 
 const SEA_LEVEL := 38.0
 const OCEAN_FLOOR := 22.0
@@ -29,6 +31,21 @@ const DIAG_DIRS := [
 ]
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+
+
+## Same seed always picks the same corner (NW, NE, SW, SE).
+## CrystalManager.origin_corner_for_seed delegates here. Worldgen uses this
+## corner for the river-free disk so the number is not copied.
+static func origin_corner_for_seed(seed_value: int) -> Vector2i:
+	var half_x := PLAYABLE_HALF_X - ORIGIN_CORNER_INSET
+	var half_z := PLAYABLE_HALF_Z - ORIGIN_CORNER_INSET
+	var corners: Array[Vector2i] = [
+		Vector2i(-half_x, -half_z),
+		Vector2i(half_x, -half_z),
+		Vector2i(-half_x, half_z),
+		Vector2i(half_x, half_z),
+	]
+	return corners[posmod(seed_value, 4)]
 
 
 static func zone_info(wx: float, wz: float) -> Dictionary:

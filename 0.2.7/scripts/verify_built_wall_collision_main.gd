@@ -15,6 +15,10 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
 	OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
+	# Main boot would otherwise rebuild a missing full-world bake before the player exists.
+	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
+	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "2")
 	call_deferred("_run")
 
 

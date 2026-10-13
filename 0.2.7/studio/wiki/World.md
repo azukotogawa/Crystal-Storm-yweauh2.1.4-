@@ -33,7 +33,7 @@ World features feed both player strategy and crystal progression:
 - ruins stay explorable and can grant relics,
 - towns create protection/loss pressure,
 - terrain shape defines maze-building strategy,
-- rivers/water/channels affect growth and flow (the origin disk inside `SPAWN_RIVER_CLEARANCE` stays dry; outside it the river mask is the unshifted field),
+- rivers/water/channels affect growth and flow (the disk inside `SPAWN_RIVER_CLEARANCE` around the crystal-heart corner stays dry; outside it the river mask is the unshifted field),
 - animal spawns create ecology and crystal unlock inputs.
 
 ## Incomplete loops

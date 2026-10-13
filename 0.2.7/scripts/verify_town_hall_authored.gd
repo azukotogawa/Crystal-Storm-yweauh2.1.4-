@@ -11,6 +11,7 @@ const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 const HALL_MESH_PATH := "res://assets/structures/town_hall/town_hall.obj"
@@ -136,10 +137,9 @@ func _test_configure_binds_authored() -> void:
 		_fail("configure must set uses_authored_mesh")
 	if str(mi.get_meta("authored_resource_path", "")) != HALL_MESH_PATH:
 		_fail("wrong authored path")
-	var mat := mi.material_override as StandardMaterial3D
-	if mat == null or mat.albedo_texture == null:
+	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
 		_fail("hall material missing albedo")
-	elif mat.texture_filter != BaseMaterial3D.TEXTURE_FILTER_NEAREST:
+	elif not _StructureMat.uses_nearest_filter(mi.material_override):
 		_fail("hall must use nearest filter")
 	if not is_equal_approx(mi.scale.y, 1.0):
 		_fail("hall Y scale should be 1.0, got %.3f" % mi.scale.y)

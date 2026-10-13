@@ -13,6 +13,7 @@ const _Inventory = preload("res://inventory/inventory.gd")
 const _WorldVisuals = preload("res://world/world_visuals.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 const WOOD_MESH_PATH := "res://assets/structures/wood_wall/wood_wall.obj"
@@ -22,6 +23,10 @@ var _failed: int = 0
 
 
 func _init() -> void:
+	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
+	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
+	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")
 	call_deferred("_run")
 
 
@@ -119,11 +124,10 @@ func _test_configure_binds_authored() -> void:
 		# Duplicate load OK if same path meta
 		if str(mi.get_meta("authored_resource_path", "")) != WOOD_MESH_PATH:
 			_fail("bound mesh is not the authored resource")
-	if mi.material_override == null:
-		_fail("wood_wall material missing")
-	var mat := mi.material_override as StandardMaterial3D
-	if mat == null or mat.albedo_texture == null:
+	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
 		_fail("wood_wall material missing albedo texture")
+	elif not _StructureMat.uses_nearest_filter(mi.material_override):
+		_fail("wood_wall must use nearest texture filter")
 	print("OK configure_building_mesh binds authored wood_wall")
 	mi.free()
 	reg.queue_free()

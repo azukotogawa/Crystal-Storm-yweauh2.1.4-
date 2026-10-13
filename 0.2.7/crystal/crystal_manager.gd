@@ -852,21 +852,10 @@ func get_origin_cell() -> Vector2i:
 	return _resolve_origin_spawn_position()
 
 
-## Inset from the playable edge so the heart sits in a corner, not on the border wall.
-const _ORIGIN_CORNER_INSET := 72
-
-
 ## Same seed always picks the same corner (NW, NE, SW, SE).
-func origin_corner_for_seed(seed_value: int) -> Vector2i:
-	var half_x := _WorldBorder.PLAYABLE_HALF_X - _ORIGIN_CORNER_INSET
-	var half_z := _WorldBorder.PLAYABLE_HALF_Z - _ORIGIN_CORNER_INSET
-	var corners: Array[Vector2i] = [
-		Vector2i(-half_x, -half_z),
-		Vector2i(half_x, -half_z),
-		Vector2i(-half_x, half_z),
-		Vector2i(half_x, half_z),
-	]
-	return corners[posmod(seed_value, 4)]
+## Inset and corner list live on WorldBorder so worldgen does not copy them.
+static func origin_corner_for_seed(seed_value: int) -> Vector2i:
+	return _WorldBorder.origin_corner_for_seed(seed_value)
 
 
 func _preferred_origin_corner() -> Vector2i:
