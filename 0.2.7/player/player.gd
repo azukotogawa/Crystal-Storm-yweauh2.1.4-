@@ -12,6 +12,7 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _Juice = preload("res://systems/juice.gd")
+const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -278,22 +279,8 @@ func _ready():
 
 	var ph := _player_height()
 	var pr := _player_radius()
-	var box := BoxMesh.new()
-	box.size = Vector3(pr * 2.0, ph, pr * 2.0)
-	player_mesh.mesh = box
-
-	player_material = StandardMaterial3D.new()
-	player_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	player_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	player_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	player_material.alpha_scissor_threshold = 0.5
-	player_material.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
-	player_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	player_material.albedo_texture = preload("res://assets/player/player.png")
-
-	player_mesh.material_override = player_material
-	player_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	player_mesh.position.y = ph / 2.0
+	_PlayerBodyMesh.apply_to(player_mesh, ph, pr)
+	player_material = player_mesh.material_override as StandardMaterial3D
 	_mesh_rest_y = player_mesh.position.y
 
 	# Hint must sit on the surface slab. A hint of one layer is below every real

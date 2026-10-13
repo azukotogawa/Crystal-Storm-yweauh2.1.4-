@@ -1,0 +1,242 @@
+class_name PlayerBodyMesh
+extends RefCounted
+## Closed scout extruded from res://assets/player/player.png.
+## That texture is a front view on a transparent field. There is no side or
+## back art, so those faces reuse the front texel, darkened. One mesh, built
+## once when the player is ready. Winding matches BoxMesh so CULL_BACK shows
+## the outside.
+
+const ALBEDO := "res://assets/player/player.png"
+const DEPTH_STEPS := 8
+const ALPHA_CUTOFF := 0.5
+
+const _TINT_SIDE := 0.62
+const _TINT_BACK := 0.50
+const _TINT_TOP := 0.84
+const _TINT_BOTTOM := 0.42
+
+static var _wind_sign: float = 0.0
+
+
+class _Buf:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	var grid: Array = []
+	var gw := 0
+	var gh := 0
+	var gd := 0
+	var wind_sign := 1.0
+
+	func setup_grid(w: int, h: int, d: int) -> void:
+		gw = w
+		gh = h
+		gd = d
+		grid = []
+		grid.resize(w * h * d)
+		grid.fill(0)
+
+	func occupy(x: int, y: int, z: int) -> void:
+		grid[x + gw * (y + gh * z)] = 1
+
+	func occ(x: int, y: int, z: int) -> bool:
+		if x < 0 or y < 0 or z < 0 or x >= gw or y >= gh or z >= gd:
+			return false
+		return int(grid[x + gw * (y + gh * z)]) != 0
+
+	func emit_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3, outward: Vector3, col: Color) -> void:
+		var cr: Vector3 = (b - a).cross(c - a)
+		if cr.dot(outward) * wind_sign < 0.0:
+			var swap: Vector3 = b
+			b = d
+			d = swap
+		var base := verts.size()
+		verts.push_back(a)
+		verts.push_back(b)
+		verts.push_back(c)
+		verts.push_back(d)
+		for _i in 4:
+			normals.push_back(outward)
+			colors.push_back(col)
+		indices.push_back(base)
+		indices.push_back(base + 1)
+		indices.push_back(base + 2)
+		indices.push_back(base)
+		indices.push_back(base + 2)
+		indices.push_back(base + 3)
+
+	func commit() -> ArrayMesh:
+		var arrays: Array = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = normals
+		arrays[Mesh.ARRAY_COLOR] = colors
+		arrays[Mesh.ARRAY_INDEX] = indices
+		var mesh := ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		return mesh
+
+
+static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
+	var built: Dictionary = build(radius * 2.0, height)
+	mesh_instance.mesh = built["mesh"]
+	mesh_instance.material_override = built["material"]
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Same anchor as the old box: mesh center at half the capsule, feet at y=0.
+	mesh_instance.position.y = height * 0.5
+
+
+static func make_material() -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.cull_mode = BaseMaterial3D.CULL_BACK
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
+	mat.vertex_color_use_as_albedo = true
+	mat.vertex_color_is_srgb = true
+	mat.albedo_color = Color.WHITE
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	return mat
+
+
+static func build(width: float, height: float) -> Dictionary:
+	_ensure_wind()
+	var img := _load_image()
+	var opaque := 0
+	var body_d := maxf(width, 0.001) * float(DEPTH_STEPS) / 32.0
+	var mesh: ArrayMesh = null
+	if img != null and img.get_width() > 0 and img.get_height() > 0 and width > 0.0 and height > 0.0:
+		var extruded: Dictionary = _extrude(img, width, height)
+		mesh = extruded["mesh"]
+		opaque = int(extruded["opaque"])
+		body_d = float(extruded["depth"])
+	if opaque <= 0:
+		push_error("PlayerBodyMesh: albedo had no opaque pixels; using a solid fallback box")
+		body_d = maxf(width, 0.001) * 0.25
+		mesh = _fallback_box(maxf(width, 0.001), maxf(height, 0.001), body_d)
+	return {
+		"mesh": mesh,
+		"material": make_material(),
+		"opaque": opaque,
+		"depth": body_d,
+		"width": width,
+		"height": height,
+	}
+
+
+static func _ensure_wind() -> void:
+	if _wind_sign != 0.0:
+		return
+	# BoxMesh stays visible from the outside with the default backface cull.
+	# Match its winding/normal relationship.
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE
+	var arrays: Array = box.surface_get_arrays(0)
+	var vs: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var ns: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+	var idx: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
+	var i0 := 0
+	var i1 := 1
+	var i2 := 2
+	if idx.size() >= 3:
+		i0 = int(idx[0])
+		i1 = int(idx[1])
+		i2 = int(idx[2])
+	var cr: Vector3 = (vs[i1] - vs[i0]).cross(vs[i2] - vs[i0])
+	_wind_sign = -1.0 if cr.dot(ns[i0]) < 0.0 else 1.0
+
+
+static func _load_image() -> Image:
+	var tex := load(ALBEDO) as Texture2D
+	var img: Image = null
+	if tex != null:
+		img = tex.get_image()
+	if img == null or img.is_empty():
+		img = Image.new()
+		if img.load(ProjectSettings.globalize_path(ALBEDO)) != OK:
+			return null
+	if img.is_compressed():
+		img.decompress()
+	if img.get_format() != Image.FORMAT_RGBA8:
+		img.convert(Image.FORMAT_RGBA8)
+	return img
+
+
+static func _shade(texel: Color, n: Vector3) -> Color:
+	var k := 1.0
+	if n.z > 0.5:
+		k = 1.0
+	elif n.z < -0.5:
+		k = _TINT_BACK
+	elif absf(n.x) > 0.5:
+		k = _TINT_SIDE
+	elif n.y > 0.5:
+		k = _TINT_TOP
+	else:
+		k = _TINT_BOTTOM
+	return Color(texel.r * k, texel.g * k, texel.b * k, 1.0)
+
+
+static func _extrude(img: Image, width: float, height: float) -> Dictionary:
+	var w := img.get_width()
+	var h := img.get_height()
+	var d := DEPTH_STEPS
+	var buf := _Buf.new()
+	buf.wind_sign = _wind_sign
+	buf.setup_grid(w, h, d)
+	var opaque := 0
+	for iy in h:
+		var my := h - 1 - iy
+		for ix in w:
+			var pix := img.get_pixel(ix, iy)
+			if pix.a < ALPHA_CUTOFF:
+				continue
+			opaque += 1
+			for iz in d:
+				buf.occupy(ix, my, iz)
+	var body_d := width * float(d) / float(w)
+	var z_step := body_d / float(d)
+	for iz in d:
+		for my in h:
+			for ix in w:
+				if not buf.occ(ix, my, iz):
+					continue
+				var texel := img.get_pixel(ix, h - 1 - my)
+				var x0 := (float(ix) / float(w) - 0.5) * width
+				var x1 := (float(ix + 1) / float(w) - 0.5) * width
+				var y0 := (float(my) / float(h) - 0.5) * height
+				var y1 := (float(my + 1) / float(h) - 0.5) * height
+				var z0 := -body_d * 0.5 + float(iz) * z_step
+				var z1 := z0 + z_step
+				if not buf.occ(ix + 1, my, iz):
+					buf.emit_quad(Vector3(x1, y0, z1), Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(1, 0, 0), _shade(texel, Vector3(1, 0, 0)))
+				if not buf.occ(ix - 1, my, iz):
+					buf.emit_quad(Vector3(x0, y0, z0), Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x0, y1, z0), Vector3(-1, 0, 0), _shade(texel, Vector3(-1, 0, 0)))
+				if not buf.occ(ix, my + 1, iz):
+					buf.emit_quad(Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x0, y1, z0), Vector3(0, 1, 0), _shade(texel, Vector3(0, 1, 0)))
+				if not buf.occ(ix, my - 1, iz):
+					buf.emit_quad(Vector3(x0, y0, z0), Vector3(x1, y0, z0), Vector3(x1, y0, z1), Vector3(x0, y0, z1), Vector3(0, -1, 0), _shade(texel, Vector3(0, -1, 0)))
+				if not buf.occ(ix, my, iz + 1):
+					buf.emit_quad(Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x0, y1, z1), Vector3(0, 0, 1), _shade(texel, Vector3(0, 0, 1)))
+				if not buf.occ(ix, my, iz - 1):
+					buf.emit_quad(Vector3(x1, y0, z0), Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(0, 0, -1), _shade(texel, Vector3(0, 0, -1)))
+	return {"mesh": buf.commit(), "opaque": opaque, "depth": body_d}
+
+
+static func _fallback_box(width: float, height: float, body_d: float) -> ArrayMesh:
+	var buf := _Buf.new()
+	buf.wind_sign = _wind_sign
+	var tunic := Color(0.22, 0.42, 0.34, 1.0)
+	var x0 := -width * 0.5
+	var x1 := width * 0.5
+	var y0 := -height * 0.5
+	var y1 := height * 0.5
+	var z0 := -body_d * 0.5
+	var z1 := body_d * 0.5
+	buf.emit_quad(Vector3(x1, y0, z1), Vector3(x1, y0, z0), Vector3(x1, y1, z0), Vector3(x1, y1, z1), Vector3(1, 0, 0), _shade(tunic, Vector3(1, 0, 0)))
+	buf.emit_quad(Vector3(x0, y0, z0), Vector3(x0, y0, z1), Vector3(x0, y1, z1), Vector3(x0, y1, z0), Vector3(-1, 0, 0), _shade(tunic, Vector3(-1, 0, 0)))
+	buf.emit_quad(Vector3(x0, y1, z1), Vector3(x1, y1, z1), Vector3(x1, y1, z0), Vector3(x0, y1, z0), Vector3(0, 1, 0), _shade(tunic, Vector3(0, 1, 0)))
+	buf.emit_quad(Vector3(x0, y0, z0), Vector3(x1, y0, z0), Vector3(x1, y0, z1), Vector3(x0, y0, z1), Vector3(0, -1, 0), _shade(tunic, Vector3(0, -1, 0)))
+	buf.emit_quad(Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x0, y1, z1), Vector3(0, 0, 1), _shade(tunic, Vector3(0, 0, 1)))
+	buf.emit_quad(Vector3(x1, y0, z0), Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(0, 0, -1), _shade(tunic, Vector3(0, 0, -1)))
+	return buf.commit()
