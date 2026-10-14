@@ -671,8 +671,15 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 	var max_step: float = _ws().max_step_up_walk()
 	if airborne:
 		max_step = _ws().max_step_up_jump()
+	var from := voxel_position
+	# The chest sits under the waterline. Measure the bank from that line,
+	# or a one-layer shore is taller than a step and the body cannot leave.
+	if not airborne:
+		var swim := _water_here()
+		if bool(swim.get("submerged", false)):
+			from.y = maxf(from.y, float(swim.get("surface_y", from.y)))
 	return _floor_probe.can_step_to(
-		voxel_position,
+		from,
 		proposed,
 		_player_height(),
 		_player_radius(),
