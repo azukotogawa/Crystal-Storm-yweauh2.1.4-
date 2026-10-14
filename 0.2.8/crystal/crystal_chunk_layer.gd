@@ -7,7 +7,7 @@ const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 var chunk_coord: Vector2i = Vector2i.ZERO
 var lod_tier: int = _CrystalClusterMesh.LOD_FULL
 var _mm_instance: MultiMeshInstance3D
-var _material: StandardMaterial3D
+var _material: Material
 var _pos_to_index: Dictionary = {}
 ## Last terrain_y applied into MultiMesh for each cell (presentation diagnostics / verifies).
 var _applied_terrain_y: Dictionary = {}
@@ -36,7 +36,7 @@ func get_applied_terrain_y(pos: Vector2i) -> float:
 	return float(_applied_terrain_y.get(pos, -99999.0))
 
 
-func setup(coord: Vector2i, material: StandardMaterial3D) -> void:
+func setup(coord: Vector2i, material: Material) -> void:
 	chunk_coord = coord
 	_material = material
 	var ws = _WorldSettings.get_active()

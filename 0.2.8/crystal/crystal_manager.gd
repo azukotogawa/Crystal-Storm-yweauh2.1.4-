@@ -71,11 +71,13 @@ var _spawn_points: Array[CrystalSpawnPoint] = []
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
 var _rng: RandomNumberGenerator
-var _crystal_material: StandardMaterial3D
+## Untyped on purpose: the drawn mass is a ShaderMaterial. Settings tests still swap in a StandardMaterial3D.
+var _crystal_material
 var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
 var _marker_root: Node3D
 var _initialized: bool = false
+var _crystal_glow_time: float = 0.0
 var _stop_bootstrap: bool = false
 var _scars_reindexed: bool = false
 var _spawn_ctrl: _SpawnPointController
@@ -653,29 +655,17 @@ func get_presentation():
 
 
 func _setup_materials() -> void:
-	_crystal_material = StandardMaterial3D.new()
-	_crystal_material.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	# Scissor keeps the mass solid enough to cast and receive shadows.
-	_crystal_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	_crystal_material.alpha_scissor_threshold = 0.35
-	# Brighter mass so the front is readable in the first minute (presentation only).
-	_crystal_material.emission_enabled = true
-	_CrystalPalette.paint_mass(_crystal_material, _PlayerSettings.colorblind_palette)
-	_crystal_material.emission_energy_multiplier = 2.15
-	_crystal_material.roughness = 0.08
-	_crystal_material.metallic = 0.42
-	_crystal_material.rim_enabled = true
-	_crystal_material.rim = 0.42
-	_crystal_material.rim_tint = 0.65
-	_crystal_material.clearcoat_enabled = true
-	_crystal_material.clearcoat = 0.35
-	_crystal_material.clearcoat_roughness = 0.12
-	# Overlapping cell facets stay visible from either side of the mass.
-	_crystal_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var shader := load("res://shaders/crystal_pulse.gdshader") as Shader
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	# Brighter mass so the front is readable. The pulse is crystal_time on this same material.
+	_paint_crystal_mass(mat, _PlayerSettings.colorblind_palette)
+	mat.set_shader_parameter("emission_energy", 2.15)
+	mat.set_shader_parameter("crystal_time", 0.0)
 	var facet := load("res://assets/art/crystal/facet.png") as Texture2D
 	if facet != null:
-		_crystal_material.albedo_texture = facet
-		_crystal_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		mat.set_shader_parameter("albedo_tex", facet)
+	_crystal_material = mat
 
 	_marker_material = StandardMaterial3D.new()
 	_marker_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -688,7 +678,18 @@ func _setup_materials() -> void:
 ## Recolour the live mass, markers, and spawn bars. No textures are swapped.
 func apply_color_palette(colorblind: bool) -> void:
 	if _crystal_material:
-		_CrystalPalette.paint_mass(_crystal_material, colorblind)
+		_paint_crystal_mass(_crystal_material, colorblind)
+
+
+## StandardMaterial3D keeps the settings-menu path. The drawn mass is the pulse shader.
+func _paint_crystal_mass(mat: Material, colorblind: bool) -> void:
+	if mat is ShaderMaterial:
+		var sh := mat as ShaderMaterial
+		sh.set_shader_parameter("albedo_color", _CrystalPalette.mass_albedo(colorblind))
+		sh.set_shader_parameter("emission_color", _CrystalPalette.mass_emission(colorblind))
+		return
+	if mat is StandardMaterial3D:
+		_CrystalPalette.paint_mass(mat as StandardMaterial3D, colorblind)
 	if _marker_material:
 		_CrystalPalette.paint_marker(_marker_material, colorblind)
 	for key in _spawn_markers.keys():
@@ -1164,8 +1165,18 @@ func _tick_trace_finish() -> void:
 
 
 func _process(delta: float) -> void:
+	_sync_crystal_glow(delta)
 	if not _initialized:
 		return
+
+
+## Advance the pulse on the shared mass material. Chunk layers draw that instance, not a copy.
+func _sync_crystal_glow(delta: float) -> void:
+	if _crystal_material == null or not (_crystal_material is ShaderMaterial):
+		return
+	if not _PlayerSettings.reduce_motion:
+		_crystal_glow_time += delta
+	(_crystal_material as ShaderMaterial).set_shader_parameter("crystal_time", _crystal_glow_time)
 	if not _scars_reindexed:
 		_CrystalCorruption.reindex_scars()
 		_scars_reindexed = true

@@ -11,7 +11,7 @@ const _CrystalCell = preload("res://crystal/crystal_cell.gd")
 var fluid = null  # CrystalFluidSim (read-only for mesh)
 var sim_config = null
 var layer_root: Node3D = null
-var crystal_material: StandardMaterial3D = null
+var crystal_material: Material = null
 var chunk_size: int = 16
 
 var _chunk_layers: Dictionary = {}

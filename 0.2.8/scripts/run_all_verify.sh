@@ -145,6 +145,7 @@ SUITES=(
 	"res://scripts/verify_maze_phase.gd"
 	"res://scripts/verify_maze_pressure_assault.gd"
 	"res://scripts/verify_crystal_frontier_readability.gd"
+	"res://scripts/verify_crystal_glow.gd"
 	"res://scripts/verify_ruin_centers.gd"
 	"res://scripts/verify_save_terrain.gd"
 	"res://scripts/verify_save_architecture.gd"
