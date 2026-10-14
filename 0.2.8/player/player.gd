@@ -413,18 +413,25 @@ func _physics_process(delta: float) -> void:
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_yaw_degrees)
 		desired_vel = move_vec * speed
-	var accel: float = move_accel if desired_vel.length_squared() > 0.0001 else move_friction
-	_move_vel_xz = _move_vel_xz.move_toward(desired_vel, accel * delta)
-	if _move_vel_xz.length_squared() < 0.0004 and desired_vel == Vector2.ZERO:
-		_move_vel_xz = Vector2.ZERO
+	if _knock_left > 0.0:
+		# The hit owns this step. Walk input resumes when the shove ends.
+		_tick_player_knockback(delta, airborne)
+		_move_vel_xz = _move_vel_xz.move_toward(Vector2.ZERO, move_friction * delta)
+		if _move_vel_xz.length_squared() < 0.0004:
+			_move_vel_xz = Vector2.ZERO
+	else:
+		var accel: float = move_accel if desired_vel.length_squared() > 0.0001 else move_friction
+		_move_vel_xz = _move_vel_xz.move_toward(desired_vel, accel * delta)
+		if _move_vel_xz.length_squared() < 0.0004 and desired_vel == Vector2.ZERO:
+			_move_vel_xz = Vector2.ZERO
 
-	if _move_vel_xz.length_squared() > 0.0001:
-		var move_delta := _move_vel_xz * delta
-		_try_move_delta(move_delta, airborne, delta)
-		if not airborne and current_state == State.IDLE:
-			change_state(State.RUNNING)
-	elif not airborne and current_state == State.RUNNING:
-		change_state(State.IDLE)
+		if _move_vel_xz.length_squared() > 0.0001:
+			var move_delta := _move_vel_xz * delta
+			_try_move_delta(move_delta, airborne, delta)
+			if not airborne and current_state == State.IDLE:
+				change_state(State.RUNNING)
+		elif not airborne and current_state == State.RUNNING:
+			change_state(State.IDLE)
 	if measure:
 		phase_local["horizontal_move"] = Time.get_ticks_usec() - t0
 
@@ -643,6 +650,7 @@ func _apply_safe_stand() -> void:
 	voxel_position = stand
 	velocity.y = 0.0
 	_move_vel_xz = Vector2.ZERO
+	_knock_left = 0.0
 	if current_state == State.JUMPING or current_state == State.FALLING:
 		current_state = State.IDLE
 
@@ -839,6 +847,21 @@ func _begin_hit_knockback(heavy: bool) -> void:
 	_knock_dir_xz = _knock_away_dir()
 	_knock_left = HIT_KNOCK_HEAVY_COLUMNS if heavy else HIT_KNOCK_COLUMNS
 	_has_damage_origin = false
+
+
+## Walk-probe step. A wall ends the shove. Ramps stay on the same ground follow.
+func _tick_player_knockback(delta: float, airborne: bool) -> void:
+	if _floor_probe == null or _knock_left <= 0.0:
+		_knock_left = 0.0
+		return
+	var step := minf(_knock_left, HIT_KNOCK_SPEED * delta)
+	var before := Vector2(voxel_position.x, voxel_position.z)
+	_try_move_delta(_knock_dir_xz * step, airborne, delta)
+	var moved := before.distance_to(Vector2(voxel_position.x, voxel_position.z))
+	if moved < step * 0.2:
+		_knock_left = 0.0
+		return
+	_knock_left = maxf(_knock_left - step, 0.0)
 
 
 ## Column-space XZ, away from the attacker. A missing origin shoves backward.
