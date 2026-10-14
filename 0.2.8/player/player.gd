@@ -14,6 +14,7 @@ const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
+const _Water = preload("res://helpers/water_locomotion.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -402,6 +403,10 @@ func _physics_process(delta: float) -> void:
 		phase_local["input"] = Time.get_ticks_usec() - t0
 
 	var moving := input_dir != Vector2.ZERO
+	# Dry columns stop at a channel lookup. The feet probe runs only in water.
+	var swim := _water_here()
+	var submerged := bool(swim.get("submerged", false))
+	var wading := bool(swim.get("wading", false))
 	t0 = Time.get_ticks_usec() if measure else 0
 	var jump_blocked := _GameplayInput.blocks_actions()
 	var jump_held := false
@@ -435,6 +440,10 @@ func _physics_process(delta: float) -> void:
 	if inventory and inventory.has_method("armor_speed_multiplier"):
 		speed *= inventory.armor_speed_multiplier()
 	speed *= _slope_speed_multiplier(moving or _move_vel_xz.length_squared() > 0.0004)
+	if submerged:
+		speed *= _Water.SWIM_SPEED_MULT
+	elif wading:
+		speed *= _Water.WADE_SPEED_MULT
 	if measure:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
 		_phys_call_slope += 1
@@ -449,11 +458,14 @@ func _physics_process(delta: float) -> void:
 	if _knock_left > 0.0:
 		# The hit owns this step. Walk input resumes when the shove ends.
 		_tick_player_knockback(delta, airborne)
-		_move_vel_xz = _move_vel_xz.move_toward(Vector2.ZERO, move_friction * delta)
+		var drag := move_friction * (_Water.SWIM_FRICTION_MULT if submerged else 1.0)
+		_move_vel_xz = _move_vel_xz.move_toward(Vector2.ZERO, drag * delta)
 		if _move_vel_xz.length_squared() < 0.0004:
 			_move_vel_xz = Vector2.ZERO
 	else:
 		var accel: float = move_accel if desired_vel.length_squared() > 0.0001 else move_friction
+		if submerged:
+			accel *= _Water.SWIM_ACCEL_MULT if desired_vel.length_squared() > 0.0001 else _Water.SWIM_FRICTION_MULT
 		_move_vel_xz = _move_vel_xz.move_toward(desired_vel, accel * delta)
 		if _move_vel_xz.length_squared() < 0.0004 and desired_vel == Vector2.ZERO:
 			_move_vel_xz = Vector2.ZERO
@@ -473,8 +485,11 @@ func _physics_process(delta: float) -> void:
 		State.JUMPING:
 			velocity.y -= _gravity() * delta
 			if velocity.y <= 0.0:
-				# Gravity ate the impulse this frame. Do not step down into the slab.
-				current_state = State.FALLING
+				# Gravity ate the impulse. Water catches the body; dry land still falls.
+				if _float_if_submerged(delta, voxel_position.y):
+					change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
+				else:
+					current_state = State.FALLING
 			else:
 				var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
 				if is_colliding_at(next_pos):
@@ -485,28 +500,34 @@ func _physics_process(delta: float) -> void:
 
 		State.FALLING:
 			velocity.y -= _gravity() * delta
-			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
-			# is_colliding allows a fraction of a layer of sink. Stop at the walkable
-			# top instead, or a landing step sits inside the rendered slab.
-			var feet_h := _sample_walkable_feet(voxel_position.x, voxel_position.z)
-			var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
-			if reached_feet or is_colliding_at(next_pos):
-				# Land with a firm settle (not a mid-air soft float).
-				voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
-				velocity.y = 0.0
-				_move_vel_xz *= 0.65
-				sprite_scale_modifier = Vector2(1.6, 0.5)
-				current_skew = -0.1
-				landing_timer += delta
-				if landing_timer > 0.2:
-					landing_timer = 0.0
-					change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
+			var next_y := voxel_position.y + velocity.y * delta
+			if _float_if_submerged(delta, minf(voxel_position.y, next_y)):
+				change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
 			else:
-				voxel_position.y = next_pos.y
+				var next_pos := Vector3(voxel_position.x, next_y, voxel_position.z)
+				# is_colliding allows a fraction of a layer of sink. Stop at the walkable
+				# top instead, or a landing step sits inside the rendered slab.
+				var feet_h := _sample_walkable_feet(voxel_position.x, voxel_position.z)
+				var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
+				if reached_feet or is_colliding_at(next_pos):
+					# Land with a firm settle (not a mid-air soft float).
+					voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
+					velocity.y = 0.0
+					_move_vel_xz *= 0.65
+					sprite_scale_modifier = Vector2(1.6, 0.5)
+					current_skew = -0.1
+					landing_timer += delta
+					if landing_timer > 0.2:
+						landing_timer = 0.0
+						change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
+				else:
+					voxel_position.y = next_pos.y
 
 		State.IDLE, State.RUNNING:
 			_soft_follow_ground(delta)
-			if not _is_grounded(moving or _move_vel_xz.length_squared() > 0.01):
+			# Water holds the body. A dry gap still becomes a fall.
+			if not bool(_water_here().get("submerged", false)) \
+					and not _is_grounded(moving or _move_vel_xz.length_squared() > 0.01):
 				change_state(State.FALLING)
 				velocity.y = 0.0
 	if measure:
@@ -641,6 +662,10 @@ func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
 func _soft_follow_ground(delta: float) -> void:
 	if _phys_measure:
 		_phys_call_snap += 1
+	var info := _water_here()
+	if bool(info.get("submerged", false)):
+		voxel_position.y = _Water.settle_y(voxel_position.y, info, delta)
+		return
 	if chunk_manager == null or chunk_manager.world == null:
 		return
 	if _floor_probe and _floor_probe.has_method("soft_follow_y"):
@@ -674,6 +699,9 @@ func _tick_unstuck(delta: float) -> void:
 	if _overlap_tick < OVERLAP_CHECK_FRAMES:
 		return
 	_overlap_tick = 0
+	# Floating in a pool is not stuck inside the bed.
+	if bool(_water_here().get("submerged", false)):
+		return
 	if _floor_probe.body_overlaps_terrain(voxel_position, _player_height()):
 		_apply_safe_stand()
 
@@ -707,7 +735,40 @@ func _is_grounded(moving: bool = false) -> bool:
 
 
 func _can_initiate_jump(moving: bool) -> bool:
+	# A float counts as support, so a hop can leave the pool. Air over dry land cannot.
+	if bool(_water_here().get("submerged", false)):
+		return true
 	return _is_grounded(moving)
+
+
+## Channel or inland water under the feet. Ocean and dry land return a dry sample.
+## feet_y lets a fast fall count as entering the water before the body tunnels to the bed.
+func _water_here(feet_y: float = NAN) -> Dictionary:
+	var feet := voxel_position.y if is_nan(feet_y) else feet_y
+	if world == null:
+		return _Water.dry(feet)
+	var col_x := floori(voxel_position.x)
+	var col_z := floori(voxel_position.z)
+	if not _Water.column_has_water(world, col_x, col_z):
+		return _Water.dry(feet)
+	var ground := feet
+	if _floor_probe != null:
+		ground = _floor_probe.sample_walkable_feet(voxel_position.x, voxel_position.z)
+	return _Water.sample(world, col_x, col_z, feet, ground, _player_height())
+
+
+## True when this column's water holds the body. Snaps onto the float line from above.
+func _float_if_submerged(delta: float, feet_y: float) -> bool:
+	var info := _water_here(feet_y)
+	if not bool(info.get("submerged", false)):
+		return false
+	velocity.y = 0.0
+	var surface := float(info.get("surface_y", feet_y))
+	if voxel_position.y > surface:
+		voxel_position.y = float(info.get("float_y", voxel_position.y))
+	else:
+		voxel_position.y = _Water.settle_y(voxel_position.y, info, delta)
+	return true
 
 
 func _give_starting_loadout() -> void:
@@ -977,7 +1038,7 @@ func _tick_feet_water() -> void:
 	_wet_landed = landed
 	if not landed:
 		return
-	var wet := _CrystalTypes.is_water_tile(int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5)))
+	var wet := bool(_water_here().get("in_water", false))
 	if not _wet_ready:
 		_feet_wet = wet
 		_wet_ready = true
