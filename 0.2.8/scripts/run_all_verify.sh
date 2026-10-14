@@ -86,6 +86,7 @@ SUITES=(
 	"res://scripts/verify_camera_continuous_yaw.gd"
 	"res://scripts/verify_camera_angle_validation.gd"
 	"res://scripts/verify_camera_pitch.gd"
+	"res://scripts/verify_camera_default_zoom.gd"
 	"res://scripts/verify_camera_cutaway.gd"
 	"res://scripts/verify_structure_cutaway.gd"
 	"res://scripts/verify_block_selection.gd"

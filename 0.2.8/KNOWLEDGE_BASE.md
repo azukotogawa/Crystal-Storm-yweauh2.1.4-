@@ -436,7 +436,7 @@ Camera:
 - Rotation speed `480 deg/sec`.
 - Distance `100`.
 - Height offset `101`.
-- Zoom default `24`.
+- Zoom default `16` (about a third closer than 24).
 - Zoom step `2`.
 - Min zoom `8`.
 - Max zoom `140`.
