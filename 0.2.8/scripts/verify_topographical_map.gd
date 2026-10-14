@@ -171,6 +171,22 @@ func _init() -> void:
 				print("OK content revision stamps a dig")
 		state.terrain_revision = previous_terrain
 
+	var map_cell: Vector2i = preload("res://ui/topographical_map.gd").column_cell_from_voxel(Vector3(80.9, 3.0, -15.2))
+	if map_cell != Vector2i(80, -16):
+		push_error("map cell should floor voxel columns, got %s" % map_cell)
+		failed = true
+	else:
+		var ws = load("res://config/world_settings.gd").get_active()
+		var doubled := Vector2i(
+			floori(ws.world_to_column(80.9)),
+			floori(ws.world_to_column(-15.2))
+		)
+		if ws.voxel_scale > 1.01 and map_cell == doubled:
+			push_error("map center still divides column coords by voxel scale")
+			failed = true
+		else:
+			print("OK map center uses voxel columns directly")
+
 	if failed:
 		quit(1)
 	print("All topographical map tests OK")

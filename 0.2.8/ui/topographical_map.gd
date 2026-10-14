@@ -4,6 +4,7 @@ const _TopographicalMapConfig = preload("res://config/topographical_map_config.g
 const _TopographicalMapBuilder = preload("res://systems/topographical_map_builder.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _WorldState = preload("res://world/world_state.gd")
 
 @export var map_config: Resource
 
@@ -48,19 +49,22 @@ func _enter_tree() -> void:
 func get_minimap_screen_rect() -> Rect2:
 	if _minimap_rect == null or not _minimap_rect.visible:
 		return Rect2()
-	var sz: Vector2 = _minimap_rect.size
-	if sz.x < 1.0 or sz.y < 1.0:
-		sz = _minimap_rect.custom_minimum_size
-	if sz.x < 1.0:
-		var cfg = _map_cfg()
-		sz = Vector2(cfg.minimap_size, cfg.minimap_size)
-	return Rect2(_minimap_rect.position, sz)
+	if _minimap_rect.size.x < 1.0 or _minimap_rect.size.y < 1.0:
+		_apply_minimap_widget_size(_map_cfg().minimap_size)
+	return _minimap_rect.get_global_rect()
 
 
 func _ready() -> void:
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_ui()
 	set_process(true)
 	call_deferred("_bind_scene")
+
+
+## voxel_position X/Z are already column indexes. Do not pass them through world_to_column.
+static func column_cell_from_voxel(voxel_position: Vector3) -> Vector2i:
+	return Vector2i(floori(voxel_position.x), floori(voxel_position.z))
 
 
 func _bind_scene() -> void:
@@ -87,7 +91,7 @@ func apply_performance_config(cfg) -> void:
 	mc.sample_stride = int(cfg.map_sample_stride)
 	if _minimap_rect:
 		_minimap_rect.visible = _minimap_enabled
-		_minimap_rect.custom_minimum_size = Vector2(mc.minimap_size, mc.minimap_size)
+		_apply_minimap_widget_size(mc.minimap_size)
 	if not _minimap_enabled and _fullscreen_open:
 		_fullscreen_open = false
 		_fullscreen_panel.visible = false
@@ -100,23 +104,28 @@ func apply_performance_config(cfg) -> void:
 func _build_ui() -> void:
 	var cfg = _map_cfg()
 	_minimap_rect = TextureRect.new()
-	_minimap_rect.custom_minimum_size = Vector2(cfg.minimap_size, cfg.minimap_size)
 	_minimap_rect.stretch_mode = TextureRect.STRETCH_SCALE
+	_minimap_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_minimap_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_minimap_rect.position = Vector2(12, 12)
+	_apply_minimap_widget_size(cfg.minimap_size)
 	add_child(_minimap_rect)
 
 	_player_dot = ColorRect.new()
 	_player_dot.color = cfg.color_player
+	_player_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_player_dot.size = Vector2(5, 5)
 	_player_dot.position = Vector2(cfg.minimap_size * 0.5 - 2, cfg.minimap_size * 0.5 - 2)
 	_minimap_rect.add_child(_player_dot)
 
 	_fullscreen_panel = PanelContainer.new()
 	_fullscreen_panel.visible = false
-	_fullscreen_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fullscreen_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fullscreen_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_fullscreen_panel)
 
 	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 24)
 	margin.add_theme_constant_override("margin_right", 24)
@@ -125,23 +134,47 @@ func _build_ui() -> void:
 	_fullscreen_panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.add_child(vbox)
 
 	var title := Label.new()
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.text = "Topographical Map (M to close)"
 	vbox.add_child(title)
 
 	_fullscreen_rect = TextureRect.new()
 	_fullscreen_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_fullscreen_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_fullscreen_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_fullscreen_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fullscreen_rect.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(_fullscreen_rect)
 
 	_fullscreen_player_dot = ColorRect.new()
 	_fullscreen_player_dot.color = cfg.color_player
+	_fullscreen_player_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fullscreen_player_dot.size = Vector2(8, 8)
 	_fullscreen_rect.add_child(_fullscreen_player_dot)
+
+
+func _apply_minimap_widget_size(side: int) -> void:
+	if _minimap_rect == null:
+		return
+	var sz := Vector2(maxi(side, 32), maxi(side, 32))
+	_minimap_rect.custom_minimum_size = sz
+	_minimap_rect.size = sz
+	if _player_dot:
+		_player_dot.position = sz * 0.5 - _player_dot.size * 0.5
+
+
+func _place_fullscreen_player_dot() -> void:
+	if _fullscreen_rect == null or _fullscreen_player_dot == null:
+		return
+	var sz := _fullscreen_rect.size
+	if sz.x < 8.0 or sz.y < 8.0:
+		return
+	_fullscreen_player_dot.position = sz * 0.5 - _fullscreen_player_dot.size * 0.5
 
 
 func _process(delta: float) -> void:
@@ -168,12 +201,15 @@ func _process(delta: float) -> void:
 		_fullscreen_open = not _fullscreen_open
 		_fullscreen_panel.visible = _fullscreen_open
 		if _fullscreen_open:
-			_queue_map_rebuild(true)
+			_rebuild_timer = 0.0
 
 	if not _minimap_enabled and not _fullscreen_open:
 		if profiler and profiler.has_method("end"):
 			profiler.end("topo_map")
 		return
+
+	if _fullscreen_open:
+		_place_fullscreen_player_dot()
 
 	_crystal_overlay_timer -= delta
 	if _crystal_overlay_timer <= 0.0 and _minimap_enabled and _active_map_job.is_empty() and _crystal_overlay_job.is_empty():
@@ -183,35 +219,68 @@ func _process(delta: float) -> void:
 	_rebuild_timer -= delta
 	var center := _player_center_cell()
 	var cfg = _map_cfg()
-	if _rebuild_timer <= 0.0 or center.distance_to(_last_center) >= cfg.rebuild_move_threshold_cells:
-		_rebuild_timer = cfg.rebuild_interval_sec
-		_queue_map_rebuild(_fullscreen_open)
-		_last_center = center
+	var moved := center.distance_to(_last_center) >= float(cfg.rebuild_move_threshold_cells)
+	var due := _rebuild_timer <= 0.0
+	var terrain_dirty := _content_revision_changed()
+	if due or moved or terrain_dirty:
+		# Timer and digs resample the whole view. Walking only scrolls new edges.
+		# A job still in flight must not consume the movement. Retry next frame.
+		if _queue_map_rebuild(_fullscreen_open, due or terrain_dirty):
+			_rebuild_timer = cfg.rebuild_interval_sec
+			_last_center = center
 	if profiler and profiler.has_method("end"):
 		profiler.end("topo_map")
 
 
 func _player_center_cell() -> Vector2i:
+	if _player == null or not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
 	if _player == null:
 		return Vector2i.ZERO
 	if _player.has_method("get_voxel_position"):
-		return _EntityNavigation.column_pos(_player.get_voxel_position())
+		return column_cell_from_voxel(_player.get_voxel_position())
 	return _EntityNavigation.column_pos(_player.global_position)
 
 
-func _queue_map_rebuild(include_full: bool) -> void:
+func _content_revision_changed() -> bool:
+	if _idle_minimap_job.is_empty():
+		return false
+	return int(_idle_minimap_job.get("content_revision", -1)) != _WorldState.get_active().mesh_input_revision()
+
+
+func _idle_map_current(center: Vector2i) -> bool:
+	if _idle_minimap_job.is_empty():
+		return false
+	if _idle_minimap_job.get("center", Vector2i(2147483647, 0)) != center:
+		return false
+	if _content_revision_changed():
+		return false
+	var image: Image = _idle_minimap_job.get("image")
+	if image == null:
+		return false
+	var size: int = int(_idle_minimap_job.get("size", 0))
+	return size > 0 and image.get_width() == size and image.get_height() == size
+
+
+func _queue_map_rebuild(include_full: bool, force_full: bool) -> bool:
 	if not _active_map_job.is_empty():
-		return
+		return false
 	if _world == null or not is_instance_valid(_world):
-		return
+		return false
 	var center := _player_center_cell()
 	var cfg = _map_cfg()
+	var minimap_current := not force_full and _minimap_enabled and _idle_map_current(center)
+	var want_full := include_full and _fullscreen_map_enabled
+	if minimap_current and not want_full:
+		return true
+
 	_map_job_queue.clear()
 	_crystal_overlay_job = {}
 
-	if _minimap_enabled:
+	if _minimap_enabled and not minimap_current:
 		var minimap_job: Dictionary = {}
-		if not _idle_minimap_job.is_empty() \
+		var can_scroll := not force_full and not _content_revision_changed()
+		if can_scroll and not _idle_minimap_job.is_empty() \
 				and _TopographicalMapBuilder.try_incremental_recenter(_idle_minimap_job, center):
 			minimap_job = _idle_minimap_job
 		else:
@@ -220,14 +289,16 @@ func _queue_map_rebuild(include_full: bool) -> void:
 			)
 		_map_job_queue.append(minimap_job)
 
-	if include_full and _fullscreen_map_enabled:
+	if want_full:
 		_map_job_queue.append(
 			_TopographicalMapBuilder.begin_job(
 				_world, _crystal, center, cfg, true, _fast_map_sampling, _map_internal_divisor
 			)
 		)
-	if not _map_job_queue.is_empty():
-		_active_map_job = _map_job_queue[0]
+	if _map_job_queue.is_empty():
+		return true
+	_active_map_job = _map_job_queue[0]
+	return true
 
 
 func _queue_crystal_overlay_refresh() -> void:
@@ -288,12 +359,9 @@ func _apply_finished_map_job(job: Dictionary) -> void:
 	if bool(job.get("fullscreen", false)):
 		_full_tex = tex
 		_fullscreen_rect.texture = _full_tex
-		_fullscreen_player_dot.position = Vector2(
-			_fullscreen_rect.size.x * 0.5 - 4,
-			_fullscreen_rect.size.y * 0.5 - 4
-		)
+		_place_fullscreen_player_dot()
 	else:
 		_minimap_tex = tex
 		_minimap_rect.texture = _minimap_tex
-		_player_dot.position = Vector2(cfg.minimap_size * 0.5 - 2, cfg.minimap_size * 0.5 - 2)
+		_apply_minimap_widget_size(cfg.minimap_size)
 		_idle_minimap_job = _TopographicalMapBuilder.clone_job_state(job)
