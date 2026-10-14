@@ -215,7 +215,7 @@ func _run() -> void:
 	_TerrainEdits.dig(6, 1, 1)
 	svc.set("_dirty_cells", {})
 	editor.call("_notify_water_reflow", 7, 6, true)
-	for _pocket_step in 8:
+	for _pocket_step in 24:
 		var pocket_pending: Dictionary = svc.get("_dirty_cells")
 		if pocket_pending.is_empty():
 			break

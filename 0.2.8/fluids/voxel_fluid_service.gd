@@ -85,6 +85,9 @@ func _init_water_engine() -> void:
 
 
 const _EMPTY_WALK_CAP := 96
+## Steady frames add one open cell. An edit's interactive step still uses the
+## engine cap so a short link beside water does not wait a frame per cell.
+const _SETTLE_NEW_CELLS_PER_TICK := 1
 
 
 func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
@@ -157,6 +160,8 @@ func recompute_region_now(wx: int, wz: int, radius: int = 1, steps: int = 6) -> 
 var _interactive_local_mode: bool = false
 var _interactive_local_center: Vector2i = Vector2i.ZERO
 var _interactive_local_radius: int = 4
+var _empty_resume: Array = []
+var _empty_searched: Dictionary = {}
 
 
 func _process(delta: float) -> void:
@@ -239,6 +244,11 @@ func _tick_water(_delta: float) -> void:
 	_last_wet_count = int(result.get("wet_count", 0))
 	_last_body_surface_y = float(result.get("surface_y", 0.0))
 	_advance_dirty_from_changes(changed)
+	# The empty walk stopped before it reached water. Keep the unexpanded
+	# frontier or a pool larger than the walk cap never starts.
+	for resume_variant in _empty_resume:
+		_dirty_cells[resume_variant] = true
+	_empty_resume = []
 	_last_persist_us = Time.get_ticks_usec() - t_persist
 	_sync_engine_debug(result)
 	_river_source_cells.clear()
@@ -290,18 +300,23 @@ func _accepts_flow(pos: Vector2i, surface_y: float) -> bool:
 
 
 func _include_connected_empty(cells: Dictionary) -> void:
+	_empty_resume = []
 	var q: Array = []
 	var seen: Dictionary = {}
+	for searched_variant in _empty_searched.keys():
+		seen[searched_variant] = true
 	for key_variant in _dirty_cells.keys():
 		var pos: Vector2i = key_variant
-		if _is_empty_column(pos):
+		if _is_empty_column(pos) and not seen.has(pos):
 			q.append(pos)
 	var walked := 0
+	var touched_water := false
 	while not q.is_empty() and walked < _EMPTY_WALK_CAP:
 		var cur: Vector2i = q.pop_back()
 		if seen.has(cur):
 			continue
 		seen[cur] = true
+		_empty_searched[cur] = true
 		cells[cur] = true
 		walked += 1
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
@@ -311,9 +326,22 @@ func _include_connected_empty(cells: Dictionary) -> void:
 			if _is_natural_water_cell(n) or _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER):
 				cells[n] = true
 				seen[n] = true
+				touched_water = true
 				continue
 			if _is_empty_column(n):
 				q.append(n)
+	# Water is connected, or the open component is fully walked. Drop the
+	# search memory so the fill frontier is local on the next frame.
+	if touched_water or q.is_empty():
+		_empty_searched = {}
+		return
+	var resume: Dictionary = {}
+	while not q.is_empty():
+		var left: Vector2i = q.pop_back()
+		if seen.has(left):
+			continue
+		resume[left] = true
+	_empty_resume = resume.keys()
 
 
 func _layer() -> float:
@@ -380,9 +408,9 @@ func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 			surface_y = maxf(surface_y, stored)
 	if origins.is_empty() or surface_y < -1.0e8:
 		return empty
-	var cap: int = 64
-	if _water_engine:
-		cap = maxi(int(_water_engine.max_cells_per_tick), 16)
+	var cap: int = _SETTLE_NEW_CELLS_PER_TICK
+	if _interactive_local_mode and _water_engine:
+		cap = maxi(int(_water_engine.max_cells_per_tick), _SETTLE_NEW_CELLS_PER_TICK)
 	var wet: Dictionary = {}
 	var q: Array = []
 	for key_variant in origins.keys():
@@ -413,6 +441,14 @@ func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 				continue
 			new_cells += 1
 			if new_cells >= cap:
+				# Cells the wave has not reached yet must stay wet. Drying
+				# them here would erase the pool on every capped frame.
+				for extra_variant in subset.keys():
+					var extra: Vector2i = extra_variant
+					if wet.has(extra):
+						continue
+					if _ChannelRegistry.has_fluid(extra.x, extra.y, _ChannelRegistry.FLUID_WATER):
+						wet[extra] = true
 				qi = q.size()
 				break
 	return {"wet": wet, "surface_y": surface_y, "wet_count": wet.size()}
