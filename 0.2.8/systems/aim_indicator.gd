@@ -4,7 +4,7 @@ extends Node3D
 ## Tools do not draw a second block box: they emit tool_aim_changed for TargetHighlight.
 ## Melee draws a ground reticle. Ranged draws a line and an end marker.
 ## Reach for a block never passes ActionTargeting.INTERACTION_RANGE.
-## The aim direction uses the camera basis, including pitch.
+## The aim direction is the cursor column, the same one the pick uses.
 
 signal tool_aim_changed(cell: Vector2i, world_pos: Vector3, active: bool)
 
@@ -75,19 +75,11 @@ static func reach_columns(item_id: String) -> float:
 	return 0.0
 
 
-static func aim_direction(player: Node3D) -> Vector3:
-	if player == null:
-		return Vector3.FORWARD
-	var cam: Camera3D = null
-	if "camera" in player:
-		cam = player.camera as Camera3D
-	if cam == null:
-		cam = player.get_node_or_null("Camera3D") as Camera3D
-	if cam:
-		var aimed := -cam.global_transform.basis.z
-		if aimed.length_squared() > 0.0001:
-			return aimed.normalized()
-	return _ActionTargeting.attack_forward(player)
+static func aim_direction(player: Node3D, range_columns: float = -1.0) -> Vector3:
+	var reach := range_columns
+	if reach < 0.0:
+		reach = _ActionTargeting.INTERACTION_RANGE
+	return _ActionTargeting.cursor_aim(player, reach)
 
 
 func tick(item_id: String) -> void:
@@ -105,7 +97,7 @@ func tick(item_id: String) -> void:
 	var reach_c := reach_columns(item_id)
 	var reach_w := reach_c * vs
 	var origin := _chest()
-	var dir := aim_direction(_player)
+	var dir := aim_direction(_player, reach_c)
 	var feet_y := _player.global_position.y
 	var end := _endpoint(origin, dir, reach_w, feet_y)
 	if style == Style.TOOL:

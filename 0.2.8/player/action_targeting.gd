@@ -777,15 +777,45 @@ static func warp_mouse_to_column(
 		vp.warp_mouse(screen)
 
 
-## Flat XZ direction from player toward mouse/forward target column (melee swing facing).
-static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
+## Flat XZ aim shared by the pick highlight, the bow, and melee.
+## The column is the cursor cell, then the mouse ray, then camera forward.
+static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
-	var col := target_column(player, range_v)
-	var offset := Vector3(col.x - player.voxel_position.x, 0.0, col.z - player.voxel_position.z)
-	if offset.length_squared() > 0.0001:
-		return offset.normalized()
+	var col := _cursor_column(player, range_v)
+	if col != Vector3.ZERO and "voxel_position" in player:
+		var origin_x := float(player.voxel_position.x)
+		var origin_z := float(player.voxel_position.z)
+		var offset := Vector3(col.x - origin_x, 0.0, col.z - origin_z)
+		# Ignore a cell under the feet so a centered cursor keeps the camera aim.
+		if offset.length_squared() > 0.04:
+			return offset.normalized()
 	return attack_forward(player)
+
+
+static func _cursor_column(player: Node3D, range_v: float) -> Vector3:
+	if player.is_inside_tree():
+		var hl = player.get_node_or_null("TargetHighlight")
+		if hl != null and hl.has_method("get_action_column"):
+			var shared: Vector3 = hl.get_action_column()
+			if shared != Vector3.ZERO:
+				var sx := floori(shared.x)
+				var sz := floori(shared.z)
+				if _column_in_range(player, sx, sz, range_v):
+					return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
+	var world := _player_world(player)
+	var chunk_manager: ChunkManager = null
+	if player.is_inside_tree():
+		chunk_manager = player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
+	var mouse_col := _pick_column_from_mouse(player, range_v, world, chunk_manager, true)
+	if mouse_col != Vector3.ZERO:
+		return mouse_col
+	return Vector3.ZERO
+
+
+## Flat XZ direction from player toward mouse/forward target column (melee swing facing).
+static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
+	return cursor_aim(player, range_v)
 
 
 static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:

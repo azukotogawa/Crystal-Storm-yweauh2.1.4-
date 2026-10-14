@@ -372,6 +372,28 @@ func _attack_forward() -> Vector3:
 	return _ActionTargeting.attack_forward(player)
 
 
+## Cursor column, same aim the pick highlight publishes. Camera forward is the fallback.
+func _aim_forward(range_v: float) -> Vector3:
+	return _ActionTargeting.cursor_aim(player, range_v)
+
+
+func _held_aim_range() -> float:
+	var def := ItemTypes.get_def(_active_item_id())
+	if def.is_empty():
+		return _ActionTargeting.INTERACTION_RANGE
+	var category := int(def.get("category", -1))
+	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
+	if category == ItemTypes.Category.WEAPON and (kind == ItemTypes.WeaponKind.MELEE or kind == ItemTypes.WeaponKind.RANGED):
+		return float(def.get("range", 2.0))
+	return _ActionTargeting.INTERACTION_RANGE
+
+
+func _face_held() -> void:
+	if _held == null or player == null:
+		return
+	_held.face(_aim_forward(_held_aim_range()))
+
+
 func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
 	return _ActionTargeting.attack_origin_world(player, chest_ratio)
 
@@ -403,22 +425,6 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 
 	var range_w := _range_world(range_v)
 	var targets := _query_melee_facing(origin, forward, range_w)
-	# Highlight/column aim can face a different cell than the camera-forward column
-	# the sword highlight treats as the swing. Retry that facing when the arc is empty.
-	var cam_fwd := _attack_forward()
-	if targets.is_empty() and cam_fwd.length_squared() > 0.0001:
-		targets = _query_melee_facing(origin, cam_fwd, range_w)
-	if targets.is_empty() and player and player.is_inside_tree():
-		for node in player.get_tree().get_nodes_in_group("crystal_enemy"):
-			if not is_instance_valid(node) or not (node is Node3D):
-				continue
-			if node.has_method("is_combat_alive") and not node.is_combat_alive():
-				continue
-			var c: Vector3 = node.global_position
-			var d := Vector2(c.x - origin.x, c.z - origin.z).length()
-			if d <= range_w + 1.25:
-				targets.append(node)
-				break
 	for target in targets:
 		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
@@ -473,8 +479,8 @@ func _query_melee_facing(origin: Vector3, forward: Vector3, range_w: float) -> A
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
-	var forward := _attack_forward()
 	var range_v: float = float(def.get("range", 12.0))
+	var forward := _aim_forward(range_v)
 	# Aim point stays in world space (column range × voxel scale) for the swing marker.
 	var hit_pos := origin + forward * _range_world(range_v)
 	if not _fire_projectile(item_id, def, origin, forward, false):
@@ -490,7 +496,7 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 3.0))
 	var origin := _attack_origin(0.5)
 	_sfx("swing_spear", origin)
-	var forward := _attack_forward()
+	var forward := _aim_forward(range_v)
 	var range_w := _range_world(range_v)
 	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
 	var targets := _WeaponStrike.thrust_targets(
@@ -524,7 +530,7 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.2))
 	var origin := _attack_origin(0.45)
 	_sfx("swing_hammer", origin)
-	var forward := _attack_forward()
+	var forward := _aim_forward(range_v)
 	var cell := _crystal_target_cell(range_v)
 	var splash := int(def.get("splash", 1))
 	var cells := _WeaponStrike.splash_cells(cell, splash)
@@ -561,7 +567,7 @@ func _throw_bomb(item_id: String, def: Dictionary) -> bool:
 	if inventory == null or not inventory.consume_item(item_id, 1):
 		return false
 	var origin := _attack_origin(0.7)
-	var forward := _attack_forward()
+	var forward := _aim_forward(float(def.get("range", 6.0)))
 	if not _fire_projectile(item_id, def, origin, forward, true):
 		inventory.add_item(item_id, 1)
 		return false
@@ -666,7 +672,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	if Input.is_key_pressed(KEY_SHIFT) or Input.is_key_pressed(KEY_CTRL):
 		_try_channel_water_at_target(range_v)
 		return
-	var forward := _attack_forward()
+	var forward := _aim_forward(float(def.get("range", 2.0)))
 	var crystal_cell := _crystal_target_cell(range_v)
 	if _try_break_crystal_mass(crystal_cell, def):
 		if crystal_manager:
@@ -997,8 +1003,7 @@ func _arm_clock(item_id: String, def: Dictionary, mode: int) -> void:
 	_clock_damage_elapsed = -1.0
 	if _held:
 		_held.apply_playback(_playback)
-		if player:
-			_held.face(_attack_forward())
+		_face_held()
 	if _playback.impact_time() <= 0.0:
 		_tick_animation_clock(0.0)
 
@@ -1053,8 +1058,7 @@ func _sync_impact_pose(item_id: String) -> void:
 	_clock_damage_elapsed = -1.0
 	if _held:
 		_held.apply_playback(_playback)
-		if player:
-			_held.face(_attack_forward())
+		_face_held()
 
 
 func _present_held(_delta: float) -> void:
@@ -1065,8 +1069,7 @@ func _present_held(_delta: float) -> void:
 	if slot != null:
 		id = str(slot.id)
 	if _held:
-		if player:
-			_held.face(_attack_forward())
+		_face_held()
 		if _playback == null and id != _shown_item:
 			_shown_item = id
 			_held.show_item(id)
