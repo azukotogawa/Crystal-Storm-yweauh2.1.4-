@@ -107,6 +107,7 @@ SUITES=(
 	"res://scripts/verify_item_icons.gd"
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_swim.gd"
+	"res://scripts/verify_move_feel.gd"
 	"res://scripts/verify_visual_perf.gd"
 	"res://scripts/verify_crystal_spread_limits.gd"
 	"res://scripts/verify_crystal_organic_spread.gd"
