@@ -14,8 +14,10 @@ global uniform float cutaway_radius_near;
 global uniform float cutaway_feet_clear;
 global uniform float cutaway_past;
 
-uniform sampler2D texture_atlas : source_color, filter_nearest;
+uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
+
+#include "res://shaders/atlas_sample.gdshaderinc"
 
 varying flat vec4 instance_data;
 
@@ -54,12 +56,8 @@ void fragment() {
 	}
 	float col = floor(instance_data.r * 255.0 + 0.5);
 	float row = floor(instance_data.g * 255.0 + 0.5);
-	vec2 tile_size = 1.0 / atlas_grid;
-	vec2 padding = vec2(1.0 / 32.0);
-	vec2 repeated_uv = fract(max(UV, vec2(0.0)));
-	vec2 local_uv = mix(padding, vec2(1.0) - padding, repeated_uv);
-	vec2 atlas_uv = vec2(col, row) / atlas_grid;
-	vec4 tex_color = texture(texture_atlas, atlas_uv + (local_uv * tile_size));
+	vec2 repeated_uv = max(UV, vec2(0.0));
+	vec4 tex_color = cs_sample_atlas(texture_atlas, atlas_grid, vec2(col, row), repeated_uv);
 	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.04) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}

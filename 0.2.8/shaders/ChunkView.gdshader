@@ -12,8 +12,10 @@ global uniform float cutaway_radius_near;
 global uniform float cutaway_feet_clear;
 global uniform float cutaway_past;
 
-uniform sampler2D texture_atlas : source_color, filter_nearest;	
+uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
+
+#include "res://shaders/atlas_sample.gdshaderinc"
 
 varying flat vec4 instance_data;
 
@@ -95,24 +97,9 @@ void fragment() {
     float col = floor(instance_data.r * 255.0 + 0.5);
     float row = floor(instance_data.g * 255.0 + 0.5);
 
-    // Force texture coordinates to loop per individual voxel step block instead of stretching
-    vec2 repeated_uv = fract(UV * voxel_tiling);
-
-    vec2 tile_size = 1.0 / atlas_grid;
-    
-    // CHANGED: Wrapped padding in a vec2 so the mix() math works correctly
-    vec2 padding = vec2(1.0 / 32.0);  
-
-    // Apply your pixel padding rule inside the specific tile segment limits
-    vec2 local_uv = mix(
-        padding,
-        vec2(1.0) - padding, // CHANGED: Changed 1.0 to vec2(1.0) to match types
-        repeated_uv
-    );
-    
-    // Map into absolute texture coordinates on the layout sheet
-    vec2 atlas_uv = vec2(col, row) / atlas_grid;
-    vec4 tex_color = texture(texture_atlas, atlas_uv + (local_uv * tile_size));
+    // One tile per voxel on a greedy quad. Sampling is mip 0, inner texel centers.
+    vec2 repeated_uv = UV * voxel_tiling;
+    vec4 tex_color = cs_sample_atlas(texture_atlas, atlas_grid, vec2(col, row), repeated_uv);
 
     if (tex_color.a < 0.1) discard;
 

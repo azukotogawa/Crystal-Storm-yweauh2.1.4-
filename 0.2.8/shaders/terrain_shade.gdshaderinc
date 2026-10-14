@@ -42,10 +42,9 @@ vec3 cs_finish(vec3 albedo, vec3 world_n, vec2 repeated_uv, vec3 world_pos, floa
 	float detail = clamp(terrain_detail, 0.0, 1.0);
 	float noise = mix(0.94, 1.06, cs_hash(floor(world_pos.xz * 0.5)));
 	col *= mix(1.0, noise, detail);
-	vec2 edge_uv = fract(repeated_uv);
-	float edge = min(min(edge_uv.x, edge_uv.y), min(1.0 - edge_uv.x, 1.0 - edge_uv.y));
-	float edge_dark = mix(0.82, 1.0, smoothstep(0.0, 0.18, edge));
-	col *= mix(1.0, edge_dark, detail);
+	// Do not darken tile borders. A per-block edge multiply reads as a grid
+	// on every face. repeated_uv stays in the signature for callers.
+	col *= 1.0 + min(repeated_uv.x, repeated_uv.y) * 0.0;
 	if (crystal > 0.5) {
 		vec3 glow = albedo * vec3(1.28, 0.78, 1.48) + vec3(0.10, 0.02, 0.14);
 		col = mix(col, glow, 0.70 * detail);
