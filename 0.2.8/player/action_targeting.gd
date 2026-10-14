@@ -830,7 +830,8 @@ static func target_cell(player: Node3D, range_v: float = 2.0) -> Vector2i:
 	return cell_column(target_column(player, range_v))
 
 
-## Resolve hotbar/tool mode. When force_build (simulate_interact / RMB held), prefer build if materials.
+## Hotbar mode. RMB previews build when the bag has stone or wood.
+## A right-click ability (herb, bomb, armor) never switches into build.
 static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) -> StringName:
 	if player == null:
 		return &"none"
@@ -839,25 +840,26 @@ static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) 
 	if inv != null and inv.has_method("count_item"):
 		has_build_mat = int(inv.count_item("stone")) > 0 or int(inv.count_item("wood")) > 0
 	var mode: StringName = &"none"
+	var held_id := ""
 	var weapon := player.get_node_or_null("WeaponController")
 	if weapon and weapon.has_method("get_active_item"):
 		var slot = weapon.get_active_item()
 		if slot != null:
-			var def := _ItemTypes.get_def(str(slot.id))
+			held_id = str(slot.id)
+			var def := _ItemTypes.get_def(held_id)
 			if not def.is_empty():
 				var category := int(def.get("category", -1))
 				var kind := int(def.get("weapon_kind", _ItemTypes.WeaponKind.MELEE))
-				if category == _ItemTypes.Category.TOOL and kind == _ItemTypes.WeaponKind.DIG:
+				if _ItemTypes.breaks_blocks(held_id):
 					mode = &"dig"
 				elif category == _ItemTypes.Category.WEAPON:
 					mode = &"attack" if kind == _ItemTypes.WeaponKind.MELEE else &"ranged"
-				elif str(slot.id) == "stone" and int(slot.get("count", 0)) > 0:
+				elif _ItemTypes.is_placeable_block(held_id) and int(slot.get("count", 0)) > 0:
 					mode = &"build"
-				elif str(slot.id) == "wood" and int(slot.get("count", 0)) > 0:
-					mode = &"build"
+	# Right-click use wins over placement, even when the bag holds stone.
+	if _ItemTypes.has_right_click_ability(held_id):
+		return mode
 	if force_build and has_build_mat:
-		return &"build"
-	if mode == &"none" and force_build and has_build_mat:
 		return &"build"
 	return mode
 

@@ -247,8 +247,8 @@ func _process(delta: float) -> void:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 
 	var range_v := _active_range()
-	# Hold RMB / R to preview build even with sword or pick selected (build_place path).
-	var build_held := Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
+	# build_place extends reach unless the held item has a right-click use.
+	var build_held := _build_preview_held()
 	if build_held:
 		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
 
@@ -381,6 +381,20 @@ func pulse_place_success() -> void:
 ## Column dig/build must use — matches the visible cursor (column-space).
 func get_action_column() -> Vector3:
 	return _action_column
+
+
+func _build_preview_held() -> bool:
+	if not (Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")):
+		return false
+	if player == null:
+		return false
+	var weapon := player.get_node_or_null("WeaponController")
+	if weapon == null or not weapon.has_method("get_active_item"):
+		return true
+	var slot = weapon.get_active_item()
+	if slot == null:
+		return true
+	return not _ItemTypes.has_right_click_ability(str(slot.id))
 
 
 func _aim_is_static(range_v: float, build_held: bool) -> bool:

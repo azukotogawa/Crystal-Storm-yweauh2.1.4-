@@ -190,7 +190,7 @@ func _build_steps() -> PackedStringArray:
 		"Move with %s. The camera is isometric, so forward follows the view." % move,
 		"Rotate the camera with %s. Page Up and Page Down tilt the view. Drag the middle mouse to tilt too. V frees you if you are stuck in the ground." % yaw,
 		"Attack the crystal with %s. Weapons hit the crystal and creatures. They do not dig." % attack,
-		"Dig and build with the pick. %s digs or removes. %s places a wall. Shift places a gate. Ctrl places a bridge." % [attack, place],
+		"Only the pick breaks blocks (%s). %s places, except when the held item has its own right-click use." % [attack, place],
 		"The spawn arrow on the objective HUD points at the nearest crystal heart. Follow it when you are ready to strike.",
 		"Win by defeating the Origin Warden, or by destroying every crystal heart. The origin heart stays sealed until the lesser hearts and the warden are dealt with.",
 	])

@@ -1,7 +1,8 @@
 class_name PlaceableCatalog
 extends RefCounted
 ## Place-tool palette. Hotbar still holds materials/weapons; Tab cycles this list.
-## RMB places the selected id. LMB removes using the existing subtract contract.
+## RMB places the selected id unless the held item has a right-click ability.
+## Only dig tools break blocks.
 
 const IDS: PackedStringArray = [
 	"fill",
