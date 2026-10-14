@@ -23,14 +23,29 @@ var _hotbar_index := -1
 func _ready() -> void:
 	visible = false
 	_SlotDrag.set_modal_open(false, self)
+	# Player._ready creates the inventory after this panel has entered the
+	# tree. Connecting only from _enter_tree never saw stack changes, so a
+	# drag updated the data and left the slot labels where they were.
+	_bind_inventory()
+	_refresh()
 
 func _enter_tree() -> void:
 	_ThemeBuilder.apply(self)
 	_player = get_tree().get_first_node_in_group("player")
-	if _player and _player.inventory:
-		_player.inventory.changed.connect(_refresh)
+	_bind_inventory()
 	_build_ui()
 	call_deferred("_bind_registry")
+
+
+func _bind_inventory() -> void:
+	if _player == null or not is_instance_valid(_player):
+		var tree := get_tree()
+		if tree:
+			_player = tree.get_first_node_in_group("player")
+	if _player == null or _player.inventory == null:
+		return
+	if not _player.inventory.changed.is_connected(_refresh):
+		_player.inventory.changed.connect(_refresh)
 
 
 func _bind_registry() -> void:
