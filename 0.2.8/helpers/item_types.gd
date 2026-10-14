@@ -255,6 +255,43 @@ static func is_tool(item_id: String) -> bool:
 	return not def.is_empty() and int(def.get("category", -1)) == Category.TOOL
 
 
+## Stone and wood, plus any def that sets placeable_block. Not weapons or tools.
+const PLACEABLE_BLOCK_IDS: PackedStringArray = ["stone", "wood"]
+
+
+static func is_placeable_block(item_id: String) -> bool:
+	if item_id in PLACEABLE_BLOCK_IDS:
+		return true
+	return bool(get_def(item_id).get("placeable_block", false))
+
+
+## Pickaxe and other dig tools. Combat weapons, including the crystal hammer, do not.
+static func breaks_blocks(item_id: String) -> bool:
+	var def := get_def(item_id)
+	if def.is_empty():
+		return false
+	if bool(def.get("breaks_blocks", false)):
+		return true
+	if int(def.get("weapon_kind", -1)) != WeaponKind.DIG:
+		return false
+	if int(def.get("category", -1)) == Category.TOOL:
+		return true
+	return int(def.get("dig_radius", 0)) > 0
+
+
+## Right-click use that must not also place a block. Placeable blocks are not abilities.
+static func has_right_click_ability(item_id: String) -> bool:
+	var def := get_def(item_id)
+	if def.is_empty() or is_placeable_block(item_id):
+		return false
+	if bool(def.get("right_click", false)) or str(def.get("alt_use", "")) != "":
+		return true
+	var category := int(def.get("category", -1))
+	if category == Category.CONSUMABLE or category == Category.ARMOR:
+		return true
+	return bool(def.get("throwable", false))
+
+
 static func weapon_kind(item_id: String) -> int:
 	return int(get_def(item_id).get("weapon_kind", WeaponKind.MELEE))
 
