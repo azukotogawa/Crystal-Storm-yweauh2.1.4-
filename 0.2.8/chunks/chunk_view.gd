@@ -10,6 +10,7 @@ const _SURFACE_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkSurfac
 const _RAMP_SHADER: Shader = preload("res://shaders/ChunkRamp.gdshader")
 const _ChunkSurfaceMeshBuilder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
+const _WaterSurface = preload("res://helpers/water_surface.gd")
 const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
 
 @export var chunk_material: ShaderMaterial
@@ -337,8 +338,12 @@ func _emit_surface_mesh() -> void:
 	if prebuilt_mesh != null:
 		var tu := Time.get_ticks_usec()
 		mesh_instance.mesh = prebuilt_mesh
+		_WaterSurface.bind_instance(mesh_instance)
+		_emit_used_names["water_surface_mesh"] = true
 		_mesh_phase_record("gpu_upload", Time.get_ticks_usec() - tu)
 		return
+	# Deferred upload still binds water when the drain builds the mesh.
+	_emit_used_names["water_surface_mesh"] = true
 
 	var cache: Dictionary = mesh_data.get("surface_cache", {})
 	if not cache.is_empty():
@@ -568,6 +573,7 @@ static func drain_pending_surface_uploads(max_count: int, budget_us: int) -> int
 				)
 			else:
 				_ChunkSurfaceMeshBuilder.build_array_mesh_into(item.get("built", {}), mesh)
+			_WaterSurface.bind_instance(mesh_instance)
 			var du := Time.get_ticks_usec() - tu
 			upload_acc += du
 			var SPP = load("res://systems/stream_phase_profiler.gd")

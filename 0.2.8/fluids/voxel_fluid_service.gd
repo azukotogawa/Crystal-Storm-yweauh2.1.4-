@@ -12,6 +12,7 @@ const _FluidRegistry = preload("res://helpers/fluid_registry.gd")
 const _VoxelFluidEngine = preload("res://fluids/voxel_fluid_engine.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _WaterSurface = preload("res://helpers/water_surface.gd")
 
 signal channel_fluid_changed(pos: Vector2i)
 
@@ -168,6 +169,8 @@ func _process(delta: float) -> void:
 	var t_proc := Time.get_ticks_usec()
 	if _water_engine == null:
 		return
+	# Settled water sleeps below. The surface still has to move.
+	_WaterSurface.advance(delta)
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("voxel_fluid")
