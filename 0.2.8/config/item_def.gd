@@ -133,4 +133,8 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.dig_radius = int(data.get("dig_radius", 1 if d.weapon_kind == WeaponKind.DIG else 0))
 	d.damage_reduction = float(data.get("damage_reduction", 0.0))
 	d.move_speed_mult = float(data.get("move_speed_mult", 1.0))
+	# Authored pose clock. Defaults stay -1 / 0 so ItemAnim can still derive them.
+	d.anim_kind = int(data.get("anim_kind", -1))
+	d.anim_duration = float(data.get("anim_duration", 0.0))
+	d.impact_ratio = float(data.get("impact_ratio", -1.0))
 	return d
