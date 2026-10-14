@@ -50,6 +50,7 @@ func _init() -> void:
 		"res://ui/inventory_panel.gd",
 		"res://ui/slot_drag.gd",
 		"res://scripts/verify_inventory_drag.gd",
+		"res://scripts/verify_player_health_bar.gd",
 		"res://systems/config_service.gd",
 		"res://systems/config_json_io.gd",
 	]
