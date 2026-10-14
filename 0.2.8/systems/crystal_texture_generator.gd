@@ -187,7 +187,11 @@ func generate_game_visual_bundle() -> Dictionary:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
 	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar", &"gate", &"bridge"]:
 		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
-	for item_id in ["wooden_sword", "stone_pick", "shortbow", "wood", "stone", "herb", "crystal_shard"]:
+	# Tools and weapons are 64 so the 48px slots do not upscale them.
+	# A smaller file is ignored rather than stretched up to this size.
+	for item_id in ["wooden_sword", "spear", "stone_pick", "crystal_hammer", "shortbow", "sling"]:
+		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id), 64)
+	for item_id in ["wood", "stone", "herb", "crystal_shard"]:
 		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id))
 	return bundle
 
@@ -204,35 +208,51 @@ func generate_item_icon(item_id: StringName, size: int = 32) -> Texture2D:
 		return icon
 	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
-	var px := maxi(size / 8, 2)
+	var wood := Color(0.52, 0.34, 0.18)
+	var wood_dk := Color(0.36, 0.23, 0.13)
+	var steel := Color(0.78, 0.72, 0.55)
+	var stone := Color(0.55, 0.55, 0.58)
+	var stone_dk := Color(0.38, 0.38, 0.42)
+	var crystal := Color(0.55, 0.22, 0.82)
 	match str(item_id):
 		"wooden_sword":
-			_paint_voxel_rect(image, 10, 6, 22, 8, Color(0.62, 0.42, 0.22))
-			_paint_voxel_rect(image, 18, 4, 24, 22, Color(0.78, 0.72, 0.55))
+			_paint_icon_rect(image, 18, 4, 22, 20, steel, size)
+			_paint_icon_rect(image, 12, 18, 26, 22, wood, size)
+			_paint_icon_rect(image, 18, 22, 22, 28, wood_dk, size)
+		"spear":
+			_paint_icon_rect(image, 14, 2, 18, 8, steel, size)
+			_paint_icon_rect(image, 15, 8, 17, 28, wood, size)
 		"stone_pick":
-			_paint_voxel_rect(image, 8, 8, 24, 10, Color(0.55, 0.55, 0.58))
-			_paint_voxel_rect(image, 14, 4, 20, 24, Color(0.68, 0.68, 0.72))
-			_paint_voxel_rect(image, 20, 2, 28, 10, Color(0.48, 0.48, 0.52))
+			_paint_icon_rect(image, 6, 6, 26, 12, stone, size)
+			_paint_icon_rect(image, 20, 4, 26, 12, stone_dk, size)
+			_paint_icon_rect(image, 14, 10, 18, 28, wood, size)
+		"crystal_hammer":
+			_paint_icon_rect(image, 6, 6, 26, 14, crystal, size)
+			_paint_icon_rect(image, 14, 12, 18, 28, wood_dk, size)
 		"shortbow":
-			_paint_voxel_rect(image, 6, 14, 10, 18, Color(0.55, 0.36, 0.18))
-			_paint_voxel_rect(image, 10, 8, 26, 12, Color(0.72, 0.52, 0.28))
-			_paint_voxel_rect(image, 22, 14, 26, 18, Color(0.55, 0.36, 0.18))
+			_paint_icon_rect(image, 8, 6, 14, 10, wood, size)
+			_paint_icon_rect(image, 6, 10, 12, 22, wood_dk, size)
+			_paint_icon_rect(image, 8, 22, 14, 26, wood, size)
+			_paint_icon_rect(image, 14, 8, 16, 24, steel, size)
+		"sling":
+			_paint_icon_rect(image, 10, 6, 14, 26, wood, size)
+			_paint_icon_rect(image, 14, 14, 22, 20, stone, size)
 		"wood":
-			_paint_voxel_rect(image, 8, 10, 24, 22, Color(0.52, 0.34, 0.18))
-			_paint_voxel_rect(image, 10, 8, 22, 12, Color(0.62, 0.42, 0.22))
+			_paint_icon_rect(image, 8, 10, 24, 22, wood, size)
+			_paint_icon_rect(image, 10, 8, 22, 12, wood.lightened(0.12), size)
 		"stone":
-			_paint_voxel_rect(image, 8, 10, 24, 22, Color(0.5, 0.52, 0.55))
-			_paint_voxel_rect(image, 10, 8, 22, 12, Color(0.62, 0.64, 0.68))
+			_paint_icon_rect(image, 8, 10, 24, 22, stone, size)
+			_paint_icon_rect(image, 10, 8, 22, 12, stone.lightened(0.12), size)
 		"herb":
-			_paint_voxel_rect(image, 14, 18, 18, 24, Color(0.32, 0.58, 0.28))
-			_paint_voxel_rect(image, 10, 8, 14, 18, Color(0.42, 0.72, 0.35))
-			_paint_voxel_rect(image, 18, 10, 22, 20, Color(0.38, 0.68, 0.32))
+			_paint_icon_rect(image, 14, 18, 18, 24, Color(0.32, 0.58, 0.28), size)
+			_paint_icon_rect(image, 10, 8, 14, 18, Color(0.42, 0.72, 0.35), size)
+			_paint_icon_rect(image, 18, 10, 22, 20, Color(0.38, 0.68, 0.32), size)
 		"crystal_shard":
-			_paint_voxel_rect(image, 12, 6, 20, 14, Color(0.72, 0.38, 0.95))
-			_paint_voxel_rect(image, 8, 14, 24, 22, Color(0.55, 0.22, 0.82))
-			_paint_voxel_rect(image, 14, 20, 18, 26, Color(0.85, 0.55, 1.0))
+			_paint_icon_rect(image, 12, 6, 20, 14, crystal.lightened(0.15), size)
+			_paint_icon_rect(image, 8, 14, 24, 22, crystal, size)
+			_paint_icon_rect(image, 14, 20, 18, 26, Color(0.85, 0.55, 1.0), size)
 		_:
-			_paint_voxel_rect(image, 10, 10, 22, 22, Color(0.7, 0.7, 0.75))
+			_paint_icon_rect(image, 10, 10, 22, 22, Color(0.7, 0.7, 0.75), size)
 	return ImageTexture.create_from_image(image)
 
 
@@ -265,10 +285,39 @@ func _load_authored_image(folder: String, variant_id: String, size: int) -> Imag
 	if image == null or image.is_empty():
 		return null
 	_last_authored_path = str(tex.get_meta("cs_art_path", path))
+	# A smaller file is the low-res icon. Stretching it up still looks soft
+	# in the slot, so the caller falls through to the native-size paint.
+	if size > 0 and (image.get_width() < size or image.get_height() < size):
+		return null
 	if size > 0 and (image.get_width() != size or image.get_height() != size):
 		image = image.duplicate()
 		image.resize(size, size, Image.INTERPOLATE_NEAREST)
 	return image
+
+
+## 32-grid rect, scaled onto `size`, with a 1px dark edge so it is not a blown-up block.
+func _paint_icon_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color, size: int) -> void:
+	var s := float(size) / 32.0
+	var a := int(round(float(x0) * s))
+	var b := int(round(float(y0) * s))
+	var c := int(round(float(x1) * s))
+	var d := int(round(float(y1) * s))
+	_paint_voxel_rect(img, a, b, c, d, color)
+	var edge := Color(color.r * 0.35, color.g * 0.35, color.b * 0.35, color.a)
+	for x in range(a, c):
+		if x >= 0 and x < img.get_width():
+			if b >= 0 and b < img.get_height():
+				img.set_pixel(x, b, edge)
+			var yb := d - 1
+			if yb >= 0 and yb < img.get_height():
+				img.set_pixel(x, yb, edge)
+	for y in range(b, d):
+		if y >= 0 and y < img.get_height():
+			if a >= 0 and a < img.get_width():
+				img.set_pixel(a, y, edge)
+			var xb := c - 1
+			if xb >= 0 and xb < img.get_width():
+				img.set_pixel(xb, y, edge)
 
 
 func _paint_voxel_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color) -> void:

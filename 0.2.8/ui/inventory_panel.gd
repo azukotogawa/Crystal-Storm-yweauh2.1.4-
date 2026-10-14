@@ -136,6 +136,7 @@ func _build_ui() -> void:
 	for i in _Inventory.TOTAL_SLOTS:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(48, 40)
+		btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		btn.focus_mode = Control.FOCUS_NONE
 		btn.mouse_entered.connect(_on_slot_hover.bind(i))
 		btn.mouse_exited.connect(_on_slot_unhover)

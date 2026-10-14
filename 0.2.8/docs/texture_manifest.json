@@ -483,15 +483,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/shortbow.png",
 			"scale": 1.0
@@ -523,15 +523,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/stone_pick.png",
 			"scale": 1.0
@@ -565,15 +565,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/wooden_sword.png",
 			"scale": 1.0

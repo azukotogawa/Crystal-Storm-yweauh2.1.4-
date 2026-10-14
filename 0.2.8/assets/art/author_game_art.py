@@ -180,20 +180,55 @@ def vegetation() -> None:
         save(figure(cells, 40), "vegetation", name)
 
 
-def items() -> None:
+def weapon_icons() -> None:
+    """64px tool and weapon icons. 4px bricks keep a 1px outline, so the
+    hotbar is not a stretched 32px file. Materials stay on items()."""
     specs = {
         "wooden_sword": [
-            (5, 1, WHITE), (5, 2, WHITE), (4, 3, WHITE),
-            (3, 4, WOOD), (2, 5, WOOD_DK), (1, 6, WOOD),
+            (8, 1, WHITE), (8, 2, WHITE), (7, 2, WHITE),
+            (7, 3, WHITE), (6, 3, WHITE),
+            (6, 4, WHITE), (5, 4, WHITE),
+            (5, 5, WHITE), (4, 5, STONE),
+            (3, 6, WOOD), (4, 6, WOOD), (5, 6, WOOD_DK),
+            (3, 7, WOOD_DK), (3, 8, WOOD), (2, 9, GOLD),
+        ],
+        "spear": [
+            (7, 1, STONE), (7, 2, WHITE), (6, 2, STONE_DK),
+            (6, 3, WOOD), (6, 4, WOOD_DK), (6, 5, WOOD),
+            (6, 6, WOOD), (6, 7, WOOD_DK), (6, 8, WOOD),
+            (6, 9, WOOD), (6, 10, WOOD_DK), (6, 11, WOOD),
         ],
         "stone_pick": [
-            (1, 1, STONE), (2, 1, STONE_DK), (3, 1, STONE),
-            (4, 2, STONE), (3, 3, WOOD), (2, 4, WOOD), (1, 5, WOOD_DK),
+            (2, 2, STONE), (3, 2, STONE_DK), (4, 2, STONE), (5, 2, STONE), (6, 2, STONE_DK),
+            (6, 3, STONE), (5, 4, WOOD), (4, 5, WOOD),
+            (3, 6, WOOD_DK), (2, 7, WOOD), (1, 8, WOOD_DK),
+        ],
+        "crystal_hammer": [
+            (2, 2, PURPLE), (3, 2, PURPLE_DK), (4, 2, PURPLE), (5, 2, WHITE), (6, 2, PURPLE),
+            (2, 3, PURPLE_DK), (3, 3, PURPLE), (4, 3, PURPLE), (5, 3, PURPLE), (6, 3, PURPLE_DK),
+            (4, 4, WOOD), (4, 5, WOOD_DK), (4, 6, WOOD), (4, 7, WOOD), (4, 8, WOOD_DK),
         ],
         "shortbow": [
-            (2, 1, WOOD), (1, 2, WOOD_DK), (1, 3, WOOD), (1, 4, WOOD_DK), (2, 5, WOOD),
-            (3, 2, WHITE), (3, 3, WHITE), (3, 4, WHITE),
+            (3, 1, WOOD), (2, 2, WOOD_DK), (2, 3, WOOD), (2, 4, WOOD),
+            (2, 5, WOOD_DK), (2, 6, WOOD), (2, 7, WOOD_DK), (3, 8, WOOD),
+            (4, 2, WHITE), (4, 3, WHITE), (4, 4, WHITE), (4, 5, WHITE), (4, 6, WHITE), (4, 7, WHITE),
         ],
+        "sling": [
+            (4, 1, WOOD), (3, 2, WOOD_DK), (5, 2, WOOD),
+            (4, 3, LEAF), (3, 4, WOOD), (4, 4, STONE), (5, 4, WOOD),
+            (4, 5, WOOD_DK), (4, 6, WOOD), (4, 7, WOOD_DK),
+        ],
+    }
+    batch = ROOT / "assets" / "art_batch1" / "items"
+    batch.mkdir(parents=True, exist_ok=True)
+    for name, cells in specs.items():
+        img = figure(cells, 64)
+        save(img, "items", name)
+        img.save(batch / f"{name}.png")
+
+
+def items() -> None:
+    specs = {
         "wood": [
             (2, 2, WOOD), (3, 2, WOOD_DK), (4, 2, WOOD),
             (2, 3, WOOD_DK), (3, 3, WOOD), (4, 3, WOOD_DK),
@@ -215,6 +250,7 @@ def items() -> None:
     }
     for name, cells in specs.items():
         save(figure(cells, 32), "items", name)
+    weapon_icons()
 
 
 def particles() -> None:
@@ -296,4 +332,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "weapons":
+        weapon_icons()
+        print(f"Wrote 64px weapon icons under {ART / 'items'}")
+    else:
+        main()
