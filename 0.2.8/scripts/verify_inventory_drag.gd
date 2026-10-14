@@ -41,6 +41,25 @@ func _run() -> void:
 		quit(0)
 
 
+func _player_ready_script() -> GDScript:
+	var scr := GDScript.new()
+	scr.source_code = """extends Node
+var inventory
+func _ready() -> void:
+	add_to_group(\"player\")
+	var Inv = load(\"res://inventory/inventory.gd\")
+	inventory = Inv.new()
+	inventory.set_slot(0, \"wooden_sword\", 1)
+	inventory.set_slot(2, \"stone_pick\", 1)
+	inventory.set_slot(8, \"spear\", 1)
+	inventory.set_slot(9, \"wood\", 6)
+"""
+	var err := scr.reload()
+	if err != OK:
+		_fail("live player script %s" % err)
+	return scr
+
+
 func _make_player() -> Node:
 	var scr := GDScript.new()
 	scr.source_code = "extends Node\nvar inventory\n"
@@ -95,17 +114,24 @@ func _check_plain_slots(inv) -> void:
 	await process_frame
 
 
-func _check_live_panels(inv) -> void:
-	for i in _Inventory.TOTAL_SLOTS:
-		inv.set_slot(i, "", 0)
-	inv.set_slot(0, "wooden_sword", 1)
-	inv.set_slot(2, "stone_pick", 1)
-	inv.set_slot(8, "spear", 1)
-	inv.set_slot(9, "wood", 6)
-	# Same sibling order as scenes/main.tscn: overlay, hotbar, bag.
+func _check_live_panels(_inv_unused) -> void:
+	# Same order as main.tscn. The bag enters the tree while Player._ready
+	# has not created the inventory yet. A connect that only runs in
+	# enter_tree never sees later stack changes, so the buttons keep the
+	# labels from when the bag was opened.
+	var previous: Node = get_first_node_in_group("player")
+	if previous:
+		previous.queue_free()
+		await process_frame
+	var host := Node.new()
+	host.name = "LiveHost"
+	var player := Node.new()
+	player.name = "Player"
+	player.set_script(_player_ready_script())
+	host.add_child(player)
 	var layer := CanvasLayer.new()
 	layer.layer = 10
-	root.add_child(layer)
+	host.add_child(layer)
 	var overlay: Control = _OverlayScene.instantiate()
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	layer.add_child(overlay)
@@ -117,8 +143,14 @@ func _check_live_panels(inv) -> void:
 	bag.set_script(_InventoryPanel)
 	layer.add_child(hotbar)
 	layer.add_child(bag)
+	player.add_to_group("player")
+	root.add_child(host)
 	await process_frame
 	await process_frame
+	var inv = player.inventory
+	if inv == null:
+		_fail("player _ready did not create inventory")
+		return
 	await _press_key(KEY_I)
 	await process_frame
 	if not bag.visible:
@@ -138,10 +170,14 @@ func _check_live_panels(inv) -> void:
 	await _drag(from, to)
 	if _id(inv, 0) != "stone_pick" or _id(inv, 2) != "wooden_sword":
 		_fail("bag drag got %s / %s" % [_id(inv, 0), _id(inv, 2)])
+	if _tip(from) != "Stone Pick" or _tip(to) != "Wooden Sword":
+		_fail("bag drag labels %s / %s" % [_tip(from), _tip(to)])
 	var bag_spear: Control = grid.get_child(8)
 	await _click(bag_spear, false)
 	if _id(inv, 1) != "spear" or _id(inv, 8) != "":
 		_fail("bag click got hotbar %s bag %s" % [_id(inv, 1), _id(inv, 8)])
+	if _tip(bag_spear) != "":
+		_fail("bag click left spear label %s" % _tip(bag_spear))
 	var bar_slots: Array = hotbar.get("_slot_nodes")
 	if bar_slots.size() < 3:
 		_fail("hotbar slots missing")
@@ -161,9 +197,26 @@ func _check_live_panels(inv) -> void:
 	if _id(inv, 3) != "wood" or _count(inv, 3) != 6 or _id(inv, 9) != "":
 		_fail("bag to hotbar got %s x%s / bag %s" % [_id(inv, 3), _count(inv, 3), _id(inv, 9)])
 		return
+	if _tip(bag_wood) != "" or _slot_text(bag_wood) != "":
+		_fail("bag wood label stayed %s %s" % [_tip(bag_wood), _slot_text(bag_wood)])
+	var bar_labels: Array = hotbar.get("_label_nodes")
+	if str(bar_labels[3].text) != "x6":
+		_fail("hotbar wood label %s" % bar_labels[3].text)
 	await _drag(bar_slots[1], grid.get_child(8))
 	if _id(inv, 8) != "spear" or _id(inv, 1) != "":
 		_fail("hotbar to bag got bag %s hotbar %s" % [_id(inv, 8), _id(inv, 1)])
+	if _tip(grid.get_child(8)) != "Spear":
+		_fail("hotbar to bag label %s" % _tip(grid.get_child(8)))
+
+
+func _tip(control: Control) -> String:
+	return str(control.tooltip_text)
+
+
+func _slot_text(control: Control) -> String:
+	if control is Button:
+		return (control as Button).text
+	return ""
 
 
 func _note_click(index: int) -> void:
