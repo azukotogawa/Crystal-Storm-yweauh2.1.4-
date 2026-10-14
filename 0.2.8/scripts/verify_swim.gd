@@ -55,10 +55,25 @@ func _run() -> void:
 	for x in range(70, 77):
 		_TerrainEdits.set_build_tile_only(x, 70, _VoxelTypes.OCEAN)
 
+	# Shore: the waterline is the pad top. The bank is one layer above it.
+	# The walled trench never asks the body to walk out, so a chest-deep
+	# step (rise measured from the float, not the waterline) still passes.
+	var shore: float = PAD_SURFACE + layer
+	_pad(world, 80, 90, 28, 32)
+	for x in range(82, 86):
+		_drop_layers(x, 30, 3)
+		_ChannelRegistry.register_channel(x, 30, Vector2i.ZERO, 0.85)
+		_ChannelRegistry.set_runtime_surface_y(x, 30, shore)
+	for x in range(82, 86):
+		_drop_layers(x, 29, -4)
+		_drop_layers(x, 31, -4)
+	_set_surface(world, 86, 30, PAD_SURFACE + layer)
+
 	_test_sample(world, layer, waterline)
 	_test_entities(world, layer, waterline)
 	_test_player(world, layer, waterline)
 	_test_player_input(world, layer, waterline)
+	_test_player_shore(world, layer, shore)
 	_test_callers()
 	world.free()
 
@@ -330,6 +345,103 @@ func _test_player_input(world, layer: float, waterline: float) -> void:
 		_fail("jump in water left the swim state %s" % player.current_state)
 	else:
 		print("OK jump swims up %.2f -> %.2f (line %.2f)" % [y0, ymax, waterline])
+	player.free()
+	chunks.free()
+
+
+func _shore_player(world) -> Player:
+	var probe := _VoxelFloorProbe.new()
+	var chunks := ChunkManager.new()
+	chunks.world = world
+	probe.configure(world, chunks, null)
+	var player := _SwimDriver.new()
+	var mesh := MeshInstance3D.new()
+	mesh.name = "MeshInstance3D"
+	player.add_child(mesh)
+	player.world = world
+	player.chunk_manager = chunks
+	player._floor_probe = probe
+	player.world_ready = true
+	player.locked_yaw_degrees = 0.0
+	player.set_physics_process(false)
+	player.set_process(false)
+	root.add_child(player)
+	player.set_meta("shore_chunks", chunks)
+	return player
+
+
+func _tick_player(player: Player, frames: int) -> void:
+	for _i in frames:
+		player._process(1.0 / 60.0)
+		player._physics_process(1.0 / 60.0)
+
+
+## Idle in the pool must rise off the bed. The same move key must cover less
+## ground than on the pad. Walking at the lip must stand on the bank.
+func _test_player_shore(world, layer: float, shore: float) -> void:
+	var player := _shore_player(world)
+	var probe: _VoxelFloorProbe = player._floor_probe
+	var bed := probe.sample_walkable_feet(82.5, 30.5)
+	player.voxel_position = Vector3(82.5, bed, 30.5)
+	player.current_state = player.State.IDLE
+	_tick_player(player, 48)
+	var float_y := player.voxel_position.y
+	if float_y < bed + layer * 0.8:
+		_fail("idle in the pool stayed on the bed y=%.2f" % float_y)
+	elif float_y > shore - layer * 0.15:
+		_fail("idle buoyancy climbed the waterline y=%.2f line=%.2f" % [float_y, shore])
+	else:
+		print("OK idle buoyancy y=%.2f bed=%.2f" % [float_y, bed])
+
+	var swim_x := player.voxel_position.x
+	Input.action_press("move_right")
+	_tick_player(player, 27)
+	Input.action_release("move_right")
+	var swim_moved := player.voxel_position.x - swim_x
+	player._move_vel_xz = Vector2.ZERO
+	var dry_y := probe.sample_walkable_feet(50.5, 50.5)
+	player.voxel_position = Vector3(50.5, dry_y, 50.5)
+	player.current_state = player.State.IDLE
+	player.velocity = Vector3.ZERO
+	_tick_player(player, 8)
+	var dry_x := player.voxel_position.x
+	Input.action_press("move_right")
+	_tick_player(player, 27)
+	Input.action_release("move_right")
+	var dry_moved := player.voxel_position.x - dry_x
+	if swim_moved < 0.5:
+		_fail("swim move covered %.2f columns" % swim_moved)
+	elif dry_moved < swim_moved * 1.6:
+		_fail("swim move %.2f was not slower than dry %.2f" % [swim_moved, dry_moved])
+	else:
+		print("OK swim slower %.2f vs dry %.2f" % [swim_moved, dry_moved])
+
+	var bank_y := probe.sample_walkable_feet(86.5, 30.5)
+	player._move_vel_xz = Vector2.ZERO
+	player.velocity = Vector3.ZERO
+	player.voxel_position = Vector3(84.5, float_y, 30.5)
+	player.current_state = player.State.IDLE
+	player._jump_latched = false
+	player._jump_edge = false
+	Input.action_press("move_right")
+	for _step in 90:
+		player._process(1.0 / 60.0)
+		player._physics_process(1.0 / 60.0)
+		if floori(player.voxel_position.x) >= 86:
+			break
+	Input.action_release("move_right")
+	player._move_vel_xz = Vector2.ZERO
+	_tick_player(player, 20)
+	var col := floori(player.voxel_position.x)
+	if col < 86:
+		_fail("could not walk out of the pool onto the bank, stopped at x=%.2f y=%.2f (bank %.2f line %.2f)" % [player.voxel_position.x, player.voxel_position.y, bank_y, shore])
+	elif player.voxel_position.y < bank_y - 0.45:
+		_fail("reached the bank column but stayed in the water y=%.2f bank=%.2f" % [player.voxel_position.y, bank_y])
+	elif player.voxel_position.y > bank_y + layer:
+		_fail("walk out of the pool climbed past the bank y=%.2f bank=%.2f" % [player.voxel_position.y, bank_y])
+	else:
+		print("OK walked onto the bank y=%.2f (line %.2f)" % [player.voxel_position.y, shore])
+	var chunks: ChunkManager = player.get_meta("shore_chunks")
 	player.free()
 	chunks.free()
 
