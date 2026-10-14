@@ -529,13 +529,11 @@ func _physics_process(delta: float) -> void:
 		if _guardian_aggro and brain.wants_attack(self_cell, player_cell):
 			var aim := _player_world_pos()
 			if global_position.distance_to(aim) <= 1.8:
-				if _target.has_method("take_damage"):
-					_target.take_damage(contact_damage)
+				_damage_player(contact_damage, &"", global_position)
 				attacked_player.emit(contact_damage)
 	elif brain.wants_attack(self_cell, player_cell):
 		if global_position.distance_to(target_pos) <= 1.8:
-			if _target.has_method("take_damage"):
-				_target.take_damage(contact_damage)
+			_damage_player(contact_damage, &"", global_position)
 			attacked_player.emit(contact_damage)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
@@ -587,6 +585,19 @@ func _on_killed() -> void:
 	_sfx(death_id, global_position)
 	_release_death_visual()
 	queue_free()
+
+
+## Pass the attacker's world position so the player shoves away from it.
+## A one-arg take_damage stub still receives a single argument.
+func _damage_player(amount: float, source: StringName, origin: Vector3) -> void:
+	if _target == null or not is_instance_valid(_target) or not _target.has_method("take_damage"):
+		return
+	if _target.has_method("set_damage_origin"):
+		_target.set_damage_origin(origin)
+	if source == &"":
+		_target.take_damage(amount)
+	else:
+		_target.take_damage(amount, source)
 
 
 func apply_knockback(dir: Vector3, distance: float) -> void:
@@ -675,7 +686,8 @@ func _resolve_special(act: StringName, summon: int) -> void:
 			flat = Vector2(there.x - global_position.x, there.z - global_position.z).length()
 		if flat <= reach:
 			var mult := 1.35 if act == &"burst" else 1.0
-			_target.take_damage(contact_damage * mult, &"boss")
+			var src := _ring_anchor if act == &"burst" else global_position
+			_damage_player(contact_damage * mult, &"boss", src)
 	if summon > 0:
 		_summon_mites(summon)
 
@@ -697,7 +709,7 @@ func _detonate() -> void:
 	if _target and _target.has_method("take_damage"):
 		var dist := global_position.distance_to(target_pos)
 		if dist <= detonate_radius + 0.5:
-			_target.take_damage(contact_damage)
+			_damage_player(contact_damage, &"", global_position)
 	detonated.emit(contact_damage)
 	_sfx("enemy_death", global_position)
 	_release_death_visual()

@@ -362,6 +362,8 @@ func _physics_process(delta: float) -> void:
 			else _player.global_position
 		)
 		if global_position.distance_to(player_pos) <= WorldSettings.get_active().creature_contact_range():
+			if _player.has_method("set_damage_origin"):
+				_player.set_damage_origin(global_position)
 			if _player.has_method("take_damage"):
 				_player.take_damage(config.contact_damage)
 			attacked_player.emit(config.contact_damage)
