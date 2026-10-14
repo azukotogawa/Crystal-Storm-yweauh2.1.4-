@@ -7,6 +7,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
+const _WorldState = preload("res://world/world_state.gd")
 
 const _MARKER_TOWN_R := 2
 const _MARKER_RUIN_R := 3
@@ -66,6 +67,7 @@ static func begin_job(
 		"marker_cells": {},
 		"crystal_cells": {},
 		"bounds": bounds,
+		"content_revision": _WorldState.get_active().mesh_input_revision(),
 	}
 	_prepare_marker_cells(job)
 	_refresh_crystal_overlay(job)
@@ -75,11 +77,16 @@ static func begin_job(
 static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> bool:
 	if job.is_empty() or job.get("image") == null:
 		return false
+	var size: int = int(job.size)
+	var image: Image = job.image
+	# finalize used to resize this image up to the widget. Shifting that
+	# display image with internal pixel indexes paints the wrong quadrant.
+	if size < 1 or image.get_width() != size or image.get_height() != size:
+		return false
 	var old_center: Vector2i = job.get("center", Vector2i.ZERO)
 	if old_center == new_center:
 		return true
-	var stride: int = int(job.stride)
-	var size: int = int(job.size)
+	var stride: int = maxi(int(job.stride), 1)
 	var dx_cells: int = new_center.x - old_center.x
 	var dz_cells: int = new_center.y - old_center.y
 	var dx_px: int = int(round(float(dx_cells) / float(stride)))
@@ -89,26 +96,25 @@ static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> b
 	if absi(dx_px) + absi(dz_px) > maxi(size / 3, 8):
 		return false
 
-	var image: Image = job.image
-	var shifted := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	shifted.fill(Color(0.05, 0.06, 0.08, 1.0))
-	for py in size:
-		for px in size:
-			var src_x: int = px + dx_px
-			var src_y: int = py + dz_px
-			if src_x < 0 or src_y < 0 or src_x >= size or src_y >= size:
-				continue
-			shifted.set_pixel(px, py, image.get_pixel(src_x, src_y))
+	if dx_px != 0 or dz_px != 0:
+		var shifted := Image.create(size, size, false, Image.FORMAT_RGBA8)
+		shifted.fill(Color(0.05, 0.06, 0.08, 1.0))
+		for py in size:
+			for px in size:
+				var src_x: int = px + dx_px
+				var src_y: int = py + dz_px
+				if src_x < 0 or src_y < 0 or src_x >= size or src_y >= size:
+					continue
+				shifted.set_pixel(px, py, image.get_pixel(src_x, src_y))
+		job.image = shifted
 
-	job.image = shifted
 	job.center = new_center
 	job.px = 0
 	job.column_cache = {}
 	job.bounds = _world_bounds(new_center, size, stride)
 	_refresh_crystal_overlay(job)
-
-	var dirty := _dirty_rect_after_shift(size, dx_px, dz_px)
-	job.dirty_rect = dirty
+	job.dirty_rects = _dirty_rects_after_shift(size, dx_px, dz_px)
+	job.erase("dirty_rect")
 	job.incremental = true
 	return true
 
@@ -133,7 +139,6 @@ static func process_job(job: Dictionary, pixel_budget: int, time_budget_us: int)
 	var px_start: int = int(job.get("px", 0))
 	var pixels_done := 0
 	var t0 := Time.get_ticks_usec()
-	var dirty: Rect2i = job.get("dirty_rect", Rect2i(0, 0, size, size))
 	var incremental: bool = bool(job.get("incremental", false))
 
 	while px_start < size * size and pixels_done < pixel_budget:
@@ -142,7 +147,7 @@ static func process_job(job: Dictionary, pixel_budget: int, time_budget_us: int)
 		var px: int = px_start % size
 		var py: int = int(px_start / size)
 		px_start += 1
-		if incremental and not _rect_contains(dirty, px, py):
+		if incremental and not _pixel_in_dirty(job, px, py, size):
 			continue
 
 		var wx := int(job.center.x) + int((px - size / 2) * int(job.stride))
@@ -153,6 +158,7 @@ static func process_job(job: Dictionary, pixel_budget: int, time_budget_us: int)
 	job.px = px_start
 	if px_start >= size * size:
 		job.erase("dirty_rect")
+		job.erase("dirty_rects")
 		job.erase("incremental")
 	return px_start >= size * size
 
@@ -162,9 +168,15 @@ static func finalize_job(job: Dictionary) -> ImageTexture:
 	if image == null:
 		return null
 	var display_size: int = int(job.get("display_size", image.get_width()))
-	if display_size > image.get_width():
-		image.resize(display_size, display_size, Image.INTERPOLATE_NEAREST)
-	return ImageTexture.create_from_image(image)
+	if display_size <= 0:
+		display_size = image.get_width()
+	if display_size == image.get_width() and display_size == image.get_height():
+		return ImageTexture.create_from_image(image)
+	# Resize a copy. The job image stays at internal resolution so the next
+	# scroll can shift it without sampling the upscaled texture.
+	var output := image.duplicate()
+	output.resize(display_size, display_size, Image.INTERPOLATE_NEAREST)
+	return ImageTexture.create_from_image(output)
 
 
 static func build_full_map(
@@ -239,16 +251,35 @@ static func _rect_contains(rect: Rect2i, px: int, py: int) -> bool:
 		and px < rect.position.x + rect.size.x and py < rect.position.y + rect.size.y
 
 
-static func _dirty_rect_after_shift(size: int, dx_px: int, dz_px: int) -> Rect2i:
+static func _dirty_rects_after_shift(size: int, dx_px: int, dz_px: int) -> Array:
+	var rects: Array = []
+	# Scroll copies (px + dx, py + dz) into (px, py). The strip that falls off
+	# the source is the side the player walked toward, and it still holds the
+	# placeholder color until process_job samples it.
 	if dx_px > 0:
-		return Rect2i(0, 0, mini(dx_px, size), size)
-	if dx_px < 0:
-		return Rect2i(maxi(0, size + dx_px), 0, mini(-dx_px, size), size)
+		rects.append(Rect2i(maxi(0, size - dx_px), 0, mini(dx_px, size), size))
+	elif dx_px < 0:
+		rects.append(Rect2i(0, 0, mini(-dx_px, size), size))
 	if dz_px > 0:
-		return Rect2i(0, 0, size, mini(dz_px, size))
-	if dz_px < 0:
-		return Rect2i(0, maxi(0, size + dz_px), size, mini(-dz_px, size))
-	return Rect2i(0, 0, size, size)
+		rects.append(Rect2i(0, maxi(0, size - dz_px), size, mini(dz_px, size)))
+	elif dz_px < 0:
+		rects.append(Rect2i(0, 0, size, mini(-dz_px, size)))
+	# Sub-stride center change: the pixel grid did not scroll, so resample all.
+	if rects.is_empty():
+		rects.append(Rect2i(0, 0, size, size))
+	return rects
+
+
+static func _pixel_in_dirty(job: Dictionary, px: int, py: int, size: int) -> bool:
+	var rects: Array = job.get("dirty_rects", [])
+	if not rects.is_empty():
+		for rect_v in rects:
+			var rect: Rect2i = rect_v
+			if _rect_contains(rect, px, py):
+				return true
+		return false
+	var dirty: Rect2i = job.get("dirty_rect", Rect2i(0, 0, size, size))
+	return _rect_contains(dirty, px, py)
 
 
 static func _prepare_marker_cells(job: Dictionary) -> void:
@@ -327,6 +358,7 @@ static func clone_job_state(job: Dictionary) -> Dictionary:
 		"marker_cells": job.get("marker_cells", {}).duplicate(true),
 		"crystal_cells": job.get("crystal_cells", {}).duplicate(true),
 		"bounds": job.get("bounds", Rect2i()),
+		"content_revision": job.get("content_revision", -1),
 	}
 
 
