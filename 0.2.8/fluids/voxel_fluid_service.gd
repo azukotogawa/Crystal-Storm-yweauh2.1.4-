@@ -4,6 +4,7 @@ extends Node
 ## Overlay water_level stays 0–1; body surface_y is derived. Crystal is separate.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
@@ -83,6 +84,9 @@ func _init_water_engine() -> void:
 	_water_engine.empty_cell_inflow_cap = 0.25
 
 
+const _EMPTY_WALK_CAP := 96
+
+
 func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
 	# Only registered water expands to neighbors. Natural river tiles are visual
 	# sources and must not pull a whole marsh into the gather.
@@ -98,7 +102,9 @@ func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
 ## Edit opened a column or turned it into water. Queue that cell and its
 ## orthogonal neighbours, then take one local step. Already-wet neighbours
 ## stay in the queue so the body keeps moving into connected empty cells
-## instead of stopping on the first one. Same-height ground is not wetted.
+## instead of stopping on the first one. Open cells at the waterline or
+## below also fill on later ticks without another neighbour break.
+## Same-height solid ground is not wetted.
 func requeue_neighbors_on_edit(wx: int, wz: int) -> void:
 	var origin := Vector2i(wx, wz)
 	_queue_cell_and_neighbors(origin)
@@ -261,7 +267,53 @@ func _collect_active_region() -> Dictionary:
 		cells[key] = true
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			cells[key + dir] = true
+	# A far dig only dirties its own neighbourhood. Walk the open columns
+	# (dug cells) from there to the water, one step onto the source, so the
+	# basin and a side pocket fill without breaking another neighbour.
+	_include_connected_empty(cells)
 	return cells
+
+
+func _is_empty_column(pos: Vector2i) -> bool:
+	return _TerrainEdits.get_height_delta(pos.x, pos.y) < -0.001
+
+
+## Open column at the same level as the waterline or lower. A solid top that
+## only meets the line is ground, not an empty cell.
+func _accepts_flow(pos: Vector2i, surface_y: float) -> bool:
+	var top := _visual_top(pos)
+	if top > surface_y + 0.001:
+		return false
+	if top >= surface_y - 0.001:
+		return _is_empty_column(pos)
+	return true
+
+
+func _include_connected_empty(cells: Dictionary) -> void:
+	var q: Array = []
+	var seen: Dictionary = {}
+	for key_variant in _dirty_cells.keys():
+		var pos: Vector2i = key_variant
+		if _is_empty_column(pos):
+			q.append(pos)
+	var walked := 0
+	while not q.is_empty() and walked < _EMPTY_WALK_CAP:
+		var cur: Vector2i = q.pop_back()
+		if seen.has(cur):
+			continue
+		seen[cur] = true
+		cells[cur] = true
+		walked += 1
+		for dir in _CrystalTypes.NEIGHBOR_DIRS:
+			var n: Vector2i = cur + dir
+			if seen.has(n):
+				continue
+			if _is_natural_water_cell(n) or _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER):
+				cells[n] = true
+				seen[n] = true
+				continue
+			if _is_empty_column(n):
+				q.append(n)
 
 
 func _layer() -> float:
@@ -350,7 +402,7 @@ func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 				continue
 			if not _is_cell_active(n):
 				continue
-			if _visual_top(n) >= surface_y - 0.001:
+			if not _accepts_flow(n, surface_y):
 				continue
 			# Already-full cells must not spend the new-cell budget, or the
 			# wave stops on the first empty column past a pool.
