@@ -44,6 +44,15 @@ var damage_source_hint: StringName = &"hit"
 ## Seconds of invulnerability after a burst hit. Crystal pressure does not use this.
 var _hit_iframes: float = 0.0
 const HIT_IFRAMES := 0.6
+## Horizontal shove in column units. Burst hits set it. Crystal pressure does not.
+var _knock_left: float = 0.0
+var _knock_dir_xz: Vector2 = Vector2.ZERO
+var _damage_origin: Vector3 = Vector3.ZERO
+var _has_damage_origin: bool = false
+const HIT_KNOCK_COLUMNS := 1.25
+const HIT_KNOCK_HEAVY_COLUMNS := 2.05
+## Columns per second. A normal hit lasts about a fifth of a second.
+const HIT_KNOCK_SPEED := 7.0
 
 ## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
@@ -791,13 +800,21 @@ func apply_save_state(data: Dictionary) -> void:
 	_publish_health()
 
 
+## World position of the attacker. The next burst hit shoves away from it.
+func set_damage_origin(origin: Vector3) -> void:
+	_damage_origin = origin
+	_has_damage_origin = true
+
+
 func take_damage(amount: float, source: StringName = &"") -> void:
 	if amount <= 0.0:
+		_has_damage_origin = false
 		return
 	var kind := source if source != &"" else damage_source_hint
 	damage_source_hint = &"hit"
 	var burst := kind != &"crystal_field"
 	if burst and _hit_iframes > 0.0:
+		_has_damage_origin = false
 		return
 	if inventory and inventory.has_method("armor_damage_multiplier"):
 		amount *= inventory.armor_damage_multiplier()
@@ -808,11 +825,36 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	if burst:
 		_hit_iframes = HIT_IFRAMES
 		var heavy := kind == &"boss" or amount >= 16.0
+		_begin_hit_knockback(heavy)
 		_Juice.request_hit_stop(0.08 if heavy else 0.04, get_tree())
 		_Juice.request_shake(0.5 if heavy else 0.14)
 		_play_sfx("player_death" if health <= 0.0 else "player_hurt")
+	else:
+		_has_damage_origin = false
 	if health <= 0.0:
 		died.emit()
+
+
+func _begin_hit_knockback(heavy: bool) -> void:
+	_knock_dir_xz = _knock_away_dir()
+	_knock_left = HIT_KNOCK_HEAVY_COLUMNS if heavy else HIT_KNOCK_COLUMNS
+	_has_damage_origin = false
+
+
+## Column-space XZ, away from the attacker. A missing origin shoves backward.
+func _knock_away_dir() -> Vector2:
+	var away := Vector2.ZERO
+	if _has_damage_origin:
+		var ws = _ws()
+		away = Vector2(
+			voxel_position.x - ws.world_to_column(_damage_origin.x),
+			voxel_position.z - ws.world_to_column(_damage_origin.z)
+		)
+	if away.length_squared() < 0.0001:
+		away = rotate_input_to_world(Vector2(0.0, 1.0), locked_yaw_degrees)
+	if away.length_squared() < 0.0001:
+		return Vector2(1.0, 0.0)
+	return away.normalized()
 
 
 func _tick_hit_iframes(delta: float) -> void:
