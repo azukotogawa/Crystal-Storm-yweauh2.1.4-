@@ -216,6 +216,50 @@ func _run() -> void:
 	else:
 		print("OK volume size=%s" % aabb.size)
 
+	# Boots sit on the capsule bottom (local y = -height/2). The node is then
+	# lifted by height/2, so world feet are the body origin. A padded canvas
+	# used to leave the soles a quarter of the height above the ground.
+	var sole := aabb.position.y
+	var crown := aabb.position.y + aabb.size.y
+	if absf(sole + height * 0.5) > 0.02:
+		push_error("player floats: boot sole local y=%.4f, capsule bottom is %.4f" % [sole, -height * 0.5])
+		failed = true
+	elif absf(crown - height * 0.5) > 0.02:
+		push_error("head stops at local y=%.4f, capsule top is %.4f" % [crown, height * 0.5])
+		failed = true
+	elif absf(aabb.size.x - radius * 2.0) > 0.04:
+		push_error("body width %.4f does not match collider diameter %.4f" % [aabb.size.x, radius * 2.0])
+		failed = true
+	else:
+		print("OK boots on the capsule bottom and width matches the collider")
+
+	var player_src_body := FileAccess.get_file_as_string("res://player/player.gd")
+	if player_src_body.find("_body_collision.position.y = capsule.height * 0.5") < 0:
+		push_error("body collider must be centered on capsule.height so the bottom rests on the feet")
+		failed = true
+	elif player_src_body.find("capsule.height = maxf(ph, pr * 2.0)") < 0:
+		push_error("capsule height must be the full body height, including the hemispheres")
+		failed = true
+	else:
+		print("OK collider bottom rests on the feet")
+
+	var tall_h := height * 2.0
+	var tall_r := _Body.half_width_for_height(tall_h)
+	var mi_tall := MeshInstance3D.new()
+	_Body.apply_to(mi_tall, tall_h, tall_r)
+	var tall_mesh := mi_tall.mesh as ArrayMesh
+	var tall_box := tall_mesh.get_aabb() if tall_mesh != null else AABB()
+	if tall_mesh == null \
+			or absf(mi_tall.position.y - tall_h * 0.5) > 0.001 \
+			or absf(tall_box.position.y + tall_h * 0.5) > 0.02 \
+			or absf(tall_box.size.x - tall_r * 2.0) > 0.04 \
+			or absf(tall_box.size.x - aabb.size.x * 2.0) > 0.05:
+		push_error("doubling height must double width and keep boots on the feet, size=%s node_y=%.3f" % [tall_box.size, mi_tall.position.y])
+		failed = true
+	else:
+		print("OK doubled height doubles width, boots stay on the feet")
+	mi_tall.free()
+
 	if not found["tunic"] or not found["skin"] or not found["boot"] or not found["eye"]:
 		push_error("front faces lost scout colors tunic=%s skin=%s boot=%s eye=%s" % [found["tunic"], found["skin"], found["boot"], found["eye"]])
 		failed = true
