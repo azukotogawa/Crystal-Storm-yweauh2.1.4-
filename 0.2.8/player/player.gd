@@ -16,6 +16,7 @@ const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 const _MoveFeel = preload("res://player/move_feel.gd")
+const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -67,7 +68,10 @@ var current_skew := 0.0
 enum State { IDLE, RUNNING, JUMPING, FALLING }
 var current_state := State.IDLE
 var landing_timer: float = 0.0
+## idle, walk, run, jump, fall, land. The mesh pose, not the juice node scale.
+var locomotion_pose: String = "idle"
 var _bob_phase: float = 0.0
+var _locomotion = _Locomotion.new()
 var _mesh_rest_y: float = 0.0
 var _feet_wet: bool = false
 var _wet_ready: bool = false
@@ -1092,20 +1096,25 @@ func _apply_walk_bob(delta: float) -> void:
 		return
 	if _mesh_rest_y <= 0.0:
 		_mesh_rest_y = player_mesh.position.y
-	var sx := 1.0
-	var sy := 1.0
-	var bob := 0.0
-	if current_state == State.RUNNING and _Juice.walk_bob_allowed():
-		_bob_phase += delta * _MoveFeel.bob_rate(is_sprinting)
-		var s := sin(_bob_phase)
-		var bob_amp := 0.055 if is_sprinting else 0.04
-		bob = s * _ws().voxel_scale * bob_amp
-		sx = 1.0 + s * 0.06
-		sy = 1.0 - s * 0.08
-	else:
-		_bob_phase = 0.0
-	player_mesh.position.y = _mesh_rest_y + bob
-	player_mesh.scale = Vector3(sprite_scale_modifier.x * sx, sprite_scale_modifier.y * sy, 1.0)
+	# Limb poses, not the old whole-body scale. A landing squash stays on the
+	# feet. Reduce-motion still skips the juice bob; the pose is the read.
+	var pose := "idle"
+	if current_state == State.FALLING and _landed_hold:
+		pose = "land"
+	elif current_state == State.JUMPING:
+		pose = "jump"
+	elif current_state == State.FALLING:
+		pose = "fall"
+	elif current_state == State.RUNNING:
+		pose = "run" if is_sprinting else "walk"
+	locomotion_pose = pose
+	if pose == "walk" or pose == "run":
+		_bob_phase += delta * _MoveFeel.bob_rate(pose == "run")
+	elif pose == "idle":
+		_bob_phase += delta * 2.4
+	_locomotion.apply(player_mesh, pose, _bob_phase)
+	player_mesh.position.y = _mesh_rest_y
+	player_mesh.scale = Vector3.ONE
 
 
 func _tick_feet_water() -> void:
