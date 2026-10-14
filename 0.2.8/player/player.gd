@@ -88,6 +88,8 @@ var _coyote_left: float = 0.0
 var _jump_buffer: float = 0.0
 ## This ascent already took the short-hop cut. A held jump never sets it.
 var _jump_cut: bool = false
+## Hold jump under a waterline to rise. A land jump clears the pool in one frame.
+var _swim_rise: bool = false
 ## Hold sprint on land. A submerged body stays at swim speed.
 var is_sprinting: bool = false
 ## True during the short settle after the feet touch. The speed keep runs once.
@@ -425,9 +427,16 @@ func _physics_process(delta: float) -> void:
 		jump_held = Input.is_action_pressed("jump")
 	# _jump_edge covers a tap that was pressed and released between physics ticks.
 	var jump_down := jump_held or (not jump_blocked and _jump_edge)
+	_swim_rise = false
 	if jump_blocked:
 		_jump_edge = false
 		_jump_buffer = 0.0
+	elif submerged and jump_down:
+		# Stay in the pool. The land impulse is several layers and ends the swim.
+		_jump_latched = true
+		_jump_edge = false
+		_jump_buffer = 0.0
+		_swim_rise = true
 	elif jump_down and not _jump_latched and current_state != State.JUMPING:
 		# Support is probed only on the press. Coyote covers the frames after a ledge.
 		var supported := current_state in [State.IDLE, State.RUNNING] and _can_initiate_jump(moving)
@@ -705,6 +714,8 @@ func _soft_follow_ground(delta: float) -> void:
 		_phys_call_snap += 1
 	var info := _water_here()
 	if bool(info.get("submerged", false)):
+		if _swim_rise:
+			info["float_y"] = float(info.get("surface_y", voxel_position.y))
 		voxel_position.y = _Water.settle_y(voxel_position.y, info, delta)
 		return
 	if chunk_manager == null or chunk_manager.world == null:
