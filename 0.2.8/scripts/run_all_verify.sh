@@ -108,6 +108,7 @@ SUITES=(
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_visual_perf.gd"
 	"res://scripts/verify_crystal_spread_limits.gd"
+	"res://scripts/verify_crystal_organic_spread.gd"
 	"res://scripts/verify_crystal_flow_mechanics.gd"
 	"res://scripts/verify_crystal_live_spread.gd"
 	"res://scripts/verify_full_game_loop.gd"
