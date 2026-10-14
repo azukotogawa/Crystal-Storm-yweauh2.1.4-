@@ -1,10 +1,11 @@
 extends SceneTree
-## Grass and dirt must vary per column on the mesh the game draws.
-## verify_block_texture_grid only averages whole rows of Cube.png and applies
-## the near-black shader cutoff. A flat grass fill has no dark row, so that
-## check stays green while every plains column still samples one cell. The
-## windowed grid probe paints six copies of that same cell. This check builds
-## a chunk through ChunkManager and reads the surface-mesh vertex colors.
+## Grass, dirt, stone, ore, and cave rock must vary per column on the mesh
+## the game draws. The grass pass only painted GRASSLAND3 and DIRT, so a
+## stone, crystal-vein, or cave-stone chunk could keep one cell (and a dark
+## grid on that cell) and this check still passed. Crystal, shard ground,
+## and scar stay one cell. This builds a chunk through ChunkManager and
+## reads the surface-mesh vertex colors, which are the atlas cell the
+## terrain shader samples.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -181,12 +182,28 @@ func _run() -> void:
 
 	var grass := _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND3, true))
 	var dirt := _drawn_cells(_paint_chunk(_VoxelTypes.DIRT, false))
+	var stone := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true))
+	var ore := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL_VEIN, true))
+	var cave := _drawn_cells(_paint_chunk(_VoxelTypes.CAVE_STONE, true))
+	var crystal := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL, false))
 	var grass_tops: Dictionary = grass["tops"]
 	var grass_sides: Dictionary = grass["sides"]
 	var dirt_tops: Dictionary = dirt["tops"]
+	var stone_tops: Dictionary = stone["tops"]
+	var stone_sides: Dictionary = stone["sides"]
+	var ore_tops: Dictionary = ore["tops"]
+	var ore_sides: Dictionary = ore["sides"]
+	var cave_tops: Dictionary = cave["tops"]
+	var cave_sides: Dictionary = cave["sides"]
 	print(
-		"drawn grass tops %d sides %d (quads %d); dirt tops %d"
-		% [grass_tops.size(), grass_sides.size(), grass["quads"], dirt_tops.size()]
+		"drawn grass tops %d sides %d; dirt tops %d; stone tops %d sides %d; ore tops %d sides %d; cave tops %d sides %d; crystal tops %d"
+		% [
+			grass_tops.size(), grass_sides.size(), dirt_tops.size(),
+			stone_tops.size(), stone_sides.size(),
+			ore_tops.size(), ore_sides.size(),
+			cave_tops.size(), cave_sides.size(),
+			crystal["tops"].size(),
+		]
 	)
 	if grass_tops.size() < _MIN_VARIANTS:
 		_fail("plains grass tops use %d atlas cells, want %d" % [grass_tops.size(), _MIN_VARIANTS])
@@ -197,6 +214,27 @@ func _run() -> void:
 	if dirt_tops.size() < _MIN_VARIANTS:
 		_fail("dirt tops use %d atlas cells, want %d" % [dirt_tops.size(), _MIN_VARIANTS])
 		failed = true
+	if stone_tops.size() < _MIN_VARIANTS or stone_sides.size() < _MIN_VARIANTS:
+		_fail(
+			"stone uses tops %d sides %d, want %d"
+			% [stone_tops.size(), stone_sides.size(), _MIN_VARIANTS]
+		)
+		failed = true
+	if ore_tops.size() < _MIN_VARIANTS or ore_sides.size() < _MIN_VARIANTS:
+		_fail(
+			"ore (crystal vein) uses tops %d sides %d, want %d"
+			% [ore_tops.size(), ore_sides.size(), _MIN_VARIANTS]
+		)
+		failed = true
+	if cave_tops.size() < _MIN_VARIANTS or cave_sides.size() < _MIN_VARIANTS:
+		_fail(
+			"cave rock uses tops %d sides %d, want %d"
+			% [cave_tops.size(), cave_sides.size(), _MIN_VARIANTS]
+		)
+		failed = true
+	if crystal["tops"].size() != 1:
+		_fail("crystal mass must stay one cell, got %d" % crystal["tops"].size())
+		failed = true
 
 	var seen: Dictionary = {}
 	for cell in grass_tops.keys():
@@ -204,6 +242,18 @@ func _run() -> void:
 	for cell in grass_sides.keys():
 		seen[cell] = true
 	for cell in dirt_tops.keys():
+		seen[cell] = true
+	for cell in stone_tops.keys():
+		seen[cell] = true
+	for cell in stone_sides.keys():
+		seen[cell] = true
+	for cell in ore_tops.keys():
+		seen[cell] = true
+	for cell in ore_sides.keys():
+		seen[cell] = true
+	for cell in cave_tops.keys():
+		seen[cell] = true
+	for cell in cave_sides.keys():
 		seen[cell] = true
 	var cells: Array = seen.keys()
 	for i in cells.size():
@@ -231,6 +281,12 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK remesh kept the same grass cells")
+	var stone_again := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true))
+	if stone_again["tops"] != stone_tops or stone_again["sides"] != stone_sides:
+		_fail("stone variants changed on a second mesh of the same columns")
+		failed = true
+	else:
+		print("OK remesh kept the same stone cells")
 
 	if failed:
 		quit(1)
