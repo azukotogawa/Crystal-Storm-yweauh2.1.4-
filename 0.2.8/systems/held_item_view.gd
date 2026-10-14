@@ -171,6 +171,8 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 		_ItemAnim.Kind.SWING:
 			if _item_id == "crystal_hammer":
 				# Raise through the wind-up, then the impact frame is the slam.
+				# The 0.65 split is the pre-hit hold: most of the wind-up is the raise,
+				# and the drop lands on the impact sample. Do not move that split.
 				var lift := 0.0
 				if phase < 0.0:
 					var wind := phase + 1.0
@@ -178,41 +180,41 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 						lift = wind / 0.65
 					else:
 						lift = 1.0 - (wind - 0.65) / 0.35
-				item_pos = Vector3(side * 0.55, chest * 0.55 + vs * 1.05 * lift, -vs * (0.28 + 0.55 * (1.0 - lift)))
-				arm_pos = Vector3(side * 0.28, chest * 0.5 + vs * 0.55 * lift, -vs * (0.1 + 0.2 * (1.0 - lift)))
-				arm_rot = Vector3(-1.15 * lift, 0.0, 0.1)
+				item_pos = Vector3(side * 0.72, chest * 0.55 + vs * 1.65 * lift, -vs * (0.35 + 0.75 * (1.0 - lift)))
+				arm_pos = Vector3(side * 0.42, chest * 0.48 + vs * 0.9 * lift, -vs * (0.12 + 0.3 * (1.0 - lift)))
+				arm_rot = Vector3(-1.2 * lift, 0.0, 0.12)
 			else:
 				var sweep := sin((phase + 1.0) * PI)
 				item_pos = Vector3(
-					side + vs * 0.55 * sweep,
-					chest + vs * 0.28 * strike,
-					-vs * (0.32 + 0.62 * strike)
+					side + vs * 0.95 * sweep,
+					chest + vs * 0.5 * strike,
+					-vs * (0.4 + 0.95 * strike)
 				)
-				arm_pos = Vector3(side * 0.4 + vs * 0.22 * sweep, chest * 0.72 + vs * 0.12 * strike, -vs * (0.1 + 0.22 * strike))
-				arm_rot = Vector3(0.25 * strike, 0.0, sweep * 0.8)
+				arm_pos = Vector3(side * 0.5 + vs * 0.4 * sweep, chest * 0.7 + vs * 0.22 * strike, -vs * (0.12 + 0.38 * strike))
+				arm_rot = Vector3(0.3 * strike, 0.0, sweep * 0.95)
 		_ItemAnim.Kind.THRUST:
-			var lunge := 0.28
+			var lunge := 0.4
 			if phase < 0.0:
-				lunge = lerpf(0.28, 1.2, phase + 1.0)
+				lunge = lerpf(0.4, 1.85, phase + 1.0)
 			else:
-				lunge = lerpf(1.2, 0.28, phase)
-			item_pos = Vector3(side * 0.35, chest, -lunge * vs)
-			arm_pos = Vector3(side * 0.2, chest * 0.7, -lunge * vs * 0.45)
-			arm_rot = Vector3(-0.15 + lunge * 0.35, 0.0, 0.05)
+				lunge = lerpf(1.85, 0.4, phase)
+			item_pos = Vector3(side * 0.55, chest, -lunge * vs)
+			arm_pos = Vector3(side * 0.32, chest * 0.68, -lunge * vs * 0.5)
+			arm_rot = Vector3(-0.15 + lunge * 0.32, 0.0, 0.05)
 		_ItemAnim.Kind.RAISE:
 			var lift := strike
-			item_pos = Vector3(side * 0.45, chest * 0.65 + vs * 0.75 * lift, -vs * 0.22)
-			arm_pos = Vector3(side * 0.25, chest * 0.6 + vs * 0.4 * lift, -vs * 0.08)
-			arm_rot = Vector3(-1.0 * lift, 0.0, 0.1)
+			item_pos = Vector3(side * 0.62, chest * 0.62 + vs * 1.15 * lift, -vs * 0.3)
+			arm_pos = Vector3(side * 0.36, chest * 0.55 + vs * 0.65 * lift, -vs * 0.1)
+			arm_rot = Vector3(-1.1 * lift, 0.0, 0.12)
 		_ItemAnim.Kind.AIM:
 			var draw := 0.0
 			if phase < 0.0:
 				draw = phase + 1.0
 			else:
 				draw = 1.0 - phase
-			item_pos = Vector3(side * 0.9, chest, -vs * (0.62 - 0.38 * draw))
-			arm_pos = Vector3(side * 0.4, chest * 0.78, -vs * (0.2 - 0.12 * draw))
-			arm_rot = Vector3(-0.2, 0.15 * draw, 0.35)
+			item_pos = Vector3(side * 1.08, chest, -vs * (0.9 - 0.6 * draw))
+			arm_pos = Vector3(side * 0.55, chest * 0.75, -vs * (0.28 - 0.2 * draw))
+			arm_rot = Vector3(-0.28, 0.22 * draw, 0.42)
 		_:
 			item_pos = Vector3(side, chest * 0.9, -vs * 0.2)
 	_arm.position = arm_pos

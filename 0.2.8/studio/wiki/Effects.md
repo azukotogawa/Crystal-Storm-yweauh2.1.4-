@@ -42,9 +42,9 @@ Death moves the visual onto `CombatVisualFeedback` (cap 6) for a 0.4 s shrink an
 
 ## Held item, aim, hits, cracks
 
-`ItemAnim` reads `anim_kind`, `anim_duration`, and `impact_ratio` from the item definition. Missing values derive a swing (melee and the pick), a thrust, a raise (eat, place, throw), or an aim pose (bow and sling). Armor has no pose. `HeldItemView` is two reused meshes parented to the player. The body has no rig.
+`ItemAnim` reads `anim_kind`, `anim_duration`, and `impact_ratio` from the item definition. Missing values derive a swing (melee and the pick), a thrust, a raise (eat, place, throw), or an aim pose (bow and sling). Armor has no pose. `HeldItemView` is two reused meshes parented to the player. The icon is about one body tall and sits outside the torso so it reads at the default iso zoom. A use moves that icon: a side sweep, a forward lunge, a lift, or a bow draw. The crystal hammer still raises for most of its wind-up and slams on the impact sample. That sample stays 0.62 of the 1.1 s swing. The body has no rig.
 
-`WeaponController._try_attack` arms that clock for melee and ranged weapons and releases the existing strike on the impact sample. The cooldown still starts when the button is pressed, so the cadence is unchanged. Dig, place, eat, and bombs stay immediate and snap the pose to the impact frame. A direct call to `_do_melee_attack` or `_do_ranged_attack` still applies damage inside that call.
+`WeaponController._try_attack` arms that clock for melee and ranged weapons and releases the existing strike on the impact sample. The cooldown still starts when the button is pressed, so the cadence is unchanged. Dig, place, eat, and bombs still resolve immediately, then the same pose plays from the ready frame. A repeat does not restart it until that pose finishes. A direct call to `_do_melee_attack` or `_do_ranged_attack` still applies damage inside that call.
 
 `AimIndicator` draws a ground reticle for melee and a line plus an end marker for a shot. Tools emit `tool_aim_changed(cell, world_pos, active)` for `TargetHighlight` and do not draw a second block box. A block or melee mark stays inside `ActionTargeting.INTERACTION_RANGE`. A bow or sling marker uses the shot's authored range. The ray is the camera basis, so pitch moves the mark.
 
