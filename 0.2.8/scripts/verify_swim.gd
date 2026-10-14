@@ -58,6 +58,7 @@ func _run() -> void:
 	_test_sample(world, layer, waterline)
 	_test_entities(world, layer, waterline)
 	_test_player(world, layer, waterline)
+	_test_player_input(world, layer, waterline)
 	_test_callers()
 	world.free()
 
@@ -253,6 +254,82 @@ func _test_player(world, layer: float, waterline: float) -> void:
 				_fail("standing on dry ground could not jump")
 			else:
 				print("OK dry ground follow and jump")
+	player.free()
+	chunks.free()
+
+
+## The old check called _soft_follow_ground and _can_initiate_jump directly.
+## In the game, Space is a land jump, so the body leaves the water in one tick.
+class _SwimDriver extends Player:
+	func _ready() -> void:
+		pass
+
+
+func _test_player_input(world, layer: float, waterline: float) -> void:
+	var probe := _VoxelFloorProbe.new()
+	var chunks := ChunkManager.new()
+	chunks.world = world
+	probe.configure(world, chunks, null)
+	var player := _SwimDriver.new()
+	var mesh := MeshInstance3D.new()
+	mesh.name = "MeshInstance3D"
+	player.add_child(mesh)
+	player.world = world
+	player.chunk_manager = chunks
+	player._floor_probe = probe
+	player.world_ready = true
+	# move_right at yaw 0 walks +X along the trench, the same axis as the D key.
+	player.locked_yaw_degrees = 0.0
+	player.set_physics_process(false)
+	player.set_process(false)
+	root.add_child(player)
+
+	var bed := probe.sample_walkable_feet(20.5, 20.5)
+	player.voxel_position = Vector3(20.5, bed, 20.5)
+	player.current_state = player.State.IDLE
+	player._soft_follow_ground(0.5)
+	var float_y := player.voxel_position.y
+	var start_x := player.voxel_position.x
+	Input.action_press("move_right")
+	for _i in 27:
+		player._process(1.0 / 60.0)
+		player._physics_process(1.0 / 60.0)
+	Input.action_release("move_right")
+	var moved := player.voxel_position.x - start_x
+	var drifted := absf(player.voxel_position.y - float_y)
+	if moved < 0.7:
+		_fail("move key in the pool only covered %.2f columns" % moved)
+	elif drifted > 0.85:
+		_fail("move key left the float line y=%.2f float=%.2f" % [player.voxel_position.y, float_y])
+	elif player.voxel_position.y > waterline + 0.15:
+		_fail("move key climbed out of the water y=%.2f" % player.voxel_position.y)
+	else:
+		print("OK move key swam %.2f columns at y=%.2f" % [moved, player.voxel_position.y])
+
+	player.voxel_position = Vector3(21.5, float_y, 20.5)
+	player.velocity = Vector3.ZERO
+	player._move_vel_xz = Vector2.ZERO
+	player.current_state = player.State.IDLE
+	player._jump_latched = false
+	player._jump_edge = false
+	player._jump_buffer = 0.0
+	Input.action_press("jump")
+	var y0 := player.voxel_position.y
+	var ymax := y0
+	for _j in 18:
+		player._process(1.0 / 60.0)
+		player._physics_process(1.0 / 60.0)
+		ymax = maxf(ymax, player.voxel_position.y)
+	Input.action_release("jump")
+	# A land jump clears the waterline by several layers. A swim stroke stays in the pool.
+	if ymax < y0 + 0.45:
+		_fail("jump in water did not swim up (%.2f -> %.2f)" % [y0, ymax])
+	elif ymax > waterline + layer * 0.5:
+		_fail("jump in water was a land jump, rose to %.2f (line %.2f)" % [ymax, waterline])
+	elif player.current_state == player.State.JUMPING or player.current_state == player.State.FALLING:
+		_fail("jump in water left the swim state %s" % player.current_state)
+	else:
+		print("OK jump swims up %.2f -> %.2f (line %.2f)" % [y0, ymax, waterline])
 	player.free()
 	chunks.free()
 
