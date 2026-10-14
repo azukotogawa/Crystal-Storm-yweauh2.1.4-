@@ -834,7 +834,8 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 		_hit_iframes = HIT_IFRAMES
 		var heavy := kind == &"boss" or amount >= 16.0
 		_begin_hit_knockback(heavy)
-		_Juice.request_hit_stop(0.08 if heavy else 0.04, get_tree())
+		var tree := get_tree() if is_inside_tree() else null
+		_Juice.request_hit_stop(0.08 if heavy else 0.04, tree)
 		_Juice.request_shake(0.5 if heavy else 0.14)
 		_play_sfx("player_death" if health <= 0.0 else "player_hurt")
 	else:
