@@ -1,9 +1,9 @@
 extends SceneTree
-## Tool and weapon icons on the real hotbar and inventory.
-## The old check only asked the generator for a texture at least 16px wide.
-## The files are 32px and the hotbar draws them at 44px, so that check passed
-## while the slots upscaled the art. This one opens the bag with I, reads the
-## slot controls, and requires a 64px texture that is not stretched up.
+## Icons on the real hotbar and inventory.
+## The 8a check opened the bag with I and required 64px art, but only for the
+## six tools and weapons. Wood, stone, herb, the shard, and the items that
+## reuse those pictures (bomb and armor) stayed 32px files drawn larger than
+## the texture. This one stocks those slots too and still rejects an upscale.
 
 
 const _Inventory = preload("res://inventory/inventory.gd")
@@ -14,6 +14,12 @@ const _Registry = preload("res://systems/game_visual_registry.gd")
 
 const GEAR: Array[String] = [
 	"wooden_sword", "spear", "stone_pick", "crystal_hammer", "shortbow", "sling",
+]
+## Placeable blocks. They share the hotbar with the gear (8 slots).
+const BLOCKS: Array[String] = ["wood", "stone"]
+## Bag-only stacks, including items whose picture is another item's visual_id.
+const ITEMS: Array[String] = [
+	"herb", "crystal_shard", "crystal_bomb", "leather_armor", "stone_plate", "crystal_weave",
 ]
 const MIN_PX := 64
 
@@ -39,8 +45,9 @@ func _run() -> void:
 	player.set_script(_player_script())
 	root.add_child(player)
 	var inv = player.inventory
-	for i in GEAR.size():
-		inv.set_slot(i, GEAR[i], 1)
+	var stocked := _stocked()
+	for i in stocked.size():
+		inv.set_slot(i, stocked[i], 1)
 	var registry := _Registry.new()
 	root.add_child(registry)
 	var layer := CanvasLayer.new()
@@ -57,7 +64,7 @@ func _run() -> void:
 	var ready := false
 	for _frame in 120:
 		await process_frame
-		if bag.visible and _gear_icon(hotbar, 0) != null and _bag_icon(bag, 0) != null:
+		if bag.visible and _gear_icon(hotbar, 0) != null and _bag_icon(bag, _stocked().size() - 1) != null:
 			ready = true
 			break
 	if not bag.visible:
@@ -184,15 +191,25 @@ func _min_opaque_run(image: Image) -> int:
 	return best
 
 
+func _stocked() -> Array[String]:
+	var ids: Array[String] = []
+	ids.append_array(GEAR)
+	ids.append_array(BLOCKS)
+	ids.append_array(ITEMS)
+	return ids
+
+
 func _check_hotbar(hotbar: Control) -> void:
-	for i in GEAR.size():
+	var on_bar := GEAR.size() + BLOCKS.size()
+	for i in on_bar:
+		var item_id := _stocked()[i]
 		var rect := _hotbar_rect(hotbar, i)
 		if rect == null:
 			_fail("hotbar slot %d missing" % i)
 			continue
 		if rect.texture_filter != CanvasItem.TEXTURE_FILTER_NEAREST:
-			_fail("hotbar %s filter is %d" % [GEAR[i], rect.texture_filter])
-		_check_texture("hotbar " + GEAR[i], rect.texture, _drawn_size(rect))
+			_fail("hotbar %s filter is %d" % [item_id, rect.texture_filter])
+		_check_texture("hotbar " + item_id, rect.texture, _drawn_size(rect))
 
 
 func _check_bag(bag: Control) -> void:
@@ -200,12 +217,13 @@ func _check_bag(bag: Control) -> void:
 	if grid == null:
 		_fail("inventory grid missing")
 		return
-	for i in GEAR.size():
+	var stocked := _stocked()
+	for i in stocked.size():
 		var btn := grid.get_child(i) as Button
 		if btn == null:
 			_fail("bag slot %d missing" % i)
 			continue
 		if btn.texture_filter != CanvasItem.TEXTURE_FILTER_NEAREST \
 				and btn.texture_filter != CanvasItem.TEXTURE_FILTER_PARENT_NODE:
-			_fail("bag %s filter is %d" % [GEAR[i], btn.texture_filter])
-		_check_texture("bag " + GEAR[i], btn.icon, _drawn_size(btn))
+			_fail("bag %s filter is %d" % [stocked[i], btn.texture_filter])
+		_check_texture("bag " + stocked[i], btn.icon, _drawn_size(btn))
