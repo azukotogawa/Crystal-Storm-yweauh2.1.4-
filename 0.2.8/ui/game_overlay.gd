@@ -49,6 +49,18 @@ var _boss_bar: ProgressBar = null
 var _boss_shown_hp: int = -1
 var _hud_player: Node = null
 var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
+var _hp_panel: PanelContainer = null
+var _hp_bar: ProgressBar = null
+var _hp_value_label: Label = null
+var _hp_fill: StyleBoxFlat = null
+var _hp_panel_style: StyleBoxFlat = null
+var _hp_bound_player: Node = null
+var _hp_last: float = -1.0
+var _hp_last_max: float = -1.0
+var _hp_shown: int = -99999
+var _hp_shown_max: int = -99999
+var _hp_band: int = -1
+var _hp_colorblind: bool = false
 var _run_summary: _RunSummaryPanel = null
 var _hud_frame: int = -999
 var _hud_skip: bool = false
@@ -92,8 +104,10 @@ func _ready() -> void:
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
 	_ensure_objective_hud()
+	_ensure_player_health_bar()
 	_ThemeBuilder.apply(self)
 	apply_hud_palette(_PlayerSettings.colorblind_palette)
+	_update_player_health()
 	call_deferred("_maybe_show_tutorial")
 
 
@@ -517,6 +531,7 @@ func _process(delta: float) -> void:
 		_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	_update_game_hud()
 	_update_objective_hud()
+	_update_player_health()
 	_update_boss_bar()
 	_update_bake_chip()
 	if _GameplayInput.blocks_actions():
@@ -765,6 +780,146 @@ func _update_boss_bar() -> void:
 		_boss_shown_hp = shown
 		var phase := int(_boss.get("boss_phase"))
 		_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
+
+
+## Sits just above the hotbar (hotbar top is -76). Reads player health directly.
+func _ensure_player_health_bar() -> void:
+	if _hp_panel != null:
+		return
+	_hp_panel = PanelContainer.new()
+	_hp_panel.name = "PlayerHealthBar"
+	_hp_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hp_panel.visible = false
+	_hp_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_hp_panel.offset_left = -130.0
+	_hp_panel.offset_right = 130.0
+	_hp_panel.offset_top = -118.0
+	_hp_panel.offset_bottom = -82.0
+	_hp_panel_style = StyleBoxFlat.new()
+	_hp_panel_style.bg_color = Color(0.05, 0.07, 0.06, 0.84)
+	_hp_panel_style.border_color = Color(0.4, 0.75, 0.42, 0.9)
+	_hp_panel_style.set_border_width_all(1)
+	_hp_panel_style.set_content_margin_all(6)
+	_hp_panel.add_theme_stylebox_override("panel", _hp_panel_style)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 8)
+	_hp_panel.add_child(row)
+	var name_label := Label.new()
+	name_label.text = "HP"
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_label.add_theme_font_size_override("font_size", 14)
+	name_label.add_theme_color_override("font_color", Color(0.86, 0.95, 0.86))
+	row.add_child(name_label)
+	_hp_bar = ProgressBar.new()
+	_hp_bar.name = "HpFill"
+	_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hp_bar.show_percentage = false
+	_hp_bar.min_value = 0.0
+	_hp_bar.max_value = 100.0
+	_hp_bar.value = 100.0
+	_hp_bar.custom_minimum_size = Vector2(120, 14)
+	_hp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.08, 0.06, 0.08, 1.0)
+	track.set_corner_radius_all(3)
+	_hp_bar.add_theme_stylebox_override("background", track)
+	_hp_fill = StyleBoxFlat.new()
+	_hp_fill.bg_color = Color(0.32, 0.78, 0.38)
+	_hp_fill.set_corner_radius_all(3)
+	_hp_bar.add_theme_stylebox_override("fill", _hp_fill)
+	row.add_child(_hp_bar)
+	_hp_value_label = Label.new()
+	_hp_value_label.text = "100 / 100"
+	_hp_value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hp_value_label.custom_minimum_size = Vector2(72, 0)
+	_hp_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hp_value_label.add_theme_font_size_override("font_size", 14)
+	_hp_value_label.add_theme_color_override("font_color", Color(0.94, 0.96, 0.94))
+	row.add_child(_hp_value_label)
+	add_child(_hp_panel)
+
+
+func _update_player_health() -> void:
+	var player := _cached_player()
+	if player == null or not ("health" in player):
+		if _hp_panel:
+			_hp_panel.visible = false
+		_hp_bound_player = null
+		return
+	if _hp_bound_player != player:
+		if _hp_bound_player != null and is_instance_valid(_hp_bound_player) \
+				and _hp_bound_player.has_signal("health_changed") \
+				and _hp_bound_player.health_changed.is_connected(_on_player_health_changed):
+			_hp_bound_player.health_changed.disconnect(_on_player_health_changed)
+		_hp_bound_player = player
+		_hp_last = -1.0
+		if player.has_signal("health_changed") \
+				and not player.health_changed.is_connected(_on_player_health_changed):
+			player.health_changed.connect(_on_player_health_changed)
+	var mx := float(player.max_health) if "max_health" in player else 100.0
+	_apply_player_health(float(player.health), mx)
+
+
+func _on_player_health_changed(current: float, maximum: float) -> void:
+	_apply_player_health(current, maximum)
+
+
+func _apply_player_health(hp: float, mx: float) -> void:
+	_ensure_player_health_bar()
+	if _hp_panel == null:
+		return
+	_hp_panel.visible = true
+	mx = maxf(mx, 1.0)
+	if absf(hp - _hp_last) < 0.02 and absf(mx - _hp_last_max) < 0.02 and _hp_band >= 0:
+		return
+	_hp_last = hp
+	_hp_last_max = mx
+	_hp_bar.max_value = mx
+	_hp_bar.value = clampf(hp, 0.0, mx)
+	var shown := int(round(hp))
+	var shown_max := int(round(mx))
+	if shown != _hp_shown or shown_max != _hp_shown_max:
+		_hp_shown = shown
+		_hp_shown_max = shown_max
+		_hp_value_label.text = "%d / %d" % [shown, shown_max]
+	_paint_hp_fill(clampf(hp / mx, 0.0, 1.0))
+
+
+func _paint_hp_fill(ratio: float) -> void:
+	if _hp_fill == null:
+		return
+	var band := 2
+	if ratio > 0.55:
+		band = 0
+	elif ratio > 0.28:
+		band = 1
+	var colorblind := _PlayerSettings.colorblind_palette
+	if band == _hp_band and colorblind == _hp_colorblind:
+		return
+	_hp_band = band
+	_hp_colorblind = colorblind
+	var fill := Color(0.88, 0.24, 0.28)
+	var border := Color(0.85, 0.28, 0.3, 0.95)
+	if colorblind:
+		if band == 0:
+			fill = Color(0.95, 0.82, 0.18)
+		elif band == 1:
+			fill = Color(0.98, 0.55, 0.12)
+		else:
+			fill = Color(0.35, 0.72, 1.0)
+		border = Color(0.95, 0.82, 0.18, 0.95)
+	else:
+		if band == 0:
+			fill = Color(0.32, 0.78, 0.38)
+			border = Color(0.4, 0.75, 0.42, 0.9)
+		elif band == 1:
+			fill = Color(0.92, 0.7, 0.2)
+			border = Color(0.85, 0.62, 0.18, 0.95)
+	_hp_fill.bg_color = fill
+	if _hp_panel_style:
+		_hp_panel_style.border_color = border
 
 
 func _cached_player() -> Node:
@@ -1064,6 +1219,11 @@ func apply_hud_palette(colorblind: bool) -> void:
 		_objective_arrow.modulate = _arrow_play_color
 	if _boss_label:
 		_boss_label.add_theme_color_override("font_color", _CrystalPalette.boss_label_color(colorblind))
+	if _hp_fill != null:
+		_hp_colorblind = not colorblind
+		_hp_band = -1
+		if _hp_last_max > 0.0:
+			_paint_hp_fill(clampf(_hp_last / _hp_last_max, 0.0, 1.0))
 
 
 func _show_run_summary() -> void:
