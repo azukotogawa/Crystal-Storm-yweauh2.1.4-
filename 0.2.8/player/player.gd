@@ -35,6 +35,8 @@ var _body_collision: CollisionShape3D
 @export var max_health := 100.0
 
 signal died
+## current, maximum. The HUD health bar listens. Crystal ticks and heals both emit.
+signal health_changed(current: float, maximum: float)
 
 var health := 100.0
 ## Burst hits set this. Crystal-field damage sets it to crystal_field before take_damage.
@@ -295,6 +297,7 @@ func _ready():
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
 	health = max_health
+	_publish_health()
 	voxel_position = Vector3(spawn_x, surf, spawn_z)
 	var lift_guard := 0
 	while is_colliding_at(voxel_position) and voxel_position.y < surf + _ws().layer_height() * 6.0 and lift_guard < 48:
@@ -729,6 +732,10 @@ func get_stat(stat_id: StringName) -> float:
 	return stat_component.get_stat(stat_id) if stat_component else 0.0
 
 
+func _publish_health() -> void:
+	health_changed.emit(health, max_health)
+
+
 func get_voxel_position() -> Vector3:
 	return voxel_position
 
@@ -740,6 +747,7 @@ func _on_stat_changed(stat_id: StringName, _value: float) -> void:
 		health = clampf(health, 0.0, max_health)
 		if health <= 0.0 and ratio > 0.0:
 			health = maxf(1.0, max_health * ratio)
+		_publish_health()
 
 
 func export_save_state() -> Dictionary:
@@ -780,6 +788,7 @@ func apply_save_state(data: Dictionary) -> void:
 	if _floor_probe:
 		_floor_probe.feet_height_hint = voxel_position.y
 	_sync_global_from_voxel()
+	_publish_health()
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:
@@ -795,6 +804,7 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	var defense := get_stat(_StatIds.DEFENSE)
 	amount *= (1.0 - clampf(defense, 0.0, 0.9))
 	health = maxf(health - amount, 0.0)
+	_publish_health()
 	if burst:
 		_hit_iframes = HIT_IFRAMES
 		var heavy := kind == &"boss" or amount >= 16.0
@@ -822,6 +832,7 @@ func heal(amount: float) -> void:
 	if amount <= 0.0:
 		return
 	health = minf(max_health, health + amount)
+	_publish_health()
 
 
 func change_state(new_state: State) -> void:
