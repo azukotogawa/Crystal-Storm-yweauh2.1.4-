@@ -107,6 +107,17 @@ const GRASS_TOP_VARIANTS: Array[Vector2i] = [
 const DIRT_VARIANTS: Array[Vector2i] = [
 	Vector2i(3, 2), Vector2i(0, 6), Vector2i(5, 6),
 ]
+## Stone, ore (crystal vein), and cave rock. Crystal, shard ground, and scar
+## stay one cell so corruption still reads as one material.
+const STONE_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4),
+]
+const ORE_VARIANTS: Array[Vector2i] = [
+	Vector2i(6, 1), Vector2i(4, 5), Vector2i(5, 5),
+]
+const CAVE_ROCK_VARIANTS: Array[Vector2i] = [
+	Vector2i(3, 6), Vector2i(4, 6), Vector2i(6, 6),
+]
 
 
 static func _green_grass_top(tile_type: int) -> bool:
@@ -135,7 +146,20 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
 	if (tile_type == DIRT or tile_type == DIRT2) and face == 0:
 		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
+	if tile_type == CAVE_STONE:
+		return _column_pick(CAVE_ROCK_VARIANTS, world_x, world_z, 83)
+	if tile_type == CRYSTAL_VEIN:
+		return _column_pick(ORE_VARIANTS, world_x, world_z, 67)
+	if _column_rock(tile_type):
+		return _column_pick(STONE_VARIANTS, world_x, world_z, 41)
 	return get_atlas_coord_for_face(tile_type, face_code)
+
+
+static func _column_rock(tile_type: int) -> bool:
+	return tile_type == STONE or tile_type == STONE2 \
+		or tile_type == MOUNTAIN or tile_type == MOUNTAIN2 \
+		or tile_type == MOUNTAIN4 or tile_type == MOUNTAIN5 \
+		or tile_type == MOUNTAIN6 or tile_type == MOUNTAIN7
 
 
 static func _is_grass_surface(tile_type: int) -> bool:
