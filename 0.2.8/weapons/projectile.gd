@@ -132,6 +132,9 @@ func _activate(spec: Dictionary) -> void:
 	stuck = false
 	stick_left = 0.0
 	visible = true
+	# The weapon node is not spatial. Stay in world space so a later
+	# Node3D parent cannot drag the shot off the arc the player is watching.
+	top_level = true
 	kind = StringName(str(spec.get("kind", "arrow")))
 	global_position = spec.get("origin", Vector3.ZERO)
 	velocity = spec.get("velocity", Vector3.FORWARD)
@@ -499,28 +502,70 @@ static func _shared_arrow_mesh() -> Mesh:
 	return _arrow_mesh
 
 
-## Crossed shaft, head, and fletching. -Z is forward (the node aims -Z along velocity).
+## Solid shaft, head, and fletching. -Z is the tip (the node aims -Z along velocity).
+## The iso camera looks along the shot, so a flat cross is edge-on and disappears.
+## Each part is a box or a pyramid with a face the camera can see.
 static func _build_arrow_mesh(vs: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var length := vs * 1.05
-	var z_back := length * 0.42
-	var z_tip := -length * 0.58
-	var z_head := -length * 0.2
-	var z_fletch := length * 0.16
-	var shaft_w := vs * 0.11
-	var head_w := vs * 0.28
-	var fletch_w := vs * 0.2
-	var wood := Color(0.96, 0.72, 0.24)
-	var tip := Color(0.97, 0.96, 0.9)
-	var fletch := Color(0.9, 0.16, 0.14)
-	_arrow_quad(st, Vector3(-shaft_w, 0, z_back), Vector3(shaft_w, 0, z_back), Vector3(shaft_w, 0, z_head), Vector3(-shaft_w, 0, z_head), wood)
-	_arrow_quad(st, Vector3(0, -shaft_w, z_back), Vector3(0, shaft_w, z_back), Vector3(0, shaft_w, z_head), Vector3(0, -shaft_w, z_head), wood)
-	_arrow_tri(st, Vector3(0, 0, z_tip), Vector3(-head_w, 0, z_head), Vector3(head_w, 0, z_head), tip)
-	_arrow_tri(st, Vector3(0, 0, z_tip), Vector3(0, -head_w, z_head), Vector3(0, head_w, z_head), tip)
-	_arrow_tri(st, Vector3(0, 0, z_back), Vector3(-fletch_w, 0, z_fletch), Vector3(fletch_w, 0, z_fletch), fletch)
-	_arrow_tri(st, Vector3(0, 0, z_back), Vector3(0, -fletch_w, z_fletch), Vector3(0, fletch_w, z_fletch), fletch)
+	var length := vs * 1.35
+	var z_back := length * 0.48
+	var z_tip := -length * 0.52
+	var z_head := -length * 0.16
+	var z_fletch := length * 0.14
+	var shaft_t := vs * 0.26
+	var head_half := vs * 0.22
+	var fletch_w := vs * 0.52
+	var fletch_t := vs * 0.12
+	var wood := Color(0.96, 0.70, 0.16)
+	var tip := Color(0.97, 0.97, 0.93)
+	var fletch := Color(0.92, 0.12, 0.10)
+	var shaft_len := z_back - z_head
+	_arrow_box(st, Vector3(0, 0, (z_back + z_head) * 0.5), Vector3(shaft_t, shaft_t, shaft_len), wood)
+	_arrow_pyramid(st, z_head, z_tip, head_half, tip)
+	var fletch_len := z_back - z_fletch
+	var fletch_z := (z_back + z_fletch) * 0.5
+	_arrow_box(st, Vector3(0, 0, fletch_z), Vector3(fletch_w, fletch_t, fletch_len), fletch)
+	_arrow_box(st, Vector3(0, 0, fletch_z), Vector3(fletch_t, fletch_w, fletch_len), fletch)
+	st.generate_normals()
 	return st.commit()
+
+
+static func _arrow_box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
+	var hx := size.x * 0.5
+	var hy := size.y * 0.5
+	var hz := size.z * 0.5
+	var c := center
+	var p := [
+		c + Vector3(-hx, -hy, -hz),
+		c + Vector3(hx, -hy, -hz),
+		c + Vector3(hx, hy, -hz),
+		c + Vector3(-hx, hy, -hz),
+		c + Vector3(-hx, -hy, hz),
+		c + Vector3(hx, -hy, hz),
+		c + Vector3(hx, hy, hz),
+		c + Vector3(-hx, hy, hz),
+	]
+	_arrow_quad(st, p[0], p[3], p[2], p[1], color)
+	_arrow_quad(st, p[4], p[5], p[6], p[7], color)
+	_arrow_quad(st, p[0], p[4], p[7], p[3], color)
+	_arrow_quad(st, p[1], p[2], p[6], p[5], color)
+	_arrow_quad(st, p[0], p[1], p[5], p[4], color)
+	_arrow_quad(st, p[3], p[7], p[6], p[2], color)
+
+
+## Square base at z_base, point at z_tip. The tip is the -Z end of the arrow.
+static func _arrow_pyramid(st: SurfaceTool, z_base: float, z_tip: float, half: float, color: Color) -> void:
+	var apex := Vector3(0, 0, z_tip)
+	var b0 := Vector3(-half, -half, z_base)
+	var b1 := Vector3(half, -half, z_base)
+	var b2 := Vector3(half, half, z_base)
+	var b3 := Vector3(-half, half, z_base)
+	_arrow_tri(st, apex, b0, b1, color)
+	_arrow_tri(st, apex, b1, b2, color)
+	_arrow_tri(st, apex, b2, b3, color)
+	_arrow_tri(st, apex, b3, b0, color)
+	_arrow_quad(st, b0, b3, b2, b1, color)
 
 
 static func _arrow_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color) -> void:
