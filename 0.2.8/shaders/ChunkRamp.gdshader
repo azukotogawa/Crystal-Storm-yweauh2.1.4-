@@ -58,7 +58,8 @@ void fragment() {
 	float row = floor(instance_data.g * 255.0 + 0.5);
 	vec2 repeated_uv = max(UV, vec2(0.0));
 	vec4 tex_color = cs_sample_atlas(texture_atlas, atlas_grid, vec2(col, row), repeated_uv);
-	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.04) {
+	// Same near-black gate as ChunkSurfaceMesh. 0.04 flattened real tile texels.
+	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.002) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
 	ALBEDO = tex_color.rgb * 0.92;

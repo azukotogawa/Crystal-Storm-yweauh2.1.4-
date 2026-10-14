@@ -74,7 +74,10 @@ void fragment() {
 	if (col_row.x >= 0.0 && col_row.y >= 0.0 && col_row.x < atlas_grid.x && col_row.y < atlas_grid.y) {
 		tex_color = cs_sample_atlas(texture_atlas, atlas_grid, col_row, repeated_uv);
 	}
-	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.04) {
+	// Near-black unused slots only. A 0.04 cutoff also matched the dark half of
+	// real tiles (grass sits on that line) and replaced them with one flat
+	// color, which reads as a grid at ortho 16.
+	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.002) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
 
