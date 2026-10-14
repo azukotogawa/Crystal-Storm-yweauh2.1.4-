@@ -48,6 +48,11 @@ func _run() -> void:
 	var env_node := WorldEnvironment.new()
 	env_node.environment = env
 	root.add_child(env_node)
+	# Same sun vector the terrain shader uses, so the probe is not a black unlit pass.
+	var sun := DirectionalLight3D.new()
+	sun.name = "Sun"
+	sun.look_at_from_position(Vector3.ZERO, -Vector3(0.55, 0.82, 0.38), Vector3.UP)
+	root.add_child(sun)
 
 	var player := _Host.new()
 	player.name = "Player"

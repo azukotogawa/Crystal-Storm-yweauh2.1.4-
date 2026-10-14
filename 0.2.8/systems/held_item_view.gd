@@ -1,25 +1,24 @@
 class_name HeldItemView
 extends Node3D
-## One reused arm box and one billboard of the item texture.
+## One reused arm box and one voxel mesh for the held item.
 ## The player body has no rig, so a swing is this node's position.
+## Parts are created once and resized. A swing must not allocate.
 
 const _ItemAnim = preload("res://systems/item_anim.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
-const _TextureSet = preload("res://helpers/texture_set.gd")
 
-## World units per icon texel, times voxel_scale. The art is 32px with a small
-## opaque core. 0.060 puts a sword about one body tall at the default iso zoom.
-## The old 0.038 icon sat inside the torso and read as a speck.
-const ICON_PIXEL_SCALE := 0.060
+const _BRICK_PATH := "res://assets/art/voxel_brick.png"
+const _PART_COUNT := 6
 
 var _arm: MeshInstance3D
-var _item: Sprite3D
+var _item: MeshInstance3D
+var _parts: Array[MeshInstance3D] = []
 var _arm_mat: StandardMaterial3D
 var _item_id: String = ""
 var _vs: float = 2.0
 var _ready_visual: bool = false
-static var _fallback_tex: Texture2D
+static var _brick_tex: Texture2D
 
 
 func _ready() -> void:
@@ -31,30 +30,30 @@ func _ensure_visual() -> void:
 	if _ready_visual:
 		return
 	_vs = _WorldSettings.get_active().voxel_scale
-	var box := BoxMesh.new()
-	box.size = Vector3(_vs * 0.24, _vs * 0.24, _vs * 0.95)
+	var arm_box := BoxMesh.new()
+	arm_box.size = Vector3(_vs * 0.24, _vs * 0.24, _vs * 0.95)
 	_arm = MeshInstance3D.new()
 	_arm.name = "Arm"
-	_arm.mesh = box
+	_arm.mesh = arm_box
 	_arm_mat = _unshaded(Color(0.72, 0.48, 0.32))
 	_arm.material_override = _arm_mat
 	_arm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_arm)
-	_item = Sprite3D.new()
-	_item.name = "HeldItem"
-	# About one body tall, clear of the torso, so the icon reads at iso zoom.
-	_item.pixel_size = _vs * ICON_PIXEL_SCALE
-	_item.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_item.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	_item.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
-	_item.alpha_scissor_threshold = 0.15
-	_item.shaded = false
-	_item.double_sided = true
-	_item.centered = true
-	_item.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_item.render_priority = 4
-	_item.texture = _fallback_texture()
-	add_child(_item)
+	for i in _PART_COUNT:
+		var mi := MeshInstance3D.new()
+		mi.name = "HeldItem" if i == 0 else "Part%d" % i
+		var box := BoxMesh.new()
+		box.size = Vector3.ONE
+		mi.mesh = box
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.material_override = _voxel_mat(Color.WHITE)
+		mi.visible = false
+		if i == 0:
+			_item = mi
+			add_child(mi)
+		else:
+			_item.add_child(mi)
+		_parts.append(mi)
 	_ready_visual = true
 	_apply_unit(_ItemAnim.Kind.NONE, 0.0, 0.0)
 
@@ -97,57 +96,24 @@ func visual_child_count() -> int:
 
 
 func _tint_for(item_id: String, kind: int) -> void:
-	var key := _ItemTypes.visual_key(item_id) if item_id != "" else ""
-	var tex := _texture_for(key)
-	_item.texture = tex if tex != null else _fallback_texture()
-	var tint := Color.WHITE
-	if tex == null:
-		tint = Color(0.62, 0.62, 0.66)
-		match key:
-			"wooden_sword":
-				tint = Color(0.72, 0.52, 0.28)
-			"stone_pick":
-				tint = Color(0.55, 0.57, 0.62)
-			"shortbow":
-				tint = Color(0.48, 0.32, 0.18)
-			"stone":
-				tint = Color(0.5, 0.5, 0.52)
-			"wood":
-				tint = Color(0.62, 0.42, 0.22)
-			"herb":
-				tint = Color(0.35, 0.72, 0.32)
-			"crystal_shard":
-				tint = Color(0.72, 0.4, 0.95)
-			_:
-				if kind == _ItemAnim.Kind.AIM:
-					tint = Color(0.48, 0.32, 0.18)
-				elif kind == _ItemAnim.Kind.THRUST:
-					tint = Color(0.68, 0.5, 0.3)
-	elif item_id == "crystal_hammer":
-		# Same pick icon, shifted so the hammer does not read as the pick.
-		tint = Color(0.78, 0.62, 1.0)
-	_item.modulate = tint
-	var sx := 1.05
-	var sy := 1.2
-	if item_id == "crystal_hammer":
-		sx = 1.4
-		sy = 1.35
-	elif key == "stone_pick":
-		sx = 1.15
-		sy = 1.3
-	elif key == "shortbow":
-		sx = 1.3
-		sy = 1.15
-	elif kind == _ItemAnim.Kind.THRUST:
-		sx = 0.85
-		sy = 1.45
-	elif kind == _ItemAnim.Kind.AIM:
-		sx = 1.25
-		sy = 1.1
-	elif kind == _ItemAnim.Kind.RAISE:
-		sx = 0.95
-		sy = 0.95
-	_item.scale = Vector3(sx, sy, 1.0)
+	var layout: Array = _layout(item_id, kind)
+	_item.scale = Vector3.ONE
+	for i in _parts.size():
+		var mi := _parts[i]
+		if i >= layout.size():
+			mi.visible = false
+			continue
+		var spec: Array = layout[i]
+		var box := mi.mesh as BoxMesh
+		box.size = spec[1]
+		# Part 0 is the HeldItem node. Its position is the hand pose, so the
+		# first box stays centered on that node and the rest hang off it.
+		if i > 0:
+			mi.position = spec[0]
+		mi.rotation = Vector3.ZERO
+		mi.visible = true
+		var mat := mi.material_override as StandardMaterial3D
+		mat.albedo_color = spec[2]
 
 
 func _apply_unit(kind: int, u: float, impact: float) -> void:
@@ -225,21 +191,95 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 	_item.visible = kind != _ItemAnim.Kind.NONE
 
 
-func _texture_for(key: String) -> Texture2D:
-	if key.is_empty():
-		return null
-	var path := "res://assets/art/items/%s.png" % key
-	if not ResourceLoader.exists(path) and _TextureSet.resolved_path(path) == path:
-		return null
-	return _TextureSet.resolve(path)
+## Boxes in metres. Part 0 is centered on the hand (the pose owns that node).
+## The rest are offsets from the hand. Tall enough to read at ortho 16.
+## u is one voxel (voxel_scale). Every part is thick on X and Z so the iso
+## camera sees a side, not a paper edge.
+func _layout(item_id: String, kind: int) -> Array:
+	var u := _vs
+	var wood := Color(0.62, 0.40, 0.18)
+	var wood_dark := Color(0.40, 0.24, 0.12)
+	var blade := Color(0.78, 0.62, 0.32)
+	var stone := Color(0.55, 0.56, 0.60)
+	var stone_dark := Color(0.36, 0.38, 0.42)
+	var crystal := Color(0.58, 0.28, 0.90)
+	var crystal_lite := Color(0.82, 0.62, 1.0)
+	var id := item_id
+	if id != "wooden_sword" and id != "spear" and id != "stone_pick" and id != "crystal_hammer" and id != "shortbow" and id != "sling":
+		var key := _ItemTypes.visual_key(item_id) if item_id != "" else ""
+		if key == "shortbow" or kind == _ItemAnim.Kind.AIM:
+			id = "shortbow"
+		elif id == "crystal_hammer" or (key == "stone_pick" and kind == _ItemAnim.Kind.SWING and item_id == "crystal_hammer"):
+			id = "crystal_hammer"
+		elif kind == _ItemAnim.Kind.THRUST:
+			id = "spear"
+		elif key == "stone_pick":
+			id = "stone_pick"
+		elif kind == _ItemAnim.Kind.SWING or key == "wooden_sword":
+			id = "wooden_sword"
+	match id:
+		"wooden_sword":
+			return [
+				[Vector3.ZERO, Vector3(0.22 * u, 0.72 * u, 0.20 * u), wood_dark],
+				[Vector3(0, 0.46 * u, 0), Vector3(0.72 * u, 0.16 * u, 0.22 * u), wood],
+				[Vector3(0, 1.20 * u, 0), Vector3(0.18 * u, 1.40 * u, 0.18 * u), blade],
+				[Vector3(0, 2.00 * u, 0), Vector3(0.14 * u, 0.32 * u, 0.14 * u), blade.lightened(0.12)],
+			]
+		"spear":
+			return [
+				[Vector3.ZERO, Vector3(0.18 * u, 2.40 * u, 0.18 * u), wood],
+				[Vector3(0, 1.28 * u, 0), Vector3(0.32 * u, 0.22 * u, 0.32 * u), wood_dark],
+				[Vector3(0, 1.62 * u, 0), Vector3(0.24 * u, 0.50 * u, 0.24 * u), stone],
+			]
+		"stone_pick":
+			return [
+				[Vector3.ZERO, Vector3(0.18 * u, 1.90 * u, 0.18 * u), wood],
+				[Vector3(0, 0.95 * u, 0), Vector3(0.95 * u, 0.30 * u, 0.32 * u), stone],
+				[Vector3(0.55 * u, 0.95 * u, 0), Vector3(0.28 * u, 0.22 * u, 0.50 * u), stone_dark],
+			]
+		"crystal_hammer":
+			return [
+				[Vector3.ZERO, Vector3(0.24 * u, 1.90 * u, 0.24 * u), wood_dark],
+				[Vector3(0, 0.88 * u, 0), Vector3(1.05 * u, 0.58 * u, 0.58 * u), crystal],
+				[Vector3(0.62 * u, 0.88 * u, 0), Vector3(0.36 * u, 0.36 * u, 0.72 * u), crystal_lite],
+			]
+		"shortbow", "sling":
+			return [
+				[Vector3.ZERO, Vector3(0.20 * u, 0.48 * u, 0.22 * u), wood_dark],
+				[Vector3(0, 0.85 * u, 0), Vector3(0.16 * u, 0.95 * u, 0.16 * u), wood],
+				[Vector3(0.28 * u, 1.38 * u, 0), Vector3(0.42 * u, 0.16 * u, 0.16 * u), wood],
+				[Vector3(0, -0.85 * u, 0), Vector3(0.16 * u, 0.95 * u, 0.16 * u), wood],
+				[Vector3(0.28 * u, -1.38 * u, 0), Vector3(0.42 * u, 0.16 * u, 0.16 * u), wood],
+				[Vector3(0.36 * u, 0, 0.10 * u), Vector3(0.10 * u, 2.60 * u, 0.12 * u), Color(0.90, 0.86, 0.72)],
+			]
+		_:
+			if kind == _ItemAnim.Kind.NONE or item_id == "":
+				return []
+			var tint := Color(0.62, 0.62, 0.66)
+			if item_id == "herb":
+				tint = Color(0.35, 0.72, 0.32)
+			elif item_id == "wood":
+				tint = wood
+			elif item_id == "stone":
+				tint = stone
+			return [[Vector3(0, 0.2 * u, 0), Vector3(0.36 * u, 0.36 * u, 0.36 * u), tint]]
 
 
-static func _fallback_texture() -> Texture2D:
-	if _fallback_tex == null:
-		var image := Image.create(4, 4, false, Image.FORMAT_RGBA8)
-		image.fill(Color.WHITE)
-		_fallback_tex = ImageTexture.create_from_image(image)
-	return _fallback_tex
+func _voxel_mat(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	mat.albedo_color = color
+	mat.albedo_texture = _brick_texture()
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	mat.roughness = 0.92
+	mat.metallic = 0.0
+	return mat
+
+
+static func _brick_texture() -> Texture2D:
+	if _brick_tex == null and ResourceLoader.exists(_BRICK_PATH):
+		_brick_tex = load(_BRICK_PATH) as Texture2D
+	return _brick_tex
 
 
 func _unshaded(color: Color) -> StandardMaterial3D:
