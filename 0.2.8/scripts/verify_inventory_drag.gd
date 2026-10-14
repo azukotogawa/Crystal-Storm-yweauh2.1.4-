@@ -1,6 +1,8 @@
 extends SceneTree
 ## Headless: inventory and hotbar slots drag, stack, swap, and put back.
-## A short click still runs the slot callback and does not pick the stack up.
+## Drives real mouse press / motion / release through the viewport, with
+## idle frames between them (the previous check fired the whole gesture in
+## one stack, so SlotDrag._process never ran mid-drag).
 
 
 const _Inventory = preload("res://inventory/inventory.gd")
@@ -8,6 +10,7 @@ const _SlotDrag = preload("res://ui/slot_drag.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _Hotbar = preload("res://ui/hotbar.gd")
 const _InventoryPanel = preload("res://ui/inventory_panel.gd")
+const _OverlayScene = preload("res://ui/game_overlay.tscn")
 
 var _failed := false
 var _clicks: Array[int] = []
@@ -59,6 +62,7 @@ func _check_plain_slots(inv) -> void:
 	inv.set_slot(9, "wood", 4)
 	inv.set_slot(10, "stone", 3)
 	var layer := CanvasLayer.new()
+	layer.layer = 10
 	root.add_child(layer)
 	var slots: Array[Control] = []
 	var indexes := [0, 1, 8, 9, 10]
@@ -73,22 +77,18 @@ func _check_plain_slots(inv) -> void:
 		slots.append(panel)
 	await process_frame
 	await process_frame
-	_click(slots[0], false)
-	await process_frame
+	await _click(slots[0], false)
 	if _clicks != [0]:
 		_fail("short click callbacks %s" % [_clicks])
 	if _id(inv, 0) != "wooden_sword":
 		_fail("short click moved slot 0")
-	_drag(slots[0], slots[1])
-	await process_frame
+	await _drag(slots[0], slots[1])
 	if _id(inv, 0) != "stone_pick" or _id(inv, 1) != "wooden_sword":
 		_fail("swap got %s / %s" % [_id(inv, 0), _id(inv, 1)])
-	_drag(slots[2], slots[3])
-	await process_frame
+	await _drag(slots[2], slots[3])
 	if _count(inv, 8) != 0 or _count(inv, 9) != 14:
 		_fail("stack got %s / %s" % [_count(inv, 8), _count(inv, 9)])
-	_drag_to(slots[4], Vector2(8, 8))
-	await process_frame
+	await _drag_to(slots[4], Vector2(8, 8))
 	if _id(inv, 10) != "stone" or _count(inv, 10) != 3:
 		_fail("cancel drop lost stone (%s x%s)" % [_id(inv, 10), _count(inv, 10)])
 	layer.queue_free()
@@ -102,19 +102,28 @@ func _check_live_panels(inv) -> void:
 	inv.set_slot(2, "stone_pick", 1)
 	inv.set_slot(8, "spear", 1)
 	inv.set_slot(9, "wood", 6)
+	# Same sibling order as scenes/main.tscn: overlay, hotbar, bag.
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	root.add_child(layer)
+	var overlay: Control = _OverlayScene.instantiate()
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(overlay)
 	var hotbar := Control.new()
+	hotbar.name = "Hotbar"
 	hotbar.set_script(_Hotbar)
 	var bag := Control.new()
+	bag.name = "InventoryPanel"
 	bag.set_script(_InventoryPanel)
 	layer.add_child(hotbar)
 	layer.add_child(bag)
 	await process_frame
 	await process_frame
-	bag._unhandled_input(_toggle_event())
+	await _press_key(KEY_I)
 	await process_frame
+	if not bag.visible:
+		_fail("I key did not open the bag")
+		return
 	var grid: GridContainer = bag.get("_grid")
 	if grid == null or grid.get_child_count() < 10:
 		_fail("inventory grid missing")
@@ -126,13 +135,11 @@ func _check_live_panels(inv) -> void:
 	if from.get_global_rect().size.x < 2.0 or to.get_global_rect().size.x < 2.0:
 		_fail("inventory slot rect %s -> %s" % [from.get_global_rect(), to.get_global_rect()])
 		return
-	_drag(from, to)
-	await process_frame
+	await _drag(from, to)
 	if _id(inv, 0) != "stone_pick" or _id(inv, 2) != "wooden_sword":
 		_fail("bag drag got %s / %s" % [_id(inv, 0), _id(inv, 2)])
 	var bag_spear: Control = grid.get_child(8)
-	_click(bag_spear, false)
-	await process_frame
+	await _click(bag_spear, false)
 	if _id(inv, 1) != "spear" or _id(inv, 8) != "":
 		_fail("bag click got hotbar %s bag %s" % [_id(inv, 1), _id(inv, 8)])
 	var bar_slots: Array = hotbar.get("_slot_nodes")
@@ -144,20 +151,17 @@ func _check_live_panels(inv) -> void:
 	if bar_from.get_global_rect().size.x < 2.0:
 		_fail("hotbar rect %s" % bar_from.get_global_rect())
 		return
-	_drag(bar_from, bar_to)
-	await process_frame
+	await _drag(bar_from, bar_to)
 	if _id(inv, 0) != "wooden_sword" or _id(inv, 2) != "stone_pick":
 		_fail("hotbar drag got %s / %s" % [_id(inv, 0), _id(inv, 2)])
 		return
 	var bag_wood: Control = grid.get_child(9)
 	var bar_empty: Control = bar_slots[3]
-	_drag(bag_wood, bar_empty)
-	await process_frame
+	await _drag(bag_wood, bar_empty)
 	if _id(inv, 3) != "wood" or _count(inv, 3) != 6 or _id(inv, 9) != "":
 		_fail("bag to hotbar got %s x%s / bag %s" % [_id(inv, 3), _count(inv, 3), _id(inv, 9)])
 		return
-	_drag(bar_slots[1], grid.get_child(8))
-	await process_frame
+	await _drag(bar_slots[1], grid.get_child(8))
 	if _id(inv, 8) != "spear" or _id(inv, 1) != "":
 		_fail("hotbar to bag got bag %s hotbar %s" % [_id(inv, 8), _id(inv, 1)])
 
@@ -187,26 +191,39 @@ func _center(control: Control) -> Vector2:
 func _click(control: Control, move: bool) -> void:
 	var pos := _center(control)
 	_button(pos, true)
+	await process_frame
 	if move:
 		_motion(pos + Vector2(24, 4), Vector2(24, 4))
+		await process_frame
 	_button(pos, false)
+	await process_frame
 
 
 func _drag(from: Control, to: Control) -> void:
 	var a := _center(from)
 	var b := _center(to)
 	_button(a, true)
+	await process_frame
 	_motion(a + Vector2(20, 0), Vector2(20, 0))
+	await process_frame
+	_motion(lerp(a, b, 0.5), (b - a) * 0.5)
+	await process_frame
 	_motion(b, b - a)
+	await process_frame
 	_button(b, false)
+	await process_frame
 
 
 func _drag_to(from: Control, pos: Vector2) -> void:
 	var a := _center(from)
 	_button(a, true)
+	await process_frame
 	_motion(a + Vector2(20, 0), Vector2(20, 0))
+	await process_frame
 	_motion(pos, pos - a)
+	await process_frame
 	_button(pos, false)
+	await process_frame
 
 
 func _button(pos: Vector2, pressed: bool) -> void:
@@ -219,17 +236,29 @@ func _button(pos: Vector2, pressed: bool) -> void:
 	root.push_input(ev, true)
 
 
-func _motion(pos: Vector2, rel: Vector2) -> void:
+func _motion(pos: Vector2, _rel: Vector2) -> void:
+	# Real mouse motion after window stretch often has position without a
+	# matching relative. Godot's built-in drag accumulates relative, so a
+	# check that stuffed relative=20 never saw the live failure.
 	var ev := InputEventMouseMotion.new()
 	ev.position = pos
 	ev.global_position = pos
-	ev.relative = rel
+	ev.relative = Vector2.ZERO
 	ev.button_mask = MOUSE_BUTTON_MASK_LEFT
 	root.push_input(ev, true)
 
 
-func _toggle_event() -> InputEvent:
-	var ev := InputEventAction.new()
-	ev.action = &"inventory_toggle"
-	ev.pressed = true
-	return ev
+func _press_key(keycode: Key) -> void:
+	var down := InputEventKey.new()
+	down.keycode = keycode
+	down.physical_keycode = keycode
+	down.pressed = true
+	down.echo = false
+	root.push_input(down, true)
+	await process_frame
+	var up := InputEventKey.new()
+	up.keycode = keycode
+	up.physical_keycode = keycode
+	up.pressed = false
+	up.echo = false
+	root.push_input(up, true)
