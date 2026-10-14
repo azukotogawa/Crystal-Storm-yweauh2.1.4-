@@ -93,19 +93,24 @@ func _process(delta: float) -> void:
 
 
 func _post_boot() -> void:
+	var WM = load("res://systems/world_manager.gd")
+	# The player spawn writes a fresh position, full health, and the starter
+	# hotbar after chunks exist. Apply the alive snapshot only after that
+	# finishes, or Continue lands on the crystal heart with a new kit.
+	if pending_continue and FileAccess.file_exists(continue_save_path()):
+		await _wait_for_continue_boot()
+		pending_continue = false
+		if WM:
+			WM.pending_resume = false
+		await load_path(continue_save_path())
+		return
+	pending_continue = false
 	var compose = get_tree().get_first_node_in_group("composition_root") if is_inside_tree() else null
 	var frames := 0
 	while compose != null and int(compose.stage) < 5 and frames < 3600:
 		await get_tree().process_frame
 		frames += 1
-	var WM = load("res://systems/world_manager.gd")
-	if pending_continue:
-		pending_continue = false
-		if FileAccess.file_exists(continue_save_path()):
-			if WM:
-				WM.pending_resume = false
-			await load_path(continue_save_path())
-			return
+		compose = get_tree().get_first_node_in_group("composition_root") if is_inside_tree() else null
 	if WM and bool(WM.pending_resume) and str(WM.active_world_id) != "":
 		WM.pending_resume = false
 		await load_world_id(str(WM.active_world_id))
@@ -114,6 +119,25 @@ func _post_boot() -> void:
 		var slot := pending_load_slot
 		pending_load_slot = -1
 		await load_slot(slot)
+
+
+## Stage 5 is the first streamed region. world_ready means spawn already
+## published its defaults, so the snapshot can replace them.
+func _wait_for_continue_boot() -> void:
+	var frames := 0
+	while frames < 3600 and is_inside_tree():
+		var compose = get_tree().get_first_node_in_group("composition_root")
+		var boot_ready := compose == null or int(compose.stage) >= 5
+		var player = get_tree().get_first_node_in_group("player")
+		var spawn_done := true
+		if player != null and "world_ready" in player:
+			spawn_done = bool(player.world_ready)
+		elif player == null and compose != null:
+			spawn_done = false
+		if boot_ready and spawn_done:
+			return
+		await get_tree().process_frame
+		frames += 1
 
 
 func _connect_autosave_hooks() -> void:
@@ -179,7 +203,19 @@ static func peek_continue() -> Dictionary:
 		"world_id": str(data.get("world_id", "")),
 		"world_seed": int(data.get("world_seed", 0)),
 		"health": float(player.get("health", 0.0)),
+		"voxel_position": player.get("voxel_position", []),
 	}
+
+
+## Saved column while a menu Continue is armed. Null when there is nothing to resume.
+static func pending_continue_position() -> Variant:
+	if not pending_continue:
+		return null
+	var pos: Variant = peek_continue().get("voxel_position", [])
+	if not pos is Array or (pos as Array).size() < 3:
+		return null
+	var arr: Array = pos
+	return Vector3(float(arr[0]), float(arr[1]), float(arr[2]))
 
 
 static func has_continue() -> bool:

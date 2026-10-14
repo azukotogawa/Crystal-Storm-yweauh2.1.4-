@@ -267,16 +267,17 @@ func _on_select_world(world_id: String) -> void:
 	_refresh_world_list()
 
 
-func _on_continue() -> void:
+## Arms the next main-scene boot to load continue.json. Does not change scene.
+func arm_continue_launch() -> bool:
 	var meta: Dictionary = _SaveGame.peek_continue()
 	if meta.is_empty():
-		return
+		return false
 	var world_id := str(meta.get("world_id", ""))
 	var seed := int(meta.get("world_seed", 12349))
 	if world_id != "" and not _WorldManager.get_world(world_id).is_empty():
 		var loaded: Dictionary = _WorldManager.load_world(world_id)
 		if not bool(loaded.get("ok", false)):
-			return
+			return false
 	else:
 		_WorldManager.pending_launch = {
 			"id": world_id,
@@ -288,6 +289,12 @@ func _on_continue() -> void:
 	# Continue file is the alive-quit snapshot. Do not also apply the world file.
 	_WorldManager.pending_resume = false
 	_SaveGame.pending_continue = true
+	return true
+
+
+func _on_continue() -> void:
+	if not arm_continue_launch():
+		return
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 

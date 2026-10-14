@@ -259,6 +259,16 @@ func _ready():
 
 	world = get_tree().get_first_node_in_group("world")
 	camera = get_tree().get_first_node_in_group("camera")
+	# Publish the alive-quit column before the stream wait. ChunkManager follows
+	# voxel_position; a Continue boot must not fill the crystal heart first.
+	var saved_pos: Variant = null
+	var SaveGame = load("res://systems/save_game_service.gd")
+	if SaveGame != null:
+		saved_pos = SaveGame.pending_continue_position()
+	if saved_pos is Vector3:
+		var sp: Vector3 = saved_pos
+		voxel_position = Vector3(sp.x, _ws().layer_height() * 4.0, sp.z)
+		_sync_global_from_voxel()
 	while chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 		await get_tree().process_frame
@@ -273,6 +283,9 @@ func _ready():
 		await crystal_manager.ensure_ready()
 
 	var spawn_col := _resolve_spawn_column()
+	if saved_pos is Vector3:
+		var saved: Vector3 = saved_pos
+		spawn_col = Vector2i(floori(saved.x), floori(saved.z))
 	# Publish the spawn column before the stream wait. ChunkManager follows
 	# voxel_position; leaving it at the origin loads the map centre while the
 	# crystal heart (and this body) sit in a corner.
