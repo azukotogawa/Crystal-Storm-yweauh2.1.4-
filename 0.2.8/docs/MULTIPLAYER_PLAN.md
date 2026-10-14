@@ -159,7 +159,7 @@ v1: only the host writes `user://saves/world_{id}.json`. Snapshot grows `players
 
 ### Camera / UI per peer
 
-`Camera3D` (ortho size 24, Q/E yaw) must parent to the **local** pawn. HUD (`ui/game_overlay.gd`, hotbar, inventory, map, objective arrow) binds the local pawn; boss bar / coverage / phase can stay session-wide. `FrontendRoot` / world select: host creates or loads a catalog world (`WorldManager`); clients see a lobby screen, not the single-player catalog.
+`Camera3D` (ortho size 16, Q/E yaw) must parent to the **local** pawn. HUD (`ui/game_overlay.gd`, hotbar, inventory, map, objective arrow) binds the local pawn; boss bar / coverage / phase can stay session-wide. `FrontendRoot` / world select: host creates or loads a catalog world (`WorldManager`); clients see a lobby screen, not the single-player catalog.
 
 ### Pause, time scale, hit-stop
 

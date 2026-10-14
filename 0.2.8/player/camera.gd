@@ -67,7 +67,9 @@ var _orbit_target_deg: float:
 	get:
 		return yaw_target_degrees
 
-var zoom_level := 24.0
+## Ortho view height. 16 is about a third closer than the old 24 (30–40% band).
+## Wheel still clamps to 8..140 so a close-up and a wide maze view both remain.
+var zoom_level := 16.0
 const ZOOM_STEP := 2.0
 const MIN_ZOOM := 8.0
 const MAX_ZOOM := 140.0

@@ -1123,6 +1123,7 @@ Player/camera:
 
 - camera distance 100
 - camera height offset 101
+- default ortho zoom 16 (about a third closer than 24)
 - zoom 8-140, step 2
 - yaw step 90 degrees
 - isometric yaw baseline 45 degrees

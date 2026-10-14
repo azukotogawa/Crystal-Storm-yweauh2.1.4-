@@ -54,7 +54,7 @@ A live session on Cole’s machine is still the check for feel, framing, and “
 | Crystal mite body | 0.28 × 0.7 units, fixed | 0.22 × 0.70 voxels |
 | Crystal cell mesh | 0.88 voxels | unchanged |
 | Structures | scaled by `voxel_scale` in `GameVisualRegistry.configure_building_mesh` | unchanged |
-| Camera | ortho size 24, looks at the feet | still size 24; look target lifted by half the player height |
+| Camera | ortho size 24, looks at the feet | size 16 (about a third closer than 24); look target lifted by half the player height |
 
 Water `water_level` is a 0–1 fill inside a channel cell, not a height in voxels. That is a different quantity on purpose.
 
@@ -160,7 +160,7 @@ Settings > Graphics **Texture set** is Original (default) or Batch 1, stored as 
 
 Scale outliers that were **not** the character body, and are still true:
 
-- Orthographic camera size 24 against a 2-unit voxel. A person at 3.2 units is about 13% of the frame height. Readable relative to a block, still small in the wide iso view. Changing `size` would reshoot every camera probe; left alone on purpose.
+- Orthographic camera size 16 against a 2-unit voxel (was 24, about a third closer). A person at 3.2 units is about 20% of the frame height. Wheel zoom stays 8–140, step 2. Capture scripts set their own `zoom_level`.
 - Structure Y factors differ (a wood wall cap is 0.55× voxel height, a town hall is 1.0×). They share the column footprint. The height differences are the building designs, not a second unit.
 - `legacy_height_reference` 158 maps noise into the 40-unit cap. That is a generation scalar, not a rendered size.
 
