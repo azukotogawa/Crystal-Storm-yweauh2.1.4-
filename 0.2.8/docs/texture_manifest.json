@@ -441,15 +441,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/crystal_shard.png",
 			"scale": 1.0
@@ -464,15 +464,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/herb.png",
 			"scale": 1.0
@@ -504,15 +504,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/stone.png",
 			"scale": 1.0
@@ -542,15 +542,15 @@
 			"art": "art",
 			"batch1": {
 				"size": [
-					32,
-					32
+					64,
+					64
 				],
 				"status": "present"
 			},
 			"category": "items",
 			"expected_size": [
-				32,
-				32
+				64,
+				64
 			],
 			"path": "res://assets/art/items/wood.png",
 			"scale": 1.0

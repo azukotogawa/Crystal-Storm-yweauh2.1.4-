@@ -187,12 +187,13 @@ func generate_game_visual_bundle() -> Dictionary:
 		bundle["veg_%s" % plant_stage] = generate_texture(Category.VEGETATION, StringName(plant_stage), 40)
 	for bid in [&"stone_wall", &"wood_wall", &"town_hall", &"ruin_pillar", &"gate", &"bridge"]:
 		bundle["building_%s" % bid] = generate_texture(Category.BUILDING, bid, 48)
-	# Tools and weapons are 64 so the 48px slots do not upscale them.
-	# A smaller file is ignored rather than stretched up to this size.
-	for item_id in ["wooden_sword", "spear", "stone_pick", "crystal_hammer", "shortbow", "sling"]:
+	# Tools, weapons, blocks, and materials are 64 so the 48px slots do not
+	# upscale them. A smaller file is ignored rather than stretched up.
+	for item_id in [
+		"wooden_sword", "spear", "stone_pick", "crystal_hammer", "shortbow", "sling",
+		"wood", "stone", "herb", "crystal_shard",
+	]:
 		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id), 64)
-	for item_id in ["wood", "stone", "herb", "crystal_shard"]:
-		bundle["item_%s" % item_id] = generate_item_icon(StringName(item_id))
 	return bundle
 
 

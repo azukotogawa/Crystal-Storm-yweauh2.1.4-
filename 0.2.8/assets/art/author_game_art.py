@@ -227,29 +227,49 @@ def weapon_icons() -> None:
         img.save(batch / f"{name}.png")
 
 
-def items() -> None:
+def material_icons() -> None:
+    """64px block and material icons. Same 4px bricks as the weapons, so a
+    48px slot is not a stretched 32px file. Bomb and armor reuse these."""
     specs = {
         "wood": [
-            (2, 2, WOOD), (3, 2, WOOD_DK), (4, 2, WOOD),
-            (2, 3, WOOD_DK), (3, 3, WOOD), (4, 3, WOOD_DK),
-            (2, 4, WOOD), (3, 4, WOOD_DK), (4, 4, WOOD),
+            (1, 2, WOOD), (2, 2, WOOD_DK), (3, 2, WOOD), (4, 2, WOOD_DK), (5, 2, WOOD),
+            (1, 3, WOOD_DK), (2, 3, WOOD), (3, 3, WOOD_DK), (4, 3, WOOD), (5, 3, WOOD_DK),
+            (1, 4, WOOD), (2, 4, WOOD_DK), (3, 4, WOOD), (4, 4, WOOD_DK), (5, 4, WOOD),
+            (1, 5, WOOD_DK), (2, 5, WOOD), (3, 5, WOOD_DK), (4, 5, WOOD), (5, 5, WOOD_DK),
+            (1, 6, WOOD), (2, 6, WOOD_DK), (3, 6, WOOD), (4, 6, WOOD_DK), (5, 6, WOOD),
         ],
         "stone": [
-            (2, 2, STONE), (3, 2, STONE_DK), (4, 2, STONE),
-            (2, 3, STONE_DK), (3, 3, WHITE), (4, 3, STONE),
-            (2, 4, STONE), (3, 4, STONE_DK), (4, 4, STONE),
+            (1, 2, STONE), (2, 2, STONE_DK), (3, 2, STONE), (4, 2, WHITE), (5, 2, STONE),
+            (1, 3, STONE_DK), (2, 3, STONE), (3, 3, STONE_DK), (4, 3, STONE), (5, 3, STONE_DK),
+            (1, 4, STONE), (2, 4, STONE), (3, 4, STONE_DK), (4, 4, STONE), (5, 4, STONE),
+            (1, 5, STONE_DK), (2, 5, STONE), (3, 5, STONE), (4, 5, STONE_DK), (5, 5, STONE),
+            (1, 6, STONE), (2, 6, STONE_DK), (3, 6, STONE), (4, 6, STONE), (5, 6, STONE_DK),
         ],
         "herb": [
-            (3, 1, LEAF), (2, 2, LEAF_DK), (4, 2, LEAF),
-            (3, 3, LEAF), (3, 4, WOOD), (3, 5, WOOD_DK),
+            (3, 1, LEAF), (2, 2, LEAF_DK), (3, 2, LEAF), (4, 2, LEAF),
+            (1, 3, LEAF), (2, 3, LEAF), (4, 3, LEAF_DK), (5, 3, LEAF),
+            (3, 4, LEAF_DK),
+            (3, 5, WOOD), (3, 6, WOOD_DK), (3, 7, WOOD),
         ],
         "crystal_shard": [
-            (3, 1, PURPLE), (2, 2, PURPLE_DK), (4, 2, PURPLE),
-            (3, 3, WHITE), (2, 4, PURPLE), (4, 4, PURPLE_DK),
+            (3, 1, WHITE),
+            (2, 2, PURPLE), (3, 2, PURPLE), (4, 2, PURPLE_DK),
+            (2, 3, PURPLE_DK), (3, 3, WHITE), (4, 3, PURPLE),
+            (1, 4, PURPLE), (2, 4, PURPLE), (3, 4, PURPLE_DK), (4, 4, PURPLE), (5, 4, PURPLE_DK),
+            (2, 5, PURPLE_DK), (3, 5, PURPLE), (4, 5, WHITE),
+            (3, 6, PURPLE), (3, 7, PURPLE_DK),
         ],
     }
+    batch = ROOT / "assets" / "art_batch1" / "items"
+    batch.mkdir(parents=True, exist_ok=True)
     for name, cells in specs.items():
-        save(figure(cells, 32), "items", name)
+        img = figure(cells, 64)
+        save(img, "items", name)
+        img.save(batch / f"{name}.png")
+
+
+def items() -> None:
+    material_icons()
     weapon_icons()
 
 
@@ -336,5 +356,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "weapons":
         weapon_icons()
         print(f"Wrote 64px weapon icons under {ART / 'items'}")
+    elif len(sys.argv) > 1 and sys.argv[1] == "materials":
+        material_icons()
+        print(f"Wrote 64px block and item icons under {ART / 'items'}")
     else:
         main()
