@@ -243,6 +243,131 @@ func _run() -> void:
 		pocket_ok = false
 	if pocket_ok:
 		print("OK basin and side pocket filled with no further block edits")
+
+	# 5b. The basin check above only reads the pool after the dirty set drains,
+	# so one tick that wets every open cell still passes. Drive the same far
+	# dig through _process (one water step when the frame crosses the fluid
+	# rate) and require the water to gain a single cell per tick. A pool
+	# bigger than the old 96-cell fill must stay inside the medium frame
+	# budget (8000 us; a 60 Hz frame is 16600) while that creep runs.
+	_ChannelRegistry.reset()
+	_TerrainEdits.reset()
+	for sx in 24:
+		for sz in 8:
+			heights[Vector2i(sx, sz)] = 10.0
+			tiles[Vector2i(sx, sz)] = _VoxelTypes.GRASSLAND
+	tiles[Vector2i(1, 2)] = _VoxelTypes.RIVER
+	query.test_base_heights = heights
+	query.test_tiles = tiles
+	var settle_cells: Array[Vector2i] = []
+	for sx2 in range(2, 22):
+		_TerrainEdits.dig(sx2, 2, 1)
+		settle_cells.append(Vector2i(sx2, 2))
+	svc.set("_dirty_cells", {})
+	svc.set("_tick_accum", 0.0)
+	editor.call("_notify_water_reflow", 21, 2, true)
+	var frame_budget_us := 8000
+	var _count_wet := func(cells: Array[Vector2i]) -> int:
+		var n := 0
+		for c in cells:
+			if _ChannelRegistry.has_fluid(c.x, c.y, _ChannelRegistry.FLUID_WATER):
+				n += 1
+		return n
+	var t_first := Time.get_ticks_usec()
+	svc.call("_process", 0.2)
+	var first_us := Time.get_ticks_usec() - t_first
+	var first_wet: int = _count_wet.call(settle_cells)
+	if first_wet == 0:
+		_fail("settle must wet the first open cell on the first water frame")
+	elif first_wet >= settle_cells.size():
+		_fail("pool of %d settled in one frame; it must creep cell by cell" % settle_cells.size())
+	elif first_wet != 1:
+		_fail("first water frame wet %d cells; want 1" % first_wet)
+	if first_us > frame_budget_us:
+		_fail("first settle frame %d us over budget %d" % [first_us, frame_budget_us])
+	var settle_ticks := 1
+	var slowest := first_us
+	var settle_wet := first_wet
+	while settle_wet < settle_cells.size() and settle_ticks < settle_cells.size() + 8:
+		var settle_pending: Dictionary = svc.get("_dirty_cells")
+		if settle_pending.is_empty():
+			break
+		var t_step := Time.get_ticks_usec()
+		svc.call("_process", 0.2)
+		var step_us := Time.get_ticks_usec() - t_step
+		slowest = maxi(slowest, step_us)
+		if step_us > frame_budget_us:
+			_fail("settle frame %d took %d us; budget %d" % [settle_ticks, step_us, frame_budget_us])
+		settle_ticks += 1
+		settle_wet = _count_wet.call(settle_cells)
+		if settle_wet > settle_ticks:
+			_fail("settle gained more than one cell a frame (wet %d after %d)" % [settle_wet, settle_ticks])
+	if settle_wet != settle_cells.size():
+		_fail("open trench must finish cell by cell, wet %d/%d after %d frames" % [settle_wet, settle_cells.size(), settle_ticks])
+	elif settle_ticks < 2:
+		_fail("trench finished without a second frame")
+	elif _ChannelRegistry.has_fluid(2, 3, _ChannelRegistry.FLUID_WATER):
+		_fail("settle must leave same-height ground dry")
+	elif not bool(svc.call("is_persistent_source", 1, 2)):
+		_fail("river source lost while the trench settled")
+	else:
+		print("OK trench settled cell by cell frames=%d slowest=%d us" % [settle_ticks, slowest])
+
+	# 120 open cells. The old fill cap was 96, so this pool poured out in one
+	# tick. A dozen frames must each stay in budget and add at most one cell.
+	_ChannelRegistry.reset()
+	_TerrainEdits.reset()
+	for lx in 24:
+		for lz in 8:
+			heights[Vector2i(lx, lz)] = 10.0
+			tiles[Vector2i(lx, lz)] = _VoxelTypes.GRASSLAND
+	tiles[Vector2i(1, 1)] = _VoxelTypes.RIVER
+	query.test_base_heights = heights
+	query.test_tiles = tiles
+	var large_n := 0
+	for lx2 in range(2, 22):
+		for lz2 in range(1, 7):
+			_TerrainEdits.dig(lx2, lz2, 1)
+			large_n += 1
+	svc.set("_dirty_cells", {})
+	svc.set("_tick_accum", 0.0)
+	editor.call("_notify_water_reflow", 21, 6, true)
+	var large_slowest := 0
+	var large_wet := 0
+	var large_ok := true
+	for step_i in 12:
+		var large_pending: Dictionary = svc.get("_dirty_cells")
+		if step_i > 0 and large_pending.is_empty():
+			_fail("large pool stopped at frame %d with %d/%d wet" % [step_i, large_wet, large_n])
+			large_ok = false
+			break
+		var t_large := Time.get_ticks_usec()
+		svc.call("_process", 0.2)
+		var large_us := Time.get_ticks_usec() - t_large
+		large_slowest = maxi(large_slowest, large_us)
+		if large_us > frame_budget_us:
+			_fail("large pool frame %d took %d us; budget %d" % [step_i, large_us, frame_budget_us])
+			large_ok = false
+		var wet_now := 0
+		for lx3 in range(2, 22):
+			for lz3 in range(1, 7):
+				if _ChannelRegistry.has_fluid(lx3, lz3, _ChannelRegistry.FLUID_WATER):
+					wet_now += 1
+		if wet_now - large_wet > 1:
+			_fail("large pool frame %d gained %d cells" % [step_i, wet_now - large_wet])
+			large_ok = false
+		large_wet = wet_now
+	if large_wet >= large_n:
+		_fail("large pool of %d settled inside 12 frames" % large_n)
+		large_ok = false
+	elif large_wet < 1:
+		_fail("large pool never started (%d open)" % large_n)
+		large_ok = false
+	elif _ChannelRegistry.has_fluid(2, 0, _ChannelRegistry.FLUID_WATER):
+		_fail("large pool must leave the bank dry")
+		large_ok = false
+	if large_ok:
+		print("OK large pool settling frames=12 slowest=%d us wet=%d/%d budget=%d" % [large_slowest, large_wet, large_n, frame_budget_us])
 	editor.queue_free()
 
 	# Idle sleep / no world scan.
