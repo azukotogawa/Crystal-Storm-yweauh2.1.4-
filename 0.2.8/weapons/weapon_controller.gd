@@ -111,21 +111,18 @@ func _process(delta: float) -> void:
 		return
 	_poll_dig_brush_keys()
 
-	# LMB subtracts structures/terrain for dig tools and place-catalog terrain edits.
+	# LMB breaks blocks only for the pick and other dig tools.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
+	# Stone, wood, herbs, and other non-dig items do not break blocks.
 	var dig_held := _is_active_dig_tool() and Input.is_action_pressed("attack")
 	if Input.is_action_just_pressed("attack") and _cooldown_timer <= 0.0:
 		if not _is_active_combat_weapon():
-			if _try_remove_at_cursor():
-				_dig_hold_sec = 0.0
-				if profiler and profiler.has_method("end"):
-					profiler.end("weapon_controller")
-				return
-			if _PlaceableCatalog.is_terrain_edit(get_place_id()) and not _is_active_dig_tool():
-				_try_dig_tool_or_fill_remove()
-				if profiler and profiler.has_method("end"):
-					profiler.end("weapon_controller")
-				return
+			if _is_active_dig_tool():
+				if _try_remove_at_cursor():
+					_dig_hold_sec = 0.0
+					if profiler and profiler.has_method("end"):
+						profiler.end("weapon_controller")
+					return
 	if dig_held:
 		var dig_edge := Input.is_action_just_pressed("attack")
 		if dig_edge:
@@ -144,7 +141,12 @@ func _process(delta: float) -> void:
 
 	var build_held := Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
 	var build_edge := Input.is_action_just_pressed("build_place") or Input.is_action_just_pressed("interact")
-	if build_held:
+	# A right-click ability runs instead of placement and never places a block.
+	if build_held and _held_has_right_click_ability():
+		if build_edge and _cooldown_timer <= 0.0:
+			_try_right_click_ability()
+		_build_hold_sec = 0.0
+	elif build_held:
 		if build_edge:
 			_build_hold_sec = 0.0
 			if _cooldown_timer <= 0.0:
@@ -176,11 +178,30 @@ func _process(delta: float) -> void:
 		profiler.end("weapon_controller")
 
 
-func _is_build_material() -> bool:
+func _active_item_id() -> String:
 	var slot = get_active_item()
 	if slot == null:
-		return false
-	return str(slot.id) in ["stone", "wood"]
+		return ""
+	return str(slot.id)
+
+
+func _is_build_material() -> bool:
+	return ItemTypes.is_placeable_block(_active_item_id())
+
+
+func _held_has_right_click_ability() -> bool:
+	return ItemTypes.has_right_click_ability(_active_item_id())
+
+
+## RMB use for herb, armor, bombs, and any item that sets alt_use. Never places.
+func _try_right_click_ability() -> void:
+	if _cooldown_timer > 0.0:
+		return
+	var def := ItemTypes.get_def(_active_item_id())
+	if str(def.get("alt_use", "")) == "attack":
+		_try_attack()
+		return
+	_try_use_consumable()
 
 
 func _try_remove_at_cursor() -> bool:
@@ -210,11 +231,7 @@ func _is_active_dig_tool() -> bool:
 	var slot = get_active_item()
 	if slot == null:
 		return false
-	var def := ItemTypes.get_def(str(slot.id))
-	if def.is_empty():
-		return false
-	return int(def.get("category", -1)) == ItemTypes.Category.TOOL \
-		and int(def.get("weapon_kind", -1)) == ItemTypes.WeaponKind.DIG
+	return ItemTypes.breaks_blocks(str(slot.id))
 
 
 func _is_active_combat_weapon() -> bool:
@@ -636,6 +653,8 @@ func _notify_terrain_fail() -> void:
 
 
 func _do_dig_attack(item_id: String, def: Dictionary) -> void:
+	if not _is_active_dig_tool():
+		return
 	_sync_impact_pose(item_id)
 	_sfx("swing_pick", _attack_origin(0.45) if player else null)
 	if _terrain_editor == null:
@@ -755,26 +774,9 @@ func get_place_label() -> String:
 	return _PlaceableCatalog.display_name(get_place_id())
 
 
-func _try_dig_tool_or_fill_remove() -> void:
-	if _terrain_editor == null:
-		_bind_terrain_editor()
-	if _terrain_editor == null:
-		return
-	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
-	if target == Vector3.ZERO:
-		_notify_terrain_fail()
-		_cooldown_timer = 0.04
-		return
-	if _terrain_editor.try_dig(target):
-		_cooldown_timer = _terrain_editor.get_dig_delay(target)
-		_flash_dig_feedback(target)
-		_notify_block_break(target)
-	else:
-		_notify_terrain_fail()
-		_cooldown_timer = 0.04
-
-
 func _try_place_selected() -> void:
+	if _held_has_right_click_ability():
+		return
 	if _cooldown_timer > 0.0 or player == null:
 		return
 	if inventory == null and player:
