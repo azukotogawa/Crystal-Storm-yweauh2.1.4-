@@ -78,6 +78,8 @@ var is_input_locked: bool = false
 ## True after a jump tap is consumed. is_action_just_pressed misses a press that
 ## lands between flushes (smoke action_press + one frame + release).
 var _jump_latched: bool = false
+## Idle frames always see that one-frame tap. Physics may not run during it.
+var _jump_edge: bool = false
 ## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
 var _locked_rotation: int = 0
 var locked_rotation: int:
@@ -348,6 +350,17 @@ func _setup_body_collision() -> void:
 	add_child(_body_collision)
 
 
+## Records a jump tap even when no physics tick runs while Space is down.
+func _process(_delta: float) -> void:
+	if not world_ready:
+		return
+	if _GameplayInput.blocks_actions():
+		_jump_edge = false
+		return
+	if Input.is_action_pressed("jump") and not _jump_latched:
+		_jump_edge = true
+
+
 func _physics_process(delta: float) -> void:
 	if not world_ready:
 		return
@@ -390,17 +403,24 @@ func _physics_process(delta: float) -> void:
 
 	var moving := input_dir != Vector2.ZERO
 	t0 = Time.get_ticks_usec() if measure else 0
-	var jump_down := false
-	if not _GameplayInput.blocks_actions():
-		jump_down = Input.is_action_pressed("jump")
-	if jump_down \
+	var jump_blocked := _GameplayInput.blocks_actions()
+	var jump_held := false
+	if not jump_blocked:
+		jump_held = Input.is_action_pressed("jump")
+	# _jump_edge covers a tap that was pressed and released between physics ticks.
+	var jump_down := jump_held or (not jump_blocked and _jump_edge)
+	if jump_blocked:
+		_jump_edge = false
+	elif jump_down \
 			and not _jump_latched \
 			and current_state in [State.IDLE, State.RUNNING] \
 			and _can_initiate_jump(moving):
 		change_state(State.JUMPING)
 		_jump_latched = true
-	elif not jump_down:
+		_jump_edge = false
+	elif not jump_held:
 		_jump_latched = false
+		_jump_edge = false
 	if measure:
 		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
