@@ -44,6 +44,9 @@ func _run() -> void:
 	elif "textureLod" not in include_src or "vec2(1.5)" not in include_src:
 		_fail("atlas sample must use textureLod and the 1.5px inner inset")
 		failed = true
+	elif "vec2 atlas_grid" in include_src or "vec2 cell_grid" not in include_src:
+		_fail("atlas sample parameter must not reuse the atlas_grid uniform name")
+		failed = true
 	else:
 		print("OK atlas sample locks mip 0 at inner texel centers")
 
@@ -64,6 +67,15 @@ func _run() -> void:
 				_fail("%s failed to load" % path)
 				failed = true
 			else:
+				# A drawn material compiles the include. A redefinition prints
+				# SHADER ERROR in the engine log; this script still checks the
+				# material bound.
+				var host := MeshInstance3D.new()
+				var mat := ShaderMaterial.new()
+				mat.shader = shader
+				host.mesh = BoxMesh.new()
+				host.material_override = mat
+				root.add_child(host)
 				print("OK shader %s" % path)
 
 	var shade_src := FileAccess.get_file_as_string("res://shaders/terrain_shade.gdshaderinc")
@@ -121,6 +133,9 @@ func _run() -> void:
 		else:
 			print("OK Cube.png tiles have no dark grid lines")
 
+	# Let the headless renderer compile the bound materials.
+	await process_frame
+	await process_frame
 	if failed:
 		quit(1)
 		return
