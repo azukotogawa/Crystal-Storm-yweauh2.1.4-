@@ -169,6 +169,8 @@ func _process(delta: float) -> void:
 			_shown_item = ""
 			if inventory:
 				inventory.hotbar_changed.emit(i)
+	# Poses and ranged release share this clock. Hammer damage stays on its wind-up frame.
+	_tick_animation_clock(delta)
 	_present_held(delta)
 	if profiler and profiler.has_method("end"):
 		profiler.end("weapon_controller")
@@ -572,8 +574,10 @@ func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward
 		kind = "bomb"
 	var vs: float = _WorldSettings.get_active().voxel_scale
 	var chunk_manager = get_tree().get_first_node_in_group("chunk_manager") if is_inside_tree() else null
+	# Leave the hand so the shot is in the air, not inside the body.
+	var muzzle := origin + forward * (vs * 0.65)
 	var ok := _Projectile.launch(self, {
-		"origin": origin,
+		"origin": muzzle,
 		"velocity": vel,
 		"gravity": float(def.get("projectile_gravity", 12.0)),
 		"damage": _entity_hit_damage(def, _StatIds.RANGED_DAMAGE if not lob else _StatIds.MELEE_DAMAGE),
@@ -1026,8 +1030,6 @@ func _tick_animation_clock(delta: float) -> bool:
 
 
 func _cancel_pending_strike() -> void:
-	if _pending_mode < 0:
-		return
 	_pending_mode = -1
 	_pending_item = ""
 	_pending_def = {}
@@ -1041,9 +1043,12 @@ func _sync_impact_pose(item_id: String) -> void:
 	var spec: Dictionary = _ItemAnim.spec_for(item_id)
 	if int(spec.get("kind", _ItemAnim.Kind.NONE)) == _ItemAnim.Kind.NONE:
 		return
+	# Dig, place, and herb already resolved. Play the swing from the ready pose
+	# and do not restart it on every repeat tick.
+	if _playback != null and str(_playback.item_id) == item_id and not _playback.finished():
+		return
 	_playback = _ItemAnim.playback_for(item_id)
-	_playback.snap_to_impact()
-	_clock_damage_elapsed = float(_playback.elapsed)
+	_clock_damage_elapsed = -1.0
 	if _held:
 		_held.apply_playback(_playback)
 		if player:

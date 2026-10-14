@@ -14,7 +14,7 @@ const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 static var _pool: Array = []
 static var _tracked: Array = []
 static var _live: int = 0
-static var _arrow_mesh: BoxMesh
+static var _arrow_mesh: Mesh
 static var _stone_mesh: SphereMesh
 static var _bomb_mesh: SphereMesh
 static var _arrow_mat: StandardMaterial3D
@@ -443,6 +443,7 @@ func _use_fade_material() -> void:
 	var color := source.albedo_color
 	color.a = 1.0
 	_fade_mat.albedo_color = color
+	_fade_mat.vertex_color_use_as_albedo = kind == &"arrow"
 	if _mesh:
 		_mesh.material_override = _fade_mat
 
@@ -492,11 +493,48 @@ func _aim_mesh() -> void:
 	look_at(look, Vector3.UP)
 
 
-static func _shared_arrow_mesh() -> BoxMesh:
+static func _shared_arrow_mesh() -> Mesh:
 	if _arrow_mesh == null:
-		_arrow_mesh = BoxMesh.new()
-		_arrow_mesh.size = Vector3(0.08, 0.08, 0.85)
+		_arrow_mesh = _build_arrow_mesh(_WorldSettings.get_active().voxel_scale)
 	return _arrow_mesh
+
+
+## Crossed shaft, head, and fletching. -Z is forward (the node aims -Z along velocity).
+static func _build_arrow_mesh(vs: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var length := vs * 1.05
+	var z_back := length * 0.42
+	var z_tip := -length * 0.58
+	var z_head := -length * 0.2
+	var z_fletch := length * 0.16
+	var shaft_w := vs * 0.11
+	var head_w := vs * 0.28
+	var fletch_w := vs * 0.2
+	var wood := Color(0.96, 0.72, 0.24)
+	var tip := Color(0.97, 0.96, 0.9)
+	var fletch := Color(0.9, 0.16, 0.14)
+	_arrow_quad(st, Vector3(-shaft_w, 0, z_back), Vector3(shaft_w, 0, z_back), Vector3(shaft_w, 0, z_head), Vector3(-shaft_w, 0, z_head), wood)
+	_arrow_quad(st, Vector3(0, -shaft_w, z_back), Vector3(0, shaft_w, z_back), Vector3(0, shaft_w, z_head), Vector3(0, -shaft_w, z_head), wood)
+	_arrow_tri(st, Vector3(0, 0, z_tip), Vector3(-head_w, 0, z_head), Vector3(head_w, 0, z_head), tip)
+	_arrow_tri(st, Vector3(0, 0, z_tip), Vector3(0, -head_w, z_head), Vector3(0, head_w, z_head), tip)
+	_arrow_tri(st, Vector3(0, 0, z_back), Vector3(-fletch_w, 0, z_fletch), Vector3(fletch_w, 0, z_fletch), fletch)
+	_arrow_tri(st, Vector3(0, 0, z_back), Vector3(0, -fletch_w, z_fletch), Vector3(0, fletch_w, z_fletch), fletch)
+	return st.commit()
+
+
+static func _arrow_quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color) -> void:
+	_arrow_tri(st, a, b, c, color)
+	_arrow_tri(st, a, c, d, color)
+
+
+static func _arrow_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	st.set_color(color)
+	st.add_vertex(a)
+	st.set_color(color)
+	st.add_vertex(b)
+	st.set_color(color)
+	st.add_vertex(c)
 
 
 static func _shared_stone_mesh() -> SphereMesh:
@@ -517,7 +555,8 @@ static func _shared_bomb_mesh() -> SphereMesh:
 
 static func _shared_arrow_mat() -> StandardMaterial3D:
 	if _arrow_mat == null:
-		_arrow_mat = _unshaded(Color(0.72, 0.48, 0.22))
+		_arrow_mat = _unshaded(Color.WHITE)
+		_arrow_mat.vertex_color_use_as_albedo = true
 	return _arrow_mat
 
 

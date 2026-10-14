@@ -1,19 +1,20 @@
 class_name HeldItemView
 extends Node3D
-## One reused arm box and one reused item box. Poses are samples of ItemAnim.Playback.
-## The player body has no rig, so the swing is this node's transform.
+## One reused arm box and one billboard of the item texture.
+## The player body has no rig, so a swing is this node's position.
 
 const _ItemAnim = preload("res://systems/item_anim.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 
 var _arm: MeshInstance3D
-var _item: MeshInstance3D
+var _item: Sprite3D
 var _arm_mat: StandardMaterial3D
-var _item_mat: StandardMaterial3D
 var _item_id: String = ""
 var _vs: float = 2.0
 var _ready_visual: bool = false
+static var _fallback_tex: Texture2D
 
 
 func _ready() -> void:
@@ -26,7 +27,7 @@ func _ensure_visual() -> void:
 		return
 	_vs = _WorldSettings.get_active().voxel_scale
 	var box := BoxMesh.new()
-	box.size = Vector3(0.12, 0.12, 0.72)
+	box.size = Vector3(_vs * 0.16, _vs * 0.16, _vs * 0.7)
 	_arm = MeshInstance3D.new()
 	_arm.name = "Arm"
 	_arm.mesh = box
@@ -34,12 +35,20 @@ func _ensure_visual() -> void:
 	_arm.material_override = _arm_mat
 	_arm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_arm)
-	_item = MeshInstance3D.new()
+	_item = Sprite3D.new()
 	_item.name = "HeldItem"
-	_item.mesh = box
-	_item_mat = _unshaded(Color(0.75, 0.6, 0.35))
-	_item.material_override = _item_mat
+	# About one column tall, larger than the old 0.12 stick, so the icon reads at iso zoom.
+	_item.pixel_size = _vs * 0.038
+	_item.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_item.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	_item.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	_item.alpha_scissor_threshold = 0.15
+	_item.shaded = false
+	_item.double_sided = true
+	_item.centered = true
 	_item.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_item.render_priority = 4
+	_item.texture = _fallback_texture()
 	add_child(_item)
 	_ready_visual = true
 	_apply_unit(_ItemAnim.Kind.NONE, 0.0, 0.0)
@@ -51,8 +60,8 @@ func show_item(item_id: String) -> void:
 	var spec: Dictionary = _ItemAnim.spec_for(item_id)
 	var kind := int(spec.get("kind", _ItemAnim.Kind.NONE))
 	_tint_for(item_id, kind)
-	var idle := 0.34 if kind == _ItemAnim.Kind.AIM else 0.0
-	_apply_unit(kind, idle, float(spec.get("impact_ratio", 0.42)))
+	# u = 0 is the ready pose, which is also the first frame of a use.
+	_apply_unit(kind, 0.0, float(spec.get("impact_ratio", 0.42)))
 	visible = kind != _ItemAnim.Kind.NONE and item_id != ""
 
 
@@ -84,51 +93,62 @@ func visual_child_count() -> int:
 
 func _tint_for(item_id: String, kind: int) -> void:
 	var key := _ItemTypes.visual_key(item_id) if item_id != "" else ""
-	var tint := Color(0.62, 0.62, 0.66)
-	match key:
-		"wooden_sword":
-			tint = Color(0.72, 0.52, 0.28)
-		"stone_pick":
-			tint = Color(0.55, 0.57, 0.62)
-		"shortbow":
-			tint = Color(0.48, 0.32, 0.18)
-		"stone":
-			tint = Color(0.5, 0.5, 0.52)
-		"wood":
-			tint = Color(0.62, 0.42, 0.22)
-		"herb":
-			tint = Color(0.35, 0.72, 0.32)
-		"crystal_shard":
-			tint = Color(0.72, 0.4, 0.95)
-		_:
-			if kind == _ItemAnim.Kind.AIM:
+	var tex := _texture_for(key)
+	_item.texture = tex if tex != null else _fallback_texture()
+	var tint := Color.WHITE
+	if tex == null:
+		tint = Color(0.62, 0.62, 0.66)
+		match key:
+			"wooden_sword":
+				tint = Color(0.72, 0.52, 0.28)
+			"stone_pick":
+				tint = Color(0.55, 0.57, 0.62)
+			"shortbow":
 				tint = Color(0.48, 0.32, 0.18)
-			elif kind == _ItemAnim.Kind.THRUST:
-				tint = Color(0.68, 0.5, 0.3)
-	_item_mat.albedo_color = tint
-	var thick := 1.0
-	var long := 1.0
+			"stone":
+				tint = Color(0.5, 0.5, 0.52)
+			"wood":
+				tint = Color(0.62, 0.42, 0.22)
+			"herb":
+				tint = Color(0.35, 0.72, 0.32)
+			"crystal_shard":
+				tint = Color(0.72, 0.4, 0.95)
+			_:
+				if kind == _ItemAnim.Kind.AIM:
+					tint = Color(0.48, 0.32, 0.18)
+				elif kind == _ItemAnim.Kind.THRUST:
+					tint = Color(0.68, 0.5, 0.3)
+	elif item_id == "crystal_hammer":
+		# Same pick icon, shifted so the hammer does not read as the pick.
+		tint = Color(0.78, 0.62, 1.0)
+	_item.modulate = tint
+	var sx := 1.05
+	var sy := 1.2
 	if item_id == "crystal_hammer":
-		thick = 1.45
-		long = 0.72
+		sx = 1.4
+		sy = 1.35
 	elif key == "stone_pick":
-		thick = 1.2
-		long = 0.9
+		sx = 1.15
+		sy = 1.3
+	elif key == "shortbow":
+		sx = 1.3
+		sy = 1.15
 	elif kind == _ItemAnim.Kind.THRUST:
-		long = 1.35
+		sx = 0.85
+		sy = 1.45
 	elif kind == _ItemAnim.Kind.AIM:
-		long = 1.15
-		thick = 0.7
+		sx = 1.25
+		sy = 1.1
 	elif kind == _ItemAnim.Kind.RAISE:
-		long = 0.55
-		thick = 0.9
-	_item.scale = Vector3(thick, thick, long)
+		sx = 0.95
+		sy = 0.95
+	_item.scale = Vector3(sx, sy, 1.0)
 
 
 func _apply_unit(kind: int, u: float, impact: float) -> void:
 	var vs := _vs
-	var chest := vs * 0.85
-	var side := vs * 0.22
+	var chest := vs * 0.95
+	var side := vs * 0.85
 	var at := clampf(impact, 0.05, 0.92)
 	var phase: float
 	if u < at:
@@ -136,54 +156,82 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 	else:
 		phase = (u - at) / maxf(1.0 - at, 0.001)
 	phase = clampf(phase, -1.0, 1.0)
-	var arm_pos := Vector3(side * 0.65, chest * 0.82, -vs * 0.06)
-	var item_pos := Vector3(side, chest, -vs * 0.28)
+	# 0 at the ready pose and at the end, 1 on the impact frame.
+	var strike := sin(clampf((phase + 1.0) * 0.5, 0.0, 1.0) * PI)
+	var arm_pos := Vector3(side * 0.45, chest * 0.75, -vs * 0.12)
+	var item_pos := Vector3(side, chest, -vs * 0.4)
 	var arm_rot := Vector3.ZERO
-	var item_rot := Vector3.ZERO
 	match kind:
 		_ItemAnim.Kind.SWING:
-			item_rot = Vector3(0.15, phase * 1.25, 0.55)
-			arm_rot = Vector3(0.35, phase * 0.85, 0.15)
-			item_pos.y += vs * 0.12 * (1.0 - absf(phase))
-			item_pos.z -= vs * 0.18 * (1.0 - absf(phase))
+			if _item_id == "crystal_hammer":
+				# Raise through the wind-up, then the impact frame is the slam.
+				var lift := 0.0
+				if phase < 0.0:
+					var wind := phase + 1.0
+					if wind < 0.65:
+						lift = wind / 0.65
+					else:
+						lift = 1.0 - (wind - 0.65) / 0.35
+				item_pos = Vector3(side * 0.55, chest * 0.55 + vs * 1.05 * lift, -vs * (0.28 + 0.55 * (1.0 - lift)))
+				arm_pos = Vector3(side * 0.28, chest * 0.5 + vs * 0.55 * lift, -vs * (0.1 + 0.2 * (1.0 - lift)))
+				arm_rot = Vector3(-1.15 * lift, 0.0, 0.1)
+			else:
+				var sweep := sin((phase + 1.0) * PI)
+				item_pos = Vector3(
+					side + vs * 0.55 * sweep,
+					chest + vs * 0.28 * strike,
+					-vs * (0.32 + 0.62 * strike)
+				)
+				arm_pos = Vector3(side * 0.4 + vs * 0.22 * sweep, chest * 0.72 + vs * 0.12 * strike, -vs * (0.1 + 0.22 * strike))
+				arm_rot = Vector3(0.25 * strike, 0.0, sweep * 0.8)
 		_ItemAnim.Kind.THRUST:
-			var lunge := 0.15
+			var lunge := 0.28
 			if phase < 0.0:
-				lunge = lerpf(0.08, 0.62, phase + 1.0)
+				lunge = lerpf(0.28, 1.2, phase + 1.0)
 			else:
-				lunge = lerpf(0.62, 0.2, phase)
-			item_pos = Vector3(side * 0.25, chest, -lunge * vs)
-			item_rot = Vector3(0.0, 0.0, 0.15)
-			arm_rot = Vector3(-0.2 + lunge * 0.4, 0.0, 0.05)
-			arm_pos.z = -lunge * vs * 0.45
+				lunge = lerpf(1.2, 0.28, phase)
+			item_pos = Vector3(side * 0.35, chest, -lunge * vs)
+			arm_pos = Vector3(side * 0.2, chest * 0.7, -lunge * vs * 0.45)
+			arm_rot = Vector3(-0.15 + lunge * 0.35, 0.0, 0.05)
 		_ItemAnim.Kind.RAISE:
-			var lift := 0.0
-			if phase < 0.0:
-				lift = phase + 1.0
-			else:
-				lift = 1.0 - phase * 0.75
-			item_pos = Vector3(side * 0.4, chest * 0.7 + vs * 0.55 * lift, -vs * 0.16)
-			item_rot = Vector3(-1.1 * lift, 0.2, 0.15)
-			arm_rot = Vector3(-0.9 * lift, 0.1, 0.0)
-			arm_pos.y = chest * 0.75 + vs * 0.28 * lift
+			var lift := strike
+			item_pos = Vector3(side * 0.45, chest * 0.65 + vs * 0.75 * lift, -vs * 0.22)
+			arm_pos = Vector3(side * 0.25, chest * 0.6 + vs * 0.4 * lift, -vs * 0.08)
+			arm_rot = Vector3(-1.0 * lift, 0.0, 0.1)
 		_ItemAnim.Kind.AIM:
 			var draw := 0.0
 			if phase < 0.0:
 				draw = phase + 1.0
 			else:
 				draw = 1.0 - phase
-			item_pos = Vector3(side * 0.85, chest, -vs * (0.22 + 0.16 * draw))
-			item_rot = Vector3(-0.12, 0.35 * draw, 1.05)
-			arm_rot = Vector3(-0.15, 0.25 * draw, 0.4)
+			item_pos = Vector3(side * 0.9, chest, -vs * (0.62 - 0.38 * draw))
+			arm_pos = Vector3(side * 0.4, chest * 0.78, -vs * (0.2 - 0.12 * draw))
+			arm_rot = Vector3(-0.2, 0.15 * draw, 0.35)
 		_:
-			item_pos = Vector3(side, chest * 0.9, -vs * 0.12)
+			item_pos = Vector3(side, chest * 0.9, -vs * 0.2)
 	_arm.position = arm_pos
 	_arm.rotation = arm_rot
-	_arm.scale = Vector3(0.55, 0.55, 0.85)
+	_arm.scale = Vector3.ONE
 	_item.position = item_pos
-	_item.rotation = item_rot
 	_arm.visible = kind != _ItemAnim.Kind.NONE
 	_item.visible = kind != _ItemAnim.Kind.NONE
+
+
+func _texture_for(key: String) -> Texture2D:
+	if key.is_empty():
+		return null
+	var path := "res://assets/art/items/%s.png" % key
+	if not ResourceLoader.exists(path) and _TextureSet.resolved_path(path) == path:
+		return null
+	return _TextureSet.resolve(path)
+
+
+static func _fallback_texture() -> Texture2D:
+	if _fallback_tex == null:
+		var image := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		image.fill(Color.WHITE)
+		_fallback_tex = ImageTexture.create_from_image(image)
+	return _fallback_tex
 
 
 func _unshaded(color: Color) -> StandardMaterial3D:
