@@ -41,6 +41,8 @@ func _run() -> void:
 		failed = true
 	if not _pool_after_parent_freed():
 		failed = true
+	if not _bow_arrow_visible(parent):
+		failed = true
 
 	if failed:
 		push_error("Projectile tests FAILED")
@@ -247,3 +249,119 @@ func _pool_after_parent_freed() -> bool:
 	next.free()
 	print("OK projectile pool survives a freed parent")
 	return true
+
+
+## The iso camera looks along the shot. A flat cross has no triangle that spans
+## both X and Y, so it vanishes. The bow must spawn a thick arrow at the muzzle.
+func _bow_arrow_visible(parent: Node3D) -> bool:
+	var ws = load("res://config/world_settings.gd").get_active()
+	var vs: float = float(ws.voxel_scale)
+	var rig := Node3D.new()
+	rig.name = "BowRig"
+	rig.position = Vector3(40, 6, 40)
+	parent.add_child(rig)
+	var weapon = load("res://weapons/weapon_controller.gd").new()
+	weapon.name = "WeaponController"
+	rig.add_child(weapon)
+	var def: Dictionary = load("res://helpers/item_types.gd").get_def("shortbow")
+	var origin := Vector3(3, 8, 1)
+	var forward := Vector3(0, 0, 1)
+	if not weapon._fire_projectile("shortbow", def, origin, forward, false):
+		push_error("shortbow did not launch an arrow")
+		rig.free()
+		return false
+	var arrow: Projectile = null
+	for child in weapon.get_children():
+		if child is Projectile and (child as Projectile).active:
+			arrow = child
+			break
+	if arrow == null or arrow.kind != &"arrow" or arrow.source_id != &"shortbow":
+		push_error("shortbow shot is not an arrow projectile")
+		rig.free()
+		return false
+	var muzzle := origin + forward * (vs * 0.65)
+	if arrow.global_position.distance_to(muzzle) > 0.05:
+		push_error("arrow left the muzzle, at %s expected %s" % [arrow.global_position, muzzle])
+		rig.free()
+		return false
+	if not arrow.top_level:
+		push_error("arrow must stay in world space")
+		rig.free()
+		return false
+	var mesh := arrow.get_node_or_null("ProjectileMesh") as MeshInstance3D
+	if mesh == null or mesh.mesh == null or not mesh.visible or not mesh.is_visible_in_tree():
+		push_error("bow arrow mesh is not visible")
+		rig.free()
+		return false
+	if mesh.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+		push_error("bow arrow casts a shadow")
+		rig.free()
+		return false
+	if not _arrow_has_body(mesh.mesh, vs):
+		push_error("bow arrow mesh is still a flat cross")
+		rig.free()
+		return false
+	var aim := -arrow.global_transform.basis.z
+	if aim.length_squared() < 0.01 or aim.normalized().dot(forward) < 0.9:
+		push_error("arrow tip does not point along the shot (%s)" % aim)
+		rig.free()
+		return false
+	arrow.ttl = 0.0
+	arrow.integrate(0.05, [])
+	rig.free()
+	print("OK shortbow arrow is a visible projectile")
+	return true
+
+
+func _arrow_has_body(mesh: Mesh, vs: float) -> bool:
+	if mesh.get_surface_count() < 1:
+		return false
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	if verts.size() < 12 or colors.size() != verts.size():
+		return false
+	var index_data := PackedInt32Array()
+	var raw_index = arrays[Mesh.ARRAY_INDEX]
+	if raw_index is PackedInt32Array:
+		index_data = raw_index
+	var thick := 0
+	var tri_count := index_data.size() / 3 if index_data.size() >= 3 else verts.size() / 3
+	for t in tri_count:
+		var i0: int
+		var i1: int
+		var i2: int
+		if index_data.size() >= 3:
+			i0 = index_data[t * 3]
+			i1 = index_data[t * 3 + 1]
+			i2 = index_data[t * 3 + 2]
+		else:
+			i0 = t * 3
+			i1 = t * 3 + 1
+			i2 = t * 3 + 2
+		var span := _tri_span(verts[i0], verts[i1], verts[i2])
+		if span.x >= vs * 0.15 and span.y >= vs * 0.15:
+			thick += 1
+	if thick < 2:
+		return false
+	var bounds := mesh.get_aabb().size
+	if bounds.z < vs * 1.15 or bounds.z <= bounds.x or bounds.z <= bounds.y:
+		return false
+	var min_z := INF
+	for v in verts:
+		min_z = minf(min_z, v.z)
+	var pale := false
+	var red := false
+	for n in verts.size():
+		var c: Color = colors[n]
+		if verts[n].z <= min_z + vs * 0.05 and c.r > 0.9 and c.g > 0.9 and c.b > 0.85:
+			pale = true
+		if c.r > 0.75 and c.g < 0.3 and c.b < 0.3:
+			red = true
+	return pale and red
+
+
+func _tri_span(a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	var max_v := Vector3(maxf(a.x, maxf(b.x, c.x)), maxf(a.y, maxf(b.y, c.y)), maxf(a.z, maxf(b.z, c.z)))
+	var min_v := Vector3(minf(a.x, minf(b.x, c.x)), minf(a.y, minf(b.y, c.y)), minf(a.z, minf(b.z, c.z)))
+	return max_v - min_v
