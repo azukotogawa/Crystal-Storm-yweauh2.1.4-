@@ -134,6 +134,7 @@ SUITES=(
 	"res://scripts/verify_boss.gd"
 	"res://scripts/verify_juice.gd"
 	"res://scripts/verify_item_animations.gd"
+	"res://scripts/verify_held_item_use.gd"
 	"res://scripts/verify_block_break_place_fx.gd"
 	"res://scripts/verify_loaded_chunk_bounds.gd"
 	"res://scripts/verify_topographical_map.gd"
