@@ -4,6 +4,11 @@ Verification skill for this repo. An agent follows this file as a contract: same
 
 This tree is a Godot 4.7 game. There is no Cargo, npm, or Makefile build. Importing `0.2.8/` is the build. Tests are headless Godot scripts. The playable check is a headless smoke of `res://scenes/main.tscn`.
 
+
+QUICK_CHECK: bash .cursor/skills/verify-crystal-storm/cs-verify.sh quick
+
+The line above is read by the queue feeder after each job (run from the repo root, 10 min timeout). It runs import + `verify_stability_perf.gd` + `verify_content_contracts.gd` (steps 1-2 below, ~15 s) and exits non-zero on any missing marker. Logs go to `/mnt/d/csmerge/verify-evidence/quick-<timestamp>/`. Launch, feature drives, and cleanup are scripted in `.cursor/skills/verify-crystal-storm/SKILL.md`.
+
 ## Repo
 
 - Git root: `/mnt/c/Users/cwith/Crystal-Storm-yweauh2.1.4-`
