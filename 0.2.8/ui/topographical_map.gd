@@ -5,11 +5,13 @@ const _TopographicalMapBuilder = preload("res://systems/topographical_map_builde
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _WorldState = preload("res://world/world_state.gd")
+const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 
 @export var map_config: Resource
 
 var _minimap_rect: TextureRect
 var _player_dot: ColorRect
+var _map_key_hint: Label
 var _fullscreen_panel: PanelContainer
 var _fullscreen_rect: TextureRect
 var _fullscreen_player_dot: ColorRect
@@ -44,6 +46,12 @@ func _map_cfg():
 
 func _enter_tree() -> void:
 	add_to_group("topographical_map")
+
+
+func _exit_tree() -> void:
+	if _fullscreen_open:
+		_GameplayInput.map_open = false
+		_fullscreen_open = false
 
 
 func get_minimap_screen_rect() -> Rect2:
@@ -92,9 +100,8 @@ func apply_performance_config(cfg) -> void:
 	if _minimap_rect:
 		_minimap_rect.visible = _minimap_enabled
 		_apply_minimap_widget_size(mc.minimap_size)
-	if not _minimap_enabled and _fullscreen_open:
-		_fullscreen_open = false
-		_fullscreen_panel.visible = false
+	if _fullscreen_open and (not _minimap_enabled or not _fullscreen_map_enabled):
+		_set_fullscreen_open(false)
 	if not _minimap_enabled:
 		_map_job_queue.clear()
 		_active_map_job = {}
@@ -118,9 +125,16 @@ func _build_ui() -> void:
 	_player_dot.position = Vector2(cfg.minimap_size * 0.5 - 2, cfg.minimap_size * 0.5 - 2)
 	_minimap_rect.add_child(_player_dot)
 
+	_map_key_hint = Label.new()
+	_map_key_hint.text = "M"
+	_map_key_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_minimap_rect.add_child(_map_key_hint)
+	_apply_minimap_widget_size(cfg.minimap_size)
+
 	_fullscreen_panel = PanelContainer.new()
 	_fullscreen_panel.visible = false
 	_fullscreen_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ThemeBuilder.apply(_fullscreen_panel)
 	_fullscreen_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_fullscreen_panel)
 
@@ -166,6 +180,8 @@ func _apply_minimap_widget_size(side: int) -> void:
 	_minimap_rect.size = sz
 	if _player_dot:
 		_player_dot.position = sz * 0.5 - _player_dot.size * 0.5
+	if _map_key_hint:
+		_map_key_hint.position = Vector2(4.0, sz.y - 18.0)
 
 
 func _place_fullscreen_player_dot() -> void:
@@ -181,6 +197,8 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("topo_map")
+	handle_toggle_action(Input.is_action_just_pressed("toggle_map"))
+
 	if _world == null or not is_instance_valid(_world):
 		_bind_scene()
 		if _world == null:
@@ -192,16 +210,6 @@ func _process(delta: float) -> void:
 		_step_map_job()
 	elif not _crystal_overlay_job.is_empty():
 		_step_crystal_overlay_job()
-
-	if not _GameplayInput.blocks_actions() and Input.is_action_just_pressed("toggle_map"):
-		if not _fullscreen_map_enabled:
-			if profiler and profiler.has_method("end"):
-				profiler.end("topo_map")
-			return
-		_fullscreen_open = not _fullscreen_open
-		_fullscreen_panel.visible = _fullscreen_open
-		if _fullscreen_open:
-			_rebuild_timer = 0.0
 
 	if not _minimap_enabled and not _fullscreen_open:
 		if profiler and profiler.has_method("end"):
@@ -230,6 +238,48 @@ func _process(delta: float) -> void:
 			_last_center = center
 	if profiler and profiler.has_method("end"):
 		profiler.end("topo_map")
+
+
+func is_fullscreen_open() -> bool:
+	return _fullscreen_open
+
+
+## Pause, chat, and loading swallow the key and close the map.
+## The open map blocks other actions, so this does not use blocks_actions().
+func handle_toggle_action(just_pressed: bool) -> void:
+	if _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.pause_open:
+		if _fullscreen_open:
+			_set_fullscreen_open(false)
+		return
+	if just_pressed:
+		toggle_fullscreen_map()
+
+
+func toggle_fullscreen_map() -> bool:
+	if not _fullscreen_map_enabled:
+		if _fullscreen_open:
+			_set_fullscreen_open(false)
+		return false
+	_set_fullscreen_open(not _fullscreen_open)
+	return _fullscreen_open
+
+
+func _set_fullscreen_open(open: bool) -> void:
+	_fullscreen_open = open
+	_GameplayInput.map_open = open
+	if _fullscreen_panel:
+		_fullscreen_panel.visible = open
+		_fullscreen_panel.mouse_filter = (
+			Control.MOUSE_FILTER_STOP if open else Control.MOUSE_FILTER_IGNORE
+		)
+	z_index = 20 if open else 0
+	if not open:
+		return
+	if _queue_map_rebuild(true, true):
+		_rebuild_timer = _map_cfg().rebuild_interval_sec
+		_last_center = _player_center_cell()
+	else:
+		_rebuild_timer = 0.0
 
 
 func _player_center_cell() -> Vector2i:
