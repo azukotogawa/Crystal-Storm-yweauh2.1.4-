@@ -4,6 +4,7 @@ extends SceneTree
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _VoxelFluidService = preload("res://fluids/voxel_fluid_service.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -187,6 +188,62 @@ func _run() -> void:
 		_fail("long gap must not wet same-height ground")
 	elif chain_wet == 9:
 		print("OK full gap filled across follow-up ticks cells=%d" % chain_wet)
+
+	# Open a basin and a side pocket, then do not break another block.
+	# The old check called requeue_neighbors_on_edit, which is only the
+	# neighbour-break path, so a far pocket never had to fill on its own.
+	# The last dig uses TerrainEditor._notify_water_reflow (mark dirty when
+	# the dig is not already beside water). Later ticks must reach both.
+	_ChannelRegistry.reset()
+	_TerrainEdits.reset()
+	for x5 in 16:
+		for z5 in 12:
+			heights[Vector2i(x5, z5)] = 10.0
+			tiles[Vector2i(x5, z5)] = _VoxelTypes.GRASSLAND
+	tiles[Vector2i(2, 2)] = _VoxelTypes.RIVER
+	heights[Vector2i(6, 1)] = 20.0
+	query.test_base_heights = heights
+	query.test_tiles = tiles
+	var editor: Node = _TerrainEditor.new()
+	root.add_child(editor)
+	for bx in range(3, 8):
+		_TerrainEdits.dig(bx, 2, 1)
+	_TerrainEdits.dig(7, 3, 1)
+	_TerrainEdits.dig(7, 4, 1)
+	_TerrainEdits.dig(7, 5, 2)
+	_TerrainEdits.dig(7, 6, 1)
+	_TerrainEdits.dig(6, 1, 1)
+	svc.set("_dirty_cells", {})
+	editor.call("_notify_water_reflow", 7, 6, true)
+	for _pocket_step in 8:
+		var pocket_pending: Dictionary = svc.get("_dirty_cells")
+		if pocket_pending.is_empty():
+			break
+		svc.call("_tick_water", 0.1)
+	var pocket_ok := true
+	for basin_cell in [Vector2i(3, 2), Vector2i(4, 2), Vector2i(5, 2), Vector2i(6, 2), Vector2i(7, 2)]:
+		if not bool(svc.call("is_wet_column", basin_cell.x, basin_cell.y)):
+			_fail("open basin must fill without another block edit at (%d, %d)" % [basin_cell.x, basin_cell.y])
+			pocket_ok = false
+	for pocket_cell in [Vector2i(7, 3), Vector2i(7, 4), Vector2i(7, 6)]:
+		if not bool(svc.call("is_wet_column", pocket_cell.x, pocket_cell.y)):
+			_fail("side pocket at the basin floor must fill without another block edit at (%d, %d)" % [pocket_cell.x, pocket_cell.y])
+			pocket_ok = false
+	if not bool(svc.call("is_wet_column", 7, 5)):
+		_fail("lower side pocket must fill without another block edit")
+		pocket_ok = false
+	if _ChannelRegistry.has_fluid(3, 3, _ChannelRegistry.FLUID_WATER):
+		_fail("same-height solid ground must stay dry")
+		pocket_ok = false
+	if _ChannelRegistry.has_fluid(6, 1, _ChannelRegistry.FLUID_WATER):
+		_fail("dug column above the waterline must stay dry")
+		pocket_ok = false
+	if not bool(svc.call("is_persistent_source", 2, 2)):
+		_fail("river source lost while filling the open pocket")
+		pocket_ok = false
+	if pocket_ok:
+		print("OK basin and side pocket filled with no further block edits")
+	editor.queue_free()
 
 	# Idle sleep / no world scan.
 	svc.set("_dirty_cells", {})
