@@ -2,10 +2,10 @@ class_name SlotDrag
 extends CanvasLayer
 ## Inventory and hotbar drag.
 ## Left click is also the attack button, so a press on a slot releases that
-## action before WeaponController's poll. The engine picker starts the drag
-## after a short move and drops on the slot under the cursor. A short click
-## still runs the slot's click callback (equip armor, or file a bag stack
-## into the hotbar).
+## action before WeaponController's poll. Godot's built-in drag accumulates
+## mouse relative; after window stretch that relative is often zero, so this
+## lifts from press→motion→release using the cursor position instead.
+
 
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
@@ -23,6 +23,11 @@ var _held_count := 0
 var _inv = null
 ## Set when a drag drops, so the release that ends it does not also click.
 var _drop_click_block := false
+var _armed := false
+var _press_pos := Vector2.ZERO
+var _press_control: Control = null
+var _slot_controls: Array[Control] = []
+var _preview: Control = null
 
 
 static func register_slot(tree: SceneTree, control: Control, index: int, on_click: Callable) -> void:
@@ -32,11 +37,15 @@ static func register_slot(tree: SceneTree, control: Control, index: int, on_clic
 	control.set_meta(&"slot_index", index)
 	control.set_meta(&"slot_click", on_click)
 	if control.has_meta(&"slot_drag_wired"):
+		_ensure(tree)
+		if _inst != null and is_instance_valid(_inst):
+			_inst._track(control)
 		return
 	control.set_meta(&"slot_drag_wired", true)
 	control.gui_input.connect(_on_slot_gui.bind(control))
-	control.set_drag_forwarding(_begin_drag.bind(control), _can_drop, _drop.bind(control))
 	_ensure(tree)
+	if _inst != null and is_instance_valid(_inst):
+		_inst._track(control)
 
 
 static func register_passthrough(control: Control) -> void:
@@ -57,9 +66,7 @@ static func set_modal_open(_open: bool, _root: Control = null) -> void:
 static func cancel() -> void:
 	if _inst == null or not is_instance_valid(_inst):
 		return
-	var vp := _inst.get_viewport()
-	if vp and vp.gui_is_dragging():
-		vp.gui_cancel_drag()
+	_inst._cancel_drag()
 
 
 static func _ensure(tree: SceneTree) -> void:
@@ -89,19 +96,10 @@ static func _on_slot_gui(event: InputEvent, control: Control) -> void:
 		Input.action_release("attack")
 		_TooltipPanel.hide_tip()
 		if _inst != null and is_instance_valid(_inst):
-			_inst._drop_click_block = false
+			_inst._arm(control, mb.position)
 		return
-	var vp := control.get_viewport()
-	if vp and vp.gui_is_dragging():
-		return
-	if _inst != null and is_instance_valid(_inst) and _inst._drop_click_block:
-		_inst._drop_click_block = false
-		return
-	if not Rect2(Vector2.ZERO, control.size).has_point(mb.position):
-		return
-	var on_click: Callable = control.get_meta(&"slot_click", Callable())
-	if on_click.is_valid():
-		on_click.call()
+	# Release is handled in _input so a drop still lands after the cursor
+	# leaves the origin slot. Ignore it here to avoid a second click.
 
 
 static func _shield_gui(event: InputEvent) -> void:
@@ -116,28 +114,11 @@ static func _shield_gui(event: InputEvent) -> void:
 		Input.action_release("build_place")
 
 
-static func _begin_drag(_at: Vector2, control: Control) -> Variant:
-	var drag := _inst
-	if drag == null or not is_instance_valid(drag):
-		return null
-	return drag._lift(control)
-
-
-static func _can_drop(_at: Vector2, data: Variant) -> bool:
-	return data is Dictionary and str(data.get("kind", "")) == "slot"
-
-
-static func _drop(_at: Vector2, data: Variant, control: Control) -> void:
-	var drag := _inst
-	if drag == null or not is_instance_valid(drag):
-		return
-	drag._accept(control, data)
-
-
 func _ready() -> void:
 	_inst = self
 	layer = 15
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process_input(true)
 	var vp := get_viewport()
 	if vp:
 		vp.gui_drag_threshold = DRAG_THRESHOLD
@@ -151,34 +132,127 @@ func _exit_tree() -> void:
 		_inst = null
 
 
-func _notification(what: int) -> void:
-	if what != NOTIFICATION_DRAG_END or not _pending:
+func _input(event: InputEvent) -> void:
+	if not _armed and not _pending:
 		return
-	var vp := get_viewport()
-	var dropped := vp != null and vp.gui_is_drag_successful()
-	if not dropped:
-		_place(_inv, _origin, _held_id, _held_count)
-	_clear_held()
+	if event is InputEventMouseMotion:
+		_on_mouse_move((event as InputEventMouseMotion).position)
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
+			_on_mouse_up(mb.position)
+			get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
-	if not _pending:
+	if not _armed and not _pending:
 		set_process(false)
 		return
-	var vp := get_viewport()
 	if _GameplayInput.blocks_actions():
-		if vp and vp.gui_is_dragging():
-			vp.gui_cancel_drag()
-		if _pending:
-			_place(_inv, _origin, _held_id, _held_count)
-			_clear_held()
+		_cancel_drag()
+
+
+func _track(control: Control) -> void:
+	if control == null:
 		return
-	# NOTIFICATION_DRAG_END puts a cancelled stack back. If that notice never
-	# arrives, the next frame still returns the stack to its slot.
-	if vp != null and vp.gui_is_dragging():
+	for existing in _slot_controls:
+		if existing == control:
+			return
+	_slot_controls.append(control)
+
+
+func _arm(control: Control, local_pos: Vector2) -> void:
+	_drop_click_block = false
+	_armed = true
+	_press_control = control
+	_press_pos = control.get_global_transform_with_canvas() * local_pos
+	set_process(true)
+
+
+func _on_mouse_move(canvas: Vector2) -> void:
+	if not _armed:
 		return
-	_place(_inv, _origin, _held_id, _held_count)
-	_clear_held()
+	if not _pending:
+		if canvas.distance_to(_press_pos) < DRAG_THRESHOLD:
+			return
+		if _press_control == null or not is_instance_valid(_press_control):
+			_armed = false
+			return
+		if _lift(_press_control) == null:
+			_armed = false
+			return
+	_move_preview(canvas)
+
+
+func _on_mouse_up(canvas: Vector2) -> void:
+	if not _armed:
+		return
+	_armed = false
+	if not _pending:
+		_try_click(canvas)
+		return
+	var dest := _slot_at(canvas)
+	if dest != null and is_instance_valid(dest):
+		_accept(dest, {
+			"kind": "slot",
+			"index": _origin,
+			"id": _held_id,
+			"count": _held_count,
+		})
+	else:
+		_place(_inv, _origin, _held_id, _held_count)
+		_clear_held()
+	_hide_preview()
+
+
+func _try_click(canvas: Vector2) -> void:
+	if _drop_click_block:
+		_drop_click_block = false
+		return
+	var control := _press_control
+	_press_control = null
+	if control == null or not is_instance_valid(control):
+		return
+	if not control.get_global_rect().has_point(canvas):
+		return
+	var on_click: Callable = control.get_meta(&"slot_click", Callable())
+	if on_click.is_valid():
+		on_click.call()
+
+
+func _cancel_drag() -> void:
+	_armed = false
+	if _pending:
+		_place(_inv, _origin, _held_id, _held_count)
+		_clear_held()
+	_hide_preview()
+	var vp := get_viewport()
+	if vp and vp.gui_is_dragging():
+		vp.gui_cancel_drag()
+
+
+func _slot_at(canvas: Vector2) -> Control:
+	var best: Control = null
+	var best_area := INF
+	var live: Array[Control] = []
+	for control in _slot_controls:
+		if control == null or not is_instance_valid(control):
+			continue
+		live.append(control)
+		if not control.is_visible_in_tree():
+			continue
+		var rect := control.get_global_rect()
+		if not rect.has_point(canvas):
+			continue
+		var area := rect.size.x * rect.size.y
+		if best == null or area < best_area:
+			best = control
+			best_area = area
+		elif area == best_area and control.is_greater_than(best):
+			best = control
+	_slot_controls = live
+	return best
 
 
 func _lift(control: Control) -> Variant:
@@ -199,7 +273,7 @@ func _lift(control: Control) -> Variant:
 	inv.clear_slot(index)
 	Input.action_release("attack")
 	_TooltipPanel.hide_tip()
-	control.set_drag_preview(_make_preview(_held_id, _held_count))
+	_show_preview(_held_id, _held_count)
 	set_process(true)
 	return {"kind": "slot", "index": index, "id": _held_id, "count": _held_count}
 
@@ -223,6 +297,7 @@ func _clear_held() -> void:
 	_held_id = ""
 	_held_count = 0
 	_inv = null
+	_press_control = null
 
 
 func _apply_drop(inv, origin: int, index: int, item_id: String, count: int) -> void:
@@ -277,6 +352,24 @@ func _player_inventory():
 	if player == null:
 		return null
 	return player.get("inventory")
+
+
+func _show_preview(item_id: String, count: int) -> void:
+	_hide_preview()
+	_preview = _make_preview(item_id, count)
+	add_child(_preview)
+
+
+func _move_preview(canvas: Vector2) -> void:
+	if _preview == null or not is_instance_valid(_preview):
+		return
+	_preview.position = canvas + Vector2(12, 12)
+
+
+func _hide_preview() -> void:
+	if _preview != null and is_instance_valid(_preview):
+		_preview.queue_free()
+	_preview = null
 
 
 func _make_preview(item_id: String, count: int) -> Control:
