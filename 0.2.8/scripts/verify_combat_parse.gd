@@ -52,6 +52,7 @@ func _init() -> void:
 		"res://scripts/verify_inventory_drag.gd",
 		"res://scripts/verify_player_health_bar.gd",
 		"res://scripts/verify_player_knockback.gd",
+		"res://scripts/verify_full_map_toggle.gd",
 		"res://systems/config_service.gd",
 		"res://systems/config_json_io.gd",
 	]
