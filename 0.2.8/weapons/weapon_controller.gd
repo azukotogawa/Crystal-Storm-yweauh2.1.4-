@@ -531,7 +531,8 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.45)
 	_sfx("swing_hammer", origin)
 	var forward := _aim_forward(range_v)
-	var cell := _crystal_target_cell(range_v)
+	# Same cursor column as the pick, clamped to the hammer's hit range.
+	var cell := _ActionTargeting.cell_column(_ActionTargeting.column_toward_cursor(player, range_v))
 	var splash := int(def.get("splash", 1))
 	var cells := _WeaponStrike.splash_cells(cell, splash)
 	var mass := _crystal_mass_damage(def)

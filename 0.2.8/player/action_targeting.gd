@@ -777,12 +777,14 @@ static func warp_mouse_to_column(
 		vp.warp_mouse(screen)
 
 
-## Flat XZ aim shared by the pick highlight, the bow, and melee.
+## Flat XZ aim shared by the pick highlight, the bow, melee, and the hammer.
 ## The column is the cursor cell, then the mouse ray, then camera forward.
+## A short weapon still aims at the cursor the pick can reach. Callers apply
+## their own hit range on top of this direction.
 static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
-	var col := _cursor_column(player, range_v)
+	var col := _cursor_column(player, maxf(range_v, INTERACTION_RANGE))
 	if col != Vector3.ZERO and "voxel_position" in player:
 		var origin_x := float(player.voxel_position.x)
 		var origin_z := float(player.voxel_position.z)
@@ -816,6 +818,27 @@ static func _cursor_column(player: Node3D, range_v: float) -> Vector3:
 ## Flat XZ direction from player toward mouse/forward target column (melee swing facing).
 static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 	return cursor_aim(player, range_v)
+
+
+## Splash / strike column toward the cursor, clamped to hit_range.
+## target_column() returns ZERO when the highlight is past the hit range, which
+## dropped the hammer on the camera. This keeps the slam on the cursor ray.
+static func column_toward_cursor(player: Node3D, hit_range: float) -> Vector3:
+	if player == null:
+		return Vector3.ZERO
+	var col := _cursor_column(player, maxf(hit_range, INTERACTION_RANGE))
+	if col == Vector3.ZERO or not ("voxel_position" in player):
+		var world := _player_world(player)
+		var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") if player.is_inside_tree() else null
+		return _target_column_forward(player, hit_range, world, chunk_manager)
+	var origin := Vector2(float(player.voxel_position.x), float(player.voxel_position.z))
+	var center := Vector2(col.x, col.z)
+	var delta := center - origin
+	var dist := delta.length()
+	if dist <= hit_range + 0.01 or dist < 0.001:
+		return col
+	var pulled := origin + delta / dist * hit_range
+	return Vector3(float(floori(pulled.x)) + 0.5, col.y, float(floori(pulled.y)) + 0.5)
 
 
 static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:
