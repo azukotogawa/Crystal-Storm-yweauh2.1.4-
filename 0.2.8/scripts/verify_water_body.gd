@@ -155,6 +155,39 @@ func _run() -> void:
 	else:
 		print("OK continued spread past the first empty cells")
 
+	# Longer gap than one local step. Later ticks must keep the wave going
+	# from the dirty set requeue left behind. No hand-seeded frontier.
+	_ChannelRegistry.reset()
+	_TerrainEdits.reset()
+	for x4 in 16:
+		for z4 in 6:
+			heights[Vector2i(x4, z4)] = 10.0
+			tiles[Vector2i(x4, z4)] = _VoxelTypes.GRASSLAND
+	tiles[Vector2i(1, 2)] = _VoxelTypes.RIVER
+	query.test_base_heights = heights
+	query.test_tiles = tiles
+	for gx in range(3, 12):
+		_TerrainEdits.dig(gx, 2, 1)
+	svc.set("_dirty_cells", {})
+	tiles[Vector2i(2, 2)] = _VoxelTypes.RIVER
+	query.test_tiles = tiles
+	svc.call("requeue_neighbors_on_edit", 2, 2)
+	var chain_wet := 0
+	for _step in 8:
+		var pending: Dictionary = svc.get("_dirty_cells")
+		if pending.is_empty():
+			break
+		svc.call("_tick_water", 0.1)
+	for gx2 in range(3, 12):
+		if bool(svc.call("is_wet_column", gx2, 2)):
+			chain_wet += 1
+		else:
+			_fail("opened link must keep filling the gap at (%d, 2)" % gx2)
+	if _ChannelRegistry.has_fluid(2, 3, _ChannelRegistry.FLUID_WATER):
+		_fail("long gap must not wet same-height ground")
+	elif chain_wet == 9:
+		print("OK full gap filled across follow-up ticks cells=%d" % chain_wet)
+
 	# Idle sleep / no world scan.
 	svc.set("_dirty_cells", {})
 	var t0 := Time.get_ticks_usec()
