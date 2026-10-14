@@ -12,6 +12,7 @@ const _BossBrain = preload("res://entities/boss_brain.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
+const _CreaturePose = preload("res://entities/creature_pose.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -42,6 +43,9 @@ var _sprite: Sprite3D
 var _voxel_prop: Node3D
 var _bob_phase: float = 0.0
 var _bob_ready: bool = false
+var locomotion_pose: String = "idle"
+var _attack_hold: float = 0.0
+var _creature_pose: RefCounted = _CreaturePose.new()
 var _bob_base_y: float = 0.0
 var _bob_base_scale: Vector3 = Vector3.ONE
 var _audio: Node
@@ -523,18 +527,24 @@ func _physics_process(delta: float) -> void:
 	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
-	_apply_walk_bob(delta, target_cell != self_cell)
 
+	# Same column/world split as wildlife. Guardians already aimed with
+	# _player_column. A mite used column_pos on that column vector, so the
+	# hit compared a world position to column numbers and never landed.
+	var did_attack := false
+	var aim_cell := _player_column()
+	var aim_pos := _player_world_pos()
+	var in_reach := global_position.distance_to(aim_pos) <= 1.8
 	if guardian:
-		if _guardian_aggro and brain.wants_attack(self_cell, player_cell):
-			var aim := _player_world_pos()
-			if global_position.distance_to(aim) <= 1.8:
-				_damage_player(contact_damage, &"", global_position)
-				attacked_player.emit(contact_damage)
-	elif brain.wants_attack(self_cell, player_cell):
-		if global_position.distance_to(target_pos) <= 1.8:
+		if _guardian_aggro and in_reach and brain.wants_attack(self_cell, aim_cell):
+			did_attack = true
 			_damage_player(contact_damage, &"", global_position)
 			attacked_player.emit(contact_damage)
+	elif in_reach and brain.wants_attack(self_cell, aim_cell):
+		did_attack = true
+		_damage_player(contact_damage, &"", global_position)
+		attacked_player.emit(contact_damage)
+	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
 
@@ -732,26 +742,30 @@ func _clear_flash() -> void:
 		_Juice.set_flash(vis, 0.0)
 
 
-func _apply_walk_bob(delta: float, moving: bool) -> void:
+func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> void:
+	if attacking:
+		_attack_hold = 0.42
+	if _attack_hold > 0.0:
+		locomotion_pose = "attack"
+		_attack_hold = maxf(_attack_hold - delta, 0.0)
+	elif moving:
+		locomotion_pose = "walk"
+	else:
+		locomotion_pose = "idle"
+	var rate := 2.2
+	if locomotion_pose == "walk":
+		rate = 9.0
+	elif locomotion_pose == "attack":
+		rate = 8.0
+	_bob_phase += delta * rate
 	var vis := _active_visual()
-	if vis == null:
+	if vis == null or vis != _voxel_prop:
 		return
-	var allow := moving and _Juice.creature_bob_allowed(self, _target)
-	if not allow:
-		if _bob_ready:
-			vis.position.y = _bob_base_y
-			vis.scale = _bob_base_scale
-		return
-	if not _bob_ready:
-		_bob_base_y = vis.position.y
-		_bob_base_scale = vis.scale
-		_bob_ready = true
-	_bob_phase += delta * 9.0
-	var s := sin(_bob_phase)
-	vis.position.y = _bob_base_y + s * 0.05
-	var squash := 1.0 - s * 0.07
-	var stretch := 1.0 + s * 0.05
-	vis.scale = Vector3(_bob_base_scale.x * stretch, _bob_base_scale.y * squash, _bob_base_scale.z * stretch)
+	if _bob_ready:
+		vis.position.y = _bob_base_y
+		vis.scale = _bob_base_scale
+		_bob_ready = false
+	_creature_pose.apply(vis, locomotion_pose, _bob_phase)
 
 
 func _release_death_visual() -> void:

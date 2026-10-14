@@ -14,6 +14,7 @@ const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
+const _CreaturePose = preload("res://entities/creature_pose.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -39,6 +40,9 @@ var _sprite: Sprite3D
 var _voxel_prop: Node3D
 var _bob_phase: float = 0.0
 var _bob_ready: bool = false
+var locomotion_pose: String = "idle"
+var _attack_hold: float = 0.0
+var _creature_pose: RefCounted = _CreaturePose.new()
 var _bob_base_y: float = 0.0
 var _bob_base_scale: Vector3 = Vector3.ONE
 var _audio: Node
@@ -354,19 +358,22 @@ func _physics_process(delta: float) -> void:
 	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
-	_apply_walk_bob(delta, target_cell != self_cell)
 
-	if _player and brain.wants_attack(self_cell, player_cell):
-		var player_pos: Vector3 = (
-			_player.get_voxel_position() if _player.has_method("get_voxel_position")
-			else _player.global_position
-		)
+	# Player.get_voxel_position() is already columns. column_pos() would halve
+	# it, and the old distance compared that to a world position, so a body
+	# standing on the player never reached this branch.
+	var did_attack := false
+	var aim_cell := _aim_cell()
+	if _player and brain.wants_attack(self_cell, aim_cell):
+		var player_pos := _aim_world()
 		if global_position.distance_to(player_pos) <= WorldSettings.get_active().creature_contact_range():
+			did_attack = true
 			if _player.has_method("set_damage_origin"):
 				_player.set_damage_origin(global_position)
 			if _player.has_method("take_damage"):
 				_player.take_damage(config.contact_damage)
 			attacked_player.emit(config.contact_damage)
+	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
 
@@ -533,26 +540,51 @@ func _active_visual() -> Node3D:
 	return null
 
 
-func _apply_walk_bob(delta: float, moving: bool) -> void:
+## Player voxel_position is column X/Z. Do not run it through column_pos.
+func _aim_cell() -> Vector2i:
+	if _player != null and is_instance_valid(_player) and _player.has_method("get_voxel_position"):
+		var v: Vector3 = _player.get_voxel_position()
+		return Vector2i(floori(v.x), floori(v.z))
+	if _player != null and is_instance_valid(_player):
+		return _EntityNavigation.column_pos(_player.global_position)
+	return _EntityNavigation.column_pos(global_position)
+
+
+func _aim_world() -> Vector3:
+	if _player != null and is_instance_valid(_player) and _player.has_method("get_voxel_position"):
+		var v: Vector3 = _player.get_voxel_position()
+		var ws = WorldSettings.get_active()
+		return Vector3(ws.column_to_world(v.x), v.y, ws.column_to_world(v.z))
+	if _player != null and is_instance_valid(_player):
+		return _player.global_position
+	return global_position
+
+
+func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> void:
+	if attacking:
+		_attack_hold = 0.42
+	if _attack_hold > 0.0:
+		locomotion_pose = "attack"
+		_attack_hold = maxf(_attack_hold - delta, 0.0)
+	elif moving:
+		locomotion_pose = "walk"
+	else:
+		locomotion_pose = "idle"
+	var rate := 2.2
+	if locomotion_pose == "walk":
+		rate = 9.0
+	elif locomotion_pose == "attack":
+		rate = 8.0
+	_bob_phase += delta * rate
 	var vis := _active_visual()
-	if vis == null:
+	if vis == null or vis != _voxel_prop:
 		return
-	var allow := moving and _Juice.creature_bob_allowed(self, _player)
-	if not allow:
-		if _bob_ready:
-			vis.position.y = _bob_base_y
-			vis.scale = _bob_base_scale
-		return
-	if not _bob_ready:
-		_bob_base_y = vis.position.y
-		_bob_base_scale = vis.scale
-		_bob_ready = true
-	_bob_phase += delta * 9.0
-	var s := sin(_bob_phase)
-	vis.position.y = _bob_base_y + s * 0.05
-	var squash := 1.0 - s * 0.07
-	var stretch := 1.0 + s * 0.05
-	vis.scale = Vector3(_bob_base_scale.x * stretch, _bob_base_scale.y * squash, _bob_base_scale.z * stretch)
+	# Drop a leftover parent squash. The pose is the boxes, not the root scale.
+	if _bob_ready:
+		vis.position.y = _bob_base_y
+		vis.scale = _bob_base_scale
+		_bob_ready = false
+	_creature_pose.apply(vis, locomotion_pose, _bob_phase)
 
 
 func _release_death_visual() -> void:
