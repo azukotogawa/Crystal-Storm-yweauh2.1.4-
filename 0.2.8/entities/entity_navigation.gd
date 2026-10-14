@@ -5,6 +5,7 @@ const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
+const _Water = preload("res://helpers/water_locomotion.gd")
 
 ## When true, entities use single-sample height (no 8-probe floor sampling).
 static var use_lightweight_nav: bool = true
@@ -147,6 +148,16 @@ static func _neighbor_step_ok(
 	else:
 		var probe := _get_probe(world, chunk_manager, crystal_manager, current_y)
 		cand_y = probe.sample_walkable_feet(cand_x, cand_z)
+	# A pool bed can be many layers down. Swim across it, and step out only
+	# when the bank is within a normal walk of the body.
+	if _Water.column_has_water(world, candidate.x, candidate.y):
+		var info := _Water.sample(world, candidate.x, candidate.y, current_y, cand_y)
+		if bool(info.get("submerged", false)):
+			var surface := float(info.get("surface_y", cand_y))
+			var layer: float = _WorldSettings.get_active().layer_height()
+			if current_y >= cand_y - 0.05 and current_y <= surface + layer * 0.25:
+				return true
+			cand_y = float(info.get("float_y", cand_y))
 	return absf(cand_y - current_y) <= max_step_up + 0.05
 
 
@@ -165,7 +176,8 @@ static func step_toward_cell(
 
 	var from_cell := column_pos(current)
 	if from_cell == target_cell:
-		return snap_to_ground(current, world, chunk_manager, crystal_manager)
+		var rested := snap_to_ground(current, world, chunk_manager, crystal_manager)
+		return _apply_water_y(current, rested, from_cell.x, from_cell.y, world, delta)
 
 	var best_cell := from_cell
 	var current_y := current.y
@@ -198,21 +210,26 @@ static func step_toward_cell(
 		goal.y = walkable_y_light(world, chunk_manager, crystal_manager, goal_col_x, goal_col_z)
 	else:
 		goal.y = _get_probe(world, chunk_manager, crystal_manager, current.y).sample_walkable_feet(goal_col_x, goal_col_z)
+	var water := _water_at(world, best_cell.x, best_cell.y, current.y, goal.y)
 	var to_goal := goal - current
+	# Buoyancy owns vertical while submerged. A bed far below must not eat the step.
+	if bool(water.get("submerged", false)):
+		to_goal.y = 0.0
 	var dist := to_goal.length()
 	if dist <= 0.02:
-		return goal
-	var step := minf(move_speed * delta, dist)
+		return _apply_water_y(current, goal, best_cell.x, best_cell.y, world, delta)
+	var step := minf(move_speed * float(water.get("speed_mult", 1.0)) * delta, dist)
 	var next := current + to_goal.normalized() * step
 	var next_cell := column_pos(next)
 	if next_cell != from_cell and _VoxelFloorProbe.blocking_build_column(next_cell.x, next_cell.y):
-		return snap_to_ground(current, world, chunk_manager, crystal_manager)
+		var stayed := snap_to_ground(current, world, chunk_manager, crystal_manager)
+		return _apply_water_y(current, stayed, from_cell.x, from_cell.y, world, delta)
 	var next_col := _column_xz_from_world(next)
 	if use_lightweight_nav:
 		next.y = walkable_y_light(world, chunk_manager, crystal_manager, next_col.x, next_col.y)
 	else:
 		next.y = _get_probe(world, chunk_manager, crystal_manager, current.y).sample_walkable_feet(next_col.x, next_col.y)
-	return next
+	return _apply_water_y(current, next, next_cell.x, next_cell.y, world, delta)
 
 
 static func flee_cell(from_cell: Vector2i, threat_cell: Vector2i, distance: int = 3) -> Vector2i:
@@ -247,6 +264,12 @@ static func knockback_step(
 	if _segment_hits_blocking_wall(current, dest):
 		return current
 	var ground := _knock_ground_y(world, chunk_manager, crystal, dest, current.y)
+	var col := _column_xz_from_world(dest)
+	var water := _water_at(world, floori(col.x), floori(col.y), current.y, ground)
+	# The bed of a pool is not a wall. Slide along the float line.
+	if bool(water.get("submerged", false)):
+		dest.y = _Water.settle_y(current.y, water, 0.05)
+		return dest
 	var max_up: float = _WorldSettings.get_active().max_step_up_walk()
 	if absf(ground - current.y) > max_up + 0.05:
 		return current
@@ -271,6 +294,29 @@ static func _segment_hits_blocking_wall(from_pos: Vector3, to_pos: Vector3) -> b
 		if _VoxelFloorProbe.blocking_build_column(col.x, col.y):
 			return true
 	return false
+
+
+static func _water_at(world, col_x: int, col_z: int, feet_y: float, ground_y: float) -> Dictionary:
+	if not _Water.column_has_water(world, col_x, col_z):
+		return _Water.dry(ground_y)
+	return _Water.sample(world, col_x, col_z, feet_y, ground_y)
+
+
+## Submerged bodies float toward the waterline and do not stay pinned to the bed.
+static func _apply_water_y(
+	current: Vector3,
+	grounded: Vector3,
+	col_x: int,
+	col_z: int,
+	world,
+	delta: float
+) -> Vector3:
+	var info := _water_at(world, col_x, col_z, current.y, grounded.y)
+	if not bool(info.get("submerged", false)):
+		return grounded
+	var out := grounded
+	out.y = _Water.settle_y(current.y, info, delta)
+	return out
 
 
 static func _knock_ground_y(world, chunk_manager, crystal, dest: Vector3, hint: float) -> float:
