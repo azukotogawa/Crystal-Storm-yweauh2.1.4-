@@ -10,7 +10,7 @@ const _SlotDrag = preload("res://ui/slot_drag.gd")
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
 
-var _player: Player
+var _player: Node
 const _WeaponController = preload("res://weapons/weapon_controller.gd")
 
 var _weapon: _WeaponController
@@ -52,7 +52,8 @@ func _build_slots() -> void:
 	offset_top = -SLOT_SIZE - 24
 	offset_bottom = -16
 
-	# Absolute z so the bar stays above the inventory dimmer and receives drops.
+	# Drawn above the inventory dimmer. Picking ignores z_index, so the bag
+	# also moves this bar to the front of the canvas while it is open.
 	z_index = 2
 	z_as_relative = false
 	for i in _Inventory.HOTBAR_SIZE:

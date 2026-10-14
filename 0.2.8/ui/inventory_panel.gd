@@ -8,13 +8,16 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 const _SlotDrag = preload("res://ui/slot_drag.gd")
+const _Hotbar = preload("res://ui/hotbar.gd")
 
 
-var _player: Player
+var _player: Node
 var _grid: GridContainer
 var _armor_button: Button
 var _visible_panel := false
 var _registry: _GameVisualRegistry
+var _raised_hotbar: Control
+var _hotbar_index := -1
 
 
 func _ready() -> void:
@@ -49,14 +52,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		_SlotDrag.set_modal_open(opening, self)
 		_ui("ui_open" if opening else "ui_close")
 		if opening:
+			# Godot picks the later sibling, and z_index does not change that.
+			# The dimmer is full-screen, so the bar has to move above it or
+			# drags never land on a hotbar slot.
+			_raise_hotbar()
+			_settle_layout()
 			_refresh()
+		else:
+			_restore_hotbar()
 
 
 func _build_ui() -> void:
-	# Full-screen root must not eat clicks; the hotbar sits above this layer on z.
+	# The root stays click-through. The dimmer catches misses, and opening
+	# the bag moves the hotbar above that dimmer so its slots can be dropped on.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	anchor_right = 1.0
-	anchor_bottom = 1.0
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var backdrop := ColorRect.new()
 	backdrop.color = Color(0.0, 0.0, 0.0, 0.45)
@@ -64,6 +74,7 @@ func _build_ui() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
+	_SlotDrag.bind_click_shield(backdrop)
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
@@ -78,6 +89,8 @@ func _build_ui() -> void:
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(6)
 	panel.add_theme_stylebox_override("panel", style)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_SlotDrag.bind_click_shield(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 8)
@@ -197,6 +210,47 @@ func _refresh() -> void:
 				count_suffix = "x%d" % int(slot.count)
 			btn.text = count_suffix
 			btn.tooltip_text = _ItemTypes.display_name(slot.id)
+
+
+func _raise_hotbar() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var bar: Control = parent.get_node_or_null("Hotbar") as Control
+	if bar == null:
+		for child in parent.get_children():
+			if child is Control and (child as Node).get_script() == _Hotbar:
+				bar = child
+				break
+	if bar == null or bar == _raised_hotbar:
+		return
+	_raised_hotbar = bar
+	_hotbar_index = bar.get_index()
+	parent.move_child(bar, -1)
+
+
+func _restore_hotbar() -> void:
+	if _raised_hotbar == null or not is_instance_valid(_raised_hotbar):
+		_raised_hotbar = null
+		_hotbar_index = -1
+		return
+	var parent := _raised_hotbar.get_parent()
+	if parent != null:
+		var index := clampi(_hotbar_index, 0, parent.get_child_count() - 1)
+		parent.move_child(_raised_hotbar, index)
+	_raised_hotbar = null
+	_hotbar_index = -1
+
+
+func _settle_layout() -> void:
+	_layout_now(self)
+
+
+func _layout_now(node: Node) -> void:
+	if node is Container:
+		node.notification(Container.NOTIFICATION_SORT_CHILDREN)
+	for child in node.get_children():
+		_layout_now(child)
 
 
 func _ui(id: String) -> void:

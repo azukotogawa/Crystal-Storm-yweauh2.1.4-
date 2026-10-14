@@ -1,78 +1,65 @@
 class_name SlotDrag
 extends CanvasLayer
-## Mouse pick-up for inventory and hotbar slots.
-## A slot click is also the attack button. Release that action or a held
-## pick keeps digging for the whole drag.
+## Inventory and hotbar drag.
+## Left click is also the attack button, so a press on a slot releases that
+## action before WeaponController's poll. The engine picker starts the drag
+## after a short move and drops on the slot under the cursor. A short click
+## still runs the slot's click callback (equip armor, or file a bag stack
+## into the hotbar).
 
 const _Inventory = preload("res://inventory/inventory.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
-const DRAG_PX2 := 64.0
+const DRAG_THRESHOLD := 8
 
 static var _inst: SlotDrag
-static var _zones: Array = []
-static var _passthrough: Array = []
-static var _modal_open := false
-static var _modal_root: Control
 
-var _captured := false
-var _lifted := false
+var _pending := false
 var _origin := -1
 var _held_id := ""
 var _held_count := 0
-var _press_pos := Vector2.ZERO
-var _press_click: Callable = Callable()
 var _inv = null
-var _ghost: Control
-var _icon: TextureRect
-var _count_label: Label
+## Set when a drag drops, so the release that ends it does not also click.
+var _drop_click_block := false
 
 
 static func register_slot(tree: SceneTree, control: Control, index: int, on_click: Callable) -> void:
 	if control == null:
 		return
-	_prune_zones()
-	for i in _zones.size():
-		var zone: Dictionary = _zones[i]
-		if zone.get("control") == control:
-			zone["index"] = index
-			zone["on_click"] = on_click
-			_ensure(tree)
-			return
-	_zones.append({
-		"control": control,
-		"index": index,
-		"on_click": on_click,
-	})
+	control.mouse_filter = Control.MOUSE_FILTER_STOP
+	control.set_meta(&"slot_index", index)
+	control.set_meta(&"slot_click", on_click)
+	if control.has_meta(&"slot_drag_wired"):
+		return
+	control.set_meta(&"slot_drag_wired", true)
+	control.gui_input.connect(_on_slot_gui.bind(control))
+	control.set_drag_forwarding(_begin_drag.bind(control), _can_drop, _drop.bind(control))
 	_ensure(tree)
 
 
 static func register_passthrough(control: Control) -> void:
-	if control == null:
+	bind_click_shield(control)
+
+
+static func bind_click_shield(control: Control) -> void:
+	if control == null or control.has_meta(&"slot_shield"):
 		return
-	if not _passthrough.has(control):
-		_passthrough.append(control)
+	control.set_meta(&"slot_shield", true)
+	control.gui_input.connect(_shield_gui)
 
 
-static func set_modal_open(open: bool, root: Control = null) -> void:
-	_modal_open = open
-	if root != null:
-		_modal_root = root
+static func set_modal_open(_open: bool, _root: Control = null) -> void:
+	pass
 
 
 static func cancel() -> void:
-	if _inst != null and is_instance_valid(_inst):
-		_inst._cancel()
-
-
-static func _prune_zones() -> void:
-	var kept: Array = []
-	for zone in _zones:
-		if is_instance_valid(zone.get("control")):
-			kept.append(zone)
-	_zones = kept
+	if _inst == null or not is_instance_valid(_inst):
+		return
+	var vp := _inst.get_viewport()
+	if vp and vp.gui_is_dragging():
+		vp.gui_cancel_drag()
 
 
 static func _ensure(tree: SceneTree) -> void:
@@ -88,137 +75,154 @@ static func _ensure(tree: SceneTree) -> void:
 	tree.root.call_deferred("add_child", node)
 
 
-func _ready() -> void:
-	_inst = self
-	layer = 15
-	process_mode = Node.PROCESS_MODE_ALWAYS
-	_build_ghost()
-	set_process(false)
-
-
-func _exit_tree() -> void:
-	if _captured and _lifted:
-		_place(_inv, _origin, _held_id, _held_count)
-	_captured = false
-	_lifted = false
-	if _inst == self:
-		_inst = null
-
-
-func _process(_delta: float) -> void:
-	if _captured and _GameplayInput.blocks_actions():
-		_cancel()
-	if not _captured:
-		set_process(false)
-
-
-func _input(event: InputEvent) -> void:
-	if _GameplayInput.blocks_actions():
-		if _captured:
-			_cancel()
+static func _on_slot_gui(event: InputEvent, control: Control) -> void:
+	if not (event is InputEventMouseButton):
 		return
-	if event is InputEventMouseMotion:
-		if _captured:
-			_drag_motion(_pointer())
+	var mb := event as InputEventMouseButton
+	if mb.button_index == MOUSE_BUTTON_RIGHT:
+		if mb.pressed:
+			Input.action_release("build_place")
 		return
+	if mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if mb.pressed:
+		Input.action_release("attack")
+		_TooltipPanel.hide_tip()
+		if _inst != null and is_instance_valid(_inst):
+			_inst._drop_click_block = false
+		return
+	var vp := control.get_viewport()
+	if vp and vp.gui_is_dragging():
+		return
+	if _inst != null and is_instance_valid(_inst) and _inst._drop_click_block:
+		_inst._drop_click_block = false
+		return
+	if not Rect2(Vector2.ZERO, control.size).has_point(mb.position):
+		return
+	var on_click: Callable = control.get_meta(&"slot_click", Callable())
+	if on_click.is_valid():
+		on_click.call()
+
+
+static func _shield_gui(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
 	var mb := event as InputEventMouseButton
 	if not mb.pressed:
-		if _captured and mb.button_index == MOUSE_BUTTON_LEFT:
-			_on_left_up(_pointer())
-			get_viewport().set_input_as_handled()
 		return
-	if mb.button_index == MOUSE_BUTTON_RIGHT and _modal_open and _over_modal(_pointer()):
-		Input.action_release("build_place")
-		if not _over_passthrough(_pointer()):
-			get_viewport().set_input_as_handled()
-		return
-	if mb.button_index != MOUSE_BUTTON_LEFT:
-		return
-	_on_left_down(_pointer())
-
-
-func _pointer() -> Vector2:
-	return get_viewport().get_mouse_position()
-
-
-func _on_left_down(pos: Vector2) -> void:
-	if _captured:
-		return
-	var zone := _zone_at(pos)
-	if not zone.is_empty():
-		# A slot click must not also start a dig or a swing.
+	if mb.button_index == MOUSE_BUTTON_LEFT:
 		Input.action_release("attack")
-		get_viewport().set_input_as_handled()
-		var inv = _player_inventory()
-		var index := int(zone.get("index", -1))
-		if inv == null or inv.get_slot(index) == null:
-			return
-		_captured = true
-		_lifted = false
-		_origin = index
-		_press_pos = pos
-		_press_click = zone.get("on_click", Callable())
-		_inv = inv
-		_held_id = ""
-		_held_count = 0
-		set_process(true)
+	elif mb.button_index == MOUSE_BUTTON_RIGHT:
+		Input.action_release("build_place")
+
+
+static func _begin_drag(_at: Vector2, control: Control) -> Variant:
+	var drag := _inst
+	if drag == null or not is_instance_valid(drag):
+		return null
+	return drag._lift(control)
+
+
+static func _can_drop(_at: Vector2, data: Variant) -> bool:
+	return data is Dictionary and str(data.get("kind", "")) == "slot"
+
+
+static func _drop(_at: Vector2, data: Variant, control: Control) -> void:
+	var drag := _inst
+	if drag == null or not is_instance_valid(drag):
 		return
-	if not _modal_open or not _over_modal(pos):
+	drag._accept(control, data)
+
+
+func _ready() -> void:
+	_inst = self
+	layer = 15
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var vp := get_viewport()
+	if vp:
+		vp.gui_drag_threshold = DRAG_THRESHOLD
+
+
+func _exit_tree() -> void:
+	if _pending:
+		_place(_inv, _origin, _held_id, _held_count)
+		_pending = false
+	if _inst == self:
+		_inst = null
+
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_DRAG_END or not _pending:
 		return
-	Input.action_release("attack")
-	if _over_passthrough(pos):
+	var vp := get_viewport()
+	var dropped := vp != null and vp.gui_is_drag_successful()
+	if not dropped:
+		_place(_inv, _origin, _held_id, _held_count)
+	_clear_held()
+
+
+func _process(_delta: float) -> void:
+	if not _pending:
+		set_process(false)
 		return
-	get_viewport().set_input_as_handled()
-
-
-func _drag_motion(pos: Vector2) -> void:
-	if not _lifted and _should_lift(pos):
-		_lift()
-	if _lifted:
-		_move_ghost(pos)
-
-
-func _on_left_up(pos: Vector2) -> void:
-	if not _lifted and _should_lift(pos):
-		_lift()
-	var target := -1
-	var zone := _zone_at(pos)
-	if not zone.is_empty():
-		target = int(zone.get("index", -1))
-	var lifted := _lifted
-	var origin := _origin
-	var inv = _inv
-	var item_id := _held_id
-	var count := _held_count
-	var on_click := _press_click
-	_clear_capture()
-	if not lifted:
-		if target == origin and on_click.is_valid():
-			on_click.call()
+	var vp := get_viewport()
+	if _GameplayInput.blocks_actions():
+		if vp and vp.gui_is_dragging():
+			vp.gui_cancel_drag()
+		if _pending:
+			_place(_inv, _origin, _held_id, _held_count)
+			_clear_held()
 		return
-	_apply_drop(inv, origin, target, item_id, count)
-
-
-func _should_lift(pos: Vector2) -> bool:
-	if pos.distance_squared_to(_press_pos) >= DRAG_PX2:
-		return true
-	var zone := _zone_at(pos)
-	return not zone.is_empty() and int(zone.get("index", -1)) != _origin
-
-
-func _lift() -> void:
-	if _inv == null:
+	# NOTIFICATION_DRAG_END puts a cancelled stack back. If that notice never
+	# arrives, the next frame still returns the stack to its slot.
+	if vp != null and vp.gui_is_dragging():
 		return
-	var slot = _inv.get_slot(_origin)
+	_place(_inv, _origin, _held_id, _held_count)
+	_clear_held()
+
+
+func _lift(control: Control) -> Variant:
+	if _pending:
+		return null
+	var inv = _player_inventory()
+	var index := int(control.get_meta(&"slot_index", -1))
+	if inv == null or index < 0:
+		return null
+	var slot = inv.get_slot(index)
 	if slot == null:
-		return
+		return null
+	_pending = true
+	_origin = index
 	_held_id = str(slot.id)
 	_held_count = int(slot.count)
-	_inv.clear_slot(_origin)
-	_lifted = true
-	_show_ghost(_held_id, _held_count)
+	_inv = inv
+	inv.clear_slot(index)
+	Input.action_release("attack")
+	_TooltipPanel.hide_tip()
+	control.set_drag_preview(_make_preview(_held_id, _held_count))
+	set_process(true)
+	return {"kind": "slot", "index": index, "id": _held_id, "count": _held_count}
+
+
+func _accept(control: Control, data: Variant) -> void:
+	if not _pending or not (data is Dictionary):
+		return
+	_drop_click_block = true
+	var index := int(control.get_meta(&"slot_index", -1))
+	var origin := int(data.get("index", _origin))
+	var item_id := str(data.get("id", _held_id))
+	var count := int(data.get("count", _held_count))
+	var inv = _inv
+	_clear_held()
+	_apply_drop(inv, origin, index, item_id, count)
+
+
+func _clear_held() -> void:
+	_pending = false
+	_origin = -1
+	_held_id = ""
+	_held_count = 0
+	_inv = null
 
 
 func _apply_drop(inv, origin: int, index: int, item_id: String, count: int) -> void:
@@ -268,31 +272,6 @@ func _place(inv, index: int, item_id: String, count: int) -> void:
 			return
 
 
-func _cancel() -> void:
-	if not _captured:
-		return
-	var lifted := _lifted
-	var inv = _inv
-	var origin := _origin
-	var item_id := _held_id
-	var count := _held_count
-	_clear_capture()
-	if lifted:
-		_place(inv, origin, item_id, count)
-
-
-func _clear_capture() -> void:
-	_captured = false
-	_lifted = false
-	_origin = -1
-	_held_id = ""
-	_held_count = 0
-	_press_click = Callable()
-	_inv = null
-	if _ghost != null:
-		_ghost.visible = false
-
-
 func _player_inventory():
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
@@ -300,111 +279,29 @@ func _player_inventory():
 	return player.get("inventory")
 
 
-func _zone_at(pos: Vector2) -> Dictionary:
-	var best: Dictionary = {}
-	var best_score := -1
-	for i in _zones.size():
-		var zone: Dictionary = _zones[i]
-		var slot_control := zone.get("control") as Control
-		if slot_control == null or not is_instance_valid(slot_control):
-			continue
-		if not slot_control.is_visible_in_tree():
-			continue
-		var rect := slot_control.get_global_rect()
-		if rect.size.x < 2.0 or rect.size.y < 2.0 or not rect.has_point(pos):
-			continue
-		var score := _z_score(slot_control) * 1000 + i
-		if score >= best_score:
-			best_score = score
-			best = zone
-	return best
-
-
-func _z_score(item: CanvasItem) -> int:
-	var total := 0
-	var node: CanvasItem = item
-	var guard := 0
-	while node != null and guard < 20:
-		total += node.z_index
-		if not node.z_as_relative:
-			break
-		node = node.get_parent() as CanvasItem
-		guard += 1
-	return total
-
-
-func _over_modal(pos: Vector2) -> bool:
-	if not _modal_open:
-		return false
-	if _modal_root == null or not is_instance_valid(_modal_root):
-		return false
-	if not _modal_root.visible:
-		return false
-	var rect := _modal_root.get_global_rect()
-	return rect.size.x >= 2.0 and rect.has_point(pos)
-
-
-func _over_passthrough(pos: Vector2) -> bool:
-	for entry in _passthrough:
-		var slot_control := entry as Control
-		if slot_control == null or not is_instance_valid(slot_control):
-			continue
-		if not slot_control.is_visible_in_tree():
-			continue
-		var rect := slot_control.get_global_rect()
-		if rect.size.x >= 2.0 and rect.has_point(pos):
-			return true
-	return false
-
-
-func _build_ghost() -> void:
-	_ghost = Control.new()
-	_ghost.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ghost.visible = false
-	_ghost.custom_minimum_size = Vector2(48, 40)
-	_ghost.size = Vector2(48, 40)
-	var bg := ColorRect.new()
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bg.color = Color(0.1, 0.08, 0.14, 0.92)
-	bg.size = Vector2(48, 40)
-	_ghost.add_child(bg)
-	_icon = TextureRect.new()
-	_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_icon.position = Vector2(4, 2)
-	_icon.size = Vector2(40, 36)
-	_ghost.add_child(_icon)
-	_count_label = Label.new()
-	_count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_count_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-	_count_label.position = Vector2(2, 22)
-	_count_label.size = Vector2(44, 16)
-	_count_label.add_theme_font_size_override("font_size", 12)
-	_ghost.add_child(_count_label)
-	add_child(_ghost)
-
-
-func _show_ghost(item_id: String, count: int) -> void:
-	if _ghost == null:
-		_build_ghost()
-	var tex: Texture2D = null
+func _make_preview(item_id: String, count: int) -> Control:
+	var box := PanelContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.custom_minimum_size = Vector2(140, 40)
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(row)
+	var icon := TextureRect.new()
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.custom_minimum_size = Vector2(32, 32)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	var registry := get_tree().get_first_node_in_group("game_visual_registry")
 	if registry and registry.has_method("get_item_texture"):
-		tex = registry.get_item_texture(_ItemTypes.visual_key(item_id))
-	_icon.texture = tex
-	_count_label.text = ("x%d" % count) if count > 1 else ""
-	_ghost.visible = true
-	_move_ghost(_pointer())
-	_TooltipPanel.hide_tip()
-
-
-func _move_ghost(pos: Vector2) -> void:
-	if _ghost == null:
-		return
-	_ghost.global_position = pos + Vector2(14, 14)
+		icon.texture = registry.get_item_texture(_ItemTypes.visual_key(item_id))
+	row.add_child(icon)
+	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var name := _ItemTypes.display_name(item_id)
+	label.text = name if count <= 1 else "%s x%d" % [name, count]
+	row.add_child(label)
+	return box
 
 
 func _ui_click() -> void:
