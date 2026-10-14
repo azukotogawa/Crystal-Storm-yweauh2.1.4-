@@ -130,9 +130,11 @@ func _wait_for_continue_boot() -> void:
 		var boot_ready := compose == null or int(compose.stage) >= 5
 		var player = get_tree().get_first_node_in_group("player")
 		var spawn_done := true
-		if player != null and "world_ready" in player:
-			spawn_done = bool(player.world_ready)
-		elif player == null and compose != null:
+		if player != null:
+			var ready_v: Variant = player.get("world_ready")
+			if ready_v != null:
+				spawn_done = bool(ready_v)
+		elif compose != null:
 			spawn_done = false
 		if boot_ready and spawn_done:
 			return

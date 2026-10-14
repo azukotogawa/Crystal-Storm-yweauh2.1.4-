@@ -21,6 +21,8 @@ var _failed: int = 0
 class StubPlayer extends Node:
 	var voxel_position := Vector3(12.0, 4.0, 8.0)
 	var health := 80.0
+	var world_ready := true
+	var apply_count := 0
 	var inventory = _Inventory.new()
 
 	func _enter_tree() -> void:
@@ -34,12 +36,17 @@ class StubPlayer extends Node:
 		}
 
 	func apply_save_state(data: Dictionary) -> void:
+		apply_count += 1
 		var pos: Array = data.get("voxel_position", [0.0, 0.0, 0.0])
 		voxel_position = Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 		health = float(data.get("health", health))
+		if data.has("inventory"):
+			inventory.load_from_dict(data.inventory)
 
 
 class StubEntities extends Node:
+	var imported: Array = []
+
 	func _enter_tree() -> void:
 		add_to_group("entity_manager")
 
@@ -53,13 +60,21 @@ class StubEntities extends Node:
 			"z": 5.5,
 		}]
 
+	func import_entities(rows: Array) -> void:
+		imported = rows.duplicate(true)
+
 
 class StubEnemies extends Node:
+	var imported: Array = []
+
 	func _enter_tree() -> void:
 		add_to_group("crystal_enemy_spawner")
 
 	func export_enemies() -> Array:
 		return [{"enemy_id": "crystal_mite", "health": 6.0, "x": 1.0, "y": 2.0, "z": 3.0}]
+
+	func import_enemies(rows: Array) -> void:
+		imported = rows.duplicate(true)
 
 
 func _init() -> void:
@@ -222,6 +237,8 @@ func _run() -> void:
 		else:
 			_fail("continue file did not parse")
 
+	await _assert_menu_continue_loads(svc, player, entities, enemies)
+
 	# Quitting after death removes Continue. The run is over.
 	player.health = 0.0
 	svc.save_or_drop_continue()
@@ -229,6 +246,18 @@ func _run() -> void:
 		_fail("dead quit must drop continue")
 	else:
 		print("OK dead quit drops continue")
+	var closed_script: GDScript = load("res://ui/frontend_root.gd") as GDScript
+	var closed: Control = closed_script.new()
+	root.add_child(closed)
+	await process_frame
+	var closed_b := closed.find_child("Continue", true, false) as Button
+	if closed_b == null or not closed_b.disabled:
+		_fail("Continue must be disabled when the alive snapshot is gone")
+	elif bool(closed.call("arm_continue_launch")):
+		_fail("arm_continue_launch must reject a missing snapshot")
+	else:
+		print("OK Continue disabled without a snapshot")
+	closed.queue_free()
 
 	_WorldManager.request_return_to_select()
 	if _WorldManager.active_world_id != "" or _WorldManager.pending_resume:
@@ -244,6 +273,102 @@ func _run() -> void:
 	else:
 		push_error("verify_world_save_resume: %d failure(s)" % _failed)
 		quit(1)
+
+
+func _slot_is(slot: Variant, item_id: String, count: int) -> bool:
+	if not slot is Dictionary:
+		return false
+	var row: Dictionary = slot
+	return str(row.get("id", "")) == item_id and int(row.get("count", 0)) == count
+
+
+func _assert_menu_continue_loads(svc: Node, player, entities, enemies) -> void:
+	var frontend_script: GDScript = load("res://ui/frontend_root.gd") as GDScript
+	if frontend_script == null:
+		_fail("frontend_root missing")
+		return
+	var menu: Control = frontend_script.new()
+	root.add_child(menu)
+	await process_frame
+	var continue_b := menu.find_child("Continue", true, false) as Button
+	var play_b := menu.find_child("Play", true, false) as Button
+	if continue_b == null or play_b == null:
+		_fail("main menu missing Continue or Play")
+	elif continue_b.disabled:
+		_fail("Continue must be enabled when an alive snapshot exists")
+	elif continue_b.get_index() > play_b.get_index():
+		_fail("Continue must sit above Play")
+	elif not bool(menu.call("arm_continue_launch")):
+		_fail("arm_continue_launch rejected a valid snapshot")
+	elif not _SaveGameService.pending_continue or _WorldManager.pending_resume:
+		_fail("Continue must arm the snapshot and skip the world file")
+	else:
+		var launch: Dictionary = _WorldManager.pending_launch
+		var meta: Dictionary = _SaveGameService.peek_continue()
+		if int(launch.get("seed", -1)) != int(meta.get("world_seed", -2)):
+			_fail("Continue launch seed mismatch")
+		elif str(launch.get("id", "")) != WORLD_ID:
+			_fail("Continue launch world mismatch")
+		else:
+			var saved: Variant = _SaveGameService.pending_continue_position()
+			if not saved is Vector3 or not is_equal_approx((saved as Vector3).x, 18.0):
+				_fail("pending continue position missing")
+			else:
+				print("OK menu Continue arms the alive snapshot")
+	menu.queue_free()
+	_WorldManager.pending_launch = {}
+	_SaveGameService.pending_continue = true
+
+	_TerrainEdits.reset()
+	_FeatureRegistry.reset()
+	player.voxel_position = Vector3.ZERO
+	player.health = 1.0
+	player.world_ready = false
+	player.apply_count = 0
+	player.inventory = _Inventory.new()
+	entities.imported = []
+	enemies.imported = []
+	svc.call_deferred("_post_boot")
+	for _i in 4:
+		await process_frame
+	if player.apply_count != 0:
+		_fail("continue applied before spawn finished")
+	player.world_ready = true
+	var frames := 0
+	while player.apply_count == 0 and frames < 90:
+		await process_frame
+		frames += 1
+	if player.apply_count == 0:
+		_fail("continue load did not apply after spawn")
+		_SaveGameService.pending_continue = false
+		return
+	if not is_equal_approx(player.voxel_position.x, 18.0) or not is_equal_approx(player.voxel_position.z, 3.0):
+		_fail("continue load lost player position %s" % player.voxel_position)
+	elif not is_equal_approx(player.health, 55.0):
+		_fail("continue load lost health %.1f" % player.health)
+	elif not _slot_is(player.inventory.get_slot(0), "stone", 12):
+		_fail("continue load lost hotbar stack")
+	elif not _slot_is(player.inventory.get_slot(10), "wood", 4):
+		_fail("continue load lost bag stack")
+	elif str(player.inventory.armor_id) != "scout_leather":
+		_fail("continue load lost armor")
+	elif is_equal_approx(_TerrainEdits.get_height_delta(7, 8), 0.0):
+		_fail("continue load lost the dig")
+	elif _TerrainEdits.get_build_tile(9, 9) != _VoxelTypes.STONE:
+		_fail("continue load lost the placed block")
+	elif int(_FeatureRegistry.get_tile_override(2, 3)) != _VoxelTypes.STONE:
+		_fail("continue load lost the tile override")
+	else:
+		var feat: Dictionary = _FeatureRegistry.get_feature(4, 4)
+		if str(feat.get("build_id", "")) != "stone_wall":
+			_fail("continue load lost the built feature")
+		elif entities.imported.is_empty() or str(entities.imported[0].get("brain_id", "")) != "rabbit":
+			_fail("continue load lost wildlife")
+		elif enemies.imported.is_empty() or str(enemies.imported[0].get("enemy_id", "")) != "crystal_mite":
+			_fail("continue load lost crystal enemies")
+		else:
+			print("OK continue load restores the alive snapshot")
+	_SaveGameService.pending_continue = false
 
 
 func _assert_quit_hooks() -> void:
