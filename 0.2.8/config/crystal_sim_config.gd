@@ -14,7 +14,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var max_outflow_ratio: float = 0.42
 @export var cliff_height: float = 1.05
 @export var flow_substeps: int = 2
-@export var lateral_spread_bias: float = 0.07
+@export var lateral_spread_bias: float = 0.08
 ## Multiplier when crystal/fluid tries to climb (1 = free, lower = harder).
 @export var uphill_flow_penalty: float = 0.35
 ## Extra pressure gain for downhill drops.

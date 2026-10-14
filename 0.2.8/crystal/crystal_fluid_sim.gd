@@ -81,6 +81,7 @@ func clear() -> void:
 	last_new_cells = 0
 	last_changed_cells = 0
 	last_mesh_dirty_cells = 0
+	_frontier_new_offset = 0
 	_flow_job.clear()
 	last_flow_complete = true
 
@@ -288,6 +289,39 @@ func _new_cell_priority(pos: Vector2i, magnitude: float) -> float:
 	return float(touches) * 12.0 + float(hole_bonus) + magnitude
 
 
+## Stable 0..1 tie-break. A per-tick shuffle re-picks scattered frontier cells
+## and reads as a living checkerboard instead of a settling pool.
+func _frontier_jitter(pos: Vector2i) -> float:
+	var h: int = pos.x * 73856093 ^ pos.y * 19349663
+	if h < 0:
+		h = -h
+	return float(h % 997) / 997.0
+
+
+func _frontier_diagonal_touches(pos: Vector2i) -> int:
+	var n := 0
+	for dir in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
+		if float(depth.get(pos + dir, 0.0)) >= config.min_depth:
+			n += 1
+	return n
+
+
+## Holes and downhill faces rank first. Diagonal contact rounds the front
+## the way a pool thickens before it throws a spike.
+func _empty_neighbor_score(neighbor: Vector2i, transfer: float, pressure: float) -> float:
+	return (
+		_new_cell_priority(neighbor, transfer)
+		+ pressure
+		+ float(_frontier_diagonal_touches(neighbor)) * 2.0
+		+ _frontier_jitter(neighbor) * 0.5
+	)
+
+
+## Birth depth for a creep step. Must clear min_flow_diff or the child can never spread.
+func _frontier_birth_depth() -> float:
+	return minf(empty_cell_inflow_cap, maxf(config.min_depth, config.min_flow_diff + config.min_depth))
+
+
 func depth_cap(pos: Vector2i) -> float:
 	var cap := config.max_depth
 	if terrain != null and terrain.has_method("reserve_depth_mult"):
@@ -388,6 +422,7 @@ func _flow_job_begin(delta: float) -> Array:
 		"cells": cells,
 		"idx": 0,
 		"deltas": {},
+		"frontier": {},
 		"spread_mult": spread_mult,
 		"lateral_mult": lateral_mult,
 		"allow_lateral": allow_lateral,
@@ -403,6 +438,7 @@ func _flow_job_continue() -> Array:
 	var cells: Array = _flow_job["cells"]
 	var idx: int = int(_flow_job["idx"])
 	var deltas: Dictionary = _flow_job["deltas"]
+	var frontier: Dictionary = _flow_job["frontier"]
 	var delta: float = float(_flow_job["delta"])
 	var spread_mult: float = float(_flow_job["spread_mult"])
 	var lateral_mult: float = float(_flow_job["lateral_mult"])
@@ -417,6 +453,7 @@ func _flow_job_continue() -> Array:
 		if budget > 0 and idx > int(_flow_job["idx"]) and (Time.get_ticks_usec() - t0) >= budget:
 			_flow_job["idx"] = idx
 			_flow_job["deltas"] = deltas
+			_flow_job["frontier"] = frontier
 			last_flow_complete = false
 			if _prof_enabled:
 				_prof_add_phase("process_selected_cells", Time.get_ticks_usec() - t0)
@@ -435,6 +472,14 @@ func _flow_job_continue() -> Array:
 		if _prof_enabled:
 			_prof_terrain_tile += 1
 		var my_tile := terrain.get_tile(pos)
+		# Settle existing fluid conservatively. Growth into empty ground is one
+		# neighbor per cell (picked below) so mass cannot hop onto the other parity.
+		var settle: Dictionary = {}
+		var best_score := -1.0e20
+		var best_neighbor := Vector2i.ZERO
+		var best_transfer := 0.0
+		var best_conduct := 0.0
+		var has_best := false
 
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			var neighbor: Vector2i = pos + dir
@@ -471,17 +516,23 @@ func _flow_job_continue() -> Array:
 			)
 			if _is_empty_neighbor(n_amount):
 				transfer = _cap_transfer_to_empty(transfer)
-				if transfer <= 0.0:
+				if transfer <= 0.0 and conduct < 0.25:
 					continue
-			if transfer < config.min_depth * 0.2:
-				continue
+				if transfer < config.min_depth * 0.2 and conduct < 0.25:
+					continue
+				var score: float = _empty_neighbor_score(neighbor, transfer, pressure)
+				if not has_best or score > best_score:
+					has_best = true
+					best_score = score
+					best_neighbor = neighbor
+					best_transfer = transfer
+					best_conduct = conduct
+			else:
+				if transfer < config.min_depth * 0.2:
+					continue
+				settle[neighbor] = float(settle.get(neighbor, 0.0)) + transfer
 
-			deltas[pos] = float(deltas.get(pos, 0.0)) - transfer
-			deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + transfer
-			if _prof_enabled:
-				_prof_flow_transfers += 1
-			_assign_spawn_on_flow(neighbor, pos)
-
+		var from_pressure := has_best
 		if allow_lateral:
 			for dir in _CrystalTypes.NEIGHBOR_DIRS:
 				var neighbor: Vector2i = pos + dir
@@ -497,30 +548,80 @@ func _flow_job_continue() -> Array:
 					_prof_terrain_tile += 1
 				var n_tile := terrain.get_tile(neighbor)
 				var n_amount: float = float(depth.get(neighbor, 0.0))
-				var conduct: float = (
-					_flow_conductivity(my_tile, n_tile, pos, neighbor)
-					* config.lateral_spread_bias
-					* lateral_mult
-				)
+				var raw_conduct: float = _flow_conductivity(my_tile, n_tile, pos, neighbor)
+				var conduct: float = raw_conduct * config.lateral_spread_bias * lateral_mult
 				var spread: float = min(amount * conduct * delta, config.max_flow_per_cell * delta * 0.35)
 				if _is_empty_neighbor(n_amount):
-					spread = _cap_transfer_to_empty(spread)
-					if spread <= 0.0:
+					# Pressure already picked the face. Lateral mass only feeds that face.
+					if from_pressure:
+						if neighbor == best_neighbor:
+							spread = _cap_transfer_to_empty(spread)
+							if spread >= config.min_depth * 0.15:
+								best_transfer += spread
 						continue
+					# Shallow film (pressure below min_flow_diff) still creeps one
+					# open-ground step, the way water keeps wetting the next cell.
+					spread = _cap_transfer_to_empty(spread)
+					if spread <= 0.0 and raw_conduct < 0.25:
+						continue
+					var score: float = _empty_neighbor_score(neighbor, maxf(spread, config.min_depth), 0.0)
+					if not has_best or score > best_score:
+						has_best = true
+						best_score = score
+						best_neighbor = neighbor
+						best_transfer = spread
+						best_conduct = raw_conduct
+					continue
 				if spread < config.min_depth * 0.15:
 					continue
-				deltas[pos] = float(deltas.get(pos, 0.0)) - spread
-				deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + spread
+				settle[neighbor] = float(settle.get(neighbor, 0.0)) + spread
+
+		var settle_total := 0.0
+		for key in settle.keys():
+			settle_total += float(settle[key])
+		var spare: float = maxf(amount - config.min_depth, 0.0)
+		var settle_budget: float = minf(amount * config.max_outflow_ratio, spare)
+		var settle_scale := 1.0
+		if settle_total > settle_budget and settle_total > 0.0:
+			settle_scale = settle_budget / settle_total
+		var spent := 0.0
+		for key in settle.keys():
+			var neighbor: Vector2i = key
+			var transfer: float = float(settle[key]) * settle_scale
+			if transfer < config.min_depth * 0.15:
+				continue
+			deltas[pos] = float(deltas.get(pos, 0.0)) - transfer
+			deltas[neighbor] = float(deltas.get(neighbor, 0.0)) + transfer
+			spent += transfer
+			if _prof_enabled:
+				_prof_flow_transfers += 1
+
+		if has_best:
+			var birth: float = _frontier_birth_depth() * spread_mult
+			var gain: float = minf(best_transfer, empty_cell_inflow_cap)
+			if gain < config.min_depth and best_conduct >= 0.25 and birth >= config.min_depth:
+				gain = birth
+			if gain >= config.min_depth:
+				var pay: float = minf(gain, maxf(spare - spent, 0.0))
+				var entry: Dictionary = frontier.get(best_neighbor, {})
+				if entry.is_empty():
+					entry = {"gain": 0.0, "score": -1.0e20, "pays": []}
+				entry["gain"] = float(entry["gain"]) + gain
+				entry["score"] = maxf(float(entry["score"]), best_score)
+				var pays: Array = entry["pays"]
+				pays.append({"donor": pos, "pay": pay})
+				entry["pays"] = pays
+				frontier[best_neighbor] = entry
+				_assign_spawn_on_flow(best_neighbor, pos)
 				if _prof_enabled:
 					_prof_flow_transfers += 1
-				_assign_spawn_on_flow(neighbor, pos)
 
 	if _prof_enabled:
 		_prof_add_phase("process_selected_cells", Time.get_ticks_usec() - t0)
 
 	# Apply phase — always complete after all cells processed (same as monolithic tick_flow).
 	var t_apply := Time.get_ticks_usec() if _prof_enabled else 0
-	var changed: Array = _apply_flow_deltas(deltas)
+	var changed: Array = _apply_flow_deltas(deltas, frontier)
 	if _prof_enabled:
 		_prof_add_phase("apply_flow_deltas", Time.get_ticks_usec() - t_apply)
 		_prof_delta_applies += deltas.size()
@@ -531,7 +632,7 @@ func _flow_job_continue() -> Array:
 	return changed
 
 
-func _apply_flow_deltas(deltas: Dictionary) -> Array:
+func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 	var changed: Array = []
 	var mesh_dirty: Array = []
 	var pending_new: Array = []
@@ -543,6 +644,11 @@ func _apply_flow_deltas(deltas: Dictionary) -> Array:
 		var new_depth: float = old_depth + float(deltas[pos])
 		var was_empty: bool = old_depth < config.min_depth
 		var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
+
+		# Flow never deletes a cell. Over-outflow used to erase the donor and
+		# leave its mass on the opposite parity — the checkerboard blink.
+		if not was_empty and new_depth < config.min_depth:
+			new_depth = config.min_depth
 
 		if new_depth < config.min_depth:
 			if depth.has(pos):
@@ -569,25 +675,21 @@ func _apply_flow_deltas(deltas: Dictionary) -> Array:
 			if absf(old_depth - new_depth) >= mesh_depth_epsilon:
 				mesh_dirty.append(pos)
 
+	# Rare settle path (should be empty). Keep hole-first order, no rotation.
 	if not pending_new.is_empty():
 		pending_new.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			var score_a: float = _new_cell_priority(a.pos, float(a.magnitude))
 			var score_b: float = _new_cell_priority(b.pos, float(b.magnitude))
 			return score_a > score_b
 		)
-		var allow: int = pending_new.size()
+		var allow_settle: int = pending_new.size()
 		if max_new_cells_per_tick > 0:
-			allow = mini(allow, max_new_cells_per_tick)
-		if allow < pending_new.size():
-			var rotated: Array = []
-			var start: int = _frontier_new_offset % pending_new.size()
-			for i in pending_new.size():
-				rotated.append(pending_new[(start + i) % pending_new.size()])
-			pending_new = rotated
-			_frontier_new_offset += allow
-		for i in allow:
+			allow_settle = mini(allow_settle, max_new_cells_per_tick)
+		for i in allow_settle:
 			var entry: Dictionary = pending_new[i]
 			var pos: Vector2i = entry.pos
+			if _new_cell_touch_count(pos) < 1:
+				continue
 			depth[pos] = float(entry.depth)
 			var spawn_id: int = int(entry.spawn_id)
 			if spawn_id >= 0:
@@ -595,6 +697,75 @@ func _apply_flow_deltas(deltas: Dictionary) -> Array:
 			changed.append(pos)
 			mesh_dirty.append(pos)
 			last_new_cells += 1
+
+	if not frontier.is_empty():
+		var ranked: Array = []
+		for pos_variant in frontier.keys():
+			var entry: Dictionary = frontier[pos_variant]
+			ranked.append({
+				"pos": pos_variant,
+				"gain": float(entry.get("gain", 0.0)),
+				"score": float(entry.get("score", 0.0)),
+				"pays": entry.get("pays", []),
+			})
+		ranked.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+			if float(a.score) == float(b.score):
+				var pa: Vector2i = a.pos
+				var pb: Vector2i = b.pos
+				if pa.x == pb.x:
+					return pa.y < pb.y
+				return pa.x < pb.x
+			return float(a.score) > float(b.score)
+		)
+		var allow: int = ranked.size()
+		var room: int = allow
+		if max_new_cells_per_tick > 0:
+			room = maxi(max_new_cells_per_tick - last_new_cells, 0)
+			allow = mini(allow, room)
+		for i in allow:
+			var entry: Dictionary = ranked[i]
+			var pos: Vector2i = entry.pos
+			if float(depth.get(pos, 0.0)) >= config.min_depth:
+				continue
+			if _new_cell_touch_count(pos) < 1:
+				continue
+			var gain: float = float(entry.gain)
+			if gain < config.min_depth:
+				continue
+			var applied: float = minf(gain, empty_cell_inflow_cap)
+			if applied < config.min_depth:
+				continue
+			var pays: Array = entry.pays
+			var pay_sum := 0.0
+			for pay_variant in pays:
+				var summed: Dictionary = pay_variant
+				pay_sum += float(summed.get("pay", 0.0))
+			var pay_scale := 1.0
+			if pay_sum > applied and pay_sum > 0.0:
+				pay_scale = applied / pay_sum
+			for pay_variant in pays:
+				var pay_entry: Dictionary = pay_variant
+				var donor: Vector2i = pay_entry.donor
+				if not depth.has(donor):
+					continue
+				var paid: float = float(pay_entry.pay) * pay_scale
+				var donor_depth: float = maxf(float(depth[donor]) - paid, config.min_depth)
+				if absf(donor_depth - float(depth[donor])) > depth_write_epsilon:
+					depth[donor] = donor_depth
+					changed.append(donor)
+					if paid >= mesh_depth_epsilon:
+						mesh_dirty.append(donor)
+			var born: float = minf(float(depth.get(pos, 0.0)) + applied, depth_cap(pos))
+			if born < config.min_depth:
+				continue
+			depth[pos] = born
+			var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
+			if spawn_id >= 0:
+				spawn_id_by_cell[pos] = spawn_id
+			changed.append(pos)
+			mesh_dirty.append(pos)
+			last_new_cells += 1
+		_frontier_new_offset += 1
 
 	_last_mesh_dirty = mesh_dirty
 	return changed
