@@ -62,7 +62,7 @@ func _init() -> void:
 		push_error("stone material must be neither combat weapon nor dig tool")
 		failed = true
 	else:
-		print("OK stone material allows LMB terrain subtract path")
+		print("OK stone is neither a combat weapon nor a dig tool")
 
 	weapon.free()
 	if failed:

@@ -36,6 +36,7 @@ func _run() -> void:
 	_test_visual_id()
 	_test_absorption_table()
 	_test_relic_flow_mult()
+	_test_break_and_place_rules()
 
 
 func _test_item_def() -> void:
@@ -115,3 +116,56 @@ func _test_relic_flow_mult() -> void:
 		_fail("relic flow_mult expected %.2f got %.2f" % [ward.crystal_flow_mult, mult])
 	else:
 		print("OK relic crystal_flow_mult=%.2f" % mult)
+
+
+## Only dig tools break blocks. Right-click abilities never place. Hammer wind-up stays.
+func _test_break_and_place_rules() -> void:
+	_ItemTypes.reset()
+	_ItemTypes.ensure_builtins()
+	if not _ItemTypes.breaks_blocks("stone_pick"):
+		_fail("stone_pick must break blocks")
+	var no_break: PackedStringArray = [
+		"wooden_sword", "crystal_hammer", "shortbow", "spear", "sling",
+		"stone", "wood", "herb", "crystal_bomb", "leather_armor", "crystal_shard",
+	]
+	for item_id in no_break:
+		if _ItemTypes.breaks_blocks(item_id):
+			_fail("%s must not break blocks" % item_id)
+	var abilities: PackedStringArray = [
+		"herb", "crystal_bomb", "leather_armor", "stone_plate", "crystal_weave",
+	]
+	for item_id in abilities:
+		if not _ItemTypes.has_right_click_ability(item_id):
+			_fail("%s must have a right-click ability" % item_id)
+		if _ItemTypes.is_placeable_block(item_id):
+			_fail("%s must not be a placeable block" % item_id)
+	var can_place: PackedStringArray = [
+		"stone", "wood", "stone_pick", "wooden_sword", "crystal_hammer", "shortbow",
+	]
+	for item_id in can_place:
+		if _ItemTypes.has_right_click_ability(item_id):
+			_fail("%s must not have a right-click ability" % item_id)
+	if not _ItemTypes.is_placeable_block("stone") or not _ItemTypes.is_placeable_block("wood"):
+		_fail("stone and wood must be placeable blocks")
+	var hammer := _ItemTypes.get_def("crystal_hammer")
+	if not is_equal_approx(float(hammer.get("impact_ratio", -1.0)), 0.62):
+		_fail("hammer pre-hit impact_ratio must stay 0.62")
+	elif not is_equal_approx(float(hammer.get("anim_duration", -1.0)), 1.1):
+		_fail("hammer pre-hit anim_duration must stay 1.1")
+	var src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
+	if "func _try_dig_tool_or_fill_remove" in src:
+		_fail("non-dig items must not have a fill dig path")
+	var place_at := src.find("func _try_place_selected")
+	var place_end := src.find("\nfunc ", place_at + 10)
+	var place_body := src.substr(place_at, maxi(place_end - place_at, 0))
+	if "if _held_has_right_click_ability():" not in place_body:
+		_fail("_try_place_selected must return for a right-click ability")
+	elif "try_dig_brush(" in place_body:
+		_fail("place path must not dig")
+	var dig_at := src.find("func _do_dig_attack")
+	var dig_end := src.find("\nfunc ", dig_at + 10)
+	var dig_body := src.substr(dig_at, maxi(dig_end - dig_at, 0))
+	if "if not _is_active_dig_tool():" not in dig_body or "try_dig_brush(" not in dig_body:
+		_fail("dig stroke must require a dig tool")
+	elif _failed == 0:
+		print("OK only dig tools break blocks; right-click abilities do not place")

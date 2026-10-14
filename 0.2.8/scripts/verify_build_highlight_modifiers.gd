@@ -78,6 +78,22 @@ func _run() -> void:
 	else:
 		print("OK simulate_interact + stone -> build mode")
 
+	weapon.set_slot("herb")
+	var mode_herb := _ActionTargeting._weapon_mode_from_player(player, true)
+	if mode_herb == &"build":
+		push_error("herb right-click must not force build mode, got %s" % mode_herb)
+		failed = true
+	else:
+		print("OK herb right-click does not place")
+	weapon.set_slot("crystal_bomb")
+	var mode_bomb := _ActionTargeting._weapon_mode_from_player(player, true)
+	if mode_bomb == &"build":
+		push_error("bomb right-click must not force build mode, got %s" % mode_bomb)
+		failed = true
+	else:
+		print("OK bomb right-click does not place")
+	weapon.set_slot("wooden_sword")
+
 	var probe_cell := Vector2i.ZERO
 	for gx in range(-24, 25):
 		for gz in range(-24, 25):
