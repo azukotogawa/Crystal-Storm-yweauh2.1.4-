@@ -6,7 +6,7 @@ extends RefCounted
 
 const ACTIONS: PackedStringArray = [
 	"move_forward", "move_back", "move_left", "move_right",
-	"jump", "rotate_left", "rotate_right",
+	"jump", "sprint", "rotate_left", "rotate_right",
 	"camera_pitch_up", "camera_pitch_down", "unstuck",
 	"attack", "build_place", "interact", "inventory_toggle",
 	"plant", "channel_water", "place_cycle",
@@ -24,6 +24,7 @@ const LABELS := {
 	"move_left": "Move left",
 	"move_right": "Move right",
 	"jump": "Jump",
+	"sprint": "Sprint",
 	"rotate_left": "Rotate left",
 	"rotate_right": "Rotate right",
 	"camera_pitch_up": "Look up",

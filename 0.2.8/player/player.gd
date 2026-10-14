@@ -15,6 +15,7 @@ const _Juice = preload("res://systems/juice.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
+const _MoveFeel = preload("res://player/move_feel.gd")
 
 var stat_component: _StatComponent
 var relic_manager: _RelicManager
@@ -81,6 +82,16 @@ var is_input_locked: bool = false
 var _jump_latched: bool = false
 ## Idle frames always see that one-frame tap. Physics may not run during it.
 var _jump_edge: bool = false
+## Seconds left to jump after the feet leave the ground.
+var _coyote_left: float = 0.0
+## A jump pressed in the air, waiting for the landing.
+var _jump_buffer: float = 0.0
+## This ascent already took the short-hop cut. A held jump never sets it.
+var _jump_cut: bool = false
+## Hold sprint on land. A submerged body stays at swim speed.
+var is_sprinting: bool = false
+## True during the short settle after the feet touch. The speed keep runs once.
+var _landed_hold: bool = false
 ## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
 var _locked_rotation: int = 0
 var locked_rotation: int:
@@ -416,16 +427,21 @@ func _physics_process(delta: float) -> void:
 	var jump_down := jump_held or (not jump_blocked and _jump_edge)
 	if jump_blocked:
 		_jump_edge = false
-	elif jump_down \
-			and not _jump_latched \
-			and current_state in [State.IDLE, State.RUNNING] \
-			and _can_initiate_jump(moving):
-		change_state(State.JUMPING)
-		_jump_latched = true
-		_jump_edge = false
+		_jump_buffer = 0.0
+	elif jump_down and not _jump_latched and current_state != State.JUMPING:
+		# Support is probed only on the press. Coyote covers the frames after a ledge.
+		var supported := current_state in [State.IDLE, State.RUNNING] and _can_initiate_jump(moving)
+		if _MoveFeel.can_jump(supported, _coyote_left):
+			_start_jump()
+		else:
+			_jump_buffer = _MoveFeel.JUMP_BUFFER_SEC
+	elif jump_down and not _jump_latched:
+		_jump_buffer = _MoveFeel.JUMP_BUFFER_SEC
 	elif not jump_held:
 		_jump_latched = false
 		_jump_edge = false
+	if _jump_buffer > 0.0:
+		_jump_buffer = maxf(_jump_buffer - delta, 0.0)
 	if measure:
 		phase_local["jump_check"] = Time.get_ticks_usec() - t0
 
@@ -444,11 +460,17 @@ func _physics_process(delta: float) -> void:
 		speed *= _Water.SWIM_SPEED_MULT
 	elif wading:
 		speed *= _Water.WADE_SPEED_MULT
+	is_sprinting = false
+	if not submerged and moving and not jump_blocked and InputMap.has_action("sprint") \
+			and Input.is_action_pressed("sprint"):
+		is_sprinting = true
+		speed = _MoveFeel.apply_sprint(speed, true, submerged, wading)
 	if measure:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
 		_phys_call_slope += 1
 
-	var airborne := current_state in [State.JUMPING, State.FALLING]
+	# The landing settle is already on the ground. A real fall still steers in the air.
+	var airborne := (current_state == State.JUMPING or current_state == State.FALLING) and not _landed_hold
 	t0 = Time.get_ticks_usec() if measure else 0
 	# Continuous accel/friction → micro-smooth starts/stops (no binary grid lurch).
 	var desired_vel := Vector2.ZERO
@@ -463,9 +485,11 @@ func _physics_process(delta: float) -> void:
 		if _move_vel_xz.length_squared() < 0.0004:
 			_move_vel_xz = Vector2.ZERO
 	else:
-		var accel: float = move_accel if desired_vel.length_squared() > 0.0001 else move_friction
+		var has_input := desired_vel.length_squared() > 0.0001
+		var reversing := has_input and _move_vel_xz.dot(desired_vel) < 0.0
+		var accel := _MoveFeel.accel_rate(move_accel, move_friction, has_input, airborne, reversing, is_sprinting)
 		if submerged:
-			accel *= _Water.SWIM_ACCEL_MULT if desired_vel.length_squared() > 0.0001 else _Water.SWIM_FRICTION_MULT
+			accel *= _Water.SWIM_ACCEL_MULT if has_input else _Water.SWIM_FRICTION_MULT
 		_move_vel_xz = _move_vel_xz.move_toward(desired_vel, accel * delta)
 		if _move_vel_xz.length_squared() < 0.0004 and desired_vel == Vector2.ZERO:
 			_move_vel_xz = Vector2.ZERO
@@ -483,7 +507,10 @@ func _physics_process(delta: float) -> void:
 	t0 = Time.get_ticks_usec() if measure else 0
 	match current_state:
 		State.JUMPING:
-			velocity.y -= _gravity() * delta
+			if not jump_held and not _jump_cut and velocity.y > 0.0:
+				velocity.y = _MoveFeel.release_jump(velocity.y)
+				_jump_cut = true
+			velocity.y -= _gravity() * _MoveFeel.gravity_scale(velocity.y) * delta
 			if velocity.y <= 0.0:
 				# Gravity ate the impulse. Water catches the body; dry land still falls.
 				if _float_if_submerged(delta, voxel_position.y):
@@ -499,7 +526,8 @@ func _physics_process(delta: float) -> void:
 					voxel_position.y = next_pos.y
 
 		State.FALLING:
-			velocity.y -= _gravity() * delta
+			_coyote_left = _MoveFeel.coyote_after(_coyote_left, false, delta)
+			velocity.y -= _gravity() * _MoveFeel.gravity_scale(velocity.y) * delta
 			var next_y := voxel_position.y + velocity.y * delta
 			if _float_if_submerged(delta, minf(voxel_position.y, next_y)):
 				change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
@@ -511,16 +539,25 @@ func _physics_process(delta: float) -> void:
 				var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
 				if reached_feet or is_colliding_at(next_pos):
 					# Land with a firm settle (not a mid-air soft float).
+					# The old speed scale ran every settle frame and stopped the run.
+					var first_contact := not _landed_hold
 					voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
 					velocity.y = 0.0
-					_move_vel_xz *= 0.65
+					if first_contact:
+						_move_vel_xz *= _MoveFeel.LAND_SPEED_KEEP
+					_landed_hold = true
+					_coyote_left = _MoveFeel.COYOTE_SEC
 					sprite_scale_modifier = Vector2(1.6, 0.5)
 					current_skew = -0.1
 					landing_timer += delta
-					if landing_timer > 0.2:
+					if _try_buffered_jump():
+						landing_timer = 0.0
+						_landed_hold = false
+					elif landing_timer > 0.2:
 						landing_timer = 0.0
 						change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
 				else:
+					_landed_hold = false
 					voxel_position.y = next_pos.y
 
 		State.IDLE, State.RUNNING:
@@ -530,6 +567,10 @@ func _physics_process(delta: float) -> void:
 					and not _is_grounded(moving or _move_vel_xz.length_squared() > 0.01):
 				change_state(State.FALLING)
 				velocity.y = 0.0
+				_landed_hold = false
+				_coyote_left = _MoveFeel.coyote_after(_coyote_left, false, delta)
+			else:
+				_coyote_left = _MoveFeel.coyote_after(_coyote_left, true, delta)
 	if measure:
 		phase_local["vertical_state"] = Time.get_ticks_usec() - t0
 
@@ -712,6 +753,10 @@ func _apply_safe_stand() -> void:
 	velocity.y = 0.0
 	_move_vel_xz = Vector2.ZERO
 	_knock_left = 0.0
+	_coyote_left = 0.0
+	_jump_buffer = 0.0
+	_landed_hold = false
+	is_sprinting = false
 	if current_state == State.JUMPING or current_state == State.FALLING:
 		current_state = State.IDLE
 
@@ -732,6 +777,23 @@ func _is_grounded(moving: bool = false) -> bool:
 	if _phys_measure:
 		_phys_call_grounded += 1
 	return _floor_probe.is_grounded_at(voxel_position, _ground_snap_distance(moving))
+
+
+func _start_jump() -> void:
+	change_state(State.JUMPING)
+	_jump_latched = true
+	_jump_edge = false
+	_jump_cut = false
+	_coyote_left = 0.0
+	_jump_buffer = 0.0
+	_landed_hold = false
+
+
+func _try_buffered_jump() -> bool:
+	if _jump_buffer <= 0.0 or _GameplayInput.blocks_actions():
+		return false
+	_start_jump()
+	return true
 
 
 func _can_initiate_jump(moving: bool) -> bool:
@@ -1016,9 +1078,10 @@ func _apply_walk_bob(delta: float) -> void:
 	var sy := 1.0
 	var bob := 0.0
 	if current_state == State.RUNNING and _Juice.walk_bob_allowed():
-		_bob_phase += delta * 11.0
+		_bob_phase += delta * _MoveFeel.bob_rate(is_sprinting)
 		var s := sin(_bob_phase)
-		bob = s * _ws().voxel_scale * 0.04
+		var bob_amp := 0.055 if is_sprinting else 0.04
+		bob = s * _ws().voxel_scale * bob_amp
 		sx = 1.0 + s * 0.06
 		sy = 1.0 - s * 0.08
 	else:

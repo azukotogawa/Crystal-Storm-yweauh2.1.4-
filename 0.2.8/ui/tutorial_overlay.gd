@@ -187,7 +187,7 @@ func _build_steps() -> PackedStringArray:
 	var attack := _InputBindings.binding_text("attack")
 	var place := _InputBindings.binding_text("build_place")
 	return PackedStringArray([
-		"Move with %s. The camera is isometric, so forward follows the view." % move,
+		"Move with %s. Sprint with %s. The camera is isometric, so forward follows the view." % [move, _InputBindings.binding_text("sprint")],
 		"Rotate the camera with %s. Page Up and Page Down tilt the view. Drag the middle mouse to tilt too. V frees you if you are stuck in the ground." % yaw,
 		"Attack the crystal with %s. Weapons hit the crystal and creatures. They do not dig." % attack,
 		"Only the pick breaks blocks (%s). %s places, except when the held item has its own right-click use." % [attack, place],
