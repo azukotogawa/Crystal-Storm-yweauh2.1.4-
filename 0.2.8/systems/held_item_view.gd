@@ -8,6 +8,11 @@ const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TextureSet = preload("res://helpers/texture_set.gd")
 
+## World units per icon texel, times voxel_scale. The art is 32px with a small
+## opaque core. 0.060 puts a sword about one body tall at the default iso zoom.
+## The old 0.038 icon sat inside the torso and read as a speck.
+const ICON_PIXEL_SCALE := 0.060
+
 var _arm: MeshInstance3D
 var _item: Sprite3D
 var _arm_mat: StandardMaterial3D
@@ -27,7 +32,7 @@ func _ensure_visual() -> void:
 		return
 	_vs = _WorldSettings.get_active().voxel_scale
 	var box := BoxMesh.new()
-	box.size = Vector3(_vs * 0.16, _vs * 0.16, _vs * 0.7)
+	box.size = Vector3(_vs * 0.24, _vs * 0.24, _vs * 0.95)
 	_arm = MeshInstance3D.new()
 	_arm.name = "Arm"
 	_arm.mesh = box
@@ -37,8 +42,8 @@ func _ensure_visual() -> void:
 	add_child(_arm)
 	_item = Sprite3D.new()
 	_item.name = "HeldItem"
-	# About one column tall, larger than the old 0.12 stick, so the icon reads at iso zoom.
-	_item.pixel_size = _vs * 0.038
+	# About one body tall, clear of the torso, so the icon reads at iso zoom.
+	_item.pixel_size = _vs * ICON_PIXEL_SCALE
 	_item.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_item.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	_item.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
@@ -147,8 +152,9 @@ func _tint_for(item_id: String, kind: int) -> void:
 
 func _apply_unit(kind: int, u: float, impact: float) -> void:
 	var vs := _vs
-	var chest := vs * 0.95
-	var side := vs * 0.85
+	# Outside the body radius so the billboard is not hidden in the torso.
+	var chest := vs * 1.05
+	var side := vs * 1.50
 	var at := clampf(impact, 0.05, 0.92)
 	var phase: float
 	if u < at:
