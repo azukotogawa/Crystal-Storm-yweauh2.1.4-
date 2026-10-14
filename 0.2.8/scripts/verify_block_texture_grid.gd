@@ -27,6 +27,38 @@ func _row_luma(img: Image, ox: int, oy: int, y: int, tw: int) -> float:
 	return sum / float(tw)
 
 
+func _srgb_to_linear(channel: float) -> float:
+	if channel <= 0.04045:
+		return channel / 12.92
+	return pow((channel + 0.055) / 1.055, 2.4)
+
+
+## Same test as ChunkSurfaceMesh / ChunkRamp. source_color samples are linear.
+func _shader_swaps_texel(px: Color, cutoff: float) -> bool:
+	if cutoff <= 0.0:
+		return false
+	var lin := Color(
+		_srgb_to_linear(px.r),
+		_srgb_to_linear(px.g),
+		_srgb_to_linear(px.b),
+		px.a
+	)
+	return lin.r * 0.33 + lin.g * 0.33 + lin.b * 0.34 < cutoff
+
+
+func _dark_cutoff() -> float:
+	var cutoff := 0.0
+	var pattern := RegEx.new()
+	pattern.compile("vec3\\(0\\.33, 0\\.33, 0\\.34\\)\\) < ([0-9]*\\.?[0-9]+)")
+	for path in _SHADERS:
+		var src := FileAccess.get_file_as_string(path)
+		var found := pattern.search(src)
+		if found == null:
+			continue
+		cutoff = maxf(cutoff, float(found.get_string(1)))
+	return cutoff
+
+
 func _col_luma(img: Image, ox: int, oy: int, x: int, tw: int) -> float:
 	var sum := 0.0
 	for y in tw:
@@ -132,6 +164,56 @@ func _run() -> void:
 			failed = true
 		else:
 			print("OK Cube.png tiles have no dark grid lines")
+		# The row test above stays green on this atlas: dark and light texels
+		# share every row, so no row is 20% darker than its neighbor. In the
+		# game the surface shader still replaces the dark texels with one flat
+		# color. That flat field against the texels it keeps is the grid at
+		# ortho 16. Apply the shader's own cutoff to the tile.
+		var cutoff := _dark_cutoff()
+		var worst_cell := Vector2i(-1, -1)
+		var worst_frac := 0.0
+		var worst_swapped := 0
+		var worst_opaque := 0
+		var bad_cells := 0
+		for row in rows:
+			for col in cols:
+				var ox := col * tw
+				var oy := row * tw
+				var opaque := 0
+				var swapped := 0
+				var luma_sum := 0.0
+				for y in tw:
+					for x in tw:
+						var px := img.get_pixel(ox + x, oy + y)
+						if px.a < 0.1:
+							continue
+						opaque += 1
+						luma_sum += px.get_luminance()
+						if _shader_swaps_texel(px, cutoff):
+							swapped += 1
+				if opaque < tw * tw / 2:
+					continue
+				if luma_sum / float(opaque) < 0.12:
+					continue
+				var frac := float(swapped) / float(opaque)
+				if frac > worst_frac:
+					worst_frac = frac
+					worst_cell = Vector2i(col, row)
+					worst_swapped = swapped
+					worst_opaque = opaque
+				if frac > 0.08:
+					bad_cells += 1
+		if bad_cells > 0:
+			_fail(
+				"%d colored tiles would draw a grid; worst cell %d,%d replaces %d/%d texels (cutoff %.4f)"
+				% [bad_cells, worst_cell.x, worst_cell.y, worst_swapped, worst_opaque, cutoff]
+			)
+			failed = true
+		else:
+			print(
+				"OK shader keeps tile texels (worst cell %d,%d replaces %.1f%%)"
+				% [worst_cell.x, worst_cell.y, worst_frac * 100.0]
+			)
 
 	# Let the headless renderer compile the bound materials.
 	await process_frame
