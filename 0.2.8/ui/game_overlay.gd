@@ -648,17 +648,21 @@ func _update_game_hud() -> void:
 		var slot = weapon.get_active_item()
 		if slot != null:
 			var sid := str(slot.id)
-			if _is_fight_item(sid):
+			if _ItemTypes.breaks_blocks(sid):
+				tool_line = "WASD · Space jump · LMB break · RMB %s" % place_name
+			elif _ItemTypes.has_right_click_ability(sid):
+				tool_line = "WASD · Space jump · RMB use"
+			elif _is_fight_item(sid):
 				var verb := "LMB attack"
 				if int(_ItemTypes.get_def(sid).get("category", -1)) == _ItemTypes.Category.ARMOR:
 					verb = "LMB wear"
-				tool_line = "FIGHT · WASD · Space jump · %s · RMB place %s" % [verb, place_name]
+				tool_line = "FIGHT · WASD · Space jump · %s · RMB %s" % [verb, place_name]
 			else:
-				tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
+				tool_line = "WASD · Space jump · RMB %s" % place_name
 		else:
-			tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
+			tool_line = "WASD · Space jump · RMB %s" % place_name
 	else:
-		tool_line = "WASD · Space jump · LMB remove · RMB %s" % place_name
+		tool_line = "WASD · Space jump · RMB %s" % place_name
 	var phase_tag := "MAZE"
 	if _game_manager.phase == _GameManager.Phase.ASSAULT:
 		phase_tag = "ASSAULT"

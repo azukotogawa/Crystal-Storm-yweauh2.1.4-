@@ -1555,7 +1555,7 @@
 			"animation_frames": 1,
 			"appears_in": [
 				"script:res://assets/player/author_player.gd",
-				"script:res://player/player.gd",
+				"script:res://player/player_body_mesh.gd",
 				"script:res://scripts/verify_texture_batch.gd"
 			],
 			"art": "art",
