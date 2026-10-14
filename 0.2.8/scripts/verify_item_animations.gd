@@ -1,5 +1,6 @@
 extends SceneTree
 ## Held-item kinds, impact-frame timing, pooled poses, aim reach, and hit markers.
+## The held node has to be a 3D mesh. A Sprite3D billboard used to pass on pixel_size.
 
 
 const _ItemAnim = preload("res://systems/item_anim.gd")
@@ -175,16 +176,22 @@ func _check_held_reads() -> void:
 	var view = _HeldItemView.new()
 	root.add_child(view)
 	view.show_item("wooden_sword")
-	var icon: Sprite3D = view.get_node("HeldItem")
-	if icon.pixel_size < vs * 0.055:
-		_fail("held icon pixel_size %.4f is still the small stick" % icon.pixel_size)
-	var full_h := 32.0 * icon.pixel_size * icon.scale.y
-	if full_h < ws.player_height():
-		_fail("held sword height %.2f is shorter than the body %.2f" % [full_h, ws.player_height()])
-	var half_w := 16.0 * icon.pixel_size * icon.scale.x
-	var inner := absf(icon.position.x) - half_w
-	if inner < ws.player_radius() * 0.9:
-		_fail("held sword overlaps the torso (inner %.2f radius %.2f)" % [inner, ws.player_radius()])
+	var icon: Node3D = view.get_node("HeldItem")
+	# pixel_size on a Sprite3D certified a flat billboard. The mesh extent is the size.
+	if icon is SpriteBase3D or _held_mesh_count(icon) < 1:
+		_fail("held sword is a flat sprite, not a 3D mesh")
+	else:
+		var bounds := _held_local_bounds(icon)
+		var thin := minf(bounds.size.x, bounds.size.z)
+		if bounds.size.y < ws.player_height():
+			_fail("held sword height %.2f is shorter than the body %.2f" % [bounds.size.y, ws.player_height()])
+		elif thin < vs * 0.12:
+			_fail("held sword is a flat card (thickness %.3f)" % thin)
+		else:
+			var half_w := bounds.size.x * 0.5
+			var inner := absf(icon.position.x) - half_w
+			if inner < ws.player_radius() * 0.9:
+				_fail("held sword overlaps the torso (inner %.2f radius %.2f)" % [inner, ws.player_radius()])
 	var sword_ready: Vector3 = icon.position
 	var sword = _ItemAnim.playback_for("wooden_sword")
 	sword.elapsed = sword.impact_time() * 0.45
@@ -234,6 +241,50 @@ func _check_held_reads() -> void:
 		_fail("armor should not show a held icon")
 	elif not _failed:
 		print("OK held item size and use poses")
+
+
+func _held_mesh_count(node: Node) -> int:
+	var n := 0
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh != null and node.visible:
+		n += 1
+	for child in node.get_children():
+		n += _held_mesh_count(child)
+	return n
+
+
+func _held_local_bounds(item: Node3D) -> AABB:
+	var merged := AABB()
+	var any := false
+	var pending: Array[Node] = [item]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		for child in node.get_children():
+			pending.append(child)
+		if node is MeshInstance3D:
+			var mi := node as MeshInstance3D
+			if mi.mesh == null or not mi.visible:
+				continue
+			var xf := item.global_transform.affine_inverse() * mi.global_transform
+			var ab := mi.get_aabb()
+			for corner in _aabb_corners(ab):
+				var p: Vector3 = xf * corner
+				if not any:
+					merged = AABB(p, Vector3.ZERO)
+					any = true
+				else:
+					merged = merged.expand(p)
+	return merged
+
+
+func _aabb_corners(ab: AABB) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for i in 8:
+		out.append(ab.position + Vector3(
+			ab.size.x if (i & 1) != 0 else 0.0,
+			ab.size.y if (i & 2) != 0 else 0.0,
+			ab.size.z if (i & 4) != 0 else 0.0
+		))
+	return out
 
 
 func _check_aim() -> void:
