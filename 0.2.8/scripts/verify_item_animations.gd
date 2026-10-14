@@ -50,6 +50,7 @@ func _run() -> void:
 	_check_impact_frames()
 	_check_controller_clock()
 	_check_held_pool()
+	_check_held_reads()
 	_check_aim()
 	_check_hit_markers()
 	_PlayerSettings.hit_markers_enabled = true
@@ -166,6 +167,73 @@ func _check_held_pool() -> void:
 		_fail("held item mesh casts a shadow")
 	else:
 		print("OK held item pool")
+
+
+func _check_held_reads() -> void:
+	var ws = _WorldSettings.get_active()
+	var vs: float = ws.voxel_scale
+	var view = _HeldItemView.new()
+	root.add_child(view)
+	view.show_item("wooden_sword")
+	var icon: Sprite3D = view.get_node("HeldItem")
+	if icon.pixel_size < vs * 0.055:
+		_fail("held icon pixel_size %.4f is still the small stick" % icon.pixel_size)
+	var full_h := 32.0 * icon.pixel_size * icon.scale.y
+	if full_h < ws.player_height():
+		_fail("held sword height %.2f is shorter than the body %.2f" % [full_h, ws.player_height()])
+	var half_w := 16.0 * icon.pixel_size * icon.scale.x
+	var inner := absf(icon.position.x) - half_w
+	if inner < ws.player_radius() * 0.9:
+		_fail("held sword overlaps the torso (inner %.2f radius %.2f)" % [inner, ws.player_radius()])
+	var sword_ready: Vector3 = icon.position
+	var sword = _ItemAnim.playback_for("wooden_sword")
+	sword.elapsed = sword.impact_time() * 0.45
+	view.apply_playback(sword)
+	if icon.position.distance_to(sword_ready) < vs * 0.85:
+		_fail("sword use pose barely moved (%.2f)" % icon.position.distance_to(sword_ready))
+	view.show_item("spear")
+	var spear_ready_z: float = icon.position.z
+	var spear = _ItemAnim.playback_for("spear")
+	spear.elapsed = spear.impact_time()
+	view.apply_playback(spear)
+	if spear_ready_z - icon.position.z < vs * 1.0:
+		_fail("spear thrust did not lunge")
+	view.show_item("herb")
+	var herb_ready_y: float = icon.position.y
+	var herb = _ItemAnim.playback_for("herb")
+	herb.elapsed = herb.impact_time()
+	view.apply_playback(herb)
+	if icon.position.y < herb_ready_y + vs * 0.8:
+		_fail("herb raise did not lift")
+	view.show_item("shortbow")
+	var bow_ready: Vector3 = icon.position
+	var bow = _ItemAnim.playback_for("shortbow")
+	bow.elapsed = bow.impact_time() * 0.5
+	view.apply_playback(bow)
+	if icon.position.distance_to(bow_ready) < vs * 0.2:
+		_fail("bow draw did not move")
+	view.show_item("crystal_hammer")
+	var hammer_ready_y: float = icon.position.y
+	var hammer = _ItemAnim.playback_for("crystal_hammer")
+	if not is_equal_approx(float(hammer.impact_ratio), 0.62):
+		_fail("hammer pre-hit impact_ratio must stay 0.62")
+	elif not is_equal_approx(float(hammer.duration), 1.1):
+		_fail("hammer pre-hit duration must stay 1.1")
+	else:
+		hammer.elapsed = hammer.impact_time() * 0.40
+		view.apply_playback(hammer)
+		var raised_y: float = icon.position.y
+		if raised_y < hammer_ready_y + vs * 0.7:
+			_fail("hammer is not raised during the pre-hit delay")
+		hammer.elapsed = hammer.impact_time()
+		view.apply_playback(hammer)
+		if icon.position.y > raised_y - vs * 0.6:
+			_fail("hammer did not slam down on the impact frame")
+	view.show_item("leather_armor")
+	if view.visible:
+		_fail("armor should not show a held icon")
+	elif not _failed:
+		print("OK held item size and use poses")
 
 
 func _check_aim() -> void:
