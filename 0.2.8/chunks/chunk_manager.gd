@@ -2051,12 +2051,14 @@ func _greedy_mesh_plane_region(
 				var vox := _tile_type_at(data, x, z)
 				if vox == VoxelTypes.AIR:
 					continue
+				var variant := _column_face_atlas(data, x, z, vox, face_code)
 
 				var dx := 1
 				while x + dx < x1 and not visited[x + dx][z] \
 						and not _skips_greedy_surface_cell(data, x + dx, z) \
 						and is_equal_approx(_surface_y_at(data, x + dx, z), sy) \
-						and _tile_type_at(data, x + dx, z) == vox:
+						and _tile_type_at(data, x + dx, z) == vox \
+						and _column_face_atlas(data, x + dx, z, vox, face_code) == variant:
 					dx += 1
 
 				var dz := 1
@@ -2067,7 +2069,8 @@ func _greedy_mesh_plane_region(
 						var cz := z + dz
 						if visited[cx][cz] or _skips_greedy_surface_cell(data, cx, cz) \
 								or not is_equal_approx(_surface_y_at(data, cx, cz), sy) \
-								or _tile_type_at(data, cx, cz) != vox:
+								or _tile_type_at(data, cx, cz) != vox \
+								or _column_face_atlas(data, cx, cz, vox, face_code) != variant:
 							can = false
 							break
 					if not can:
@@ -2242,18 +2245,24 @@ func _emit_surface_side_walls_region(
 		for x in range(x0, x1):
 			var run_start = -1
 			var run_spec: Dictionary = {}
+			var run_atlas := Vector2i(-1, -1)
 			for z in range(z0, z1 + 1):
 				var spec: Dictionary = {}
 				if z < z1:
 					spec = _side_wall_spec(data, x, z, x + dx, z, Vector2i(-dx, 0))
+				var cell_atlas := Vector2i(-1, -1)
+				if not spec.is_empty():
+					cell_atlas = _column_face_atlas(data, x, z, int(spec.t), face_code)
 				var same := (not spec.is_empty() and not run_spec.is_empty()
 						and is_equal_approx(float(spec.y), float(run_spec.y))
 						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
-						and int(spec.t) == int(run_spec.t))
+						and int(spec.t) == int(run_spec.t)
+						and cell_atlas == run_atlas)
 				if not spec.is_empty() and (run_start == -1 or same):
 					if run_start == -1:
 						run_start = z
 						run_spec = spec
+						run_atlas = cell_atlas
 				else:
 					if run_start != -1:
 						out_quads.append({
@@ -2270,22 +2279,29 @@ func _emit_surface_side_walls_region(
 						})
 					run_start = -1 if spec.is_empty() else z
 					run_spec = spec
+					run_atlas = Vector2i(-1, -1) if spec.is_empty() else cell_atlas
 	elif abs(dz) == 1:
 		for z in range(z0, z1):
 			var run_start = -1
 			var run_spec: Dictionary = {}
+			var run_atlas := Vector2i(-1, -1)
 			for x in range(x0, x1 + 1):
 				var spec: Dictionary = {}
 				if x < x1:
 					spec = _side_wall_spec(data, x, z, x, z + dz, Vector2i(0, -dz))
+				var cell_atlas := Vector2i(-1, -1)
+				if not spec.is_empty():
+					cell_atlas = _column_face_atlas(data, x, z, int(spec.t), face_code)
 				var same := (not spec.is_empty() and not run_spec.is_empty()
 						and is_equal_approx(float(spec.y), float(run_spec.y))
 						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
-						and int(spec.t) == int(run_spec.t))
+						and int(spec.t) == int(run_spec.t)
+						and cell_atlas == run_atlas)
 				if not spec.is_empty() and (run_start == -1 or same):
 					if run_start == -1:
 						run_start = x
 						run_spec = spec
+						run_atlas = cell_atlas
 				else:
 					if run_start != -1:
 						out_quads.append({
@@ -2302,6 +2318,16 @@ func _emit_surface_side_walls_region(
 						})
 					run_start = -1 if spec.is_empty() else x
 					run_spec = spec
+					run_atlas = Vector2i(-1, -1) if spec.is_empty() else cell_atlas
+
+
+func _column_face_atlas(data: ChunkData, lx: int, lz: int, tile: int, face_code: int) -> Vector2i:
+	return VoxelTypes.face_atlas(
+		tile,
+		face_code,
+		data.position.x * ChunkData.SIZE + lx,
+		data.position.y * ChunkData.SIZE + lz
+	)
 
 
 ## Mark the lower neighbor as approach floor (not a second slope).

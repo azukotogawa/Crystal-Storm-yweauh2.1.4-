@@ -89,7 +89,11 @@ static func _build_box_buffer(data: ChunkData, quads: Array) -> PackedFloat32Arr
 		buffer[base + 4] = 0;  buffer[base + 5] = sy * voxel_s; buffer[base + 6] = 0;  buffer[base + 7] = oy
 		buffer[base + 8] = 0;  buffer[base + 9] = 0;  buffer[base + 10] = sz * voxel_s; buffer[base + 11] = oz
 
-		ChunkView._write_atlas_custom(buffer, base, q)
+		ChunkView._write_atlas_custom(
+			buffer, base, q, -1,
+			int(q["x"]) + data.position.x * ChunkData.SIZE,
+			int(q["z"]) + data.position.y * ChunkData.SIZE
+		)
 
 	return buffer
 
@@ -132,6 +136,9 @@ static func _build_ramp_buffer(data: ChunkData, quads: Array, ramp_kind: String)
 		buffer[base + 4] = b.x.y; buffer[base + 5] = b.y.y; buffer[base + 6] = b.z.y; buffer[base + 7] = o.y
 		buffer[base + 8] = b.x.z; buffer[base + 9] = b.y.z; buffer[base + 10] = b.z.z; buffer[base + 11] = o.z
 
-		ChunkView._write_atlas_custom(buffer, base, q, face_code)
+		ChunkView._write_atlas_custom(
+			buffer, base, q, face_code,
+			int(world_x), int(world_z)
+		)
 
 	return buffer

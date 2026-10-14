@@ -680,7 +680,11 @@ func _emit_box_multimesh(quads: Array) -> void:
 		buffer[base + 4] = 0;  buffer[base + 5] = sy * voxel_s; buffer[base + 6] = 0;  buffer[base + 7] = oy
 		buffer[base + 8] = 0;  buffer[base + 9] = 0;  buffer[base + 10] = sz * voxel_s; buffer[base + 11] = oz
 
-		_write_atlas_custom(buffer, base, q)
+		_write_atlas_custom(
+			buffer, base, q, -1,
+			int(q["x"]) + chunk_data.position.x * ChunkData.SIZE,
+			int(q["z"]) + chunk_data.position.y * ChunkData.SIZE
+		)
 
 	mm.buffer = buffer
 
@@ -748,7 +752,10 @@ func _emit_ramp_multimesh(quads: Array, ramp_kind: String = "cardinal") -> void:
 		buffer[base + 4] = b.x.y; buffer[base + 5] = b.y.y; buffer[base + 6] = b.z.y; buffer[base + 7] = o.y
 		buffer[base + 8] = b.x.z; buffer[base + 9] = b.y.z; buffer[base + 10] = b.z.z; buffer[base + 11] = o.z
 
-		_write_atlas_custom(buffer, base, q, face_code)
+		_write_atlas_custom(
+			buffer, base, q, face_code,
+			int(world_x), int(world_z)
+		)
 
 	mm.buffer = buffer
 
@@ -757,11 +764,18 @@ static func _write_atlas_custom(
 	buffer: PackedFloat32Array,
 	base: int,
 	quad: Dictionary,
-	face_code_override: int = -1
+	face_code_override: int = -1,
+	world_x: int = -1000000000,
+	world_z: int = -1000000000
 ) -> void:
 	var face_code: int = face_code_override if face_code_override >= 0 else int(quad.get("face_code", 0))
 	var tile_type: int = int(quad.get("type", _VoxelTypes.AIR))
 	var atlas: Vector2i = _VoxelTypes.get_atlas_coord_for_face(tile_type, face_code)
+	if world_x > -900000000:
+		var sample := face_code
+		if sample >= 7:
+			sample = 0
+		atlas = _VoxelTypes.face_atlas(tile_type, sample, world_x, world_z)
 	var encoded: float = float(face_code) + (float(quad.get("uv_h", 1.0)) / 100.0)
 	buffer[base + 12] = float(atlas.x) / 255.0
 	buffer[base + 13] = float(atlas.y) / 255.0

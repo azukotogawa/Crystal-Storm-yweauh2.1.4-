@@ -99,6 +99,45 @@ static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i
 	return get_atlas_coord(tile_type)
 
 
+## Green grass tops and dirt faces pick a cell from the family. The hash is the
+## column, so a remesh writes the same cell and a greedy run stops when it changes.
+const GRASS_TOP_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
+]
+const DIRT_VARIANTS: Array[Vector2i] = [
+	Vector2i(3, 2), Vector2i(0, 6), Vector2i(5, 6),
+]
+
+
+static func _green_grass_top(tile_type: int) -> bool:
+	return tile_type == GRASSLAND or tile_type == GRASSLAND2 or tile_type == GRASSLAND3
+
+
+static func _column_pick(cells: Array[Vector2i], world_x: int, world_z: int, salt: int) -> Vector2i:
+	var n: int = world_x * 374761393 + world_z * 668265263 + salt * 1442695041
+	n = (n ^ (n >> 13)) * 1274126177
+	n = n ^ (n >> 16)
+	if n < 0:
+		n = -n
+	return cells[n % cells.size()]
+
+
+## Ramps (face >= 7) use the landing top. Bottoms stay the underside cell.
+static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: int) -> Vector2i:
+	var face := face_code
+	if face >= 7:
+		face = 0
+	if face == 2:
+		return get_atlas_coord(DIRT2)
+	if _green_grass_top(tile_type) and face == 0:
+		return _column_pick(GRASS_TOP_VARIANTS, world_x, world_z, 11)
+	if (_is_grass_surface(tile_type) or tile_type == DIRT or tile_type == DIRT2) and face >= 3:
+		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
+	if (tile_type == DIRT or tile_type == DIRT2) and face == 0:
+		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
+	return get_atlas_coord_for_face(tile_type, face_code)
+
+
 static func _is_grass_surface(tile_type: int) -> bool:
 	return tile_type in [
 		GRASSLAND, GRASSLAND2, GRASSLAND3, GRASSLAND4, GRASSLAND5,
