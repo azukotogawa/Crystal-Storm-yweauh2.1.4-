@@ -4,6 +4,7 @@ extends SceneTree
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _Body = preload("res://player/player_body_mesh.gd")
 const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
 
@@ -26,6 +27,18 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK player scale height=%.2f voxels radius=%.2f voxels" % [person, body])
+
+	var expect_r: float = _Body.half_width_for_height(ws.player_height())
+	var tall_h: float = ws.player_height() * 2.0
+	var tall_r: float = _Body.half_width_for_height(tall_h)
+	if absf(ws.player_radius() - expect_r) > 0.0001:
+		push_error("player radius must be half the scout width at this height, got %f want %f" % [ws.player_radius(), expect_r])
+		failed = true
+	elif absf(tall_r - expect_r * 2.0) > 0.0001:
+		push_error("collider width must scale linearly with height, doubled radius %f" % tall_r)
+		failed = true
+	else:
+		print("OK collider width scales with height")
 
 	var creature: float = ws.small_creature_height() / layer
 	if creature < 0.4 or creature >= person:
