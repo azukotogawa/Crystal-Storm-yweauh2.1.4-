@@ -5,7 +5,7 @@
 #   cs-verify.sh launch [SEC]        headless boot of res://scenes/main.tscn via the smoke probe
 #   cs-verify.sh feature <name>      drive one mapped feature suite (see features/README.md)
 #   cs-verify.sh cleanup             kill Godot we started, drop run scratch, keep evidence
-# Env: RUN_ID (default timestamp). Evidence: /mnt/d/csmerge/verify-evidence/$RUN_ID/
+# Env: RUN_ID (default timestamp). Evidence: /mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID/
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
@@ -15,7 +15,7 @@ export WSLENV="SMOKE_SESSION_SEC${WSLENV:+:$WSLENV}"
 STATE=/tmp/cs-verify; mkdir -p "$STATE"
 if [ "${1:-}" = quick ] && [ -z "${RUN_ID:-}" ]; then RUN_ID="quick-$(date +%Y%m%d-%H%M%S)"  # feeder runs: own dir, no shared state
 else RUN_ID="${RUN_ID:-$(cat "$STATE/run_id" 2>/dev/null || date +%Y%m%d-%H%M%S)}"; echo "$RUN_ID" > "$STATE/run_id"; fi
-EVID="/mnt/d/csmerge/verify-evidence/$RUN_ID"
+EVID="/mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID"
 SCRATCH_W="/mnt/d/csmerge/verify-scratch/$RUN_ID"
 export CRYSTALSTORM_SCRATCH="D:/csmerge/verify-scratch/$RUN_ID"
 export CRYSTALSTORM_BAKE_RADIUS=2 CRYSTALSTORM_FULL_WORLD_BAKE=0 CRYSTALSTORM_BAKE_ON_NEW=0 CRYSTALSTORM_PERF_PRESET=medium
