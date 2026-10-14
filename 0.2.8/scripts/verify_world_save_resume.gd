@@ -9,6 +9,8 @@ const _SaveGameService = preload("res://systems/save_game_service.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _WorldManager = preload("res://systems/world_manager.gd")
+const _Inventory = preload("res://inventory/inventory.gd")
+const _Player = preload("res://player/player.gd")
 
 const WORLD_ID := "verify_resume_tmp"
 
@@ -19,6 +21,7 @@ var _failed: int = 0
 class StubPlayer extends Node:
 	var voxel_position := Vector3(12.0, 4.0, 8.0)
 	var health := 80.0
+	var inventory = _Inventory.new()
 
 	func _enter_tree() -> void:
 		add_to_group("player")
@@ -27,7 +30,7 @@ class StubPlayer extends Node:
 		return {
 			"voxel_position": [voxel_position.x, voxel_position.y, voxel_position.z],
 			"health": health,
-			"inventory": {"slots": [{"id": "stone", "count": 3}], "armor": ""},
+			"inventory": inventory.to_dict(),
 		}
 
 	func apply_save_state(data: Dictionary) -> void:
@@ -41,7 +44,22 @@ class StubEntities extends Node:
 		add_to_group("entity_manager")
 
 	func export_entities() -> Array:
-		return [{"brain_id": "rabbit", "health": 4.0, "world_pos": [3, 5]}]
+		return [{
+			"brain_id": "rabbit",
+			"health": 4.0,
+			"world_pos": [3, 5],
+			"x": 3.5,
+			"y": 2.0,
+			"z": 5.5,
+		}]
+
+
+class StubEnemies extends Node:
+	func _enter_tree() -> void:
+		add_to_group("crystal_enemy_spawner")
+
+	func export_enemies() -> Array:
+		return [{"enemy_id": "crystal_mite", "health": 6.0, "x": 1.0, "y": 2.0, "z": 3.0}]
 
 
 func _init() -> void:
@@ -122,13 +140,22 @@ func _run() -> void:
 			print("OK world save/load overlays + player")
 
 	# Quit-while-alive writes the Continue file the main menu reads.
+	_assert_quit_hooks()
+	_assert_real_player_and_entity_blobs()
 	var entities := StubEntities.new()
 	root.add_child(entities)
+	var enemies := StubEnemies.new()
+	root.add_child(enemies)
 	await process_frame
 	player.health = 55.0
 	player.voxel_position = Vector3(18.0, 6.0, 3.0)
-	if svc.save_alive_session(true) != OK:
-		_fail("save_alive_session failed")
+	player.inventory.set_slot(0, "stone", 12)
+	player.inventory.set_slot(10, "wood", 4)
+	player.inventory.armor_id = "scout_leather"
+	_FeatureRegistry.set_tile_override(2, 3, _VoxelTypes.STONE)
+	svc.save_or_drop_continue()
+	if not _SaveGameService.has_continue():
+		_fail("save_or_drop_continue failed to write an alive session")
 	else:
 		var meta: Dictionary = _SaveGameService.peek_continue()
 		if meta.is_empty():
@@ -150,15 +177,48 @@ func _run() -> void:
 				_fail("continue player position missing")
 			var inv: Dictionary = player_blob.get("inventory", {})
 			var slots: Array = inv.get("slots", [])
-			if slots.is_empty() or str(slots[0].get("id", "")) != "stone":
-				_fail("continue inventory missing")
+			if slots.size() < 11 or str(slots[0].get("id", "")) != "stone" or int(slots[0].get("count", 0)) != 12:
+				_fail("continue hotbar stack missing")
+			elif slots[1] != null:
+				_fail("empty inventory slots must stay empty")
+			elif str(slots[10].get("id", "")) != "wood" or int(slots[10].get("count", 0)) != 4:
+				_fail("continue bag stack missing")
+			elif str(inv.get("armor", "")) != "scout_leather":
+				_fail("continue armor missing")
 			var ws_blob: Variant = blob.get("world_state", {})
-			if not ws_blob is Dictionary or (ws_blob as Dictionary).get("height_delta", {}).is_empty():
-				_fail("continue world_state missing block edits")
-			if not blob.has("entities"):
-				_fail("continue file missing entities array")
-			elif not blob.get("entities") is Array:
-				_fail("continue entities must be an array")
+			if not ws_blob is Dictionary:
+				_fail("continue world_state missing")
+			else:
+				var ws_dict: Dictionary = ws_blob
+				var heights: Dictionary = ws_dict.get("height_delta", {})
+				var builds: Dictionary = ws_dict.get("build_tile", {})
+				var tiles: Dictionary = ws_dict.get("tile_overrides", {})
+				var feats: Dictionary = ws_dict.get("feature_cells", {})
+				if heights.is_empty() or not heights.has("7,8"):
+					_fail("continue world_state missing dig edits")
+				if int(round(float(builds.get("9,9", -1)))) != _VoxelTypes.STONE:
+					_fail("continue world_state missing placed block")
+				if int(round(float(tiles.get("2,3", -1)))) != _VoxelTypes.STONE:
+					_fail("continue world_state missing tile override")
+				var wall: Variant = feats.get("4,4", {})
+				if not wall is Dictionary or str((wall as Dictionary).get("build_id", "")) != "stone_wall":
+					_fail("continue world_state missing built feature")
+			var ent_rows: Variant = blob.get("entities", null)
+			if not ent_rows is Array or (ent_rows as Array).is_empty():
+				_fail("continue file missing entities")
+			else:
+				var ent: Dictionary = (ent_rows as Array)[0]
+				if str(ent.get("brain_id", "")) != "rabbit" or not is_equal_approx(float(ent.get("health", 0.0)), 4.0):
+					_fail("continue entity health missing")
+				elif not is_equal_approx(float(ent.get("x", 0.0)), 3.5) or not is_equal_approx(float(ent.get("z", 0.0)), 5.5):
+					_fail("continue entity position missing")
+			var foe_rows: Variant = blob.get("crystal_enemies", null)
+			if not foe_rows is Array or (foe_rows as Array).is_empty():
+				_fail("continue file missing crystal enemies")
+			else:
+				var foe: Dictionary = (foe_rows as Array)[0]
+				if str(foe.get("enemy_id", "")) != "crystal_mite" or not is_equal_approx(float(foe.get("health", 0.0)), 6.0):
+					_fail("continue crystal enemy missing")
 		else:
 			_fail("continue file did not parse")
 
@@ -186,6 +246,51 @@ func _run() -> void:
 		quit(1)
 
 
+func _assert_quit_hooks() -> void:
+	var main_src := FileAccess.get_file_as_string("res://main.gd")
+	if main_src.find("close_requested") < 0 or main_src.find("func _save_quit_while_alive") < 0:
+		_fail("window close must save before quitting")
+	elif main_src.find("save_or_drop_continue") < 0:
+		_fail("window close must call save_or_drop_continue")
+	var pause_src := FileAccess.get_file_as_string("res://ui/pause_menu.gd")
+	var quit_at := pause_src.find("func _quit")
+	if quit_at < 0 or pause_src.find("save_or_drop_continue", quit_at) < 0:
+		_fail("pause quit must save the alive session")
+	var save_src := FileAccess.get_file_as_string("res://systems/save_game_service.gd")
+	if save_src.find("export_entities") < 0 or save_src.find("snapshot[\"entities\"]") < 0:
+		_fail("alive snapshot must store entities")
+	elif save_src.find("export_enemies") < 0:
+		_fail("alive snapshot must store crystal enemies")
+	var ent_src := FileAccess.get_file_as_string("res://entities/entity_manager.gd")
+	if ent_src.find("export_save_state") < 0:
+		_fail("entity manager must export each live entity")
+	var row_src := FileAccess.get_file_as_string("res://entities/world_entity.gd")
+	var row_at := row_src.find("func export_save_state")
+	var row_body := row_src.substr(row_at, 500) if row_at >= 0 else ""
+	if row_body.find("health") < 0 or row_body.find("global_position") < 0:
+		_fail("entity save must include health and position")
+
+
+func _assert_real_player_and_entity_blobs() -> void:
+	var scout := _Player.new()
+	scout.inventory = _Inventory.new()
+	scout.inventory.set_slot(0, "stone", 2)
+	scout.voxel_position = Vector3(4.0, 5.0, 6.0)
+	scout.health = 40.0
+	var blob: Dictionary = scout.export_save_state()
+	var pos: Array = blob.get("voxel_position", [])
+	if pos.size() < 3 or not is_equal_approx(float(pos[0]), 4.0) or not is_equal_approx(float(pos[2]), 6.0):
+		_fail("player export missing position")
+	elif not is_equal_approx(float(blob.get("health", 0.0)), 40.0):
+		_fail("player export missing health")
+	else:
+		var inv: Dictionary = blob.get("inventory", {})
+		var slots: Array = inv.get("slots", [])
+		if slots.is_empty() or str(slots[0].get("id", "")) != "stone":
+			_fail("player export missing inventory")
+	scout.free()
+
+
 func _cleanup(svc: Node, player: Node, path: String) -> void:
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
@@ -195,9 +300,12 @@ func _cleanup(svc: Node, player: Node, path: String) -> void:
 	_SaveGameService.pending_continue = false
 	if is_instance_valid(player):
 		player.queue_free()
-	var entities = root.get_first_node_in_group("entity_manager") if root else null
+	var entities = get_first_node_in_group("entity_manager")
 	if entities and is_instance_valid(entities):
 		entities.queue_free()
+	var enemies = get_first_node_in_group("crystal_enemy_spawner")
+	if enemies and is_instance_valid(enemies):
+		enemies.queue_free()
 	if is_instance_valid(svc):
 		svc.queue_free()
 	_WorldManager.active_world_id = ""
