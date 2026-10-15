@@ -7,6 +7,7 @@ const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
@@ -31,7 +32,8 @@ func _run() -> void:
 		print("OK terrain edit uses adaptive rebuild ring")
 
 	var cm_src := (load("res://chunks/chunk_manager.gd") as GDScript).source_code
-	if "update_dirty_column_maps" not in cm_src or "invalidate_columns_at_world" not in cm_src:
+	var pipe_src := (load("res://chunks/chunk_pipeline.gd") as GDScript).source_code
+	if "update_dirty_column_maps" not in pipe_src or "invalidate_columns_at_world" not in cm_src:
 		push_error("chunk rebuild must use incremental dirty-column path for terrain edits")
 		failed = true
 	elif "_build_mesh_region" not in cm_src:
@@ -158,7 +160,10 @@ func _run() -> void:
 		var t0_ms := Time.get_ticks_msec()
 		var frames0 := Engine.get_process_frames()
 		weapon.set("_cooldown_timer", 0.0)
-		weapon.call("_try_dig")
+		if weapon.has_method("_try_dig"):
+			weapon.call("_try_dig")
+		else:
+			weapon.call("_try_dig_tool")
 		if chunk_manager.has_method("await_rebuild_idle"):
 			await chunk_manager.await_rebuild_idle()
 		for _w in 20:
@@ -229,7 +234,9 @@ func _run() -> void:
 		await process_frame
 	var build_wall_ms := float(Time.get_ticks_msec() - build_t0_ms)
 	var build_delta: float = _TerrainEdits.get_height_delta(build_wx, build_wz)
-	build_ok = build_ok and build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0
+	var placed := str(_FeatureRegistry.get_feature(build_wx, build_wz).get("build_id", "")) == "stone_wall"
+	var raised := build_delta > 0.01 and _TerrainEdits.get_build_tile(build_wx, build_wz) >= 0
+	build_ok = build_ok and (placed or raised)
 	if not build_ok:
 		push_error("build rebuild corroboration failed at (%d,%d)" % [build_wx, build_wz])
 		failed = true

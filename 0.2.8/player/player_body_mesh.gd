@@ -107,7 +107,7 @@ static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radiu
 	var palette := _VoxelModel.palette_for(&"player")
 	mesh_instance.mesh = null
 	mesh_instance.material_override = make_material()
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.position.y = height * 0.5
 	var skel := Skeleton3D.new()
 	skel.name = "PlayerRig"
@@ -158,7 +158,7 @@ static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radiu
 			part_mi.name = "Mesh"
 			part_mi.mesh = mesh
 			part_mi.material_override = _VoxelModel.make_material()
-			part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 			part_mi.position = -pivot
 			att.add_child(part_mi)
 		bound[part_id] = true
@@ -195,7 +195,7 @@ static func _apply_slab(mesh_instance: MeshInstance3D, height: float, radius: fl
 	var built: Dictionary = build(radius * 2.0, height)
 	mesh_instance.mesh = built["mesh"]
 	mesh_instance.material_override = built["material"]
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.position.y = height * 0.5
 
 
@@ -440,7 +440,7 @@ static func _apply_rig(mesh_instance: MeshInstance3D, height: float, radius: flo
 	var mat := make_material()
 	mesh_instance.mesh = null
 	mesh_instance.material_override = mat
-	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_instance.position.y = height * 0.5
 	var img := _load_image()
 	if img == null or width <= 0.0 or height <= 0.0:
@@ -478,7 +478,7 @@ static func _apply_rig(mesh_instance: MeshInstance3D, height: float, radius: flo
 		part_mi.name = "Mesh"
 		part_mi.mesh = mesh
 		part_mi.material_override = mat
-		part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		part_mi.position = -pivot
 		att.add_child(part_mi)
 	if covered != int(full["opaque"]) or covered <= 0:

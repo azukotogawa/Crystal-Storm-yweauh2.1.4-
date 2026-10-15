@@ -2,7 +2,7 @@ shader_type spatial;
 
 // Same cone as helpers/camera_cutaway.gd and the terrain shaders: screen-door
 // rim, keep fragments at or below the feet. Globals are written once per frame
-// by player/camera.gd. Cast shadow stays off on the MeshInstance3D.
+// by player/camera.gd. The mesh casts and this pass receives the sun shadow.
 render_mode diffuse_burley, specular_schlick_ggx, depth_draw_opaque;
 
 global uniform float cutaway_enabled;

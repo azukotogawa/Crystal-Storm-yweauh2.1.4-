@@ -7,6 +7,11 @@ const AO_EXPOSED := 1.0
 const AO_ENCLOSED := 0.50
 const HEIGHT_MISSING := -9000.0
 const _STEP := 0.16
+const FACE_TOP := 0
+const FACE_NEG_X := 3
+const FACE_POS_X := 4
+const FACE_NEG_Z := 5
+const FACE_POS_Z := 6
 
 static var bake_enabled: bool = true
 
@@ -36,6 +41,60 @@ static func sample_surface(data: ChunkData, lx: int, lz: int) -> float:
 	if not _column_readable(data):
 		return HEIGHT_MISSING
 	return data.get_surface_y(lx, lz)
+
+
+static func face_corner_ao(
+	data: ChunkData,
+	face_code: int,
+	col_x: int,
+	col_z: int,
+	dim_x: int,
+	dim_z: int,
+	face_y: float,
+	dim_y: float
+) -> Vector4:
+	if face_code == FACE_TOP:
+		return top_corner_ao(data, col_x, col_z, dim_x, dim_z, face_y)
+	if not bake_enabled or data == null:
+		return Vector4.ONE
+	if face_code < FACE_NEG_X or face_code > FACE_POS_Z:
+		return Vector4.ONE
+	var dx := maxi(dim_x, 1)
+	var dz := maxi(dim_z, 1)
+	var layer := _layer()
+	var y0 := face_y
+	var y1 := face_y + maxf(dim_y, 0.001) * layer
+	var x0 := col_x
+	var z0 := col_z
+	var x1 := col_x + dx - 1
+	var z1 := col_z + dz - 1
+	if face_code == FACE_NEG_X:
+		return Vector4(
+			_side_corner(data, x0, z1, -1, 0, 0, 1, y0, layer),
+			_side_corner(data, x0, z1, -1, 0, 0, 1, y1, layer),
+			_side_corner(data, x0, z0, -1, 0, 0, -1, y1, layer),
+			_side_corner(data, x0, z0, -1, 0, 0, -1, y0, layer)
+		)
+	if face_code == FACE_POS_X:
+		return Vector4(
+			_side_corner(data, x1, z0, 1, 0, 0, -1, y0, layer),
+			_side_corner(data, x1, z0, 1, 0, 0, -1, y1, layer),
+			_side_corner(data, x1, z1, 1, 0, 0, 1, y1, layer),
+			_side_corner(data, x1, z1, 1, 0, 0, 1, y0, layer)
+		)
+	if face_code == FACE_NEG_Z:
+		return Vector4(
+			_side_corner(data, x0, z0, 0, -1, -1, 0, y0, layer),
+			_side_corner(data, x0, z0, 0, -1, -1, 0, y1, layer),
+			_side_corner(data, x1, z0, 0, -1, 1, 0, y1, layer),
+			_side_corner(data, x1, z0, 0, -1, 1, 0, y0, layer)
+		)
+	return Vector4(
+		_side_corner(data, x1, z1, 0, 1, 1, 0, y0, layer),
+		_side_corner(data, x1, z1, 0, 1, 1, 0, y1, layer),
+		_side_corner(data, x0, z1, 0, 1, -1, 0, y1, layer),
+		_side_corner(data, x0, z1, 0, 1, -1, 0, y0, layer)
+	)
 
 
 static func top_corner_ao(
@@ -69,6 +128,30 @@ static func top_corner_ao(
 		corner_ao(a2, b2, c2),
 		corner_ao(a3, b3, c3)
 	)
+
+
+static func _side_corner(
+	data: ChunkData,
+	owner_x: int,
+	owner_z: int,
+	out_x: int,
+	out_z: int,
+	along_x: int,
+	along_z: int,
+	height: float,
+	layer: float
+) -> float:
+	var front := _reaches(data, owner_x + out_x, owner_z + out_z, height, layer)
+	var side := _reaches(data, owner_x + along_x, owner_z + along_z, height, layer)
+	var corner := _reaches(data, owner_x + out_x + along_x, owner_z + out_z + along_z, height, layer)
+	return corner_ao(front, side, corner)
+
+
+static func _reaches(data: ChunkData, lx: int, lz: int, height: float, layer: float) -> bool:
+	var surface := sample_surface(data, lx, lz)
+	if surface <= HEIGHT_MISSING:
+		return false
+	return surface + layer >= height - layer * 0.2
 
 
 static func _occ(data: ChunkData, lx: int, lz: int, face_surface: float, layer: float) -> bool:

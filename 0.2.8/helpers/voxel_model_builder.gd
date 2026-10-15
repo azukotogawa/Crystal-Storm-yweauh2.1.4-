@@ -203,6 +203,7 @@ static func make_material() -> StandardMaterial3D:
 	mat.vertex_color_is_srgb = true
 	mat.albedo_color = Color.WHITE
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	mat.disable_receive_shadows = false
 	return mat
 
 

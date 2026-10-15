@@ -122,8 +122,8 @@ func _run() -> void:
 
 
 func _assert_structure_material(mi: MeshInstance3D, id: String) -> void:
-	if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-		_fail("%s casts shadows" % id)
+	if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+		_fail("%s does not cast shadows" % id)
 		return
 	var mat := mi.material_override
 	if not _StructureMat.is_cutaway(mat):

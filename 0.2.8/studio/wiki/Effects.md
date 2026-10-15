@@ -52,7 +52,7 @@ Death moves the visual onto `CombatVisualFeedback` (cap 6) for a 0.4 s shrink an
 
 `BlockBreakFx` draws one crack box from `shaders/block_crack.gdshader` while a dig is held. The shader builds the cracks from a hash. There is no crack image. The stage follows a visual fill that resets when the layer breaks. It does not change the dig delay. A break spawns `CHIP` particles in the block tint. A placement scales one of four proxy boxes and does not rebuild a chunk. `crack_overlay_enabled` (default on) hides the overlay. Chips still play. Reduce motion snaps the place pop to full size.
 
-New meshes set `cast_shadow` off. Terrain shaders stay unshaded.
+Crack, chip, marker, and aim meshes set `cast_shadow` off. Terrain shaders stay unshaded. Voxel characters, creatures, vegetation props, and structures cast and receive the sun shadow.
 
 ## Audio
 

@@ -60,14 +60,17 @@ func _run() -> void:
 	if mat.albedo_texture != null:
 		push_error("player material must not sample the cutout texture (alpha would reopen the shell)")
 		failed = true
-	if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-		push_error("player mesh must not cast shadows")
+	if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+		push_error("player mesh must cast shadows")
+		failed = true
+	if not _parts_receive_shadows(mi):
+		push_error("player parts must cast and receive shadows")
 		failed = true
 	if absf(mi.position.y - height * 0.5) > 0.001:
 		push_error("player mesh center must sit at half the capsule height")
 		failed = true
 	if not failed:
-		print("OK material unshaded, cull back, opaque, shadow off")
+		print("OK material unshaded, cull back, opaque, shadow on")
 
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
@@ -518,6 +521,27 @@ func _ray_tri(o: Vector3, d: Vector3, v0: Vector3, v1: Vector3, v2: Vector3) -> 
 	if t <= 0.0001:
 		return -1.0
 	return t
+
+
+func _parts_receive_shadows(mi: MeshInstance3D) -> bool:
+	var skel := mi.get_node_or_null("PlayerRig")
+	if skel == null:
+		return mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var saw := false
+	for att in skel.get_children():
+		for ch in att.get_children():
+			if not (ch is MeshInstance3D):
+				continue
+			var part := ch as MeshInstance3D
+			saw = true
+			if part.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+				return false
+			var mat := part.material_override as StandardMaterial3D
+			if mat == null or mat.disable_receive_shadows:
+				return false
+			if mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED:
+				return false
+	return saw
 
 
 func _rig_bones_ok(mi: MeshInstance3D) -> bool:

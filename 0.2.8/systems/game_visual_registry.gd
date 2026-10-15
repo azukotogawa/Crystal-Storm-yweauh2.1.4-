@@ -475,7 +475,7 @@ func configure_building_mesh(
 	if id.is_empty() and mesh_inst.has_meta("building_visual_id"):
 		id = str(mesh_inst.get_meta("building_visual_id"))
 	mesh_inst.position = Vector3.ZERO
-	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	mesh_inst.set_meta("building_visual_id", id)
 
 	var authored: Mesh = get_authored_building_mesh(id)

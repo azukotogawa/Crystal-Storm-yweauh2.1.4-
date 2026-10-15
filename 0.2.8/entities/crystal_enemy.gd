@@ -267,7 +267,7 @@ func _setup_mesh(tint: Color, radius: float = 0.22, height: float = 0.70) -> voi
 	mesh.height = height * vs
 	_mesh.mesh = mesh
 	_mesh.position.y = mesh.height * 0.55
-	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	if _mesh.material_override == null:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = tint

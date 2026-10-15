@@ -100,8 +100,10 @@ func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = fal
 			_fail("%s body is a slab %s" % [kind, box.size])
 		elif _Model.face_count(body) < 6:
 			_fail("%s body faces %d" % [kind, _Model.face_count(body)])
-		elif body_mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-			_fail("%s body casts a shadow" % kind)
+		elif body_mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_ON:
+			_fail("%s body does not cast a shadow" % kind)
+		elif _blocks_shadows(body_mi):
+			_fail("%s body does not receive shadows" % kind)
 		else:
 			print("OK %s body %s faces %d" % [kind, box.size, _Model.face_count(body)])
 			_check_crystal_body(kind, rig, body_mi, crystal)
@@ -277,6 +279,15 @@ func _mesh_near(mi: MeshInstance3D, want: Color) -> bool:
 	if colors.is_empty():
 		return false
 	return _rgb_near(colors[0], want)
+
+
+func _blocks_shadows(mi: MeshInstance3D) -> bool:
+	var mat := mi.material_override as StandardMaterial3D
+	if mat == null:
+		return true
+	if mat.disable_receive_shadows:
+		return true
+	return mat.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
 
 
 func _rgb_near(a: Color, b: Color) -> bool:

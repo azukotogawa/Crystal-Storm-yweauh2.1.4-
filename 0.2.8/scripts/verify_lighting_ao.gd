@@ -90,14 +90,36 @@ func _check_mesh() -> void:
 		_fail("enclosed alpha %.3f is not below exposed %.3f" % [top2.a, top0.a])
 	if not is_equal_approx(top0.r, top2.r) or not is_equal_approx(top0.g, top2.g) or not is_equal_approx(top0.b, top2.b):
 		_fail("top RGB changed across the AO corners")
-	for i in range(4, colors.size()):
-		if not is_equal_approx(colors[i].a, 1.0):
-			_fail("non-top alpha %.3f at %d" % [colors[i].a, i])
+	var side_dark := false
+	for i in range(4, 8):
+		if colors[i].a < 0.95:
+			side_dark = true
+		if colors[i].a < 0.35 or colors[i].a > 0.85:
+			_fail("flat side alpha %.3f at %d" % [colors[i].a, i])
 			break
+		if not is_equal_approx(colors[i].r, colors[4].r) or not is_equal_approx(colors[i].b, colors[4].b):
+			_fail("side RGB changed at %d" % i)
+			break
+	if not side_dark:
+		_fail("flat side face stayed fully lit")
+	for i in range(8, colors.size()):
+		if not is_equal_approx(colors[i].a, 1.0):
+			_fail("ramp alpha %.3f at %d" % [colors[i].a, i])
+			break
+	var open_quads: Array = [
+		{"x": 10, "z": 10, "y": 40.0, "dim_x": 1.0, "dim_y": 1.0, "dim_z": 1.0, "face_code": 4, "type": _Types.GRASSLAND},
+	]
+	var open_built: Dictionary = _Builder.build_surface_arrays_from_terrain_quads(data, open_quads)
+	var open_colors: PackedColorArray = open_built.get("colors", PackedColorArray())
+	if open_colors.size() < 4 or open_colors[0].a < 0.95:
+		_fail("exposed side alpha %.3f" % (open_colors[0].a if open_colors.size() > 0 else -1.0))
 	_AO.bake_enabled = false
 	var flat := _AO.top_corner_ao(data, 2, 2, 1, 1, 4.0)
 	if flat.distance_to(Vector4.ONE) > 0.001:
 		_fail("bake off still sampled AO %s" % flat)
+	var side_off := _AO.face_corner_ao(data, 3, 4, 4, 1, 1, 4.0, 1.0)
+	if side_off.distance_to(Vector4.ONE) > 0.001:
+		_fail("bake off still sampled side AO %s" % side_off)
 	_AO.bake_enabled = true
 
 

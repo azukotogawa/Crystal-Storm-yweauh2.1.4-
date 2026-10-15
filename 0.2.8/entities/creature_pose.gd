@@ -127,9 +127,10 @@ func _leg(root: Node3D, leg_name: String, center: Vector3, size: Vector3, color:
 	box.size = size
 	mi.mesh = box
 	mi.position = center
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
+	mat.disable_receive_shadows = false
 	mat.roughness = 0.92
 	mi.material_override = mat
 	root.add_child(mi)

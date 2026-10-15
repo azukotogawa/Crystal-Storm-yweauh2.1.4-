@@ -147,7 +147,6 @@ static func build_parts(parts: Array, palette: PackedColorArray, cube: float) ->
 		return null
 	rig.name = "CreatureRig"
 	rig.set_meta("model_height", _span_height(parts, cube))
-	_mute_shadows(rig)
 	_attach_anims(rig)
 	return rig
 
@@ -659,13 +658,6 @@ static func _span_height(parts: Array, cube: float) -> float:
 			if cell is Vector4i:
 				max_y = maxi(max_y, (cell as Vector4i).y + 1)
 	return float(max_y) * cube
-
-
-static func _mute_shadows(node: Node) -> void:
-	if node is MeshInstance3D:
-		(node as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for child in node.get_children():
-		_mute_shadows(child)
 
 
 static func _attach_anims(rig: Node3D) -> void:
