@@ -3,6 +3,7 @@ extends SceneTree
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameManager = preload("res://game/game_manager.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 
@@ -47,6 +48,16 @@ func _run() -> void:
 	if crystal == null or not crystal._initialized:
 		push_error("crystal_manager not ready")
 		failed = true
+	elif _GameConfig.SINGLE_CRYSTAL:
+		var placed: Array = crystal.get_active_spawns()
+		if placed.size() != 1:
+			push_error("expected 1 crystal, got %d" % placed.size())
+			failed = true
+		elif _CrystalTypes.is_water_tile(crystal._tile_at(placed[0].world_pos)):
+			push_error("crystal on water %s" % placed[0].world_pos)
+			failed = true
+		else:
+			print("OK one crystal at %s" % placed[0].world_pos)
 	elif crystal.get_active_spawns().size() < 3:
 		push_error("expected >=3 active spawns, got %d" % crystal.get_active_spawns().size())
 		failed = true
@@ -91,12 +102,26 @@ func _run() -> void:
 		failed = true
 	else:
 		game_manager._crystal = crystal
-		game_manager._on_all_spawns_destroyed()
-		if game_manager.run_state != _GameManager.RunState.WON:
-			push_error("win path not wired")
-			failed = true
+		if _GameConfig.SINGLE_CRYSTAL:
+			var live: Array = crystal.get_active_spawns()
+			if live.is_empty():
+				push_error("win path missing the crystal")
+				failed = true
+			else:
+				var target = live[0]
+				crystal.damage_spawn_at_world(target.world_pos, target.health, 3.0)
+				if game_manager.run_state != _GameManager.RunState.WON or game_manager.victory_reason != "crystal":
+					push_error("win path not wired state=%s reason=%s" % [game_manager.run_state, game_manager.victory_reason])
+					failed = true
+				else:
+					print("OK win state on crystal destroyed")
 		else:
-			print("OK win state on all spawns destroyed")
+			game_manager._on_all_spawns_destroyed()
+			if game_manager.run_state != _GameManager.RunState.WON:
+				push_error("win path not wired")
+				failed = true
+			else:
+				print("OK win state on all spawns destroyed")
 
 	var lose_gm := _GameManager.new()
 	lose_gm.max_crystal_coverage = 0.01

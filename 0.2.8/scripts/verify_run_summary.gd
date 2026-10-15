@@ -3,6 +3,10 @@ extends SceneTree
 
 const _GameManager = preload("res://game/game_manager.gd")
 const _RunSummary = preload("res://ui/run_summary_panel.gd")
+const _GameConfig = preload("res://config/game_config.gd")
+const _CrystalManager = preload("res://crystal/crystal_manager.gd")
+const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 
 var _failed := false
 
@@ -28,21 +32,35 @@ func _run() -> void:
 	won.note_crystal_broken(3)
 	won.note_enemy_killed()
 	won.note_relic_taken()
-	won.notify_boss_defeated()
-	var mid: Dictionary = won.run_summary()
-	if str(mid.get("outcome", "")) != "playing":
-		_fail("boss death outcome is %s" % str(mid.get("outcome", "")))
-	if won.phase == _GameManager.Phase.VICTORY or won.run_state != _GameManager.RunState.PLAYING:
-		_fail("boss death ended the run")
-	if str(mid.get("victory_reason", "")) == "boss":
-		_fail("boss death set victory_reason")
-	if not bool(mid.get("boss_defeated", false)):
-		_fail("boss_defeated is false after notify_boss_defeated")
-	won._on_all_spawns_destroyed()
+	if _GameConfig.SINGLE_CRYSTAL:
+		won.notify_boss_defeated()
+		var mid: Dictionary = won.run_summary()
+		if str(mid.get("outcome", "")) != "playing":
+			_fail("boss death outcome is %s" % str(mid.get("outcome", "")))
+		if won.phase == _GameManager.Phase.VICTORY or won.run_state != _GameManager.RunState.PLAYING:
+			_fail("boss death ended the run")
+		if str(mid.get("victory_reason", "")) == "boss":
+			_fail("boss death set victory_reason")
+		if not bool(mid.get("boss_defeated", false)):
+			_fail("boss_defeated is false after notify_boss_defeated")
+		var crystal := _CrystalManager.new()
+		var spawn := _CrystalSpawnPoint.from_def(1, Vector2i(2, 2), _SpawnPointDef.make_released())
+		crystal.harness_setup_spawns([spawn])
+		won._crystal = crystal
+		crystal.all_spawns_destroyed.connect(won._on_all_spawns_destroyed)
+		if not crystal.damage_spawn_at_world(spawn.world_pos, spawn.health, 2.5):
+			_fail("killing blow missed the crystal")
+		crystal.free()
+	else:
+		won._on_all_spawns_destroyed()
 	var win_data: Dictionary = won.run_summary()
 	if str(win_data.get("outcome", "")) != "win":
 		_fail("win outcome is %s" % str(win_data.get("outcome", "")))
-	if not bool(win_data.get("boss_defeated", false)):
+	if _GameConfig.SINGLE_CRYSTAL and str(win_data.get("victory_reason", "")) != "crystal":
+		_fail("victory_reason is %s" % str(win_data.get("victory_reason", "")))
+	elif not _GameConfig.SINGLE_CRYSTAL and str(win_data.get("victory_reason", "")) != "spawns":
+		_fail("victory_reason is %s" % str(win_data.get("victory_reason", "")))
+	if _GameConfig.SINGLE_CRYSTAL and not bool(win_data.get("boss_defeated", false)):
 		_fail("boss_defeated is false after notify_boss_defeated")
 	if int(win_data.get("spawns_destroyed", 0)) != 1:
 		_fail("spawns_destroyed is %d" % int(win_data.get("spawns_destroyed", 0)))
@@ -82,8 +100,12 @@ func _run() -> void:
 	panel.show_summary(loss_data)
 	_check_panel(panel, "Loss")
 	var formatted := _RunSummary.format_summary(win_data)
-	if not formatted.contains("Win") or not formatted.contains("Boss defeated: yes"):
+	var crystal_line := "Crystal destroyed: yes" if _GameConfig.SINGLE_CRYSTAL else "Spawns destroyed:"
+	var boss_line := "Boss defeated: yes" if _GameConfig.SINGLE_CRYSTAL else "Boss defeated:"
+	if not formatted.contains("Win") or not formatted.contains(boss_line) or not formatted.contains(crystal_line):
 		_fail("format_summary missed the win lines")
+	if _GameConfig.SINGLE_CRYSTAL and formatted.contains("Spawns destroyed"):
+		_fail("format_summary still counts spawns")
 	lost.queue_free()
 	panel.queue_free()
 	if _failed:
@@ -99,7 +121,8 @@ func _check_panel(panel: Node, title: String) -> void:
 		_fail("summary body missing")
 		return
 	var text := body.text
-	for needle in [title, "Time:", "Crystal destroyed:", "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
+	var progress_line := "Crystal destroyed:" if _GameConfig.SINGLE_CRYSTAL else "Spawns destroyed:"
+	for needle in [title, "Time:", progress_line, "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
 		if not text.contains(needle):
 			_fail("summary text missing %s" % needle)
 	var world_btn := panel.find_child("WorldSelectButton", true, false) as Button

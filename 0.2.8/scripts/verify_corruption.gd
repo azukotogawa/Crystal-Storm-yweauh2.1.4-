@@ -12,6 +12,8 @@ const _CrystalSimulation = preload("res://crystal/crystal_simulation.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalEvolution = preload("res://crystal/crystal_evolution.gd")
 const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
 const _EntityBrain = preload("res://entities/entity_brain.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
@@ -252,14 +254,29 @@ func _test_relics_from_spawns() -> bool:
 		player.free()
 		crystal.free()
 		return true
-	var spawn := _CrystalSpawnPoint.new(0, Vector2i(1, 1), 0, 40.0, false)
-	crystal._on_spawn_destroyed(spawn)
-	if &"mason_glove" not in relics.equipped:
-		push_error("destroying a spawn should grant a relic, equipped=%s" % [relics.equipped])
-		player.free()
-		crystal.free()
-		return true
-	print("OK relic from spawn destroy, not from absorption")
+	if _GameConfig.SINGLE_CRYSTAL:
+		var released := _CrystalSpawnPoint.from_def(0, Vector2i(1, 1), _SpawnPointDef.make_released())
+		crystal.harness_setup_spawns([released])
+		if not crystal.damage_spawn(released.id, released.health) or released.active:
+			push_error("destroying the crystal failed, active=%s health=%.1f" % [released.active, released.health])
+			player.free()
+			crystal.free()
+			return true
+		if &"mason_glove" not in relics.equipped:
+			push_error("destroying the crystal should grant a relic, equipped=%s" % [relics.equipped])
+			player.free()
+			crystal.free()
+			return true
+		print("OK relic from crystal destroy, not from absorption")
+	else:
+		var spawn := _CrystalSpawnPoint.new(0, Vector2i(1, 1), 0, 40.0, false)
+		crystal._on_spawn_destroyed(spawn)
+		if &"mason_glove" not in relics.equipped:
+			push_error("destroying a spawn should grant a relic, equipped=%s" % [relics.equipped])
+			player.free()
+			crystal.free()
+			return true
+		print("OK relic from spawn destroy, not from absorption")
 	player.free()
 	crystal.free()
 	return false

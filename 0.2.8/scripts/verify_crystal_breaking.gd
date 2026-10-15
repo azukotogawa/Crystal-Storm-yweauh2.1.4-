@@ -7,6 +7,8 @@ const _CrystalChunkLayer = preload("res://crystal/crystal_chunk_layer.gd")
 const _CrystalCell = preload("res://crystal/crystal_cell.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _GameManager = preload("res://game/game_manager.gd")
@@ -141,7 +143,7 @@ func _test_visual_recede() -> bool:
 func _test_spawn_hp_bar() -> bool:
 	var cm := _CrystalManager.new()
 	root.add_child(cm)
-	var spawn := _CrystalSpawnPoint.new(1, Vector2i(4, 4), _CrystalTypes.SpawnKind.RUIN, 80.0, false)
+	var spawn := _crystal_bar_spawn()
 	cm.harness_setup_spawns([spawn])
 	cm._refresh_spawn_markers()
 	var anchor: Node3D = cm._spawn_markers.get(1) as Node3D
@@ -151,23 +153,43 @@ func _test_spawn_hp_bar() -> bool:
 		return false
 	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
 	var full_scale := fill.scale.x
-	spawn.health = 20.0
+	spawn.health = spawn.max_health * 0.25
 	cm._apply_spawn_hp_bar(anchor, spawn)
 	if fill.scale.x >= full_scale - 0.05:
 		push_error("HP bar did not shrink, scale %.3f vs full %.3f" % [fill.scale.x, full_scale])
 		cm.queue_free()
 		return false
-	print("OK spawn HP bar %.2f → %.2f at 25%% health" % [full_scale, fill.scale.x])
+	var bar_name := "crystal" if _GameConfig.SINGLE_CRYSTAL else "spawn"
+	print("OK %s HP bar %.2f → %.2f at 25%% health" % [bar_name, full_scale, fill.scale.x])
 	cm.free()
 	return true
 
 
+func _crystal_bar_spawn() -> CrystalSpawnPoint:
+	if _GameConfig.SINGLE_CRYSTAL:
+		return _CrystalSpawnPoint.from_def(1, Vector2i(4, 4), _SpawnPointDef.make_released())
+	return _CrystalSpawnPoint.new(1, Vector2i(4, 4), _CrystalTypes.SpawnKind.RUIN, 80.0, false)
+
+
 func _test_objective_lines() -> bool:
-	var lines: String = _Overlay.build_objective_lines("Maze", 3, 4, 0.125, 40, "Nearest spawn: NE  80c")
-	for piece in ["Phase: Maze", "Spawns: 3 remaining", "Crystal: 12.50%", "Nearest spawn: NE"]:
-		if piece not in lines:
-			push_error("objective HUD missing %s in %s" % [piece, lines])
+	var lines := ""
+	if _GameConfig.SINGLE_CRYSTAL:
+		lines = _Overlay.build_single_crystal_objective_lines(
+			"Maze", 120.0, 500.0, 0.125, 40, "Nearest spawn: NE  80c", false
+		)
+		for piece in ["Phase: Maze", "Destroy the crystal", "120/500", "Crystal: 12.50%", "Crystal: NE"]:
+			if piece not in lines:
+				push_error("objective HUD missing %s in %s" % [piece, lines])
+				return false
+		if "Spawns:" in lines or "Nearest spawn" in lines or "sealed" in lines.to_lower():
+			push_error("one crystal objective still counts spawns: %s" % lines)
 			return false
+	else:
+		lines = _Overlay.build_objective_lines("Maze", 3, 4, 0.125, 40, "Nearest spawn: NE  80c")
+		for piece in ["Phase: Maze", "Spawns: 3 remaining", "Crystal: 12.50%", "Nearest spawn: NE"]:
+			if piece not in lines:
+				push_error("objective HUD missing %s in %s" % [piece, lines])
+				return false
 	var north := _Overlay.compass_from_delta(0.0, -40.0)
 	if not north.begins_with("Nearest spawn: N"):
 		push_error("compass should read north, got %s" % north)

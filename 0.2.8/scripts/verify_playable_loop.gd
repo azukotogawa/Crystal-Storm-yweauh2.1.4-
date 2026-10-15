@@ -3,6 +3,8 @@ extends SceneTree
 const _GameManager = preload("res://game/game_manager.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _RelicManager = preload("res://relics/relic_manager.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
@@ -46,15 +48,32 @@ func _test_win_path() -> void:
 	var gm := _GameManager.new()
 	var crystal := _CrystalManager.new()
 	gm._crystal = crystal
-	gm._on_all_spawns_destroyed()
-	if gm.run_state != _GameManager.RunState.WON:
-		_fail("win path: all_spawns_destroyed must set RunState.WON")
-	elif gm.phase != _GameManager.Phase.VICTORY:
-		_fail("win path: phase must be VICTORY")
-	elif crystal.expansion_enabled:
-		_fail("win path: crystal expansion should stop")
+	if _GameConfig.SINGLE_CRYSTAL:
+		var spawn := _CrystalSpawnPoint.from_def(1, Vector2i(3, 3), _SpawnPointDef.make_released())
+		crystal.harness_setup_spawns([spawn])
+		crystal.all_spawns_destroyed.connect(gm._on_all_spawns_destroyed)
+		if not crystal.damage_spawn_at_world(spawn.world_pos, spawn.health, 2.5):
+			_fail("win path: killing blow missed the crystal")
+		elif gm.run_state != _GameManager.RunState.WON:
+			_fail("win path: destroying the crystal must set RunState.WON")
+		elif gm.phase != _GameManager.Phase.VICTORY:
+			_fail("win path: phase must be VICTORY")
+		elif gm.victory_reason != "crystal":
+			_fail("win path: victory_reason must be crystal")
+		elif crystal.expansion_enabled:
+			_fail("win path: crystal expansion should stop")
+		else:
+			print("OK win path crystal destroyed WON + VICTORY + expansion halted")
 	else:
-		print("OK win path WON + VICTORY + expansion halted")
+		gm._on_all_spawns_destroyed()
+		if gm.run_state != _GameManager.RunState.WON:
+			_fail("win path: all_spawns_destroyed must set RunState.WON")
+		elif gm.phase != _GameManager.Phase.VICTORY:
+			_fail("win path: phase must be VICTORY")
+		elif crystal.expansion_enabled:
+			_fail("win path: crystal expansion should stop")
+		else:
+			print("OK win path WON + VICTORY + expansion halted")
 	crystal.free()
 	gm.free()
 
