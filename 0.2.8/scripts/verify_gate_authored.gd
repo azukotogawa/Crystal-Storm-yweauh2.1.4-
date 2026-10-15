@@ -43,6 +43,7 @@ func _run() -> void:
 	_test_registry_loads_authored()
 	_test_configure_binds_authored()
 	_test_other_ids_not_regressed()
+	_test_blueprint_authored_meshes()
 	await _test_place_multi_refresh_stream()
 
 	if _failed == 0:
@@ -217,6 +218,35 @@ func _test_other_ids_not_regressed() -> void:
 	print("OK identities not regressed (gate=%s)" % gate_id)
 	layer.free()
 	reg.free()
+
+
+func _test_blueprint_authored_meshes() -> void:
+	var reg := _GameVisualRegistry.new()
+	root.add_child(reg)
+	var stairs_path := "res://assets/structures/stone_wall/stone_wall.obj"
+	var tower_path := "res://assets/structures/ruin_pillar/ruin_pillar.obj"
+	var specs: Array = [
+		["gate", GATE_MESH_PATH],
+		["stairs", stairs_path],
+		["small_tower", tower_path],
+	]
+	for spec in specs:
+		var visual := str(spec[0])
+		var want := str(spec[1])
+		if not reg.has_authored_building_mesh(visual) or reg.authored_building_mesh_path(visual) != want:
+			_fail("%s authored path must reuse %s" % [visual, want])
+			continue
+		var mi := MeshInstance3D.new()
+		reg.configure_building_mesh(mi, null, Vector3(1.0, 2.0, 1.0), Color.WHITE, visual)
+		if not bool(mi.get_meta("uses_authored_mesh", false)):
+			_fail("%s blueprint visual is not authored" % visual)
+		elif str(mi.get_meta("authored_resource_path", "")) != want:
+			_fail("%s authored path %s" % [visual, mi.get_meta("authored_resource_path", "")])
+		elif mi.mesh == null:
+			_fail("%s authored mesh was not assigned" % visual)
+		mi.free()
+	print("OK gate, stairs, and small tower blueprint visuals reuse authored meshes")
+	reg.queue_free()
 
 
 func _test_place_multi_refresh_stream() -> void:

@@ -450,7 +450,7 @@ static func blocking_build_column(wx: int, wz: int) -> bool:
 	if bool(row.get("is_passage", false)) or bool(row.get("is_bridge", false)):
 		return false
 	var build_id = row.get("build_id", "")
-	return build_id == "wood_wall" or build_id == "stone_wall"
+	return build_id == "wood_wall" or build_id == "stone_wall" or build_id == "small_tower"
 
 
 func _blocking_build_at(wx: int, wz: int) -> bool:

@@ -6,10 +6,13 @@ const _Inventory = preload("res://inventory/inventory.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _Settings = preload("res://config/world_settings.gd")
 
 const GATE_MESH_PATH := "res://assets/structures/gate/gate.obj"
 const WOOD_MESH_PATH := "res://assets/structures/wood_wall/wood_wall.obj"
 const STONE_MESH_PATH := "res://assets/structures/stone_wall/stone_wall.obj"
+const TOWER_MESH_PATH := "res://assets/structures/ruin_pillar/ruin_pillar.obj"
 
 var _failed: int = 0
 var _lines: PackedStringArray = []
@@ -178,7 +181,112 @@ func _run() -> void:
 		_fail("registry missing authored gate or walls")
 
 	_ok("arrangements: line, corner, near-wood, near-stone, near-bridge")
+	await _check_blueprint_live(editor, world, player, feat_layer, inv)
 	_finish()
+
+
+func _check_blueprint_live(editor, world, player, feat_layer, inv) -> void:
+	if not _Blueprints.LARGE_STRUCTURES:
+		_fail("LARGE_STRUCTURES must stay on for live blueprint place")
+		return
+	inv.add_item("stone", 40)
+	inv.add_item("wood", 8)
+	var gate_at := _find_clear(world, player, 3, 1)
+	if gate_at.x < -100000:
+		_fail("no flat run for the live gate blueprint")
+		return
+	var before_post := _layers_at(gate_at.x, gate_at.y)
+	var before_open := _layers_at(gate_at.x + 1, gate_at.y)
+	if not editor.try_place_blueprint(Vector3(float(gate_at.x) + 0.5, 0.0, float(gate_at.y) + 0.5), inv, _Blueprints.GATE, 0):
+		_fail("live gate blueprint: %s" % editor.last_fail_reason)
+		return
+	await process_frame
+	if _layers_at(gate_at.x, gate_at.y) != before_post + 2 or _layers_at(gate_at.x + 2, gate_at.y) != before_post + 2:
+		_fail("live gate posts did not rise two layers")
+	if _layers_at(gate_at.x + 1, gate_at.y) != before_open:
+		_fail("live gate opening changed the ground")
+	_expect_live_mesh(feat_layer, Vector2i(gate_at.x + 1, gate_at.y), "gate", GATE_MESH_PATH)
+	_expect_live_mesh(feat_layer, gate_at, "stone_wall", STONE_MESH_PATH)
+	_ok("live gate blueprint placed the authored passage")
+	var stair_at := _find_clear(world, player, 3, 1)
+	if stair_at.x < -100000:
+		_fail("no flat run for the live stairs")
+		return
+	var stair_before := _layers_at(stair_at.x, stair_at.y)
+	if not editor.try_place_blueprint(Vector3(float(stair_at.x) + 0.5, 0.0, float(stair_at.y) + 0.5), inv, _Blueprints.STAIRS, 0):
+		_fail("live stairs: %s" % editor.last_fail_reason)
+		return
+	await process_frame
+	if _layers_at(stair_at.x, stair_at.y) != stair_before + 1 or _layers_at(stair_at.x + 1, stair_at.y) != stair_before + 2 or _layers_at(stair_at.x + 2, stair_at.y) != stair_before + 3:
+		_fail("live stairs did not rise 1, 2, 3")
+	_expect_live_mesh(feat_layer, stair_at, "stairs", STONE_MESH_PATH)
+	_ok("live stairs placed the authored step mesh")
+	var tower_at := _find_clear(world, player, 2, 2)
+	if tower_at.x < -100000:
+		_fail("no flat pad for the live small tower")
+		return
+	var tower_before := _layers_at(tower_at.x, tower_at.y)
+	if not editor.try_place_blueprint(Vector3(float(tower_at.x) + 0.5, 0.0, float(tower_at.y) + 0.5), inv, _Blueprints.SMALL_TOWER, 0):
+		_fail("live small tower: %s" % editor.last_fail_reason)
+		return
+	await process_frame
+	if _layers_at(tower_at.x, tower_at.y) != tower_before + 3 or _layers_at(tower_at.x + 1, tower_at.y + 1) != tower_before + 3:
+		_fail("live small tower did not rise three layers")
+	_expect_live_mesh(feat_layer, tower_at, "small_tower", TOWER_MESH_PATH)
+	_ok("live small tower placed the authored pillar mesh")
+
+
+func _expect_live_mesh(feat_layer, cell: Vector2i, visual: String, path: String) -> void:
+	var anchor: Node3D = feat_layer._nodes_by_cell.get(cell)
+	if anchor == null:
+		_fail("no live anchor at %s for %s" % [str(cell), visual])
+		return
+	if str(anchor.get_meta("building_visual_id", "")) != visual:
+		_fail("live %s visual is %s" % [visual, anchor.get_meta("building_visual_id", "")])
+		return
+	var mesh: MeshInstance3D = anchor.get_node_or_null("Mesh") as MeshInstance3D
+	if mesh == null or not bool(mesh.get_meta("uses_authored_mesh", false)):
+		_fail("live %s is not authored" % visual)
+		return
+	if str(mesh.get_meta("authored_resource_path", "")) != path:
+		_fail("live %s path %s" % [visual, mesh.get_meta("authored_resource_path", "")])
+
+
+func _find_clear(world, player, w: int, d: int) -> Vector2i:
+	var origin := Vector3.ZERO
+	if player and player.has_method("get_voxel_position"):
+		origin = player.get_voxel_position()
+	var px := int(floor(origin.x))
+	var pz := int(floor(origin.z))
+	for dz in range(-8, 9):
+		for dx in range(-8, 9):
+			var ax := px + dx
+			var az := pz + dz
+			if _rect_clear(world, ax, az, w, d):
+				return Vector2i(ax, az)
+	return Vector2i(-1000000, 0)
+
+
+func _rect_clear(world, ax: int, az: int, w: int, d: int) -> bool:
+	var height: float = world.get_surface_height(float(ax), float(az))
+	for x in w:
+		for z in d:
+			var wx := ax + x
+			var wz := az + z
+			if not _TerrainEdits.can_edit(wx, wz):
+				return false
+			if absf(world.get_surface_height(float(wx), float(wz)) - height) > 0.01:
+				return false
+			if _TerrainEdits.get_build_tile(wx, wz) >= 0:
+				return false
+			if not _FeatureRegistry.get_feature(wx, wz).is_empty():
+				return false
+	return true
+
+
+func _layers_at(x: int, z: int) -> int:
+	var layer: float = _Settings.get_active().layer_height()
+	return int(round(_TerrainEdits.get_height_delta(x, z) / maxf(layer, 0.001)))
 
 
 func _finish() -> void:

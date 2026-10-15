@@ -19,6 +19,8 @@ const AUTHORED_BUILDING_MESH_PATHS: Dictionary = {
 	"bridge": "res://assets/structures/bridge/bridge.obj",
 	"ruin_pillar": "res://assets/structures/ruin_pillar/ruin_pillar.obj",
 	"town_hall": "res://assets/structures/town_hall/town_hall.obj",
+	"stairs": "res://assets/structures/stone_wall/stone_wall.obj",
+	"small_tower": "res://assets/structures/ruin_pillar/ruin_pillar.obj",
 }
 const AUTHORED_BUILDING_ALBEDO_PATHS: Dictionary = {
 	"wood_wall": "res://assets/structures/wood_wall/wood_wall_albedo.png",
@@ -27,6 +29,8 @@ const AUTHORED_BUILDING_ALBEDO_PATHS: Dictionary = {
 	"bridge": "res://assets/structures/bridge/bridge_albedo.png",
 	"ruin_pillar": "res://assets/structures/ruin_pillar/ruin_pillar_albedo.png",
 	"town_hall": "res://assets/structures/town_hall/town_hall_albedo.png",
+	"stairs": "res://assets/structures/stone_wall/stone_wall_albedo.png",
+	"small_tower": "res://assets/structures/ruin_pillar/ruin_pillar_albedo.png",
 }
 
 signal visuals_ready
@@ -485,27 +489,32 @@ func configure_building_mesh(
 		mesh_inst.set_meta("uses_authored_mesh", true)
 		mesh_inst.set_meta("authored_resource_path", authored_building_mesh_path(id))
 		mesh_inst.set_meta("structure_part_count", -1)
+		var scale_id := id
+		if scale_id == "stairs":
+			scale_id = "stone_wall"
+		elif scale_id == "small_tower":
+			scale_id = "ruin_pillar"
 		# Authored walls are in column units (width ≈ 1). XZ fill the column;
 		# Y is a SHORT cap on raised terrain — full Y*voxel_scale would double the wall.
-		if id == "wood_wall":
+		if scale_id == "wood_wall":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			# Cap ≈ 0.9 world units tall (mesh height ~1.67 * 0.55), not a second full voxel stack.
 			mesh_inst.scale = Vector3(vs, 0.55, vs)
 			mesh_inst.set_meta("wall_cap_scale_y", 0.55)
-		elif id == "stone_wall":
+		elif scale_id == "stone_wall":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			mesh_inst.scale = Vector3(vs, 0.68, vs)
 			mesh_inst.set_meta("wall_cap_scale_y", 0.68)
-		elif id == "gate":
+		elif scale_id == "gate":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
-		elif id == "bridge":
+		elif scale_id == "bridge":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			mesh_inst.scale = Vector3(vs, 1.15, vs)
-		elif id == "ruin_pillar":
+		elif scale_id == "ruin_pillar":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
-		elif id == "town_hall":
+		elif scale_id == "town_hall":
 			var vs: float = _WorldSettings.get_active().voxel_scale
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
 		else:

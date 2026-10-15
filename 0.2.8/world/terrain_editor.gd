@@ -397,40 +397,72 @@ func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName
 		last_fail_reason = _blueprint_reject_reason(plan)
 		return false
 	var tile := _blueprint_tile(bp)
-	var build_id := _build_id_for_tile(tile)
-	var paid_with := str(bp.get("cost", {}).get("id", "stone"))
-	var paid_count := _scaled_structure_cost(int(bp.get("cost", {}).get("count", 0)))
-	var wood_count := _scaled_structure_cost(int(bp.get("cost", {}).get("wood_fallback", 0)))
-	var piece := _StructureCrafting.item_id(blueprint_id)
-	var currency := ""
-	var refund_n := 0
-	if inventory.has_method("count_item") and int(inventory.count_item(piece)) > 0:
-		if not inventory.consume_item(piece, 1):
-			last_fail_reason = "Need a crafted piece"
-			return false
-		currency = piece
-		refund_n = 1
-	else:
-		currency = _take_structure_payment(inventory, paid_with, paid_count, wood_count)
-		if currency.is_empty():
-			return false
-		refund_n = paid_count if currency == paid_with else wood_count
-	var cells: Array[Vector3i] = []
+	var spent := _pay_blueprint(inventory, bp, blueprint_id)
+	if spent.is_empty():
+		return false
+	var wall_cells: Array[Vector3i] = []
+	var passages: Array[Vector2i] = []
+	var build_id := StringName(str(bp.get("build_id", "")))
 	for item in plan.get("cells", []):
-		cells.append((item as Dictionary)["at"])
-	var batch: Dictionary = _TerrainEdits.place_cells(cells, tile, self, build_id)
+		var row: Dictionary = item
+		var at: Vector3i = row["at"]
+		if str(row.get("role", "wall")) == "passage":
+			passages.append(Vector2i(at.x, at.z))
+			continue
+		wall_cells.append(at)
+		var named := str(row.get("build", ""))
+		if named != "":
+			build_id = StringName(named)
+	if build_id == &"":
+		build_id = _build_id_for_tile(tile)
+	var batch: Dictionary = _TerrainEdits.place_cells(wall_cells, tile, self, build_id)
 	last_place_batch = batch
-	if int(batch.get("placed_count", 0)) != cells.size() or cells.is_empty():
-		if inventory.has_method("add_item") and refund_n > 0:
-			inventory.add_item(currency, refund_n)
+	if int(batch.get("placed_count", 0)) != wall_cells.size() or wall_cells.is_empty():
+		_refund_lines(inventory, spent)
 		if str(last_fail_reason).is_empty():
 			last_fail_reason = "Can't place here"
 		return false
-	_refresh_blueprint_columns(batch.get("columns", []))
+	var stamped: Array[Vector2i] = []
+	for col in passages:
+		if not stamp_blueprint_passage(col):
+			_rollback_blueprint(batch, stamped)
+			_refund_lines(inventory, spent)
+			if str(last_fail_reason).is_empty():
+				last_fail_reason = "Can't place here"
+			return false
+		stamped.append(col)
+	if not stamped.is_empty():
+		_remesh_columns(stamped)
+	var shown: Array = batch.get("columns", [])
+	for col in stamped:
+		shown.append(col)
+	_refresh_blueprint_columns(shown)
 	last_build_id = build_id
 	var anchor := Vector2i(floori(world_pos.x), floori(world_pos.z))
 	var place_pos := Vector3(float(anchor.x) + 0.5, world.get_surface_height(float(anchor.x), float(anchor.y)), float(anchor.y) + 0.5)
 	structure_placed.emit(anchor.x, anchor.y, build_id, place_pos)
+	return true
+
+
+func stamp_blueprint_passage(col: Vector2i) -> bool:
+	_BuildingRegistry.ensure_builtins()
+	var def = _BuildingRegistry.get_def(&"gate")
+	if def == null:
+		return false
+	if not _TerrainEdits.set_build_tile_only(col.x, col.y, int(def.tile_id)):
+		return false
+	var resist := clampf(float(def.flow_resistance), 0.02, 0.98)
+	var visual_id := str(def.resolved_visual_id()) if def.has_method("resolved_visual_id") else "gate"
+	_FeatureRegistry.register_feature(col.x, col.y, _WorldFeatureTypes.FeatureKind.NONE, {
+		"build_id": "gate",
+		"visual_id": visual_id,
+		"flow_resistance": resist,
+		"player_built": true,
+		"is_passage": true,
+		"is_bridge": false,
+		"raises_terrain": false,
+	})
+	_FeatureRegistry.set_tile_override(col.x, col.y, int(def.tile_id))
 	return true
 
 
@@ -484,6 +516,95 @@ func _scaled_structure_cost(count: int) -> int:
 		if player and player.has_method("get_stat"):
 			mult = maxf(player.get_stat(_StatIds.BUILD_COST), 0.1)
 	return maxi(1, int(ceil(float(count) * mult)))
+
+
+func _pay_blueprint(inventory, bp: Dictionary, blueprint_id: StringName) -> Array:
+	var piece := _StructureCrafting.item_id(blueprint_id)
+	if inventory.has_method("count_item") and int(inventory.count_item(piece)) > 0:
+		if not inventory.consume_item(piece, 1):
+			last_fail_reason = "Need a crafted piece"
+			return []
+		return [{"id": piece, "count": 1}]
+	var scaled: Array = []
+	for line in bp.get("recipe", []):
+		var need := _scaled_structure_cost(int((line as Dictionary).get("count", 0)))
+		if need <= 0:
+			continue
+		scaled.append({"id": str((line as Dictionary).get("id", "")), "count": need})
+	if not scaled.is_empty() and _inventory_covers(inventory, scaled) and _consume_lines(inventory, scaled):
+		return scaled
+	var paid_with := str(bp.get("cost", {}).get("id", "stone"))
+	var paid_count := _scaled_structure_cost(int(bp.get("cost", {}).get("count", 0)))
+	var wood_count := _scaled_structure_cost(int(bp.get("cost", {}).get("wood_fallback", 0)))
+	var currency := _take_structure_payment(inventory, paid_with, paid_count, wood_count)
+	if currency.is_empty():
+		return []
+	var n := paid_count if currency == paid_with else wood_count
+	return [{"id": currency, "count": n}]
+
+
+func _inventory_covers(inventory, lines: Array) -> bool:
+	if not inventory.has_method("count_item"):
+		return false
+	for line in lines:
+		if int(inventory.count_item(str((line as Dictionary).get("id", "")))) < int((line as Dictionary).get("count", 0)):
+			return false
+	return true
+
+
+func _consume_lines(inventory, lines: Array) -> bool:
+	var spent: Array = []
+	for line in lines:
+		var id := str((line as Dictionary).get("id", ""))
+		var need := int((line as Dictionary).get("count", 0))
+		if not inventory.consume_item(id, need):
+			_refund_lines(inventory, spent)
+			return false
+		spent.append({"id": id, "count": need})
+	return true
+
+
+func _refund_lines(inventory, lines: Array) -> void:
+	if not inventory.has_method("add_item"):
+		return
+	for line in lines:
+		inventory.add_item(str((line as Dictionary).get("id", "")), int((line as Dictionary).get("count", 0)))
+
+
+func _rollback_blueprint(batch: Dictionary, passages: Array) -> void:
+	for cell in batch.get("placed", []):
+		if cell is Vector3i:
+			var at: Vector3i = cell
+			_TerrainEdits.unstack_build(at.x, at.z)
+	for col_v in batch.get("columns", []):
+		if col_v is Vector2i:
+			var col: Vector2i = col_v
+			_FeatureRegistry.clear_feature(col.x, col.y)
+	for col_v in passages:
+		if col_v is Vector2i:
+			var col: Vector2i = col_v
+			_FeatureRegistry.clear_feature(col.x, col.y)
+			_TerrainEdits.clear_build_tile(col.x, col.y)
+
+
+func _remesh_columns(columns: Array) -> void:
+	var by_chunk := {}
+	for col_v in columns:
+		if not (col_v is Vector2i):
+			continue
+		var col: Vector2i = col_v
+		var key := _TerrainEdits.chunk_for_column(col.x, col.y)
+		if not by_chunk.has(key):
+			by_chunk[key] = []
+		(by_chunk[key] as Array).append(col)
+	for key_v in by_chunk.keys():
+		var key: Vector2i = key_v
+		var cols: Array = by_chunk[key]
+		remesh_break_chunk(key, cols)
+		update_break_water(key, cols)
+		update_place_crystal(key, cols)
+	if not by_chunk.is_empty():
+		flush_break_chunks()
 
 
 func _take_structure_payment(inventory, paid_with: String, paid_count: int, wood_count: int) -> String:

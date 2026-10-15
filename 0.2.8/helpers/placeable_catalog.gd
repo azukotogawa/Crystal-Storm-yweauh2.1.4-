@@ -54,12 +54,16 @@ static func display_name(place_id: String) -> String:
 			return "Wall Segment"
 		"wall_corner":
 			return "Wall Corner"
+		"stairs":
+			return "Stairs"
+		"small_tower":
+			return "Small Tower"
 		_:
 			return place_id
 
 
 static func is_structure(place_id: String) -> bool:
-	return place_id in ["stone_wall", "gate", "bridge", "wall_segment", "wall_corner"]
+	return place_id in ["stone_wall", "gate", "bridge", "wall_segment", "wall_corner", "stairs", "small_tower"]
 
 
 static func is_terrain_edit(place_id: String) -> bool:

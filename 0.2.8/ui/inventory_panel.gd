@@ -123,6 +123,12 @@ func _build_ui() -> void:
 				craft.name = "Craft_wall_segment"
 			elif id == _Blueprints.WALL_CORNER:
 				craft.name = "Craft_wall_corner"
+			elif id == _Blueprints.GATE:
+				craft.name = "Craft_gate"
+			elif id == _Blueprints.STAIRS:
+				craft.name = "Craft_stairs"
+			elif id == _Blueprints.SMALL_TOWER:
+				craft.name = "Craft_small_tower"
 			else:
 				craft.name = "Craft_%s" % String(id)
 			craft.focus_mode = Control.FOCUS_NONE

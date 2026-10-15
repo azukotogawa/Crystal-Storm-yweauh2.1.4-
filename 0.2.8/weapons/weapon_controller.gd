@@ -905,14 +905,19 @@ static func ghost_preview(blueprint_id: StringName, column: Vector3, quarter: in
 	var base_y := TerrainEdits.surface_block_y(world, anchor.x, anchor.y) + 1
 	var raw: Array[Dictionary] = []
 	var lows := {}
-	for cell in bp["cells"]:
+	for cell in _blueprint_rows(bp):
 		var local := Vector3i(int(cell["x"]), int(cell["y"]), int(cell["z"]))
 		var spun := rotate_blueprint_cell(local, turned)
 		var at := Vector3i(anchor.x + spun.x, base_y + spun.y, anchor.y + spun.z)
 		var key := Vector2i(at.x, at.z)
 		if not lows.has(key) or spun.y < int(lows[key]):
 			lows[key] = spun.y
-		raw.append({"at": at, "local_y": spun.y})
+		raw.append({
+			"at": at,
+			"local_y": spun.y,
+			"role": str(cell.get("role", "wall")),
+			"build": str(cell.get("build", bp.get("build_id", ""))),
+		})
 	var reasons := {}
 	for item in raw:
 		var at: Vector3i = item["at"]
@@ -935,6 +940,8 @@ static func ghost_preview(blueprint_id: StringName, column: Vector3, quarter: in
 			"at": at,
 			"valid": ok,
 			"reason": reason,
+			"role": str(item.get("role", "wall")),
+			"build": str(item.get("build", "")),
 			"position": Vector3(
 				ws.column_to_world(float(at.x) + 0.5),
 				float(at.y) * layer + layer * 0.5,
@@ -948,6 +955,15 @@ static func ghost_preview(blueprint_id: StringName, column: Vector3, quarter: in
 		"valid": all_ok,
 		"cells": cells,
 	}
+
+
+static func _blueprint_rows(bp: Dictionary) -> Array:
+	var rows: Array = []
+	for cell in bp.get("cells", []):
+		rows.append(cell)
+	for cell in bp.get("passages", []):
+		rows.append(cell)
+	return rows
 
 
 static func _column_ghost_reason(base_cell: Vector3i, world) -> String:

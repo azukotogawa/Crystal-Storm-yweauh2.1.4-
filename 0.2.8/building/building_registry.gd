@@ -44,6 +44,8 @@ static func ensure_builtins() -> void:
 	register(_make_wood_wall())
 	register(_make_gate())
 	register(_make_bridge())
+	register(_make_stairs())
+	register(_make_small_tower())
 
 
 static func _make_stone_wall() -> _BuildableDef:
@@ -107,5 +109,37 @@ static func _make_bridge() -> _BuildableDef:
 	d.raises_terrain = false
 	d.is_bridge = true
 	d.flow_resistance = 0.28
+	d.placement_range = 3.0
+	return d
+
+
+static func _make_stairs() -> _BuildableDef:
+	var d := _BuildableDef.new()
+	d.id = &"stairs"
+	d.display_name = "Stairs"
+	d.category = _BuildableDef.Category.STRUCTURE
+	d.material_id = "stone"
+	d.material_count = 1
+	d.wood_fallback_count = 2
+	d.tile_id = _VoxelTypes.STONE
+	d.height_delta = 1
+	d.raises_terrain = true
+	d.flow_resistance = 0.35
+	d.placement_range = 3.0
+	return d
+
+
+static func _make_small_tower() -> _BuildableDef:
+	var d := _BuildableDef.new()
+	d.id = &"small_tower"
+	d.display_name = "Small Tower"
+	d.category = _BuildableDef.Category.STRUCTURE
+	d.material_id = "stone"
+	d.material_count = 1
+	d.wood_fallback_count = 2
+	d.tile_id = _VoxelTypes.STONE
+	d.height_delta = 1
+	d.raises_terrain = true
+	d.flow_resistance = 0.85
 	d.placement_range = 3.0
 	return d

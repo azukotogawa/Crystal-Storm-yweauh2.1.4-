@@ -36,6 +36,9 @@ func _run() -> void:
 	_test_wall_tiles()
 	_test_segment()
 	_test_corner()
+	_test_gate()
+	_test_stairs()
+	_test_tower()
 	_test_unknown()
 	_test_snap_and_rotation()
 	_test_ghost_validity()
@@ -97,15 +100,79 @@ func _test_corner() -> void:
 	print("OK wall corner is a 2x2x2 L of the stone wall tile")
 
 
+func _test_gate() -> void:
+	var bp := _Blueprints.get_blueprint(_Blueprints.GATE)
+	if not _expect_box(bp, "gate", 3, 2, 1, 4):
+		return
+	var seen := {}
+	for cell in bp["cells"]:
+		seen[Vector3i(int(cell["x"]), int(cell["y"]), int(cell["z"]))] = str(cell.get("build", ""))
+	if seen.get(Vector3i(0, 0, 0), "") != "stone_wall" or seen.get(Vector3i(2, 1, 0), "") != "stone_wall":
+		_fail("gate posts must be stone walls")
+		return
+	if seen.has(Vector3i(1, 0, 0)):
+		_fail("gate opening must not be a stacked wall cell")
+		return
+	var passages: Array = bp.get("passages", [])
+	if passages.size() != 1 or str(passages[0].get("role", "")) != "passage" or str(passages[0].get("build", "")) != "gate":
+		_fail("gate blueprint must keep one passage on the existing gate")
+		return
+	var gate = _Registry.get_def(&"gate")
+	if int(passages[0].get("tile", -1)) != int(gate.tile_id):
+		_fail("gate passage must use the gate tile")
+		return
+	var recipe: Array = bp.get("recipe", [])
+	if recipe.size() != 2 or str(recipe[1].get("id", "")) != str(gate.material_id) or int(recipe[1].get("count", 0)) != int(gate.material_count):
+		_fail("gate recipe must add the gate material to the stone posts")
+		return
+	print("OK gate blueprint is two stone posts and the authored gate passage")
+
+
+func _test_stairs() -> void:
+	var bp := _Blueprints.get_blueprint(_Blueprints.STAIRS)
+	if not _expect_box(bp, "stairs", 3, 3, 1, 6):
+		return
+	var heights := [0, 0, 0]
+	for cell in bp["cells"]:
+		if str(cell.get("build", "")) != "stairs":
+			_fail("stairs cells must use the stairs build")
+			return
+		heights[int(cell["x"])] += 1
+	if heights != [1, 2, 3]:
+		_fail("stairs must rise one layer per column, got %s" % heights)
+		return
+	var stone = _Registry.get_def(&"stone_wall")
+	if not _expect_cost(bp, stone, 6):
+		return
+	print("OK stairs rise 1, 2, then 3 on the stone tile")
+
+
+func _test_tower() -> void:
+	var bp := _Blueprints.get_blueprint(_Blueprints.SMALL_TOWER)
+	if not _expect_box(bp, "small_tower", 2, 3, 2, 12):
+		return
+	for cell in bp["cells"]:
+		if str(cell.get("build", "")) != "small_tower":
+			_fail("tower cells must use the small tower build")
+			return
+	var stone = _Registry.get_def(&"stone_wall")
+	if not _expect_cost(bp, stone, 12):
+		return
+	print("OK small tower is a solid 2x3x2")
+
+
 func _test_unknown() -> void:
 	var ids := _Blueprints.ids()
-	if ids.size() != 2 or _Blueprints.WALL_SEGMENT not in ids or _Blueprints.WALL_CORNER not in ids:
-		_fail("blueprint ids must be the wall segment and the wall corner")
+	if ids.size() != 5 or _Blueprints.WALL_SEGMENT not in ids or _Blueprints.WALL_CORNER not in ids:
+		_fail("blueprint ids must list the wall pieces, the gate, the stairs, and the small tower")
+		return
+	if _Blueprints.GATE not in ids or _Blueprints.STAIRS not in ids or _Blueprints.SMALL_TOWER not in ids:
+		_fail("blueprint ids must list the wall pieces, the gate, the stairs, and the small tower")
 		return
 	if not _Blueprints.get_blueprint(&"tower").is_empty():
-		_fail("unknown structures must stay empty until they are specified")
+		_fail("an unnamed tower must stay empty")
 		return
-	print("OK only the wall segment and wall corner are blueprinted")
+	print("OK the five structure blueprints are listed")
 
 
 func _test_snap_and_rotation() -> void:
@@ -246,12 +313,21 @@ func _test_craft_then_place() -> void:
 	if "Craft_wall_segment" not in panel_src or "Craft_wall_corner" not in panel_src:
 		_fail("inventory craft row must name the wall segment and the wall corner")
 		return
+	if "Craft_gate" not in panel_src or "Craft_stairs" not in panel_src or "Craft_small_tower" not in panel_src:
+		_fail("inventory craft row must name the gate, the stairs, and the small tower")
+		return
 	var menu := _Placeable.entries()
 	if menu.find("wall_segment") < 0 or menu.find("wall_corner") < 0:
 		_fail("build menu must list the wall segment and the wall corner")
 		return
+	if menu.find("stairs") < 0 or menu.find("small_tower") < 0 or menu.find("gate") < 0:
+		_fail("build menu must list the gate, the stairs, and the small tower")
+		return
 	if _Placeable.display_name("wall_segment") != "Wall Segment" or _Placeable.display_name("wall_corner") != "Wall Corner":
 		_fail("build menu names must be Wall Segment and Wall Corner")
+		return
+	if _Placeable.display_name("stairs") != "Stairs" or _Placeable.display_name("small_tower") != "Small Tower" or _Placeable.display_name("gate") != "Gate":
+		_fail("build menu names must be Gate, Stairs, and Small Tower")
 		return
 	var weapon = _Weapon.new()
 	weapon.place_index = menu.find("wall_segment")
@@ -326,10 +402,60 @@ func _test_craft_then_place() -> void:
 		_fail("placed wall corner must leave the inner column empty")
 		_release_place(editor, world, chunks)
 		return
+	if not _place_gate_stairs_tower(editor, world):
+		_release_place(editor, world, chunks)
+		return
 	_release_place(editor, world, chunks)
 	_Edits.reset()
 	_Features.reset()
 	print("OK crafted wall segment and wall corner place from the hotbar")
+
+
+func _place_gate_stairs_tower(editor, world) -> bool:
+	_Edits.reset()
+	_Features.reset()
+	var inv = _Inventory.new()
+	inv.add_item("stone", 40)
+	inv.add_item("wood", 8)
+	var placed_gate: bool = editor.try_place_blueprint(Vector3(4.2, 0.0, 12.2), inv, _Blueprints.GATE, 0)
+	if not placed_gate or int(editor.last_place_batch.get("placed_count", 0)) != 4:
+		_fail("gate blueprint did not place its posts: %s" % editor.last_fail_reason)
+		return false
+	if _layers_at(4, 12) != 2 or _layers_at(6, 12) != 2 or _layers_at(5, 12) != 0:
+		_fail("gate posts must rise two layers and the opening must stay at ground")
+		return false
+	var opening: Dictionary = _Features.get_feature(5, 12)
+	if str(opening.get("build_id", "")) != "gate" or not bool(opening.get("is_passage", false)) or str(opening.get("visual_id", "")) != "gate":
+		_fail("gate opening must keep the gate visual")
+		return false
+	var post: Dictionary = _Features.get_feature(4, 12)
+	if str(post.get("build_id", "")) != "stone_wall" or str(post.get("visual_id", "")) != "stone_wall":
+		_fail("gate posts must keep the stone wall visual")
+		return false
+	var placed_stairs: bool = editor.try_place_blueprint(Vector3(4.2, 0.0, 16.2), inv, _Blueprints.STAIRS, 0)
+	if not placed_stairs or int(editor.last_place_batch.get("placed_count", 0)) != 6:
+		_fail("stairs blueprint did not place: %s" % editor.last_fail_reason)
+		return false
+	if _layers_at(4, 16) != 1 or _layers_at(5, 16) != 2 or _layers_at(6, 16) != 3:
+		_fail("stairs must leave layers 1, 2, and 3")
+		return false
+	var step: Dictionary = _Features.get_feature(6, 16)
+	if str(step.get("build_id", "")) != "stairs" or str(step.get("visual_id", "")) != "stairs":
+		_fail("stairs columns must use the stairs visual")
+		return false
+	var placed_tower: bool = editor.try_place_blueprint(Vector3(10.2, 0.0, 16.2), inv, _Blueprints.SMALL_TOWER, 0)
+	if not placed_tower or int(editor.last_place_batch.get("placed_count", 0)) != 12:
+		_fail("small tower blueprint did not place: %s" % editor.last_fail_reason)
+		return false
+	if _layers_at(10, 16) != 3 or _layers_at(11, 16) != 3 or _layers_at(10, 17) != 3 or _layers_at(11, 17) != 3:
+		_fail("small tower must raise a 2x2 by three layers")
+		return false
+	var crown: Dictionary = _Features.get_feature(11, 17)
+	if str(crown.get("build_id", "")) != "small_tower" or str(crown.get("visual_id", "")) != "small_tower":
+		_fail("small tower columns must use the tower visual")
+		return false
+	print("OK gate, stairs, and small tower place from their blueprints")
+	return true
 
 
 func _layers_at(x: int, z: int) -> int:
