@@ -135,7 +135,22 @@ static func dig_cells(cells: Array, editor: Object = null) -> Dictionary:
 	}
 
 
-static func _dig_listed_cell(cell: Vector3i, world, editor: Object) -> String:
+static func clip_breakable_cells(cells: Array, world, editor = null) -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	var seen := {}
+	for raw in cells:
+		if not (raw is Vector3i):
+			continue
+		var cell: Vector3i = raw
+		if seen.has(cell):
+			continue
+		seen[cell] = true
+		if _cell_break_status(cell, world, editor) == "ready":
+			out.append(cell)
+	return out
+
+
+static func _cell_break_status(cell: Vector3i, world, editor) -> String:
 	if not can_edit(cell.x, cell.z):
 		return "skip"
 	if editor != null and editor.has_method("break_cell_blocked"):
@@ -151,6 +166,16 @@ static func _dig_listed_cell(cell: Vector3i, world, editor: Object) -> String:
 		var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
 		if float(world.get_surface_height(float(cell.x), float(cell.z))) <= min_h:
 			return "floor"
+	var next: int = int(_ws().height_delta.get(Vector2i(cell.x, cell.z), 0)) - 1
+	if next < -6:
+		return "floor"
+	return "ready"
+
+
+static func _dig_listed_cell(cell: Vector3i, world, editor: Object) -> String:
+	var status := _cell_break_status(cell, world, editor)
+	if status != "ready":
+		return status
 	if not dig(cell.x, cell.z, 1):
 		return "floor"
 	if world != null and world.has_method("invalidate_column_cache"):

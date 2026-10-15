@@ -496,7 +496,24 @@ func _hide_brush_marks() -> void:
 		mark.visible = false
 
 
+static func break_preview_cells(item_id: String, anchor: Vector3i, aim: Vector3, world, editor = null) -> Array[Vector3i]:
+	var listed: Array[Vector3i] = _ItemTypes.break_cells(_ItemTypes.break_shape_for(item_id), anchor, aim)
+	return _TerrainEdits.clip_breakable_cells(listed, world, editor)
+
+
+static func preview_mark_cells(item_id: String, anchor: Vector3i, aim: Vector3, world, editor = null) -> Array[Vector3i]:
+	var marks: Array[Vector3i] = []
+	for cell in break_preview_cells(item_id, anchor, aim, world, editor):
+		if cell.x == anchor.x and cell.z == anchor.z:
+			continue
+		marks.append(cell)
+	return marks
+
+
 func _update_brush_footprint(cell: Vector2i, layer: float, scale: float) -> void:
+	if _ItemTypes.MULTI_BLOCK_BREAK and _ItemTypes.breaks_blocks(_active_item_id()):
+		_place_break_preview(cell, layer, scale)
+		return
 	var radius := _highlight_brush_radius()
 	if radius <= 1 or _brush_marks.is_empty():
 		_hide_brush_marks()
@@ -528,6 +545,47 @@ func _update_brush_footprint(cell: Vector2i, layer: float, scale: float) -> void
 	for mark in _brush_marks:
 		if mark.visible:
 			mark.scale = Vector3(scale * 0.92, layer * 0.92, scale * 0.92)
+
+
+func _place_break_preview(cell: Vector2i, layer: float, scale: float) -> void:
+	if _brush_marks.is_empty() or world == null:
+		_hide_brush_marks()
+		return
+	var anchor_y := _TerrainEdits.surface_block_y(world, cell.x, cell.y)
+	var anchor := Vector3i(cell.x, anchor_y, cell.y)
+	var aim := _break_preview_aim()
+	var editor = get_tree().get_first_node_in_group("terrain_editor") if is_inside_tree() else null
+	var marks := preview_mark_cells(_active_item_id(), anchor, aim, world, editor)
+	var ws = _WorldSettings.get_active()
+	var extra := 0
+	for raw in marks:
+		if extra >= _brush_marks.size():
+			break
+		var c: Vector3i = raw
+		var mark: MeshInstance3D = _brush_marks[extra]
+		extra += 1
+		var top := float(world.get_surface_height(float(c.x), float(c.z))) + layer
+		mark.global_position = Vector3(
+			ws.column_to_world(float(c.x) + 0.5),
+			top - layer * 0.5,
+			ws.column_to_world(float(c.z) + 0.5)
+		)
+		mark.visible = true
+		mark.scale = Vector3(scale * 0.92, layer * 0.92, scale * 0.92)
+	for i in range(extra, _brush_marks.size()):
+		_brush_marks[i].visible = false
+	_brush_shown = extra > 0
+	_brush_key = Vector3i(cell.x, cell.y, 1000 + extra)
+
+
+func _break_preview_aim() -> Vector3:
+	var reach := _active_range()
+	var weapon := player.get_node_or_null("WeaponController") if player else null
+	if weapon != null and weapon.has_method("_aim_forward"):
+		return weapon._aim_forward(reach)
+	if player != null:
+		return _ActionTargeting.cursor_aim(player, reach)
+	return Vector3(0, 0, 1)
 
 
 func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: float, pulse: float) -> void:

@@ -9,6 +9,7 @@ const _Ramps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _Highlight = preload("res://player/target_highlight.gd")
 
 var _failed: int = 0
 
@@ -31,6 +32,7 @@ func _run() -> void:
 	_test_tier_widen()
 	_test_shapes_face_aim()
 	_test_weapon_uses_same_cells()
+	_test_break_preview()
 	_test_batch_dig()
 	if _failed == 0:
 		print("All multi block break tests OK")
@@ -132,6 +134,69 @@ func _test_weapon_uses_same_cells() -> void:
 		_fail("_try_dig_tool stroke must batch dig_cells under MULTI_BLOCK_BREAK")
 		return
 	print("OK weapon resolves the aimed cell list")
+
+
+func _test_break_preview() -> void:
+	_TerrainEdits.reset()
+	_FeatureRegistry.reset()
+	var flat := _FlatBreakWorld.new()
+	root.add_child(flat)
+	var pick = _ItemTypes.get_item_def("stone_pick")
+	var saved_tier := int(pick.tool_tier)
+	pick.tool_tier = 3
+	var anchor := Vector3i(4, 0, 4)
+	var aim := Vector3(0, 0, 1)
+	var flat_preview: Array = _Highlight.break_preview_cells("stone_pick", anchor, aim, flat, null)
+	_expect_cells("face preview on flat ground", flat_preview, [
+		anchor, Vector3i(3, 0, 4), Vector3i(5, 0, 4),
+	])
+	var flat_marks: Array = _Highlight.preview_mark_cells("stone_pick", anchor, aim, flat, null)
+	_expect_cells("face preview marks skip the aimed column", flat_marks, [
+		Vector3i(3, 0, 4), Vector3i(5, 0, 4),
+	])
+	_TerrainEdits.dig(3, 4, 1)
+	var stepped: Array = _Highlight.break_preview_cells("stone_pick", anchor, aim, flat, null)
+	_expect_cells("face preview follows the dug neighbor", stepped, [
+		anchor, Vector3i(3, -1, 4), Vector3i(5, 0, 4),
+	])
+	var blocker := _BlockColumn.new()
+	blocker.wx = 5
+	var blocked: Array = _Highlight.break_preview_cells("stone_pick", anchor, aim, flat, blocker)
+	_expect_cells("face preview drops a blocked column", blocked, [
+		anchor, Vector3i(3, -1, 4),
+	])
+	pick.tool_tier = 1
+	var tall: Array = _Highlight.break_preview_cells("stone_pick", anchor, aim, flat, null)
+	_expect_cells("1x2 preview drops the air cell above", tall, [anchor])
+	var outside := Vector3i(4000, 0, 0)
+	pick.tool_tier = 3
+	var abroad: Array = _Highlight.break_preview_cells("stone_pick", outside, aim, flat, null)
+	if not abroad.is_empty():
+		_fail("preview outside the border must be empty, got %s" % abroad)
+	else:
+		print("OK preview outside the border is empty")
+	for _i in 4:
+		_TerrainEdits.dig(8, 8, 1)
+	var floor_cell := Vector3i(8, _TerrainEdits.surface_block_y(flat, 8, 8), 8)
+	pick.tool_tier = 0
+	var floor_preview: Array = _Highlight.break_preview_cells("stone_pick", floor_cell, aim, flat, null)
+	if not floor_preview.is_empty():
+		_fail("preview at the dig floor must be empty, got %s" % floor_preview)
+	else:
+		print("OK preview at the dig floor is empty")
+	pick.tool_tier = saved_tier
+	var src := (load("res://player/target_highlight.gd") as GDScript).source_code
+	var at := src.find("func _update_brush_footprint")
+	var end := src.find("\nfunc ", at + 10)
+	var body := src.substr(at, maxi(end - at, 0))
+	if "break_preview_cells" not in src or "_place_break_preview" not in body:
+		_fail("dig highlight must preview the clipped break shape")
+	elif "clip_breakable_cells" not in (load("res://world/terrain_edits.gd") as GDScript).source_code:
+		_fail("preview must clip through the breakable-cell check")
+	else:
+		print("OK dig highlight previews the clipped break shape")
+	flat.free()
+	_TerrainEdits.reset()
 
 
 func _test_batch_dig() -> void:
@@ -253,6 +318,16 @@ func _face_x(anchor: Vector3i) -> Array:
 				continue
 			cells.append(Vector3i(anchor.x, anchor.y + uy, anchor.z - rz))
 	return cells
+
+
+class _BlockColumn:
+	extends RefCounted
+	var wx: int = 0
+
+	func break_cell_blocked(x: int, _z: int) -> String:
+		if x == wx:
+			return "water"
+		return ""
 
 
 class _FlatBreakWorld:
