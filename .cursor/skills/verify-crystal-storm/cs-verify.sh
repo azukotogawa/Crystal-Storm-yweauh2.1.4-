@@ -100,6 +100,193 @@ convert_movie() {
   echo "RECORD mp4=$out"
 }
 
+ffprobe_bin() {
+  local d
+  d=$(dirname "$FFMPEG")
+  if [ -f "$d/ffprobe.exe" ]; then echo "$d/ffprobe.exe"; return 0; fi
+  if [ -f "$d/ffprobe" ]; then echo "$d/ffprobe"; return 0; fi
+  return 1
+}
+
+video_frame_count() {
+  local in_win="$1" probe n
+  probe=$(ffprobe_bin) || return 1
+  n=$("$probe" -v error -select_streams v:0 -show_entries stream=nb_frames -of csv=p=0 "$in_win" 2>/dev/null | tr -d '\r')
+  case "$n" in
+    ''|N/A|0)
+      n=$("$probe" -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of csv=p=0 "$in_win" 2>/dev/null | tr -d '\r')
+      ;;
+  esac
+  case "$n" in
+    ''|N/A|0) return 1 ;;
+  esac
+  echo "$n"
+}
+
+contact_layout() {
+  local n=$1 cols rows cells
+  if [ "$n" -ge 16 ]; then cols=4; rows=4; cells=16
+  elif [ "$n" -ge 12 ]; then cols=4; rows=3; cells=12
+  elif [ "$n" -ge 9 ]; then cols=3; rows=3; cells=9
+  elif [ "$n" -ge 8 ]; then cols=4; rows=2; cells=8
+  elif [ "$n" -ge 6 ]; then cols=3; rows=2; cells=6
+  elif [ "$n" -ge 4 ]; then cols=2; rows=2; cells=4
+  elif [ "$n" -ge 2 ]; then cols=$n; rows=1; cells=$n
+  else cols=1; rows=1; cells=1
+  fi
+  echo "$cols $rows $cells"
+}
+
+samples_per_file() {
+  local nfiles=$1 per target cols rows cells guard=0
+  per=$((16 / nfiles))
+  [ "$per" -lt 1 ] && per=1
+  while [ "$guard" -lt 6 ]; do
+    guard=$((guard + 1))
+    target=$((per * nfiles))
+    read -r cols rows cells < <(contact_layout "$target")
+    [ "$cells" -eq "$target" ] && { echo "$per"; return 0; }
+    per=$((cells / nfiles))
+    [ "$per" -lt 1 ] && { echo 1; return 0; }
+  done
+  echo "$per"
+}
+
+frame_select_expr() {
+  local total=$1 count=$2 i idx expr=""
+  [ "$count" -gt "$total" ] && count=$total
+  [ "$count" -lt 1 ] && count=1
+  for ((i=0; i<count; i++)); do
+    if [ "$count" -eq 1 ]; then idx=0
+    else idx=$(( i * (total - 1) / (count - 1) ))
+    fi
+    [ -n "$expr" ] && expr="${expr}+"
+    expr="${expr}eq(n\\,${idx})"
+  done
+  printf '%s' "$expr"
+}
+
+contact_chain() {
+  local expr="$1" prefix="$2" with_text="$3" chain escaped
+  chain="select='${expr}',scale=320:-2"
+  if [ "$with_text" = 1 ]; then
+    escaped=${prefix//:/\\:}
+    chain="${chain},drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':text='${escaped}%{pts\\:hms}':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.65:x=8:y=h-th-8"
+  fi
+  printf '%s' "$chain"
+}
+
+contact_tile() { printf 'tile=%sx%s:padding=6:margin=6:color=black' "$1" "$2"; }
+
+contact_frame_count() {
+  local dir=$1 n=0
+  shopt -s nullglob
+  local files=("$dir"/frame-*.png)
+  n=${#files[@]}
+  shopt -u nullglob
+  echo "$n"
+}
+
+drop_contact_frames_from() {
+  local dir=$1 start=$2 f base num
+  shopt -s nullglob
+  for f in "$dir"/frame-*.png; do
+    base=$(basename "$f" .png)
+    num=${base#frame-}
+    num=$((10#$num))
+    [ "$num" -ge "$start" ] && rm -f "$f"
+  done
+  shopt -u nullglob
+}
+
+write_one_contact_sheet() {
+  local file="$1" fc="$2" cols="$3" rows="$4" count="$5"
+  local expr in_win out vf
+  expr=$(frame_select_expr "$fc" "$count")
+  in_win=$(win_path "$file")
+  out=$(win_path "$EVID/contact-sheet.png")
+  if [ -f /mnt/c/Windows/Fonts/arial.ttf ]; then
+    vf="$(contact_chain "$expr" "" 1),$(contact_tile "$cols" "$rows")"
+    if "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 && [ -s "$EVID/contact-sheet.png" ]; then
+      return 0
+    fi
+    rm -f "$EVID/contact-sheet.png"
+  fi
+  vf="$(contact_chain "$expr" "" 0),$(contact_tile "$cols" "$rows")"
+  "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 && [ -s "$EVID/contact-sheet.png" ]
+}
+
+dump_contact_frames() {
+  local file="$1" dir="$2" fc="$3" count="$4" start="$5" prefix="$6"
+  local expr in_win seq vf before
+  expr=$(frame_select_expr "$fc" "$count")
+  in_win=$(win_path "$file")
+  seq=$(win_path "$dir/frame-%02d.png")
+  before=$(contact_frame_count "$dir")
+  if [ -f /mnt/c/Windows/Fonts/arial.ttf ]; then
+    vf=$(contact_chain "$expr" "$prefix" 1)
+    if "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -start_number "$start" "$seq" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1; then
+      [ $(( $(contact_frame_count "$dir") - before )) -eq "$count" ] && return 0
+    fi
+    drop_contact_frames_from "$dir" "$start"
+  fi
+  vf=$(contact_chain "$expr" "$prefix" 0)
+  "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -start_number "$start" "$seq" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 || return 1
+  [ $(( $(contact_frame_count "$dir") - before )) -eq "$count" ]
+}
+
+tile_frames() {
+  local dir="$1" cols="$2" rows="$3" seq out
+  seq=$(win_path "$dir/frame-%02d.png")
+  out=$(win_path "$EVID/contact-sheet.png")
+  "$FFMPEG" -y -framerate 1 -start_number 0 -i "$seq" \
+    -vf "$(contact_tile "$cols" "$rows")" \
+    -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1
+}
+
+write_contact_sheet() {
+  local -a files=("$@")
+  local nfiles=${#files[@]}
+  local tmp cols rows cells per i fc take start=0 prefix in_win f base num
+  [ "$nfiles" -ge 1 ] || return 1
+  : >"$EVID/contact-sheet-ffmpeg.log"
+  if [ "$nfiles" -eq 1 ]; then
+    in_win=$(win_path "${files[0]}")
+    fc=$(video_frame_count "$in_win") || return 1
+    take=$(samples_per_file 1)
+    [ "$take" -gt "$fc" ] && take=$fc
+    read -r cols rows cells < <(contact_layout "$take")
+    [ "$cells" -gt "$fc" ] && cells=$fc
+    read -r cols rows cells < <(contact_layout "$cells")
+    write_one_contact_sheet "${files[0]}" "$fc" "$cols" "$rows" "$cells"
+    return $?
+  fi
+  tmp="$EVID/.contact-frames"
+  rm -rf "$tmp"
+  mkdir -p "$tmp"
+  per=$(samples_per_file "$nfiles")
+  for ((i=0; i<nfiles; i++)); do
+    in_win=$(win_path "${files[$i]}")
+    fc=$(video_frame_count "$in_win") || fc=1
+    take=$per
+    [ "$take" -gt "$fc" ] && take=$fc
+    [ "$take" -lt 1 ] && take=1
+    prefix="$(basename "${files[$i]}" .mp4) "
+    dump_contact_frames "${files[$i]}" "$tmp" "$fc" "$take" "$start" "$prefix" || { rm -rf "$tmp"; return 1; }
+    start=$((start + take))
+  done
+  read -r cols rows cells < <(contact_layout "$start")
+  for f in "$tmp"/frame-*.png; do
+    base=$(basename "$f" .png)
+    num=${base#frame-}
+    num=$((10#$num))
+    [ "$num" -ge "$cells" ] && rm -f "$f"
+  done
+  tile_frames "$tmp" "$cols" "$rows" || { rm -rf "$tmp"; return 1; }
+  rm -rf "$tmp"
+  [ -s "$EVID/contact-sheet.png" ]
+}
+
 run_godot(){ local name="$1"; shift
   local extra=() args=("$@")
   if [ "$RECORD" = 1 ] && wants_movie_frames "$@"; then
@@ -143,8 +330,13 @@ finish_record() {
     echo "RECORD FAIL rc=$rc evidence=$EVID"
     return "$rc"
   fi
+  if ! write_contact_sheet "${mp4s[@]}"; then
+    echo "RECORD FAIL: contact sheet (see $EVID/contact-sheet-ffmpeg.log)" >&2
+    return 1
+  fi
   echo "RECORD OK evidence=$EVID"
   printf '%s\n' "${mp4s[@]}"
+  echo "$EVID/contact-sheet.png"
   return 0
 }
 
