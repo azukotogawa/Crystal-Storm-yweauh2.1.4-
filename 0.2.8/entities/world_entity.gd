@@ -45,6 +45,7 @@ var _bob_phase: float = 0.0
 var _bob_ready: bool = false
 var locomotion_pose: String = "idle"
 var _attack_hold: float = 0.0
+var _visual_frame: int = -1
 var _creature_pose: RefCounted = _CreaturePose.new()
 var _bob_base_y: float = 0.0
 var _bob_base_scale: Vector3 = Vector3.ONE
@@ -192,8 +193,7 @@ func _ensure_part_rig(_tint: Color) -> bool:
 		_sprite.visible = false
 	if _mesh:
 		_mesh.visible = false
-	if _voxel_prop:
-		_voxel_prop.visible = false
+	_free_voxel_prop()
 	_drop_part_rig()
 	_part_rig = built
 	add_child(_part_rig)
@@ -203,6 +203,12 @@ func _ensure_part_rig(_tint: Color) -> bool:
 func repaint_creature() -> void:
 	if _part_rig and is_instance_valid(_part_rig) and _VoxelCreature.uses_rig(entity_kind):
 		_VoxelCreature.repaint(_part_rig)
+
+
+func _free_voxel_prop() -> void:
+	if _voxel_prop and is_instance_valid(_voxel_prop):
+		_voxel_prop.queue_free()
+	_voxel_prop = null
 
 
 func _drop_part_rig() -> void:
@@ -624,7 +630,16 @@ func _aim_world() -> Vector3:
 	return global_position
 
 
+func _process(delta: float) -> void:
+	if _dead:
+		return
+	if _visual_frame == Engine.get_process_frames():
+		return
+	_apply_walk_bob(delta, false, false)
+
+
 func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> void:
+	_visual_frame = Engine.get_process_frames()
 	if attacking:
 		_attack_hold = 0.42
 	if _attack_hold > 0.0:

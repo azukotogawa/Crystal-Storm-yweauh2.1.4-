@@ -41,7 +41,7 @@ func apply(root: Node3D, pose: String, phase: float) -> void:
 				pos.y += absf(swing) * WALK_LIFT
 			elif kind == "top":
 				pos.y += absf(sin(phase * 2.0)) * WALK_BOB
-		elif kind == "top":
+		elif kind == "top" or kind == "body":
 			pos.y += swing * IDLE_LIFT
 		mi.position = pos
 		mi.rotation = rot

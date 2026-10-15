@@ -30,21 +30,23 @@ func _run() -> void:
 		_fail("world entity must keep the sprite and voxel-prop fallback")
 	if not _Builder.USE_PART_RIG:
 		_fail("USE_PART_RIG is off, so boar and deer stay on the old visual")
-	if _Builder.uses_rig(&"rabbit") or _Builder.uses_rig(&"bird") or _Builder.uses_rig(&"thornling") or _Builder.uses_rig(&"shard_guard"):
-		_fail("unconverted creatures must stay off the part rig")
-	if not _Builder.uses_rig(&"boar") or not _Builder.uses_rig(&"deer"):
-		_fail("boar and deer must use the part rig")
-	for crystal_kind in [&"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast"]:
-		if not _Builder.uses_rig(crystal_kind):
-			_fail("%s must use the part rig" % crystal_kind)
-	if not _Builder.parts_for(&"rabbit").is_empty():
-		_fail("rabbit has no voxel part spec")
+	if _Builder.uses_rig(&"town_villager") or _Builder.uses_rig(&"origin_warden"):
+		_fail("villager and warden have no authored voxel creature")
+	for kind in [&"boar", &"deer", &"rabbit", &"bird", &"town_militia", &"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast", &"farm_bomber", &"thornling", &"shard_guard"]:
+		if not _Builder.uses_rig(kind):
+			_fail("%s must use the part rig" % kind)
 	_check_kind(&"boar")
 	_check_kind(&"deer")
+	_check_kind(&"rabbit")
+	_check_kind(&"bird", true, true, false)
+	_check_kind(&"town_militia")
 	_check_kind(&"crystal_mite", true, false, true)
 	_check_kind(&"crystal_stag", true, false, true)
 	_check_kind(&"corrupted_beast", true, false, true)
 	_check_kind(&"crystal_wisp", false, true, true)
+	_check_kind(&"farm_bomber", true, false, true)
+	_check_kind(&"thornling", true, false, true)
+	_check_kind(&"shard_guard", true, false, true)
 	_check_optional_wing()
 	_check_entities()
 	_check_enemy()
@@ -200,17 +202,7 @@ func _check_optional_wing() -> void:
 func _check_entities() -> void:
 	var holder := Node.new()
 	root.add_child(holder)
-	var rabbit := _Entity.new()
-	rabbit.entity_kind = &"rabbit"
-	holder.add_child(rabbit)
-	rabbit._ensure_visual(Color.WHITE)
-	if rabbit.get_node_or_null("CreatureRig") != null:
-		_fail("rabbit spawned a part rig")
-	elif rabbit.get_node_or_null("MeshInstance3D") == null:
-		_fail("rabbit lost the capsule fallback")
-	else:
-		print("OK rabbit fallback capsule")
-	for kind in [&"boar", &"deer", &"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast"]:
+	for kind in [&"rabbit", &"bird", &"town_militia", &"boar", &"deer", &"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast", &"farm_bomber", &"thornling", &"shard_guard"]:
 		var entity := _Entity.new()
 		entity.entity_kind = kind
 		holder.add_child(entity)
@@ -235,7 +227,7 @@ func _check_crystal_body(kind: StringName, rig: Node3D, body_mi: MeshInstance3D,
 		if body_glows or glow_n > 0:
 			_fail("%s crystal cubes glow" % kind)
 		return
-	var mostly := kind == &"crystal_mite" or kind == &"crystal_wisp"
+	var mostly := kind == &"crystal_mite" or kind == &"crystal_wisp" or kind == &"farm_bomber" or kind == &"shard_guard"
 	if mostly and not body_glows:
 		_fail("%s body is not crystal" % kind)
 	elif not mostly and body_glows:
@@ -294,20 +286,23 @@ func _rgb_near(a: Color, b: Color) -> bool:
 func _check_enemy() -> void:
 	var holder := Node.new()
 	root.add_child(holder)
-	var enemy := _Enemy.new()
-	enemy.enemy_id = &"crystal_stag"
-	holder.add_child(enemy)
-	enemy.setup(&"crystal_stag", null, null)
-	var rig := enemy.get_node_or_null("CreatureRig")
-	var anim := enemy.get_node_or_null("CreatureRig/CreatureAnim") as AnimationPlayer
-	if rig == null or not rig.visible:
-		_fail("crystal stag enemy did not spawn a rig")
-	elif anim == null or not anim.has_animation("attack"):
-		_fail("crystal stag enemy rig has no attack clip")
-	elif _glow_count(rig) < 1:
-		_fail("crystal stag enemy rig has no crystal cubes")
-	else:
-		print("OK crystal stag enemy rig")
+	for kind in [&"crystal_stag", &"farm_bomber", &"thornling", &"shard_guard"]:
+		var enemy := _Enemy.new()
+		enemy.enemy_id = kind
+		holder.add_child(enemy)
+		enemy.setup(kind, null, null)
+		var rig := enemy.get_node_or_null("CreatureRig")
+		var anim := enemy.get_node_or_null("CreatureRig/CreatureAnim") as AnimationPlayer
+		if rig == null or not rig.visible:
+			_fail("%s enemy did not spawn a rig" % kind)
+		elif anim == null or not anim.has_animation("attack"):
+			_fail("%s enemy rig has no attack clip" % kind)
+		elif _glow_count(rig) < 1:
+			_fail("%s enemy rig has no crystal cubes" % kind)
+		elif enemy.get_node_or_null("VoxelProp") != null:
+			_fail("%s enemy kept a voxel prop beside the rig" % kind)
+		else:
+			print("OK %s enemy rig" % kind)
 	holder.free()
 
 

@@ -15,7 +15,7 @@ const _ANIM_STEPS := 16
 static func uses_rig(kind: StringName) -> bool:
 	if not USE_PART_RIG:
 		return false
-	return kind == &"boar" or kind == &"deer" or kind == &"crystal_mite" or kind == &"crystal_stag" or kind == &"crystal_wisp" or kind == &"corrupted_beast"
+	return not parts_for(kind).is_empty()
 
 
 static func parts_for(kind: StringName) -> Array:
@@ -23,6 +23,12 @@ static func parts_for(kind: StringName) -> Array:
 		return _boar_parts()
 	if kind == &"deer":
 		return _deer_parts()
+	if kind == &"rabbit":
+		return _rabbit_parts()
+	if kind == &"bird":
+		return _bird_parts()
+	if kind == &"town_militia":
+		return _militia_parts()
 	if kind == &"crystal_mite":
 		return _mite_parts()
 	if kind == &"crystal_stag":
@@ -31,6 +37,12 @@ static func parts_for(kind: StringName) -> Array:
 		return _wisp_parts()
 	if kind == &"corrupted_beast":
 		return _beast_parts()
+	if kind == &"farm_bomber":
+		return _bomber_parts()
+	if kind == &"thornling":
+		return _thornling_parts()
+	if kind == &"shard_guard":
+		return _guard_parts()
 	return []
 
 
@@ -73,6 +85,45 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.22, 0.14, 0.12),
 			Color(0.08, 0.08, 0.08),
 			_crystal_albedo(),
+		])
+	if kind == &"rabbit":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.72, 0.58, 0.42),
+			Color(0.92, 0.86, 0.74),
+			Color(0.86, 0.62, 0.58),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"bird":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.45, 0.58, 0.78),
+			Color(0.78, 0.86, 0.94),
+			Color(0.90, 0.55, 0.22),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"town_militia":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.35, 0.42, 0.62),
+			Color(0.82, 0.66, 0.48),
+			Color(0.62, 0.64, 0.70),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"farm_bomber" or kind == &"shard_guard":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			_crystal_albedo(),
+			Color(0.08, 0.08, 0.08),
+			Color(0.95, 0.45, 0.15),
+		])
+	if kind == &"thornling":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.32, 0.55, 0.28),
+			Color(0.18, 0.36, 0.16),
+			_crystal_albedo(),
+			Color(0.08, 0.08, 0.08),
 		])
 	return PackedColorArray()
 
@@ -338,6 +389,191 @@ static func _deer_parts() -> Array:
 	]
 
 
+static func _rabbit_parts() -> Array:
+	var hide := 1
+	var belly := 2
+	var ear := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 3, 2, 4, 7, 5, 9, hide)
+	_fill(body, 3, 2, 5, 7, 3, 8, belly)
+	var head: Array = []
+	_fill(head, 3, 4, 1, 7, 7, 4, hide)
+	_fill(head, 3, 7, 2, 4, 11, 3, ear)
+	_fill(head, 6, 7, 2, 7, 11, 3, ear)
+	_fill(head, 3, 5, 1, 4, 6, 2, eye)
+	_fill(head, 6, 5, 1, 7, 6, 2, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 2, 0, 4, 4, 2, 6, hide)
+	_fill(leg_l, 2, 0, 7, 4, 2, 9, hide)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 4, 8, 2, 6, hide)
+	_fill(leg_r, 6, 0, 7, 8, 2, 9, hide)
+	var tail: Array = []
+	_fill(tail, 4, 4, 9, 6, 6, 11, belly)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _bird_parts() -> Array:
+	var body_c := 1
+	var wing := 2
+	var beak := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 4, 2, 4, 7, 5, 9, body_c)
+	_fill(body, 4, 2, 5, 7, 3, 8, wing)
+	var head: Array = []
+	_fill(head, 4, 4, 1, 7, 7, 4, body_c)
+	_fill(head, 5, 4, 0, 6, 5, 1, beak)
+	_fill(head, 4, 5, 1, 5, 6, 2, eye)
+	_fill(head, 6, 5, 1, 7, 6, 2, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 4, 0, 5, 5, 2, 6, beak)
+	_fill(leg_l, 4, 0, 7, 5, 2, 8, beak)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 5, 7, 2, 6, beak)
+	_fill(leg_r, 6, 0, 7, 7, 2, 8, beak)
+	var wing_l: Array = []
+	_fill(wing_l, 0, 3, 4, 4, 4, 8, wing)
+	var wing_r: Array = []
+	_fill(wing_r, 7, 3, 4, 11, 4, 8, wing)
+	var tail: Array = []
+	_fill(tail, 5, 3, 9, 6, 4, 12, wing)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("wing_l", "wing", "Wing_L", "Body", "center", wing_l),
+		_part("wing_r", "wing", "Wing_R", "Body", "center", wing_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _militia_parts() -> Array:
+	var cloth := 1
+	var skin := 2
+	var metal := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 3, 4, 3, 7, 9, 7, cloth)
+	_fill(body, 3, 4, 4, 7, 6, 6, metal)
+	var head: Array = []
+	_fill(head, 3, 9, 3, 7, 12, 6, skin)
+	_fill(head, 3, 11, 3, 7, 13, 6, metal)
+	_fill(head, 3, 10, 5, 4, 11, 6, eye)
+	_fill(head, 6, 10, 5, 7, 11, 6, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 1, 3, 5, 4, 5, cloth)
+	_fill(leg_l, 3, 0, 3, 5, 1, 5, metal)
+	var leg_r: Array = []
+	_fill(leg_r, 5, 1, 4, 7, 4, 6, cloth)
+	_fill(leg_r, 5, 0, 4, 7, 1, 6, metal)
+	var tail: Array = []
+	_fill(tail, 3, 5, 6, 7, 8, 8, cloth)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _bomber_parts() -> Array:
+	var crystal := 1
+	var dark := 2
+	var fuse := 3
+	var body: Array = []
+	_fill(body, 2, 2, 3, 8, 6, 9, crystal)
+	var head: Array = []
+	_fill(head, 3, 5, 1, 7, 8, 4, crystal)
+	_fill(head, 3, 6, 1, 4, 7, 2, dark)
+	_fill(head, 6, 6, 1, 7, 7, 2, dark)
+	var leg_l: Array = []
+	_fill(leg_l, 2, 0, 4, 4, 2, 6, crystal)
+	_fill(leg_l, 2, 0, 7, 4, 2, 9, crystal)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 4, 8, 2, 6, crystal)
+	_fill(leg_r, 6, 0, 7, 8, 2, 9, crystal)
+	var tail: Array = []
+	_fill(tail, 4, 6, 5, 6, 8, 7, fuse)
+	_fill(tail, 4, 8, 5, 6, 10, 7, crystal)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
+static func _thornling_parts() -> Array:
+	var leaf := 1
+	var dark := 2
+	var crystal := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 4, 2, 4, 6, 8, 7, leaf)
+	_fill(body, 3, 4, 4, 4, 7, 6, crystal)
+	_fill(body, 6, 5, 4, 7, 8, 6, crystal)
+	var head: Array = []
+	_fill(head, 4, 8, 3, 6, 11, 6, leaf)
+	_fill(head, 4, 9, 3, 5, 10, 4, eye)
+	_fill(head, 5, 9, 3, 6, 10, 4, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 0, 4, 5, 2, 6, dark)
+	_fill(leg_l, 3, 0, 6, 5, 2, 8, dark)
+	var leg_r: Array = []
+	_fill(leg_r, 5, 0, 4, 7, 2, 6, dark)
+	_fill(leg_r, 5, 0, 6, 7, 2, 8, dark)
+	var tail: Array = []
+	_fill(tail, 4, 6, 7, 6, 8, 10, crystal)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
+static func _guard_parts() -> Array:
+	var crystal := 1
+	var dark := 2
+	var body: Array = []
+	_fill(body, 3, 4, 3, 7, 10, 7, crystal)
+	var head: Array = []
+	_fill(head, 3, 10, 3, 7, 13, 6, crystal)
+	_fill(head, 3, 11, 5, 4, 12, 6, dark)
+	_fill(head, 6, 11, 5, 7, 12, 6, dark)
+	_fill(head, 4, 13, 4, 6, 16, 6, crystal)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 0, 3, 5, 4, 5, crystal)
+	_fill(leg_l, 3, 0, 3, 5, 1, 5, dark)
+	var leg_r: Array = []
+	_fill(leg_r, 5, 0, 4, 7, 4, 6, crystal)
+	_fill(leg_r, 5, 0, 4, 7, 1, 6, dark)
+	var tail: Array = []
+	_fill(tail, 3, 7, 6, 4, 12, 7, crystal)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
 static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = []) -> Dictionary:
 	var spec := {
 		"id": id,
@@ -438,24 +674,31 @@ static func _attach_anims(rig: Node3D) -> void:
 	player.root_node = NodePath("..")
 	player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	rig.add_child(player)
+	var skel := rig.get_node_or_null("Skeleton") as Skeleton3D
+	var winged := skel != null and skel.find_bone("Wing_L") >= 0
 	var lib := AnimationLibrary.new()
-	lib.add_animation(&"idle", _anim_idle())
-	lib.add_animation(&"walk", _anim_walk())
+	lib.add_animation(&"idle", _anim_idle(winged))
+	lib.add_animation(&"walk", _anim_walk(winged))
 	lib.add_animation(&"attack", _anim_attack())
 	player.add_animation_library(&"", lib)
 
 
-static func _anim_idle() -> Animation:
+static func _anim_idle(winged: bool) -> Animation:
 	var anim := _clip()
 	_pos_sin(anim, "Head", Vector3.ZERO, _Pose.IDLE_LIFT, 1.0)
+	_pos_sin(anim, "Body", Vector3.ZERO, _Pose.IDLE_LIFT * 0.45, 1.0)
+	if winged:
+		_wing_flap(anim, 1.0)
 	return anim
 
 
-static func _anim_walk() -> Animation:
+static func _anim_walk(winged: bool) -> Animation:
 	var anim := _clip()
 	_pos_abs_sin(anim, "Head", _Pose.WALK_BOB, 2.0)
 	_leg_gait(anim, "Leg_L", -1.0)
 	_leg_gait(anim, "Leg_R", 1.0)
+	if winged:
+		_wing_flap(anim, 2.0)
 	return anim
 
 
@@ -465,6 +708,18 @@ static func _anim_attack() -> Animation:
 	_rot_hold(anim, "Leg_L", -_Pose.ATTACK_LEG)
 	_rot_hold(anim, "Leg_R", _Pose.ATTACK_LEG)
 	return anim
+
+
+static func _wing_flap(anim: Animation, freq: float) -> void:
+	_wing_bone(anim, "Wing_L", -1.0, freq)
+	_wing_bone(anim, "Wing_R", 1.0, freq)
+
+
+static func _wing_bone(anim: Animation, bone_name: String, side: float, freq: float) -> void:
+	var track := _track(anim, Animation.TYPE_ROTATION_3D, bone_name)
+	for i in _ANIM_STEPS:
+		var t := _ANIM_LEN * float(i) / float(_ANIM_STEPS)
+		anim.rotation_track_insert_key(track, t, Quaternion(Vector3.FORWARD, sin(t * freq) * side * 0.65))
 
 
 static func _leg_gait(anim: Animation, bone_name: String, side: float) -> void:

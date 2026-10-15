@@ -112,8 +112,11 @@ func _run() -> void:
 	entity.refresh_visual()
 	await process_frame
 	var evoxel: Node3D = entity.get_node_or_null("VoxelProp") as Node3D
+	var erig: Node3D = entity.get_node_or_null("CreatureRig") as Node3D
 	var esprite: Sprite3D = entity.get_node_or_null("Sprite3D") as Sprite3D
-	var entity_ok := evoxel != null and evoxel.visible and evoxel.get_child_count() > 0
+	var entity_ok := erig != null and erig.visible and erig.get_child_count() > 0
+	if not entity_ok:
+		entity_ok = evoxel != null and evoxel.visible and evoxel.get_child_count() > 0
 	if not entity_ok:
 		entity_ok = _sprite_bound(esprite)
 	if not entity_ok:

@@ -29,3 +29,7 @@ Boar and deer are voxel grids on that same trial edge (`player_height / 17` from
 ## 2026-10-15 — crystal creatures use the same trial cube
 
 Crystal mite, crystal stag, crystal wisp, and corrupted beast use that same trial edge. A mite is fewer cubes, not a smaller cube. This is not a lock of 8 or 16 cubes per terrain block.
+
+## 2026-10-15 — remaining creatures use the same trial cube
+
+Bird, rabbit, town militia, farm bomber, thornling, and shard guard use that same trial edge. A bird is fewer cubes, not a smaller cube. Town villager, origin warden, and spawn elite were not in this pass. This is not a lock of 8 or 16 cubes per terrain block.
