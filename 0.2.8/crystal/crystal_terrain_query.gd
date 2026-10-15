@@ -171,6 +171,12 @@ func get_flow_factor_at(pos: Vector2i, tile_id: int) -> float:
 		return _flow_cache[cache_key]
 	if _measure_enabled:
 		_flow_misses += 1
+	var blocked := _structure_block_factor(pos)
+	if blocked >= 0.0:
+		_flow_cache[cache_key] = blocked
+		if _measure_enabled:
+			_record_op("get_flow_factor_at", t0, "cache_miss")
+		return blocked
 	var factor := _base_flow_factor(pos, tile_id)
 	factor *= _denial_mult_at(pos)
 	factor *= _biome_spread_mult(pos)
@@ -248,6 +254,20 @@ func get_standing_water_level(pos: Vector2i) -> float:
 	if is_water_tile(get_tile(pos)):
 		return 1.0
 	return 0.0
+
+
+func _structure_block_factor(pos: Vector2i) -> float:
+	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
+	if not feat.has("structure_id"):
+		return -1.0
+	if bool(feat.get("is_passage", false)):
+		return -1.0
+	if feat.has("structure_blocks_spread") and not bool(feat.get("structure_blocks_spread")):
+		return -1.0
+	var blocked := 0.0
+	if sim_config != null:
+		blocked = float(sim_config.structure_block_flow_factor)
+	return clampf(blocked, 0.0, 1.0)
 
 
 func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:

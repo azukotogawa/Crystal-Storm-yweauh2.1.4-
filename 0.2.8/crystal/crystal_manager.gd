@@ -86,6 +86,7 @@ var _perf_sim_hz: float = 20.0
 var _sim_accum: float = 0.0
 var _stats_dirty: bool = true
 var _sim_tick_id: int = 0
+var _last_sim_delta: float = 0.05
 var _perf_mesh_budget_us: int = 2500
 var _absorption_scan_offset: int = 0
 var _absorption_cells_per_tick: int = 64
@@ -1387,6 +1388,7 @@ func _tick_crystal_sim(delta: float) -> void:
 			return
 		delta *= float(_perf_crystal_skip_frames + 1)
 
+	_last_sim_delta = delta
 	_sim_tick_id += 1
 	if _tick_trace_armed and not _tick_trace_active and not _tick_trace_done:
 		_tick_trace_start("tick_crystal_sim")
@@ -1481,32 +1483,19 @@ func _finish_tick_side_effects(events: Array, profiler = null) -> void:
 	_erode_structures(events)
 
 
-func _erode_structures(events: Array) -> void:
+func _erode_structures(_events: Array) -> void:
 	if _StructureIntegrity.live_count() <= 0 or _simulation == null or _simulation.fluid == null:
-		return
-	var changed: Array = []
-	for ev_v in events:
-		if not ev_v is Dictionary:
-			continue
-		if int(ev_v.get("kind", 0)) != _CrystalSimEvents.Kind.FLOW_BATCH:
-			continue
-		var listed = ev_v.get("changed", [])
-		if listed is Array:
-			changed = listed
-	if changed.is_empty():
 		return
 	var fluid = _simulation.fluid
 	var min_d := 0.05
+	var per_second := 1.0
 	if fluid.config != null:
 		min_d = float(fluid.config.min_depth)
-	var live: Array[Vector2i] = []
-	for raw in changed:
-		if raw is Vector2i and float(fluid.depth.get(raw, 0.0)) >= min_d:
-			live.append(raw)
-	if live.is_empty():
+		per_second = float(fluid.config.structure_erode_rate)
+	if per_second <= 0.0 or _last_sim_delta <= 0.0:
 		return
 	var editor = get_tree().get_first_node_in_group("terrain_editor") if is_inside_tree() else null
-	_StructureIntegrity.erode_columns(live, editor)
+	_StructureIntegrity.erode_pressed(fluid, min_d, per_second * _last_sim_delta, editor)
 
 
 func _dispatch_sim_events(events: Array) -> void:

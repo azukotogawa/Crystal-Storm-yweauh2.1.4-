@@ -57,6 +57,8 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var tree_flow_factor: float = 0.22
 @export var farmland_flow_factor: float = 0.45
 @export var built_wall_flow_factor: float = 0.12
+@export var structure_block_flow_factor: float = 0.0
+@export var structure_erode_rate: float = 1.0
 
 @export_group("Absorption")
 @export var grass_absorb_rate: float = 0.14
