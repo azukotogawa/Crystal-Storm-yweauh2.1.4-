@@ -8,6 +8,10 @@ const _Fluid = preload("res://crystal/crystal_fluid_sim.gd")
 const _TerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _Ctrl = preload("res://crystal/spawn_point_controller.gd")
 const _Spawn = preload("res://crystal/crystal_spawn_point.gd")
+const _CrystalManager = preload("res://crystal/crystal_manager.gd")
+const _GameManager = preload("res://game/game_manager.gd")
+const _Weapon = preload("res://weapons/weapon_controller.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
 const _SimConfig = preload("res://config/crystal_sim_config.gd")
 
 var _failed: int = 0
@@ -26,6 +30,7 @@ func _fail(msg: String) -> void:
 func _run() -> void:
 	_check_config()
 	_check_emission()
+	_check_damage_victory()
 	if _failed == 0:
 		await _check_world_start()
 	_finish()
@@ -136,6 +141,88 @@ func _check_emission() -> void:
 		_fail("weaken_factor still reduced emission")
 		return
 	print("OK one emitter pressure=%.1f secondaries unchanged" % expected)
+
+
+func _check_damage_victory() -> void:
+	_Registry.ensure_builtins()
+	var origin = _Registry.get_def(&"origin_boss")
+	var ruin = _Registry.get_def(&"ruin_miniboss")
+	var sealed = _Spawn.from_def(1, Vector2i(0, 0), origin)
+	var side = _Spawn.from_def(2, Vector2i(30, 0), ruin)
+	var ctrl = _Ctrl.new()
+	ctrl.origin_warden_alive = true
+	ctrl.set_spawns([sealed, side])
+	var sealed_before: float = sealed.health
+	ctrl.damage_spawn_at_world(sealed.world_pos, 25.0, 2.0)
+	if sealed.health >= sealed_before - 0.01:
+		_fail("damage_spawn_at_world missed a sealed crystal")
+		return
+	if not sealed.active:
+		_fail("chip damage destroyed the sealed crystal")
+		return
+	if not side.active or side.health < ruin.max_health - 0.01:
+		_fail("seal bypass hit a different spawn")
+		return
+	print("OK damage ignores seal hp %.0f→%.0f" % [sealed_before, sealed.health])
+
+	var crystal_def = _Def.resolved_crystal()
+	var cell := Vector2i(6, 6)
+	var spawn = _Spawn.from_def(1, cell, crystal_def)
+	if spawn.health != _Def.RELEASED_CRYSTAL_HEALTH:
+		_fail("placed crystal health %.0f" % spawn.health)
+		return
+	var weapon_src := (_Weapon as GDScript).source_code
+	if "damage_spawn_at_world" not in weapon_src or "boss_sealed" in weapon_src or "can_damage_spawn" in weapon_src:
+		_fail("weapon_controller must hit damage_spawn_at_world with no seal check")
+		return
+	var cm := _CrystalManager.new()
+	cm.harness_setup_spawns([spawn])
+	var gm := _GameManager.new()
+	gm._crystal = cm
+	cm.all_spawns_destroyed.connect(gm._on_all_spawns_destroyed)
+	var sword: Dictionary = _ItemTypes.get_def("wooden_sword")
+	var chip: float = float(sword.get("damage", 0.0))
+	var reach: float = float(sword.get("range", 2.0))
+	var before: float = spawn.health
+	cm.damage_spawn_at_world(cell, chip, reach)
+	if gm.run_state != _GameManager.RunState.PLAYING or gm.phase == _GameManager.Phase.VICTORY:
+		_fail("one weapon hit ended the run")
+		gm.free()
+		cm.free()
+		return
+	if spawn.health >= before - chip + 0.01:
+		_fail("weapon damage_spawn_at_world missed the crystal")
+		gm.free()
+		cm.free()
+		return
+	if not cm.damage_spawn_at_world(cell, spawn.health, reach):
+		_fail("killing blow missed the crystal")
+		gm.free()
+		cm.free()
+		return
+	if spawn.active:
+		_fail("crystal still active after the killing blow")
+		gm.free()
+		cm.free()
+		return
+	if gm.victory_reason != "crystal":
+		_fail("victory_reason expected crystal got %s" % gm.victory_reason)
+		gm.free()
+		cm.free()
+		return
+	if gm.phase != _GameManager.Phase.VICTORY:
+		_fail("phase expected VICTORY")
+		gm.free()
+		cm.free()
+		return
+	if gm.run_state != _GameManager.RunState.WON:
+		_fail("run_state expected WON")
+		gm.free()
+		cm.free()
+		return
+	print("OK crystal damage to victory hp %.0f→%.0f reason=%s" % [before, spawn.health, gm.victory_reason])
+	gm.free()
+	cm.free()
 
 
 func _finish() -> void:

@@ -178,13 +178,23 @@ func _apply_crystal_damage(delta: float) -> void:
 
 
 func _on_all_spawns_destroyed() -> void:
+	if _GameConfig.SINGLE_CRYSTAL:
+		print("[Game] Victory — the crystal was destroyed.")
+		victory_reason = "crystal"
+		_enter_victory()
+		_set_won()
+		return
 	print("[Game] Victory — all crystal spawn points destroyed.")
 	if victory_reason == "":
 		victory_reason = "spawns"
+	_enter_victory()
+	_set_won()
+
+
+func _enter_victory() -> void:
 	if phase != Phase.VICTORY:
 		phase = Phase.VICTORY
 		phase_changed.emit(phase)
-	_set_won()
 
 
 func notify_boss_defeated() -> void:

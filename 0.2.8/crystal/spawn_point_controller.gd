@@ -50,7 +50,9 @@ func count_active_non_boss() -> int:
 func can_damage_spawn(spawn: CrystalSpawnPoint) -> bool:
 	if spawn == null or not spawn.active:
 		return false
-	if not _GameConfig.SINGLE_CRYSTAL and spawn.is_boss and count_active_non_boss() > 0:
+	if _GameConfig.SINGLE_CRYSTAL:
+		return true
+	if spawn.is_boss and count_active_non_boss() > 0:
 		return false
 	if spawn.is_boss and origin_warden_alive:
 		return false
