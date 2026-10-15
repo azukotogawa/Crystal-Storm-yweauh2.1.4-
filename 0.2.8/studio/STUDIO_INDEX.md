@@ -20,6 +20,7 @@ Compact map of `/studio`. Do not duplicate project facts here. Point agents to t
 | `INPUT_CONTRACT.md` | Fixed input bindings (WASD, Q/E, LMB/RMB, Tab, sword ≠ dig) |
 | `PLAYTEST_VISUAL_CONTRACT.md` | Ramp geometry, coordinate language, edit/remesh, screenshot rule |
 | `ALPHA_VISUAL_CONTRACT.md` | Terrain fidelity, scale, corner-ramp validity, crystal future constraints |
+| `ART-STYLE.md` | Character and creature cubes: grid size, palette, sun shade, corruption tint, storage |
 
 ## Domain briefs (implemented surface only)
 
@@ -64,6 +65,7 @@ Compact map of `/studio`. Do not duplicate project facts here. Point agents to t
 | Architecture change | `ENGINEERING_AUDIT.md`, `DECISIONS.md`, `PROJECT_GRAPH.md` |
 | Verification / regression | `AI_DEVELOPMENT.md`, `BACKLOG.md` |
 | Content / assets | `CONTENT_DIRECTOR.md`, `WEEK_PLAN.md` (Agent 2 rules) |
+| Character or creature art | `ART-STYLE.md`, `QUESTIONS.md` (8 vs 16 cubes, `.vox` or code grids) |
 
 ## Rules for agents
 
