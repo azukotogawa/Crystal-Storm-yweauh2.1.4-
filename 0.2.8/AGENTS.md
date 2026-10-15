@@ -78,3 +78,4 @@ Core gameplay pillars:
 - **Authoritative engine architecture:** `ENGINE_REFERENCE.md` (Engine 1.0 validation: dependency/startup/runtime graphs, pipelines, thread boundaries, public APIs, debt). Prefer it over older studio engine notes when they conflict.
 - Update this AGENTS.md when architecture or major conventions change.
 - The game premise file `premise` contains the full original design notes.
+- **Decisions:** `studio/DECISIONS.md` (ledger, D-IDs, verify marks) and `studio/ATLAS.md` (topic index); log unanswered design questions in `studio/QUESTIONS.md`.

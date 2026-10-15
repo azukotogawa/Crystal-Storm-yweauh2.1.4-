@@ -156,3 +156,5 @@ Agents should treat repository code and current Studio documentation as the auth
 8. Avoid unrelated refactors, giant repeated prompts, and unnecessary full-suite runs during iteration. Run the full suite at meaningful milestones.
 
 **The mission:** Build a coherent, compelling 3D voxel world in which the player can reshape the environment, crystal actively transforms it, and every system contributes to an escalating struggle for control of the world.
+
+**Decisions:** see `studio/DECISIONS.md` (indexed by topic in `studio/ATLAS.md`).
