@@ -23,7 +23,7 @@ Crystal Storm should retain its own identity: spatial problem-solving, terrain m
 4. Manipulate terrain, water, structures, and routes to influence the simulation.
 5. Fight crystal creatures and wear down the single crystal; earn XP and levels along the way (D-230).
 6. Survive increasing pressure while protecting towns and managing crystal coverage.
-7. Survive the boss mob that appears as the crystal nears destruction, and destroy the crystal to win before the world is overrun.
+7. Survive the boss mob that appears as the crystal nears destruction, and destroy the crystal to win; dying is the only way to lose.
 
 The central loop is:
 
@@ -89,7 +89,7 @@ Vegetation, animals, ruins, towns, and terrain features already contribute to wo
 
 The game includes melee and ranged combat, crystal enemies, spawn-point destruction, enemy unlocks, relic/stat foundations, towns, militia, ruins, wildlife, and vegetation.
 
-Victory (decided 2026-10-14): destroy the single crystal (D-226). The boss is a mob/entity that spawns when the player is close to destroying the crystal (D-227). The older multi-spawn, sealed-origin-boss victory is superseded. Loss conditions are open (Q-027); the code currently has player death, excessive crystal coverage and town loss.
+Victory (decided 2026-10-14): destroy the single crystal (D-226). The boss is a mob/entity that spawns when the player is close to destroying the crystal (D-227). The older multi-spawn, sealed-origin-boss victory is superseded. Loss (decided 2026-10-14, D-232): players lose only when they die. Crystal coverage and town loss no longer end the run.
 
 Next systems: a level/XP system (confirmed next, D-230), then skill abilities (D-231).
 

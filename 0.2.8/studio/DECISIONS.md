@@ -280,7 +280,7 @@ Decided by Cole and his brother on 2026-10-14 (11:40 PM PT). These override the 
 - D-229 [art] Lighting and shadows must improve (real-time shadows, ambient occlusion, characters and structures casting shadows) | status: decided | 2026-10-14
 - D-230 [progression] A level/XP system is the next confirmed system | status: decided | 2026-10-14
 - D-231 [progression] Skill abilities follow the level/XP system | status: decided | 2026-10-14
-- D-232 [progression] Loss conditions under the one-crystal premise are open; see Q-027 | status: proposed | 2026-10-14
+- D-232 [progression] Loss condition: players lose only when they die (death-only loss; no crystal-coverage, town-loss or timer loss) | status: decided | 2026-10-14 | note: answers Q-027
 
 ## Rejected / Superseded Decisions
 

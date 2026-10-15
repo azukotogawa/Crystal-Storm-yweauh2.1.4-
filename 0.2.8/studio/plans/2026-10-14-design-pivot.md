@@ -1,6 +1,6 @@
 # Design Pivot Plan (2026-10-14)
 
-Plan only, no code. Source decisions: D-221..D-232 in `studio/DECISIONS.md`; open questions Q-027..Q-032 in `studio/QUESTIONS.md`. File paths are relative to `0.2.8/` and come from grepping the `cs/playtest-0.2.9` tree on 2026-10-14. Every queue step is 30 minutes or less, runs one at a time, keeps all code comment-free, reads `AGENTS.md` and `studio/VISION.md` first, and ends with the VERIFY.md QUICK_CHECK passing plus a local commit. Not queued yet: Cole decides when.
+Plan only, no code. Source decisions: D-221..D-232 in `studio/DECISIONS.md`; open questions Q-028..Q-032 (Q-027 answered: death-only loss, D-232) in `studio/QUESTIONS.md`. File paths are relative to `0.2.8/` and come from grepping the `cs/playtest-0.2.9` tree on 2026-10-14. Every queue step is 30 minutes or less, runs one at a time, keeps all code comment-free, reads `AGENTS.md` and `studio/VISION.md` first, and ends with the VERIFY.md QUICK_CHECK passing plus a local commit. Not queued yet: Cole decides when.
 
 ## 1. One-crystal refactor (D-225, D-226, D-227)
 
@@ -60,12 +60,7 @@ Structures (Sanctum 2 style): entry points `weapon_controller.gd` `_try_place_se
 ## 4. Win and loss
 
 Win (decided, D-226/D-227): destroy the single crystal. The boss mob spawns when the crystal is close to destroyed and fights near it.
-Loss (open, Q-027), options for Cole:
-- A. Death only: the run ends when the player (or whole party) dies.
-- B. Overrun: crystal coverage passes a threshold (current `max_crystal_coverage` 0.72) plus death.
-- C. Consumed: the crystal reaches the treasure hunters' camp/town (fits the premise) plus death.
-- D. Storm clock: the crystal finishes charging after N phases/days (Vampire Survivors-style pressure).
-Recommendation: B or C plus death; both reuse existing code (`_check_crystal_overrun`, `_on_town_fallen`).
+Loss (decided, D-232): players lose only when they die. Queue step: in `game/game_manager.gd` keep `_on_player_died` -> `_set_lost`; stop `_check_crystal_overrun` and `_on_town_fallen` from ending the run (coverage and town loss can stay as pressure/penalties), and update `verify_playable_loop.gd` / `verify_full_game_loop.gd`.
 
 ## 5. World density (D-228)
 
