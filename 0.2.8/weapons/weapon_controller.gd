@@ -35,6 +35,7 @@ var crystal_manager: CrystalManager
 var world: InfiniteNoiseWorld
 
 var _cooldown_timer: float = 0.0
+var _last_break_cells: Array[Vector3i] = []
 var _active_hotbar_index: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
@@ -257,7 +258,22 @@ func _try_dig_tool() -> void:
 	var def := ItemTypes.get_def(item_id)
 	if def.is_empty():
 		return
+	var reach := float(def.get("range", _ActionTargeting.INTERACTION_RANGE))
+	var aim := _aim_forward(reach)
+	var anchor := _dig_anchor_cell(reach)
+	_last_break_cells = break_cells_for(item_id, anchor, aim)
 	_do_dig_attack(item_id, def)
+
+
+func break_cells_for(item_id: String, anchor: Vector3i, aim: Vector3) -> Array[Vector3i]:
+	return ItemTypes.break_cells(ItemTypes.break_shape_for(item_id), anchor, aim)
+
+
+func _dig_anchor_cell(range_v: float) -> Vector3i:
+	var target := _resolve_terrain_target(range_v)
+	if target == Vector3.ZERO:
+		return Vector3i.ZERO
+	return Vector3i(floori(target.x), floori(target.y), floori(target.z))
 
 
 func _try_use_consumable() -> bool:

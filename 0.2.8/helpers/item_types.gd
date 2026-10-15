@@ -5,8 +5,16 @@ const _ItemDef = preload("res://config/item_def.gd")
 
 enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
+enum BreakShape { SINGLE, VERTICAL_1X2, LINE_3, FACE_3X3 }
 
 const MAX_STACK := 99
+const MULTI_BLOCK_BREAK := true
+const BREAK_SHAPE_ORDER: Array[int] = [
+	BreakShape.SINGLE,
+	BreakShape.VERTICAL_1X2,
+	BreakShape.LINE_3,
+	BreakShape.FACE_3X3,
+]
 
 static var _defs: Dictionary = {}
 
@@ -77,6 +85,8 @@ const ITEMS: Dictionary = {
 		"range": 3.0,
 		"cooldown": 0.1,
 		"dig_radius": 1,
+		"break_shape": BreakShape.SINGLE,
+		"tool_tier": 0,
 		"anim_kind": 1,
 		"anim_duration": 0.26,
 		"impact_ratio": 0.45,
@@ -275,6 +285,72 @@ static func breaks_blocks(item_id: String) -> bool:
 	if int(def.get("category", -1)) == Category.TOOL:
 		return true
 	return int(def.get("dig_radius", 0)) > 0
+
+
+static func break_shape_for(item_id: String, tier: int = -1) -> int:
+	if not MULTI_BLOCK_BREAK or not breaks_blocks(item_id):
+		return BreakShape.SINGLE
+	var def := get_def(item_id)
+	var base := int(def.get("break_shape", BreakShape.SINGLE))
+	var steps := tier if tier >= 0 else int(def.get("tool_tier", 0))
+	return widen_shape(base, steps)
+
+
+static func widen_shape(shape: int, steps: int) -> int:
+	var index := BREAK_SHAPE_ORDER.find(shape)
+	if index < 0:
+		index = 0
+	var next := clampi(index + maxi(steps, 0), 0, BREAK_SHAPE_ORDER.size() - 1)
+	return int(BREAK_SHAPE_ORDER[next])
+
+
+static func break_shape_name(shape: int) -> String:
+	match shape:
+		BreakShape.VERTICAL_1X2:
+			return "1x2_vertical"
+		BreakShape.LINE_3:
+			return "line_3"
+		BreakShape.FACE_3X3:
+			return "face_3x3"
+		_:
+			return "single"
+
+
+static func aim_cardinal(aim: Vector3) -> Vector3i:
+	if absf(aim.x) < 0.0001 and absf(aim.z) < 0.0001:
+		return Vector3i(0, 0, 1)
+	if absf(aim.x) >= absf(aim.z):
+		return Vector3i(1 if aim.x >= 0.0 else -1, 0, 0)
+	return Vector3i(0, 0, 1 if aim.z >= 0.0 else -1)
+
+
+static func break_cells(shape: int, anchor: Vector3i, aim: Vector3) -> Array[Vector3i]:
+	var use_shape := shape if MULTI_BLOCK_BREAK else BreakShape.SINGLE
+	var forward := aim_cardinal(aim)
+	var right := Vector3i(forward.z, 0, -forward.x)
+	var up := Vector3i(0, 1, 0)
+	var cells: Array[Vector3i] = []
+	for off: Vector2i in _shape_offsets(use_shape):
+		cells.append(anchor + right * off.x + up * off.y)
+	return cells
+
+
+static func _shape_offsets(shape: int) -> Array[Vector2i]:
+	match shape:
+		BreakShape.VERTICAL_1X2:
+			return [Vector2i(0, 0), Vector2i(0, 1)]
+		BreakShape.LINE_3:
+			return [Vector2i(0, 0), Vector2i(-1, 0), Vector2i(1, 0)]
+		BreakShape.FACE_3X3:
+			var face: Array[Vector2i] = [Vector2i(0, 0)]
+			for uy in range(-1, 2):
+				for rx in range(-1, 2):
+					if rx == 0 and uy == 0:
+						continue
+					face.append(Vector2i(rx, uy))
+			return face
+		_:
+			return [Vector2i(0, 0)]
 
 
 ## Right-click use that must not also place a block. Placeable blocks are not abilities.
