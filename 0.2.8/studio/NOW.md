@@ -17,7 +17,7 @@ Playable-slice focus: **combat fuels the maze** + **wet ground is a readable cry
 
 ## Remaining (highest value next)
 1. Live window: kill toasts, water-replace texture, wet-crawl crystal on rivers.
-2. Character and creature art direction is written in `studio/ART-STYLE.md` (docs only, 2026-10-14). Cube count 8 vs 16, and code grids vs `.vox`, stay open in `studio/QUESTIONS.md`.
+2. Bird, rabbit, town militia, farm bomber, thornling, and shard guard are voxel cube rigs (2026-10-15). Town villager, origin warden, and spawn elite still use the old prop. Cube count 8 vs 16, and code grids vs `.vox`, stay open in `studio/QUESTIONS.md`.
 3. Known pre-existing suite flakes: terrain_build, terrain_feel, terrain_input_single, crystal_mesh_floor, building_sprint, chunk_atlas, gate_bridge_visual_identity, save_transaction, save_slot_main.
 
 ## Rules
