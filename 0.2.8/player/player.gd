@@ -20,6 +20,7 @@ const _Dash = preload("res://player/dash_skill.gd")
 const _Slam = preload("res://player/ground_slam_skill.gd")
 const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 const _Wall = preload("res://player/quick_wall_skill.gd")
+const _Passives = preload("res://player/skill_passives.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
@@ -936,6 +937,7 @@ func _pull_level_rewards() -> void:
 	var svc := get_tree().get_first_node_in_group("progression_service")
 	if svc and svc.has_method("apply_level_rewards"):
 		svc.apply_level_rewards(stat_component)
+	_pull_passives()
 
 
 func _publish_health() -> void:
@@ -994,7 +996,14 @@ func apply_save_state(data: Dictionary) -> void:
 	if _floor_probe:
 		_floor_probe.feet_height_hint = voxel_position.y
 	_sync_global_from_voxel()
+	_pull_passives()
 	_publish_health()
+
+
+func _pull_passives() -> void:
+	if stat_component == null:
+		return
+	_Passives.apply(stat_component, _skill_service())
 
 
 func set_damage_origin(origin: Vector3) -> void:
@@ -1151,6 +1160,8 @@ func _bind_dash() -> void:
 		return
 	if not skills.skill_activated.is_connected(_on_skill_activated):
 		skills.skill_activated.connect(_on_skill_activated)
+	if skills.has_signal("skill_unlocked") and not skills.skill_unlocked.is_connected(_on_skill_unlocked):
+		skills.skill_unlocked.connect(_on_skill_unlocked)
 	_dash_bound = true
 
 
@@ -1160,7 +1171,13 @@ func _unbind_dash() -> void:
 	var skills = _skill_service()
 	if skills != null and skills.has_signal("skill_activated") and skills.skill_activated.is_connected(_on_skill_activated):
 		skills.skill_activated.disconnect(_on_skill_activated)
+	if skills != null and skills.has_signal("skill_unlocked") and skills.skill_unlocked.is_connected(_on_skill_unlocked):
+		skills.skill_unlocked.disconnect(_on_skill_unlocked)
 	_dash_bound = false
+
+
+func _on_skill_unlocked(_skill_id: StringName) -> void:
+	_pull_passives()
 
 
 func _scene_tree() -> SceneTree:

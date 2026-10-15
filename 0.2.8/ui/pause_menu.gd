@@ -61,6 +61,9 @@ func toggle() -> void:
 func open() -> void:
 	visible = true
 	_GameplayInput.pause_open = true
+	var skills = get_tree().get_first_node_in_group("skill_tree") if get_tree() else null
+	if skills and skills.has_method("close"):
+		skills.close()
 	get_tree().paused = true
 	_sync_settings_widgets()
 	_refresh_debug_overlay()

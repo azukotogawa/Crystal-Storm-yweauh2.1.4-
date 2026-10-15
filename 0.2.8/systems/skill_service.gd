@@ -5,6 +5,7 @@ const _Progression = preload("res://systems/progression_service.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _Dash = preload("res://player/dash_skill.gd")
 const _Pulse = preload("res://player/crystal_pulse_skill.gd")
+const _Passives = preload("res://player/skill_passives.gd")
 
 const SKILLS_ENABLED := true
 const ACTIVE_SLOTS := 3
@@ -108,6 +109,7 @@ func unlock(skill_id: StringName) -> bool:
 		return false
 	_unlocked[skill_id] = true
 	skill_unlocked.emit(skill_id)
+	_Passives.push(self)
 	return true
 
 
@@ -198,6 +200,7 @@ func import_state(data: Dictionary) -> void:
 			_slots[i] = key
 			if i < cds.size():
 				_cooldown[i] = maxf(float(cds[i]), 0.0)
+	_Passives.push(self)
 
 
 func tree_ids(tree: StringName) -> Array:

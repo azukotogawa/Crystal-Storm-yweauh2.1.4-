@@ -51,6 +51,11 @@ func _ensure_live_inspector() -> void:
 		pause.name = "PauseMenu"
 		pause.set_script(load("res://ui/pause_menu.gd"))
 		add_child(pause)
+	if get_node_or_null("SkillTree") == null:
+		var tree := CanvasLayer.new()
+		tree.name = "SkillTree"
+		tree.set_script(load("res://ui/skill_tree_panel.gd"))
+		add_child(tree)
 	_ensure_dev_input_actions()
 
 

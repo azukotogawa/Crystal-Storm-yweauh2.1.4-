@@ -28,6 +28,8 @@ func _run() -> void:
 	_check_ground_slam()
 	_check_crystal_pulse()
 	_check_quick_wall()
+	_check_passives()
+	_check_skill_tree()
 	if _failed == 0:
 		print("All skills tests OK")
 		quit(0)
@@ -426,6 +428,8 @@ func _check_dash() -> void:
 		return
 	if skills.skill_activated.is_connected(player._on_skill_activated):
 		skills.skill_activated.disconnect(player._on_skill_activated)
+	if skills.skill_unlocked.is_connected(player._on_skill_unlocked):
+		skills.skill_unlocked.disconnect(player._on_skill_unlocked)
 	player.free()
 	_drop(pair)
 	print("OK dash burst")
@@ -852,10 +856,222 @@ func _check_quick_wall() -> void:
 	print("OK quick wall")
 
 
+func _check_passives() -> void:
+	var passives = preload("res://player/skill_passives.gd")
+	var stats_script = preload("res://stats/stat_component.gd")
+	var ids = preload("res://stats/stat_ids.gd")
+	var integrity = preload("res://helpers/structure_integrity.gd")
+	if passives.MINING_SPEED <= 0.0 or passives.MAX_HP <= 0.0 or passives.STRUCTURE_HP <= 0:
+		_fail("passive bonuses must raise mining speed, max HP, and structure HP")
+		return
+	if integrity.HP_PER_CELL != 8:
+		_fail("structure HP per cell drifted from 8")
+		return
+	var body := FileAccess.get_file_as_string("res://player/player.gd")
+	if not body.contains("_Passives.apply") or not body.contains("_on_skill_unlocked"):
+		_fail("the player does not apply passive stats")
+		return
+	var walls := FileAccess.get_file_as_string("res://helpers/structure_integrity.gd")
+	if not walls.contains("HP_PER_CELL + _Passives.structure_cell_bonus()"):
+		_fail("new structures do not add the builder passive")
+		return
+	var editor := FileAccess.get_file_as_string("res://world/terrain_editor.gd")
+	if not editor.contains("base_delay / dig_speed"):
+		_fail("dig delay no longer follows dig speed")
+		return
+	var pair = _pair(3)
+	var skills = pair.skills
+	var stats = stats_script.new()
+	pair.host.add_child(stats)
+	passives.apply(stats, skills)
+	if absf(stats.get_stat(ids.DIG_SPEED) - 1.0) > 0.001 or absf(stats.get_stat(ids.MAX_HEALTH) - 100.0) > 0.001:
+		_fail("passives changed stats before unlock")
+		_drop(pair)
+		return
+	if passives.structure_cell_bonus() != 0:
+		_fail("structure bonus applied before the builder passive")
+		_drop(pair)
+		return
+	if not skills.unlock(passives.MINER) or not skills.unlock(passives.FIGHTER) or not skills.unlock(passives.BUILDER):
+		_fail("passive unlocks failed")
+		_drop(pair)
+		return
+	passives.apply(stats, skills)
+	passives.apply(stats, skills)
+	if absf(stats.get_stat(ids.DIG_SPEED) - (1.0 + passives.MINING_SPEED)) > 0.001:
+		_fail("miner passive did not raise dig speed, got %s" % stats.get_stat(ids.DIG_SPEED))
+		_drop(pair)
+		return
+	if absf(stats.get_stat(ids.MAX_HEALTH) - (100.0 + passives.MAX_HP)) > 0.001:
+		_fail("fighter passive did not raise max health, got %s" % stats.get_stat(ids.MAX_HEALTH))
+		_drop(pair)
+		return
+	if passives.structure_cell_bonus() != passives.STRUCTURE_HP:
+		_fail("builder passive did not add structure HP")
+		_drop(pair)
+		return
+	var blob: Dictionary = skills.export_state()
+	var other = _pair(0)
+	other.skills.import_state(blob)
+	if not other.skills.is_unlocked(passives.MINER) or not other.skills.is_unlocked(passives.FIGHTER) or not other.skills.is_unlocked(passives.BUILDER):
+		_fail("passive unlocks did not load")
+		_drop(pair)
+		_drop(other)
+		return
+	if passives.structure_cell_bonus() != passives.STRUCTURE_HP:
+		_fail("loaded builder passive did not keep the structure bonus")
+		_drop(pair)
+		_drop(other)
+		return
+	var loaded = stats_script.new()
+	other.host.add_child(loaded)
+	passives.apply(loaded, other.skills)
+	if absf(loaded.get_stat(ids.DIG_SPEED) - (1.0 + passives.MINING_SPEED)) > 0.001 or absf(loaded.get_stat(ids.MAX_HEALTH) - (100.0 + passives.MAX_HP)) > 0.001:
+		_fail("loaded passives did not restore mining speed and max HP")
+		_drop(pair)
+		_drop(other)
+		return
+	_drop(other)
+	_drop(pair)
+	print("OK passives")
+
+
+func _check_skill_tree() -> void:
+	_GameplayInput.skill_tree_open = false
+	_GameplayInput.pause_open = false
+	_GameplayInput.map_open = false
+	_GameplayInput.dev_chat_open = false
+	_GameplayInput.world_loading = false
+	var project := FileAccess.get_file_as_string("res://project.godot")
+	if not project.contains("skill_tree=") or project.find("physical_keycode\":75") < 0:
+		_fail("skill tree key must be K")
+		return
+	var main_src := FileAccess.get_file_as_string("res://main.gd")
+	if not main_src.contains("res://ui/skill_tree_panel.gd"):
+		_fail("main does not spawn the skill tree")
+		return
+	var pause_src := FileAccess.get_file_as_string("res://ui/pause_menu.gd")
+	if not pause_src.contains("skill_tree"):
+		_fail("pause does not close the skill tree")
+		return
+	var pair = _pair(2)
+	var panel = load("res://ui/skill_tree_panel.gd").new()
+	root.add_child(panel)
+	for branch in ["fighter", "miner", "builder"]:
+		var col: Node = panel.get_node_or_null("Root/Panel/Body/Branches/" + branch)
+		if col == null:
+			_fail("branch %s is missing" % branch)
+			panel.free()
+			_drop(pair)
+			return
+	var miner_btn: Button = panel.get_node("Root/Panel/Body/Branches/miner/miner_passive")
+	var dash_btn: Button = panel.get_node("Root/Panel/Body/Branches/fighter/dash")
+	var builder_btn: Button = panel.get_node("Root/Panel/Body/Branches/builder/builder_passive")
+	panel.open()
+	if not panel.visible or not _GameplayInput.skill_tree_open or not _GameplayInput.blocks_actions():
+		_fail("skill tree did not open")
+		panel.free()
+		_drop(pair)
+		return
+	var points: Label = panel.get_node("Root/Panel/Body/Points")
+	if points.text != "Points 2":
+		_fail("skill tree points read %s" % points.text)
+		panel.free()
+		_drop(pair)
+		return
+	if not miner_btn.text.contains("(locked)") or not builder_btn.text.contains("(locked)"):
+		_fail("a locked passive was marked open")
+		panel.free()
+		_drop(pair)
+		return
+	miner_btn.pressed.emit()
+	dash_btn.pressed.emit()
+	if not pair.skills.is_unlocked(&"miner_passive") or not pair.skills.is_unlocked(&"dash") or pair.prog.skill_points != 0:
+		_fail("the tree did not spend points on quick mine and dash")
+		panel.free()
+		_drop(pair)
+		return
+	if not miner_btn.text.contains("(on)") or not dash_btn.text.contains("slot 1"):
+		_fail("tree captions after unlock were %s / %s" % [miner_btn.text, dash_btn.text])
+		panel.free()
+		_drop(pair)
+		return
+	if pair.skills.slot_skill(0) != &"dash":
+		_fail("the tree did not equip dash")
+		panel.free()
+		_drop(pair)
+		return
+	dash_btn.pressed.emit()
+	if pair.skills.slot_skill(0) != &"" or dash_btn.text.contains("slot"):
+		_fail("a second click did not clear dash")
+		panel.free()
+		_drop(pair)
+		return
+	var blob: Dictionary = pair.skills.export_state()
+	panel.close()
+	if panel.visible or _GameplayInput.skill_tree_open or _GameplayInput.blocks_actions() or paused:
+		_fail("skill tree stayed open")
+		panel.free()
+		_drop(pair)
+		return
+	var saved = _pair(4)
+	saved.skills.import_state(blob)
+	if not saved.skills.is_unlocked(&"miner_passive") or not saved.skills.is_unlocked(&"dash") or saved.skills.is_unlocked(&"builder_passive"):
+		_fail("the tree unlocks did not save")
+		panel.free()
+		_drop(saved)
+		_drop(pair)
+		return
+	_drop(saved)
+	var key := InputEventKey.new()
+	key.physical_keycode = 75
+	key.pressed = true
+	_GameplayInput.map_open = true
+	panel._unhandled_input(key)
+	if panel.visible:
+		_fail("the map let the skill tree open")
+		_GameplayInput.map_open = false
+		panel.free()
+		_drop(pair)
+		return
+	_GameplayInput.map_open = false
+	panel._unhandled_input(key)
+	if not panel.visible or not _GameplayInput.blocks_actions():
+		_fail("K did not open the skill tree")
+		panel.free()
+		_drop(pair)
+		return
+	var pause = load("res://ui/pause_menu.gd").new()
+	root.add_child(pause)
+	pause.open()
+	if panel.visible or _GameplayInput.skill_tree_open or not _GameplayInput.pause_open:
+		_fail("pause left the skill tree open")
+		pause.free()
+		panel.free()
+		_drop(pair)
+		return
+	pause.close()
+	if _GameplayInput.pause_open or paused or panel.visible:
+		_fail("closing pause left the tree or the pause flag up")
+		pause.free()
+		panel.free()
+		_drop(pair)
+		return
+	pause.free()
+	panel.free()
+	_drop(pair)
+	_GameplayInput.skill_tree_open = false
+	_GameplayInput.pause_open = false
+	paused = false
+	print("OK skill tree")
+
+
 func _cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity) -> void:
 	_GameplayInput.pause_open = false
 	if player != null and skills != null and skills.skill_activated.is_connected(player._on_skill_activated):
 		skills.skill_activated.disconnect(player._on_skill_activated)
+	if player != null and skills != null and skills.skill_unlocked.is_connected(player._on_skill_unlocked):
+		skills.skill_unlocked.disconnect(player._on_skill_unlocked)
 	if player != null:
 		player.free()
 	if pair != null:
@@ -902,6 +1118,8 @@ func _cleanup_pulse(pair: Dictionary, player: Player, skills, pulse) -> void:
 	_GameplayInput.pause_open = false
 	if skills.skill_activated.is_connected(player._on_skill_activated):
 		skills.skill_activated.disconnect(player._on_skill_activated)
+	if skills.skill_unlocked.is_connected(player._on_skill_unlocked):
+		skills.skill_unlocked.disconnect(player._on_skill_unlocked)
 	player.free()
 	_drop(pair)
 
@@ -909,6 +1127,8 @@ func _cleanup_pulse(pair: Dictionary, player: Player, skills, pulse) -> void:
 func _cleanup_slam(pair: Dictionary, player: Player, skills, edits) -> void:
 	if skills.skill_activated.is_connected(player._on_skill_activated):
 		skills.skill_activated.disconnect(player._on_skill_activated)
+	if skills.skill_unlocked.is_connected(player._on_skill_unlocked):
+		skills.skill_unlocked.disconnect(player._on_skill_unlocked)
 	player.free()
 	_drop(pair)
 	edits.reset()

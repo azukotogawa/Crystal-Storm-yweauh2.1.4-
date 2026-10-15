@@ -6,10 +6,11 @@ static var dev_chat_open := false
 static var world_loading := false
 static var pause_open := false
 static var map_open := false
+static var skill_tree_open := false
 
 
 static func blocks_actions() -> bool:
-	return dev_chat_open or world_loading or pause_open or map_open
+	return dev_chat_open or world_loading or pause_open or map_open or skill_tree_open
 
 
 static func set_world_loading(loading: bool) -> void:

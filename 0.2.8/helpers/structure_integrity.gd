@@ -5,6 +5,7 @@ const _Features = preload("res://world/feature_registry.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _Passives = preload("res://player/skill_passives.gd")
 
 const HP_PER_CELL := 8
 const CRYSTAL_DAMAGE := 2.0
@@ -93,7 +94,7 @@ static func bind(blueprint_id: StringName, anchor: Vector2i, cells: Array) -> Di
 		var col := Vector2i(at.x, at.z)
 		var solid := str(item.get("role", "wall")) != "passage"
 		blockers[col] = bool(blockers.get(col, false)) or solid
-	var max_hp := packed.size() * HP_PER_CELL
+	var max_hp := packed.size() * (HP_PER_CELL + _Passives.structure_cell_bonus())
 	var ws = _WorldState.get_active()
 	ws.begin_batch()
 	for key_v in columns.keys():
