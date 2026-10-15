@@ -19,6 +19,7 @@ const _LivingForce = preload("res://world/living_force.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
+const _StructureCrafting = preload("res://helpers/structure_crafting.gd")
 
 const REBUILD_EDGE_BAND := 1
 
@@ -400,10 +401,20 @@ func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName
 	var paid_with := str(bp.get("cost", {}).get("id", "stone"))
 	var paid_count := _scaled_structure_cost(int(bp.get("cost", {}).get("count", 0)))
 	var wood_count := _scaled_structure_cost(int(bp.get("cost", {}).get("wood_fallback", 0)))
-	var currency := _take_structure_payment(inventory, paid_with, paid_count, wood_count)
-	if currency.is_empty():
-		return false
-	var refund_n := paid_count if currency == paid_with else wood_count
+	var piece := _StructureCrafting.item_id(blueprint_id)
+	var currency := ""
+	var refund_n := 0
+	if inventory.has_method("count_item") and int(inventory.count_item(piece)) > 0:
+		if not inventory.consume_item(piece, 1):
+			last_fail_reason = "Need a crafted piece"
+			return false
+		currency = piece
+		refund_n = 1
+	else:
+		currency = _take_structure_payment(inventory, paid_with, paid_count, wood_count)
+		if currency.is_empty():
+			return false
+		refund_n = paid_count if currency == paid_with else wood_count
 	var cells: Array[Vector3i] = []
 	for item in plan.get("cells", []):
 		cells.append((item as Dictionary)["at"])
@@ -1224,6 +1235,8 @@ func _requeue_water_neighbors(wx: int, wz: int) -> void:
 
 
 func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
+	if not is_inside_tree():
+		return
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
 	if fluid_svc == null:
 		return

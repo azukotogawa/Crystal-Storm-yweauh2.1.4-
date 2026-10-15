@@ -9,11 +9,14 @@ const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 const _SlotDrag = preload("res://ui/slot_drag.gd")
 const _Hotbar = preload("res://ui/hotbar.gd")
+const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _Crafting = preload("res://helpers/structure_crafting.gd")
 
 
 var _player: Node
 var _grid: GridContainer
 var _armor_button: Button
+var _craft_buttons: Dictionary = {}
 var _visible_panel := false
 var _registry: _GameVisualRegistry
 var _raised_hotbar: Control
@@ -110,6 +113,25 @@ func _build_ui() -> void:
 	title.add_theme_font_size_override("font_size", 18)
 	vbox.add_child(title)
 
+	if _Blueprints.LARGE_STRUCTURES:
+		var craft_row := HBoxContainer.new()
+		craft_row.name = "CraftRow"
+		craft_row.add_theme_constant_override("separation", 6)
+		for id in _Blueprints.ids():
+			var craft := Button.new()
+			if id == _Blueprints.WALL_SEGMENT:
+				craft.name = "Craft_wall_segment"
+			elif id == _Blueprints.WALL_CORNER:
+				craft.name = "Craft_wall_corner"
+			else:
+				craft.name = "Craft_%s" % String(id)
+			craft.focus_mode = Control.FOCUS_NONE
+			craft.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			craft.pressed.connect(_on_craft_pressed.bind(id))
+			craft_row.add_child(craft)
+			_craft_buttons[id] = craft
+		vbox.add_child(craft_row)
+
 	_armor_button = Button.new()
 	_armor_button.name = "ArmorSlot"
 	_armor_button.custom_minimum_size = Vector2(0, 36)
@@ -185,6 +207,14 @@ func _on_slot_unhover() -> void:
 	_TooltipPanel.hide_tip()
 
 
+func _on_craft_pressed(id: StringName) -> void:
+	if _player == null or _player.inventory == null:
+		return
+	if _Crafting.craft(_player.inventory, id):
+		_ui("ui_click")
+	_refresh()
+
+
 func _on_armor_pressed() -> void:
 	Input.action_release("attack")
 	_ui("ui_click")
@@ -198,6 +228,7 @@ func _refresh() -> void:
 	if _grid == null or _player == null or _player.inventory == null:
 		return
 	_refresh_armor()
+	_refresh_craft()
 	for i in _grid.get_child_count():
 		var btn := _grid.get_child(i) as Button
 		var slot = _player.inventory.get_slot(i)
@@ -265,6 +296,21 @@ func _ui(id: String) -> void:
 	var audio := get_node_or_null("/root/AudioManager")
 	if audio and audio.has_method("play_ui"):
 		audio.play_ui(id)
+
+
+func _refresh_craft() -> void:
+	for id in _craft_buttons:
+		var btn := _craft_buttons[id] as Button
+		if btn == null:
+			continue
+		var bp := _Blueprints.get_blueprint(id)
+		var recipe: Array = bp.get("recipe", [])
+		var cost := ""
+		if not recipe.is_empty():
+			var line: Dictionary = recipe[0]
+			cost = "  %d %s" % [int(line.get("count", 0)), str(line.get("id", ""))]
+		btn.text = "%s%s" % [_ItemTypes.display_name(String(id)), cost]
+		btn.disabled = not _Crafting.can_craft(_player.inventory, id)
 
 
 func _refresh_armor() -> void:

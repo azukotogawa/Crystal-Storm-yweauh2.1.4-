@@ -6,6 +6,14 @@ const _Edits = preload("res://world/terrain_edits.gd")
 const _Weapon = preload("res://weapons/weapon_controller.gd")
 const _Highlight = preload("res://player/target_highlight.gd")
 const _Features = preload("res://world/feature_registry.gd")
+const _Crafting = preload("res://helpers/structure_crafting.gd")
+const _Inventory = preload("res://inventory/inventory.gd")
+const _Placeable = preload("res://helpers/placeable_catalog.gd")
+const _Items = preload("res://helpers/item_types.gd")
+const _TerrainEditor = preload("res://world/terrain_editor.gd")
+const _Chunks = preload("res://chunks/chunk_manager.gd")
+const _Panel = preload("res://ui/inventory_panel.gd")
+const _Settings = preload("res://config/world_settings.gd")
 
 var _failed: int = 0
 
@@ -32,6 +40,7 @@ func _run() -> void:
 	_test_snap_and_rotation()
 	_test_ghost_validity()
 	_test_ghost_uses_build_highlight()
+	_test_craft_then_place()
 	if _failed == 0:
 		print("All structure blueprint tests OK")
 		quit(0)
@@ -225,6 +234,125 @@ func _test_ghost_uses_build_highlight() -> void:
 	print("OK structure ghost reuses the build highlight tint")
 
 
+func _test_craft_then_place() -> void:
+	_Edits.reset()
+	_Features.reset()
+	_Items.reset()
+	_Items.ensure_builtins()
+	var panel_src := (_Panel as GDScript).source_code
+	if "CraftRow" not in panel_src or "structure_crafting.gd" not in panel_src:
+		_fail("inventory must offer a craft row for the blueprints")
+		return
+	if "Craft_wall_segment" not in panel_src or "Craft_wall_corner" not in panel_src:
+		_fail("inventory craft row must name the wall segment and the wall corner")
+		return
+	var menu := _Placeable.entries()
+	if menu.find("wall_segment") < 0 or menu.find("wall_corner") < 0:
+		_fail("build menu must list the wall segment and the wall corner")
+		return
+	if _Placeable.display_name("wall_segment") != "Wall Segment" or _Placeable.display_name("wall_corner") != "Wall Corner":
+		_fail("build menu names must be Wall Segment and Wall Corner")
+		return
+	var weapon = _Weapon.new()
+	weapon.place_index = menu.find("wall_segment")
+	if weapon.get_place_label() != "Wall Segment":
+		_fail("build menu selection must read Wall Segment")
+		weapon.free()
+		return
+	weapon.free()
+	var inv = _Inventory.new()
+	var seg := _Blueprints.get_blueprint(_Blueprints.WALL_SEGMENT)
+	var cor := _Blueprints.get_blueprint(_Blueprints.WALL_CORNER)
+	var seg_cost := int(seg.get("cost", {}).get("count", 0))
+	var cor_cost := int(cor.get("cost", {}).get("count", 0))
+	inv.add_item("stone", seg_cost - 1)
+	if _Crafting.craft(inv, _Blueprints.WALL_SEGMENT):
+		_fail("a short stone stack must not craft a wall segment")
+		return
+	if inv.count_item("stone") != seg_cost - 1 or inv.count_item("wall_segment") != 0:
+		_fail("a refused craft must leave the inventory unchanged")
+		return
+	inv.add_item("stone", 1)
+	if not _Crafting.craft(inv, _Blueprints.WALL_SEGMENT):
+		_fail("wall segment craft must spend the blueprint cost")
+		return
+	inv.add_item("stone", cor_cost)
+	if not _Crafting.craft(inv, _Blueprints.WALL_CORNER):
+		_fail("wall corner craft must spend the blueprint cost")
+		return
+	if inv.count_item("stone") != 0:
+		_fail("crafting both pieces must spend every stone from the blueprint costs")
+		return
+	var hot_seg = inv.get_hotbar_item(0)
+	var hot_cor = inv.get_hotbar_item(1)
+	if hot_seg == null or str(hot_seg.id) != "wall_segment" or int(hot_seg.count) != 1:
+		_fail("crafted wall segment must sit on the hotbar")
+		return
+	if hot_cor == null or str(hot_cor.id) != "wall_corner" or int(hot_cor.count) != 1:
+		_fail("crafted wall corner must sit on the hotbar")
+		return
+	var editor = _TerrainEditor.new()
+	var world = _FlatWorld.new()
+	var chunks = _Chunks.new()
+	editor.world = world
+	editor.chunk_manager = chunks
+	var placed_seg := editor.try_place_blueprint(Vector3(4.2, 0.0, 6.2), inv, _Blueprints.WALL_SEGMENT, 0)
+	if not placed_seg or int(editor.last_place_batch.get("placed_count", 0)) != 6:
+		_fail("crafted wall segment did not place: %s" % editor.last_fail_reason)
+		_release_place(editor, world, chunks)
+		return
+	if inv.count_item("wall_segment") != 0 or inv.count_item("wall_corner") != 1 or inv.count_item("stone") != 0:
+		_fail("placing the segment must spend the crafted piece and not the stone")
+		_release_place(editor, world, chunks)
+		return
+	if not _raised_run(4, 6, 3):
+		_fail("placed wall segment must raise three columns by two layers")
+		_release_place(editor, world, chunks)
+		return
+	var placed_cor := editor.try_place_blueprint(Vector3(8.2, 0.0, 6.2), inv, _Blueprints.WALL_CORNER, 0)
+	if not placed_cor or int(editor.last_place_batch.get("placed_count", 0)) != 6:
+		_fail("crafted wall corner did not place: %s" % editor.last_fail_reason)
+		_release_place(editor, world, chunks)
+		return
+	if inv.count_item("wall_corner") != 0 or inv.count_item("stone") != 0:
+		_fail("placing the corner must spend the crafted piece and not the stone")
+		_release_place(editor, world, chunks)
+		return
+	if _layers_at(8, 6) != 2 or _layers_at(9, 6) != 2 or _layers_at(8, 7) != 2:
+		_fail("placed wall corner must raise the L")
+		_release_place(editor, world, chunks)
+		return
+	if _layers_at(9, 7) != 0:
+		_fail("placed wall corner must leave the inner column empty")
+		_release_place(editor, world, chunks)
+		return
+	_release_place(editor, world, chunks)
+	_Edits.reset()
+	_Features.reset()
+	print("OK crafted wall segment and wall corner place from the hotbar")
+
+
+func _layers_at(x: int, z: int) -> int:
+	var layer: float = _Settings.get_active().layer_height()
+	return int(round(_Edits.get_height_delta(x, z) / maxf(layer, 0.001)))
+
+
+func _raised_run(origin_x: int, origin_z: int, width: int) -> bool:
+	for x in width:
+		if _layers_at(origin_x + x, origin_z) != 2:
+			return false
+	return true
+
+
+func _release_place(editor, world, chunks) -> void:
+	if editor:
+		editor.free()
+	if world:
+		world.free()
+	if chunks:
+		chunks.free()
+
+
 func _reasons(plan: Dictionary, reason: String, count: int) -> bool:
 	var cells: Array = plan.get("cells", [])
 	if cells.size() != count:
@@ -315,6 +443,13 @@ func _expect_cost(bp: Dictionary, wall, occupied: int) -> bool:
 
 class _FlatGround:
 	extends RefCounted
+
+	func get_surface_height(wx: float, wz: float) -> float:
+		return _Edits.get_height_delta(floori(wx), floori(wz))
+
+
+class _FlatWorld:
+	extends InfiniteNoiseWorld
 
 	func get_surface_height(wx: float, wz: float) -> float:
 		return _Edits.get_height_delta(floori(wx), floori(wz))

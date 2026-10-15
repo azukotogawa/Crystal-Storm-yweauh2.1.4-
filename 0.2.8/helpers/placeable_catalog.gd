@@ -2,6 +2,8 @@ class_name PlaceableCatalog
 extends RefCounted
 ## Only dig tools break blocks.
 
+const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+
 const IDS: PackedStringArray = [
 	"fill",
 	"cardinal_ramp",
@@ -12,15 +14,26 @@ const IDS: PackedStringArray = [
 ]
 
 
+static func entries() -> PackedStringArray:
+	var out: PackedStringArray = IDS.duplicate()
+	if not _Blueprints.LARGE_STRUCTURES:
+		return out
+	for id in _Blueprints.ids():
+		var key := String(id)
+		if not out.has(key):
+			out.append(key)
+	return out
+
+
 static func count() -> int:
-	return IDS.size()
+	return entries().size()
 
 
 static func id_at(index: int) -> String:
-	if IDS.is_empty():
+	var list := entries()
+	if list.is_empty():
 		return "fill"
-	var i: int = posmod(index, IDS.size())
-	return str(IDS[i])
+	return str(list[posmod(index, list.size())])
 
 
 static func display_name(place_id: String) -> String:
@@ -37,12 +50,16 @@ static func display_name(place_id: String) -> String:
 			return "Gate"
 		"bridge":
 			return "Bridge"
+		"wall_segment":
+			return "Wall Segment"
+		"wall_corner":
+			return "Wall Corner"
 		_:
 			return place_id
 
 
 static func is_structure(place_id: String) -> bool:
-	return place_id in ["stone_wall", "gate", "bridge"]
+	return place_id in ["stone_wall", "gate", "bridge", "wall_segment", "wall_corner"]
 
 
 static func is_terrain_edit(place_id: String) -> bool:

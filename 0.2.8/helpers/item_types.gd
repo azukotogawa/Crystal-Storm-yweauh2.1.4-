@@ -212,6 +212,28 @@ const ITEMS: Dictionary = {
 		"stackable": false,
 		"max_stack": 1,
 	},
+	"wall_segment": {
+		"name": "Wall Segment",
+		"category": Category.MISC,
+		"stackable": true,
+		"max_stack": 16,
+		"visual_id": "stone",
+		"anim_kind": 0,
+		"anim_duration": 0.28,
+		"impact_ratio": 0.0,
+		"description": "Crafted wall, three wide and two high. Place it from the build menu.",
+	},
+	"wall_corner": {
+		"name": "Wall Corner",
+		"category": Category.MISC,
+		"stackable": true,
+		"max_stack": 16,
+		"visual_id": "stone",
+		"anim_kind": 0,
+		"anim_duration": 0.28,
+		"impact_ratio": 0.0,
+		"description": "Crafted wall corner, two wide and two high. Place it from the build menu.",
+	},
 }
 
 

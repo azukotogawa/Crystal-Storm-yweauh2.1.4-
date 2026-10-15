@@ -192,7 +192,10 @@ func _active_item_id() -> String:
 
 
 func _is_build_material() -> bool:
-	return ItemTypes.is_placeable_block(_active_item_id())
+	var id := _active_item_id()
+	if ItemTypes.is_placeable_block(id):
+		return true
+	return _StructureBlueprints.LARGE_STRUCTURES and _StructureBlueprints.ids().has(StringName(id))
 
 
 func _held_has_right_click_ability() -> bool:
@@ -840,7 +843,33 @@ func cycle_selected_blueprint(steps: int = 1) -> void:
 
 
 func preview_selected_blueprint(column: Vector3, world) -> Dictionary:
-	return ghost_preview(selected_blueprint_id(), column, blueprint_quarter, world)
+	return ghost_preview(active_blueprint_id(), column, blueprint_quarter, world)
+
+
+func _adopt_hotbar_blueprint() -> void:
+	if not _StructureBlueprints.LARGE_STRUCTURES:
+		return
+	var slot = get_active_item()
+	if slot == null:
+		return
+	var ids := _StructureBlueprints.ids()
+	var at := ids.find(StringName(str(slot.id)))
+	if at < 0:
+		return
+	if blueprint_index != at:
+		blueprint_quarter = 0
+	blueprint_index = at
+
+
+func active_blueprint_id() -> StringName:
+	if not _StructureBlueprints.LARGE_STRUCTURES:
+		return &""
+	_adopt_hotbar_blueprint()
+	var place_id := get_place_id()
+	var ids := _StructureBlueprints.ids()
+	if ids.has(StringName(place_id)):
+		return StringName(place_id)
+	return selected_blueprint_id()
 
 
 static func snap_blueprint_anchor(column: Vector3) -> Vector2i:
@@ -955,7 +984,7 @@ func _poll_blueprint_keys() -> void:
 
 
 func _structure_ghost_wanted() -> bool:
-	if not _StructureBlueprints.LARGE_STRUCTURES or selected_blueprint_id() == &"":
+	if not _StructureBlueprints.LARGE_STRUCTURES or active_blueprint_id() == &"":
 		return false
 	if _held_has_right_click_ability():
 		return false
@@ -995,7 +1024,7 @@ func _refresh_structure_ghost() -> void:
 	if column == Vector3.ZERO:
 		hl.hide_structure_ghost()
 		return
-	var plan := preview_selected_blueprint(column, world)
+	var plan := ghost_preview(active_blueprint_id(), column, blueprint_quarter, world)
 	hl.show_structure_ghost(plan.get("cells", []))
 
 
@@ -1029,8 +1058,8 @@ func _try_place_selected() -> void:
 	var place_id: String = get_place_id()
 	var built_id := StringName(place_id)
 	var ok := false
-	if _StructureBlueprints.LARGE_STRUCTURES and selected_blueprint_id() != &"":
-		built_id = selected_blueprint_id()
+	if _StructureBlueprints.LARGE_STRUCTURES and active_blueprint_id() != &"":
+		built_id = active_blueprint_id()
 		ok = _terrain_editor.try_place_blueprint(target, inventory, built_id, blueprint_quarter)
 	else:
 		match place_id:
