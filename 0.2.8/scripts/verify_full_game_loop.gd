@@ -128,7 +128,13 @@ func _run() -> void:
 	lose_gm._crystal = crystal
 	crystal.covered_cells = 50000
 	lose_gm._check_crystal_overrun()
-	if lose_gm.run_state != _GameManager.RunState.LOST:
+	if _GameManager.DEATH_ONLY_LOSS:
+		if lose_gm.run_state != _GameManager.RunState.PLAYING or lose_gm.coverage_warning == "":
+			push_error("coverage must pressure without a loss")
+			failed = true
+		else:
+			print("OK coverage over max stays playing")
+	elif lose_gm.run_state != _GameManager.RunState.LOST:
 		push_error("lose path not wired")
 		failed = true
 	else:

@@ -371,6 +371,12 @@ func _test_game_manager_coverage_lose() -> void:
 	cm.covered_cells = 50000
 	gm._crystal = cm
 	gm._check_crystal_overrun()
+	if _GameManager.DEATH_ONLY_LOSS:
+		if gm.run_state != _GameManager.RunState.PLAYING or gm.coverage_warning == "":
+			_fail("coverage overrun must warn and keep PLAYING")
+			return
+		_log("OK coverage over max stays PLAYING")
+		return
 	if gm.run_state != _GameManager.RunState.LOST:
 		_fail("GameManager should set RunState.LOST on coverage overrun")
 		return

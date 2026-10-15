@@ -85,7 +85,12 @@ func _test_lose_paths() -> void:
 	crystal.covered_cells = 100000
 	gm._crystal = crystal
 	gm._check_crystal_overrun()
-	if gm.run_state != _GameManager.RunState.LOST:
+	if _GameManager.DEATH_ONLY_LOSS:
+		if gm.run_state != _GameManager.RunState.PLAYING or gm.coverage_warning == "":
+			_fail("lose: coverage overrun must warn and keep PLAYING")
+		else:
+			print("OK coverage pressure stays playing: %s" % gm.coverage_warning)
+	elif gm.run_state != _GameManager.RunState.LOST:
 		_fail("lose: coverage overrun must set LOST")
 	elif gm.last_loss_reason == "":
 		_fail("lose: last_loss_reason must be set")

@@ -115,6 +115,7 @@ SUITES=(
 	"res://scripts/verify_crystal_live_spread.gd"
 	"res://scripts/verify_full_game_loop.gd"
 	"res://scripts/verify_playable_loop.gd"
+	"res://scripts/verify_death_only_loss.gd"
 	"res://scripts/verify_living_world.gd"
 	"res://scripts/verify_town_rally.gd"
 	"res://scripts/verify_early_survival.gd"

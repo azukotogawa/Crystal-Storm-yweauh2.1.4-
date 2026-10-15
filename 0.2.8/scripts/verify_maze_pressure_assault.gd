@@ -251,7 +251,12 @@ func _test_win_lose_authoritative() -> void:
 	var cov := _CovCrystal.new()
 	gm._crystal = cov
 	gm._check_crystal_overrun()
-	if gm.run_state != _GameManager.RunState.LOST:
+	if _GameManager.DEATH_ONLY_LOSS:
+		if gm.run_state != _GameManager.RunState.PLAYING or gm.coverage_warning == "":
+			_fail("coverage over the cap must warn and keep the run")
+		else:
+			print("OK coverage pressure stays in play")
+	elif gm.run_state != _GameManager.RunState.LOST:
 		_fail("coverage lose must remain authoritative")
 	cov.free()
 	gm.free()
