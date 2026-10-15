@@ -694,6 +694,8 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 
 ## Full diagonal move first, then axis slide — removes grid-axis stutter without losing wall slide.
 func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
+	if not airborne and _try_water_bank_exit(move_delta):
+		return
 	var full := voxel_position + Vector3(move_delta.x, 0.0, move_delta.y)
 	if _can_move_to(full, airborne):
 		voxel_position.x = full.x
@@ -711,13 +713,57 @@ func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
 		voxel_position.z = only_z.z
 		moved = true
 	if moved and not airborne:
-		_soft_follow_ground(delta)
+		if not _try_water_bank_exit(move_delta):
+			_soft_follow_ground(delta)
 	elif not moved:
+		if _try_water_bank_exit(move_delta):
+			return
 		# Fully blocked: kill residual velocity into the wall so we don't jitter.
 		if not _can_move_to(voxel_position + Vector3(move_delta.x, 0.0, 0.0), airborne):
 			_move_vel_xz.x = 0.0
 		if not _can_move_to(voxel_position + Vector3(0.0, 0.0, move_delta.y), airborne):
 			_move_vel_xz.y = 0.0
+
+
+## A 1-block shore is a walk from the waterline, but the capsule hits the face
+## while the chest is still in the pool. Step onto that column and stand.
+func _try_water_bank_exit(move_delta: Vector2) -> bool:
+	if move_delta.length_squared() < 0.0000001:
+		return false
+	var swim := _water_here()
+	if not bool(swim.get("submerged", false)):
+		return false
+	var waterline := float(swim.get("surface_y", voxel_position.y))
+	var max_up: float = _ws().max_step_up_walk()
+	var col_x := floori(voxel_position.x)
+	var col_z := floori(voxel_position.z)
+	var sx := 0
+	var sz := 0
+	if absf(move_delta.x) > 0.00001:
+		sx = 1 if move_delta.x > 0.0 else -1
+	if absf(move_delta.y) > 0.00001:
+		sz = 1 if move_delta.y > 0.0 else -1
+	var dirs: Array[Vector2i] = []
+	if sx != 0 and sz != 0:
+		dirs.append(Vector2i(sx, sz))
+	if sx != 0:
+		dirs.append(Vector2i(sx, 0))
+	if sz != 0:
+		dirs.append(Vector2i(0, sz))
+	for d in dirs:
+		var fx := float(col_x + d.x) + 0.5
+		var fz := float(col_z + d.y) + 0.5
+		var bank_y: float = _sample_walkable_feet(fx, fz)
+		var rise: float = bank_y - waterline
+		if rise <= 0.08 or rise > max_up + 0.12:
+			continue
+		var stand := Vector3(fx, bank_y, fz)
+		if is_colliding_at(stand):
+			continue
+		voxel_position = stand
+		velocity.y = 0.0
+		return true
+	return false
 
 
 func _soft_follow_ground(delta: float) -> void:
