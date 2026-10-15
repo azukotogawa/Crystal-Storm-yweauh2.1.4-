@@ -32,6 +32,8 @@ func _run() -> void:
 	_check_emission()
 	_check_damage_victory()
 	if _failed == 0:
+		await _check_save_round_trip()
+	if _failed == 0:
 		await _check_world_start()
 	_finish()
 
@@ -232,6 +234,155 @@ func _finish() -> void:
 	else:
 		push_error("verify_single_crystal: %d failure(s)" % _failed)
 		quit(1)
+
+
+func _check_save_round_trip() -> bool:
+	_Registry.ensure_builtins()
+	var crystal := _CrystalManager.new()
+	root.add_child(crystal)
+	crystal.cancel_bootstrap()
+	crystal.set_process(false)
+	await process_frame
+	await process_frame
+	var crystal_def = _Def.resolved_crystal()
+	var cell := Vector2i(12, -8)
+	var spawn = _Spawn.from_def(7, cell, crystal_def)
+	crystal.harness_setup_spawns([spawn])
+	spawn.health = 80.0
+	crystal.set_boss_spawned(true)
+	var terrain = _TerrainQuery.new()
+	crystal._sim = _Fluid.new(_SimConfig.create_default(), terrain)
+	crystal._initialized = true
+	var saved: Dictionary = crystal.export_state()
+	var rows: Array = saved.get("spawns", [])
+	var ok := true
+	if rows.size() != 1:
+		_fail("save expected 1 crystal row, got %d" % rows.size())
+		ok = false
+	elif absf(float(rows[0].get("health", -1.0)) - 80.0) > 0.01:
+		_fail("save row health %.1f" % float(rows[0].get("health", -1.0)))
+		ok = false
+	elif not bool(rows[0].get("boss_spawned", false)):
+		_fail("save row lost boss_spawned")
+		ok = false
+	elif absf(float(saved.get("crystal_health", -1.0)) - 80.0) > 0.01:
+		_fail("save crystal_health %.1f" % float(saved.get("crystal_health", -1.0)))
+		ok = false
+	elif not bool(saved.get("boss_spawned", false)):
+		_fail("save lost boss_spawned")
+		ok = false
+	if ok:
+		spawn.health = 500.0
+		crystal.set_boss_spawned(false)
+		crystal.import_state(saved)
+		var loaded: Array = crystal.get_active_spawns()
+		if loaded.size() != 1:
+			_fail("round trip expected 1 crystal, got %d" % loaded.size())
+			ok = false
+		elif loaded[0].world_pos != cell:
+			_fail("round trip cell %s" % loaded[0].world_pos)
+			ok = false
+		elif absf(loaded[0].health - 80.0) > 0.01:
+			_fail("round trip health %.1f" % loaded[0].health)
+			ok = false
+		elif not crystal.is_boss_spawned():
+			_fail("round trip lost boss_spawned")
+			ok = false
+		elif String(loaded[0].def_id) != "released_crystal" or loaded[0].is_boss:
+			_fail("round trip crystal id %s boss=%s" % [String(loaded[0].def_id), loaded[0].is_boss])
+			ok = false
+	if ok:
+		var legacy := {
+			"boss_spawned": true,
+			"spawns": [
+				{
+					"id": 1,
+					"x": 3,
+					"z": 4,
+					"kind": int(_CrystalTypes.SpawnKind.ORIGIN),
+					"health": 140.0,
+					"max_health": 500.0,
+					"active": true,
+					"is_boss": true,
+					"def_id": "origin_boss",
+					"display_name": "Origin Heart",
+				},
+				{
+					"id": 2,
+					"x": 40,
+					"z": 40,
+					"kind": int(_CrystalTypes.SpawnKind.RUIN),
+					"health": 42.0,
+					"max_health": 120.0,
+					"active": true,
+					"is_boss": false,
+					"def_id": "ruin_miniboss",
+					"display_name": "Ruin Shard",
+				},
+				{
+					"id": 3,
+					"x": -30,
+					"z": 20,
+					"kind": int(_CrystalTypes.SpawnKind.ARTIFACT),
+					"health": 80.0,
+					"max_health": 80.0,
+					"active": true,
+					"is_boss": false,
+					"def_id": "artifact_node",
+					"display_name": "Artifact Node",
+				},
+			],
+		}
+		crystal.import_state(legacy)
+		var migrated: Array = crystal._spawn_points
+		if migrated.size() != 1:
+			_fail("multi-spawn save kept %d rows" % migrated.size())
+			ok = false
+		elif migrated[0].world_pos != Vector2i(3, 4):
+			_fail("migration dropped the origin cell %s" % migrated[0].world_pos)
+			ok = false
+		elif absf(migrated[0].health - 140.0) > 0.01:
+			_fail("migration health %.1f" % migrated[0].health)
+			ok = false
+		elif String(migrated[0].def_id) != "released_crystal" or migrated[0].is_boss:
+			_fail("migration did not keep the origin as the crystal")
+			ok = false
+		elif not crystal.is_boss_spawned():
+			_fail("migration lost boss_spawned")
+			ok = false
+		else:
+			for item in migrated:
+				if item.kind == _CrystalTypes.SpawnKind.RUIN or item.kind == _CrystalTypes.SpawnKind.ARTIFACT:
+					_fail("migration kept a secondary spawn")
+					ok = false
+					break
+	if ok:
+		crystal.import_state({
+			"boss_spawned": false,
+			"spawns": [
+				{
+					"id": 2,
+					"x": 9,
+					"z": 9,
+					"kind": int(_CrystalTypes.SpawnKind.RUIN),
+					"health": 10.0,
+					"max_health": 120.0,
+					"active": true,
+					"is_boss": false,
+					"def_id": "ruin_miniboss",
+				},
+			],
+		})
+		if crystal._spawn_points.size() != 0:
+			_fail("secondary-only save kept %d rows" % crystal._spawn_points.size())
+			ok = false
+		elif crystal.is_boss_spawned():
+			_fail("secondary-only save kept boss_spawned")
+			ok = false
+	if ok:
+		print("OK save round trip health=80 boss_spawned and origin migration")
+	crystal.free()
+	return ok
 
 
 func _check_world_start() -> bool:

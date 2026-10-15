@@ -469,6 +469,16 @@ func set_origin_warden_alive(alive: bool) -> void:
 		_spawn_ctrl.origin_warden_alive = alive
 
 
+func set_boss_spawned(spawned: bool) -> void:
+	if _spawn_ctrl == null:
+		_spawn_ctrl = _SpawnPointController.new()
+	_spawn_ctrl.boss_spawned = spawned
+
+
+func is_boss_spawned() -> bool:
+	return _spawn_ctrl != null and _spawn_ctrl.boss_spawned
+
+
 func _grant_relic_for_spawn(spawn: CrystalSpawnPoint) -> StringName:
 	var relic_mgr = _player_relic_manager()
 	if relic_mgr == null or not relic_mgr.has_method("equip"):
@@ -2488,6 +2498,7 @@ func export_state() -> Dictionary:
 				int(_sim.spawn_id_by_cell.get(pos, -1)),
 			])
 	var spawn_rows: Array = _spawn_ctrl.export_spawn_rows()
+	var crystal_health := _spawn_ctrl.crystal_health()
 	var absorption_rows: Array = []
 	var abs_map: Dictionary = _simulation.absorption if _simulation else _absorption
 	for pos_variant in abs_map.keys():
@@ -2504,6 +2515,8 @@ func export_state() -> Dictionary:
 		"spawns": spawn_rows,
 		"evolution": evo_data,
 		"absorption_progress": absorption_rows,
+		"crystal_health": crystal_health,
+		"boss_spawned": _spawn_ctrl.boss_spawned,
 	}
 
 
@@ -2513,10 +2526,13 @@ func import_state(data: Dictionary) -> void:
 	power = float(data.get("power", power))
 	strength_tier = int(data.get("strength_tier", strength_tier))
 	expansion_enabled = bool(data.get("expansion_enabled", expansion_enabled))
-	_spawn_ctrl.import_meta({
+	var meta := {
 		"emit_weaken_mult": data.get("emit_weaken_mult", _spawn_ctrl.emit_weaken_mult),
 		"last_destroyed_label": data.get("last_destroyed_label", _spawn_ctrl.last_destroyed_label),
-	})
+	}
+	if data.has("boss_spawned"):
+		meta["boss_spawned"] = data.boss_spawned
+	_spawn_ctrl.import_meta(meta)
 
 	if _simulation:
 		_simulation.clear()
@@ -2557,11 +2573,16 @@ func import_state(data: Dictionary) -> void:
 	if data.has("spawns"):
 		_spawn_points.clear()
 		_SpawnPointRegistry.ensure_builtins()
-		for row in data.get("spawns", []):
+		var incoming: Array = _spawn_ctrl.keep_origin_save_rows(data.get("spawns", []))
+		for row in incoming:
 			if not row is Dictionary:
 				continue
 			var def_id: StringName = StringName(str(row.get("def_id", "")))
 			var def: _SpawnPointDef = _SpawnPointRegistry.get_def(def_id) if def_id != &"" else null
+			if _GameConfig.SINGLE_CRYSTAL and _SpawnPointController.row_is_origin(row):
+				var released = _SpawnPointDef.resolved_crystal()
+				if released != null:
+					def = released
 			var spawn: CrystalSpawnPoint
 			if def:
 				spawn = CrystalSpawnPoint.from_def(
@@ -2584,6 +2605,8 @@ func import_state(data: Dictionary) -> void:
 			spawn.health = float(row.get("health", spawn.max_health))
 			spawn.active = bool(row.get("active", true))
 			spawn.max_health = float(row.get("max_health", spawn.max_health))
+			if row.has("boss_spawned"):
+				_spawn_ctrl.boss_spawned = bool(row.boss_spawned)
 			_spawn_points.append(spawn)
 			_next_spawn_id = maxi(_next_spawn_id, spawn.id + 1)
 

@@ -69,10 +69,10 @@ func _on_crystal_health_for_boss(spawn: CrystalSpawnPoint, _amount: float) -> vo
 
 
 func _consider_crystal_boss() -> void:
-	if not _GameConfig.SINGLE_CRYSTAL or _crystal_boss_spawned:
+	if not _GameConfig.SINGLE_CRYSTAL or _pull_boss_spawned():
 		return
 	if _living_warden():
-		_crystal_boss_spawned = true
+		_remember_boss_spawned()
 		return
 	if _crystal == null or not _crystal.has_method("get_active_spawns"):
 		return
@@ -82,7 +82,7 @@ func _consider_crystal_boss() -> void:
 
 
 func _consider_one_spawn_for_boss(spawn) -> bool:
-	if not _GameConfig.SINGLE_CRYSTAL or _crystal_boss_spawned:
+	if not _GameConfig.SINGLE_CRYSTAL or _pull_boss_spawned():
 		return false
 	if spawn == null or not bool(spawn.active):
 		return false
@@ -99,7 +99,7 @@ func _spawn_boss_near_crystal(spawn) -> bool:
 	if _player == null:
 		return false
 	if _living_warden():
-		_crystal_boss_spawned = true
+		_remember_boss_spawned()
 		return false
 	var cell: Vector2i = spawn.world_pos
 	var offsets: Array[Vector2i] = [
@@ -112,12 +112,24 @@ func _spawn_boss_near_crystal(spawn) -> bool:
 		var at: Vector2i = cell + off
 		if not spawn_enemy_at_column(&"origin_warden", at.x, at.y, cell, true):
 			continue
-		_crystal_boss_spawned = true
+		_remember_boss_spawned()
 		var enemy: Node = _active[_active.size() - 1]
 		if enemy.has_method("bind_heart"):
 			enemy.bind_heart(cell)
 		return true
 	return false
+
+
+func _pull_boss_spawned() -> bool:
+	if _crystal != null and _crystal.has_method("is_boss_spawned") and _crystal.is_boss_spawned():
+		_crystal_boss_spawned = true
+	return _crystal_boss_spawned
+
+
+func _remember_boss_spawned() -> void:
+	_crystal_boss_spawned = true
+	if _crystal != null and _crystal.has_method("set_boss_spawned"):
+		_crystal.set_boss_spawned(true)
 
 
 func _living_warden() -> bool:
@@ -410,7 +422,8 @@ func import_enemies(rows: Array) -> void:
 			enemy.sync_spatial_index()
 		_active.append(enemy)
 		if _GameConfig.SINGLE_CRYSTAL and enemy_id == &"origin_warden":
-			_crystal_boss_spawned = true
+			_bind()
+			_remember_boss_spawned()
 
 
 func get_active_count() -> int:

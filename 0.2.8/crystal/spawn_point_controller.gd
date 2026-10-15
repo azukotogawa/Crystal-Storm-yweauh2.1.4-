@@ -3,6 +3,7 @@ extends RefCounted
 
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _GameConfig = preload("res://config/game_config.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 
 signal spawn_destroyed(spawn: CrystalSpawnPoint)
 signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
@@ -12,6 +13,7 @@ signal boss_gate_blocked(spawn: CrystalSpawnPoint)
 var emit_weaken_mult: float = 1.0
 var last_destroyed_label: String = ""
 var origin_warden_alive: bool = false
+var boss_spawned: bool = false
 
 var _spawns: Array[CrystalSpawnPoint] = []
 var _active_cells: Dictionary = {}
@@ -106,7 +108,7 @@ func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) ->
 
 func export_spawn_rows() -> Array:
 	var rows: Array = []
-	for spawn in _spawns:
+	for spawn in _rows_to_save():
 		rows.append({
 			"id": spawn.id,
 			"x": spawn.world_pos.x,
@@ -121,6 +123,7 @@ func export_spawn_rows() -> Array:
 			"emit_rate": spawn.emit_rate,
 			"weaken_factor": spawn.weaken_factor,
 			"power_drain": spawn.power_drain,
+			"boss_spawned": boss_spawned,
 		})
 	return rows
 
@@ -129,12 +132,69 @@ func export_meta() -> Dictionary:
 	return {
 		"emit_weaken_mult": emit_weaken_mult,
 		"last_destroyed_label": last_destroyed_label,
+		"boss_spawned": boss_spawned,
+		"crystal_health": crystal_health(),
 	}
 
 
 func import_meta(data: Dictionary) -> void:
 	emit_weaken_mult = float(data.get("emit_weaken_mult", emit_weaken_mult))
 	last_destroyed_label = str(data.get("last_destroyed_label", last_destroyed_label))
+	if data.has("boss_spawned"):
+		boss_spawned = bool(data.boss_spawned)
+
+
+func crystal_health() -> float:
+	var origin := _origin_spawn()
+	if origin == null:
+		return 0.0
+	return origin.health
+
+
+func keep_origin_save_rows(rows: Array) -> Array:
+	if not _GameConfig.SINGLE_CRYSTAL:
+		return rows
+	for row in rows:
+		if row is Dictionary and row_is_origin(row):
+			return [row]
+	return []
+
+
+static func row_is_origin(row: Dictionary) -> bool:
+	if int(row.get("kind", -1)) == _CrystalTypes.SpawnKind.ORIGIN:
+		return true
+	var def_id := str(row.get("def_id", ""))
+	if def_id == "origin_boss" or def_id == "released_crystal":
+		return true
+	return bool(row.get("is_boss", false))
+
+
+func _rows_to_save() -> Array:
+	if not _GameConfig.SINGLE_CRYSTAL:
+		var all_rows: Array = []
+		for spawn in _spawns:
+			all_rows.append(spawn)
+		return all_rows
+	var origin := _origin_spawn()
+	if origin == null:
+		return []
+	return [origin]
+
+
+func _origin_spawn() -> CrystalSpawnPoint:
+	for spawn in _spawns:
+		if _spawn_is_crystal(spawn):
+			return spawn
+	return null
+
+
+func _spawn_is_crystal(spawn: CrystalSpawnPoint) -> bool:
+	if spawn.kind == _CrystalTypes.SpawnKind.ORIGIN:
+		return true
+	var def_id := str(spawn.def_id)
+	if def_id == "origin_boss" or def_id == "released_crystal":
+		return true
+	return spawn.is_boss
 
 
 func _try_damage_spawn(spawn: CrystalSpawnPoint, amount: float) -> bool:
