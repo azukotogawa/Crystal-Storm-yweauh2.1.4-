@@ -10,6 +10,8 @@ const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _SpawnPointRegistry = preload("res://config/spawn_point_registry.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 
+const SINGLE_CRYSTAL := true
+
 @export var world_settings: Resource
 @export var world_gen: Resource
 @export var crystal_sim: Resource

@@ -140,6 +140,7 @@ SUITES=(
 	"res://scripts/verify_main_thread_relief.gd"
 	"res://scripts/verify_combat_parse.gd"
 	"res://scripts/verify_spawn_goal.gd"
+	"res://scripts/verify_single_crystal.gd"
 	"res://scripts/verify_maze_phase.gd"
 	"res://scripts/verify_maze_pressure_assault.gd"
 	"res://scripts/verify_crystal_frontier_readability.gd"

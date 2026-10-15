@@ -63,6 +63,30 @@ static func get_def_for_kind(kind: int) -> _SpawnPointDef:
 	return null
 
 
+static func active_defs() -> Array:
+	return defs_for(_single_crystal_on())
+
+
+static func defs_for(single_crystal: bool) -> Array:
+	ensure_builtins()
+	if single_crystal:
+		var one = _SpawnPointDef.resolved_crystal()
+		if one == null:
+			one = _SpawnPointDef.make_released()
+		_register(one)
+		return [one]
+	return [
+		get_def(&"origin_boss"),
+		get_def(&"ruin_miniboss"),
+		get_def(&"artifact_node"),
+	]
+
+
+static func _single_crystal_on() -> bool:
+	var cfg = load("res://config/game_config.gd")
+	return cfg != null and bool(cfg.SINGLE_CRYSTAL)
+
+
 static func _register(def: _SpawnPointDef) -> void:
 	_defs[def.id] = def
 
