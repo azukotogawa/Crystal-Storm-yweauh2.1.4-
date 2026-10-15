@@ -36,6 +36,7 @@ var world: InfiniteNoiseWorld
 
 var _cooldown_timer: float = 0.0
 var _last_break_cells: Array[Vector3i] = []
+var _listed_break: bool = false
 var _active_hotbar_index: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
@@ -262,6 +263,7 @@ func _try_dig_tool() -> void:
 	var aim := _aim_forward(reach)
 	var anchor := _dig_anchor_cell(reach)
 	_last_break_cells = break_cells_for(item_id, anchor, aim)
+	_listed_break = ItemTypes.MULTI_BLOCK_BREAK
 	_do_dig_attack(item_id, def)
 
 
@@ -273,7 +275,12 @@ func _dig_anchor_cell(range_v: float) -> Vector3i:
 	var target := _resolve_terrain_target(range_v)
 	if target == Vector3.ZERO:
 		return Vector3i.ZERO
-	return Vector3i(floori(target.x), floori(target.y), floori(target.z))
+	var wx := floori(target.x)
+	var wz := floori(target.z)
+	var block_y := floori(target.y)
+	if player != null and player.world != null:
+		block_y = TerrainEdits.surface_block_y(player.world, wx, wz)
+	return Vector3i(wx, block_y, wz)
 
 
 func _try_use_consumable() -> bool:
@@ -677,6 +684,8 @@ func _notify_terrain_fail() -> void:
 
 
 func _do_dig_attack(item_id: String, def: Dictionary) -> void:
+	var listed := _listed_break and ItemTypes.MULTI_BLOCK_BREAK
+	_listed_break = false
 	if not _is_active_dig_tool():
 		return
 	_sync_impact_pose(item_id)
@@ -724,7 +733,13 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			_cooldown_timer = 0.04
 		return
 	dig_attempted.emit(target)
-	if _terrain_editor.has_method("try_dig_brush") and _terrain_editor.try_dig_brush(target, dig_brush_radius(), player):
+	var dug := false
+	if listed:
+		var batch: Dictionary = TerrainEdits.dig_cells(_last_break_cells, _terrain_editor)
+		dug = int(batch.get("dug_count", 0)) > 0
+	elif _terrain_editor.has_method("try_dig_brush") and _terrain_editor.try_dig_brush(target, dig_brush_radius(), player):
+		dug = true
+	if dug:
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
 		_notify_block_break(target)

@@ -2,6 +2,13 @@ extends SceneTree
 
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _Weapon = preload("res://weapons/weapon_controller.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _TerrainEditor = preload("res://world/terrain_editor.gd")
+const _ChunkManager = preload("res://chunks/chunk_manager.gd")
+const _Ramps = preload("res://helpers/terrain_ramps.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 var _failed: int = 0
 
@@ -24,6 +31,7 @@ func _run() -> void:
 	_test_tier_widen()
 	_test_shapes_face_aim()
 	_test_weapon_uses_same_cells()
+	_test_batch_dig()
 	if _failed == 0:
 		print("All multi block break tests OK")
 		quit(0)
@@ -114,7 +122,113 @@ func _test_weapon_uses_same_cells() -> void:
 	if "break_cells_for(" not in body or "_aim_forward(" not in body:
 		_fail("_try_dig_tool must resolve break cells toward the aim")
 		return
+	if "MULTI_BLOCK_BREAK" not in body:
+		_fail("_try_dig_tool must use the batched dig under MULTI_BLOCK_BREAK")
+		return
+	var dig_at := src.find("func _do_dig_attack")
+	var dig_end := src.find("\nfunc ", dig_at + 10)
+	var dig_body := src.substr(dig_at, maxi(dig_end - dig_at, 0))
+	if "TerrainEdits.dig_cells(" not in dig_body or "MULTI_BLOCK_BREAK" not in dig_body:
+		_fail("_try_dig_tool stroke must batch dig_cells under MULTI_BLOCK_BREAK")
+		return
 	print("OK weapon resolves the aimed cell list")
+
+
+func _test_batch_dig() -> void:
+	_TerrainEdits.reset()
+	_FeatureRegistry.reset()
+	var flat := _FlatBreakWorld.new()
+	root.add_child(flat)
+	var editor := _TerrainEditor.new()
+	var cm := _ChunkManager.new()
+	root.add_child(editor)
+	editor.world = flat
+	editor.bind_chunk_manager(cm)
+	var line: Array[Vector3i] = [
+		Vector3i(4, 0, 4),
+		Vector3i(5, 0, 4),
+		Vector3i(6, 0, 4),
+		Vector3i(4, 1, 4),
+	]
+	var before := {}
+	for cell in line:
+		if cell.y != 0:
+			continue
+		before[Vector2i(cell.x, cell.z)] = _Ramps.walkable_height(flat, float(cell.x) + 0.5, float(cell.z) + 0.5)
+	cm.edit_flush_count = 0
+	cm.edit_flush_chunk_count = 0
+	var batch: Dictionary = _TerrainEdits.dig_cells(line, editor)
+	var removed: Array = batch.get("removed", [])
+	var line_ok := removed.size() == line.size() and int(batch.get("dug_count", 0)) == 3
+	for cell in line:
+		if not _has_cell(removed, cell):
+			line_ok = false
+		if cell.y == 0 and _layers_at(cell.x, cell.z) != -1:
+			line_ok = false
+	if _layers_at(4, 4) != -1:
+		line_ok = false
+	for cell in line:
+		if cell.y != 0:
+			continue
+		var stand: float = _Ramps.walkable_height(flat, float(cell.x) + 0.5, float(cell.z) + 0.5)
+		var was: float = float(before.get(Vector2i(cell.x, cell.z), -999.0))
+		if stand >= was - 0.01:
+			line_ok = false
+	if not line_ok:
+		_fail("line cells must all leave and drop collision")
+	elif int(batch.get("remesh_count", 0)) != 1 or int(batch.get("water_count", 0)) != 1 or int(batch.get("crystal_count", 0)) != 1:
+		_fail("one chunk must remesh, reflow water, and update crystal once")
+	elif cm.edit_flush_count != 1:
+		_fail("one chunk must rebuild once, flush %d" % cm.edit_flush_count)
+	else:
+		print("OK one chunk: cells removed, collision dropped, one rebuild")
+	_TerrainEdits.reset()
+	var cm_edge := _ChunkManager.new()
+	editor.bind_chunk_manager(cm_edge)
+	var home_a := _TerrainEdits.chunk_for_column(15, 8)
+	var home_b := _TerrainEdits.chunk_for_column(16, 8)
+	if home_a == home_b:
+		_fail("chunk edge fixture must cover two chunks")
+	else:
+		var edge: Array[Vector3i] = [Vector3i(15, 0, 8), Vector3i(16, 0, 8), Vector3i(15, 0, 9)]
+		var edge_before := {}
+		for cell in edge:
+			edge_before[Vector2i(cell.x, cell.z)] = _Ramps.walkable_height(flat, float(cell.x) + 0.5, float(cell.z) + 0.5)
+		var edge_batch: Dictionary = _TerrainEdits.dig_cells(edge, editor)
+		var edge_removed: Array = edge_batch.get("removed", [])
+		var edge_ok := edge_removed.size() == edge.size() and int(edge_batch.get("dug_count", 0)) == edge.size()
+		for cell in edge:
+			if not _has_cell(edge_removed, cell) or _layers_at(cell.x, cell.z) != -1:
+				edge_ok = false
+			var stand_e: float = _Ramps.walkable_height(flat, float(cell.x) + 0.5, float(cell.z) + 0.5)
+			var was_e: float = float(edge_before.get(Vector2i(cell.x, cell.z), -999.0))
+			if stand_e >= was_e - 0.01:
+				edge_ok = false
+		var homes: int = int(edge_batch.get("remesh_count", 0))
+		if not edge_ok:
+			_fail("edge cells must all leave and drop collision")
+		elif homes != 2 or int(edge_batch.get("water_count", 0)) != 2 or int(edge_batch.get("crystal_count", 0)) != 2:
+			_fail("two chunks must each remesh, reflow, and update crystal once")
+		elif cm_edge.edit_flush_count != 1:
+			_fail("two chunks must share one rebuild flush, flush %d" % cm_edge.edit_flush_count)
+		else:
+			print("OK two chunks: cells removed, collision dropped, one rebuild each")
+	editor.free()
+	flat.free()
+	cm.free()
+	cm_edge.free()
+
+
+func _has_cell(cells: Array, want: Vector3i) -> bool:
+	for item in cells:
+		if item is Vector3i and (item as Vector3i) == want:
+			return true
+	return false
+
+
+func _layers_at(x: int, z: int) -> int:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	return int(round(_TerrainEdits.get_height_delta(x, z) / maxf(layer, 0.001)))
 
 
 func _cells(shape: int, anchor: Vector3i, aim: Vector3) -> Array:
@@ -139,6 +253,20 @@ func _face_x(anchor: Vector3i) -> Array:
 				continue
 			cells.append(Vector3i(anchor.x, anchor.y + uy, anchor.z - rz))
 	return cells
+
+
+class _FlatBreakWorld:
+	extends "res://world/InfiniteNoiseWorld.gd"
+
+	func get_surface_height(wx: float, wz: float) -> float:
+		var k := Vector2i(floori(wx), floori(wz))
+		return TerrainEdits.get_height_delta(k.x, k.y)
+
+	func get_tile_type(_wx: float, _wz: float) -> int:
+		return VoxelTypes.GRASSLAND
+
+	func invalidate_column_cache(_wx: int, _wz: int) -> void:
+		pass
 
 
 func _expect_cells(label: String, got: Array, expect: Array) -> void:

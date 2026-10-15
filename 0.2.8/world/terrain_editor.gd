@@ -260,6 +260,59 @@ func try_dig_brush(world_pos: Vector3, radius: int = 1, range_player: Node = nul
 	return true
 
 
+func break_cell_blocked(wx: int, wz: int) -> String:
+	if _is_water_source_column(wx, wz):
+		return "water"
+	if _LivingForce.is_protected_column(wx, wz, world):
+		return "protected"
+	return ""
+
+
+func grant_break_loot(wx: int, wz: int) -> void:
+	var inv = null
+	if is_inside_tree():
+		var player := get_tree().get_first_node_in_group("player")
+		if player and "inventory" in player:
+			inv = player.inventory
+	_grant_dig_loot(wx, wz, inv)
+
+
+func settle_break_columns(columns: Array) -> Array:
+	return _LivingForce.apply_settle(columns, world)
+
+
+func remesh_break_chunk(_chunk: Vector2i, columns: Array) -> void:
+	for col_v in columns:
+		var col: Vector2i = col_v
+		for dx in [-1, 0, 1]:
+			for dz in [-1, 0, 1]:
+				if world and world.has_method("invalidate_column_cache"):
+					world.invalidate_column_cache(col.x + dx, col.y + dz)
+		if chunk_manager and chunk_manager.has_method("invalidate_columns_at_world"):
+			chunk_manager.invalidate_columns_at_world(col.x, col.y)
+
+
+func update_break_water(_chunk: Vector2i, columns: Array) -> void:
+	if columns.is_empty():
+		return
+	var col: Vector2i = columns[0]
+	_notify_water_reflow(col.x, col.y, true)
+	_living_water_inflow(columns)
+
+
+func update_break_crystal(_chunk: Vector2i, columns: Array) -> void:
+	_living_crystal_react(columns, &"dig")
+	if columns.is_empty():
+		return
+	var col: Vector2i = columns[0]
+	terrain_edited.emit(col.x, col.y, &"dig")
+
+
+func flush_break_chunks() -> void:
+	if chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
+		chunk_manager.flush_rebuild_pending()
+
+
 func _brush_dig_cell(wx: int, wz: int, inventory) -> String:
 	if not _TerrainEdits.can_edit(wx, wz):
 		return "skip"
