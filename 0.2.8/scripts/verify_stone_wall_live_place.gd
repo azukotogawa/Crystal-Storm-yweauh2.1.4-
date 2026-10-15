@@ -6,6 +6,10 @@ const _Inventory = preload("res://inventory/inventory.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
+const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
 
 const STONE_MESH_PATH := "res://assets/structures/stone_wall/stone_wall.obj"
 const WOOD_MESH_PATH := "res://assets/structures/wood_wall/wood_wall.obj"
@@ -183,7 +187,115 @@ func _run() -> void:
 		_fail("registry missing authored stone or wood")
 
 	_ok("arrangements: line, corner, staggered, dig-adjacent, near-gate, near-bridge")
+	await _check_blueprint_live(editor, world, player, feat_layer)
 	_finish()
+
+
+func _check_blueprint_live(editor, world, player, feat_layer) -> void:
+	if not _Blueprints.LARGE_STRUCTURES:
+		_fail("LARGE_STRUCTURES must stay on for live blueprint place")
+		return
+	if player == null or player.get("inventory") == null:
+		_fail("player inventory missing for blueprint place")
+		return
+	var weapon = player.get_node_or_null("WeaponController")
+	var hl = player.get_node_or_null("TargetHighlight")
+	var probe = player.get("_floor_probe")
+	if weapon == null or hl == null or probe == null:
+		_fail("blueprint place needs the weapon, highlight, and floor probe")
+		return
+	var anchor := _flat_blueprint_anchor(world, player)
+	if anchor.x < -100000:
+		_fail("no flat 3-column run in reach for the wall segment")
+		return
+	var before := {}
+	for x in 3:
+		before[anchor.x + x] = _layers_at(anchor.x + x, anchor.y)
+	var beside := _layers_at(anchor.x + 3, anchor.y)
+	var bp := _Blueprints.get_blueprint(_Blueprints.WALL_SEGMENT)
+	var tile := int(bp["cells"][0]["tile"])
+	var homes := {}
+	for x in 3:
+		homes[_TerrainEdits.chunk_for_column(anchor.x + x, anchor.y)] = true
+	var inv = player.inventory
+	weapon.inventory = inv
+	inv.add_item("stone", 40)
+	inv.set_slot(0, "stone", 24)
+	var stone_before := inv.count_item("stone")
+	weapon.blueprint_index = 0
+	weapon.blueprint_quarter = 0
+	weapon._cooldown_timer = 0.0
+	if weapon.has_method("set_active_hotbar_index"):
+		weapon.set_active_hotbar_index(0)
+	hl._action_column = Vector3(float(anchor.x) + 0.5, 0.0, float(anchor.y) + 0.5)
+	weapon._try_place_selected()
+	await process_frame
+	var batch: Dictionary = editor.last_place_batch
+	var placed := int(batch.get("placed_count", 0))
+	var remesh := int(batch.get("remesh_count", 0))
+	if placed != 6 or remesh != homes.size():
+		_fail("blueprint place wrote %d cells over %d remeshes, want 6 over %d (%s)" % [placed, remesh, homes.size(), editor.last_fail_reason])
+		return
+	if int(batch.get("water_count", 0)) != remesh or int(batch.get("crystal_count", 0)) != remesh:
+		_fail("blueprint place must update water and crystal once per chunk")
+		return
+	if inv.count_item("stone") >= stone_before:
+		_fail("blueprint place did not spend stone")
+	var raised := true
+	for x in 3:
+		var wx := anchor.x + x
+		if _layers_at(wx, anchor.y) != int(before[wx]) + 2:
+			raised = false
+		if _TerrainEdits.get_build_tile(wx, anchor.y) != tile:
+			raised = false
+		var blocked: Dictionary = _SmokeProbeHelpers.check_built_wall_collision(probe, wx, anchor.y, false, true)
+		if not blocked.get("ok", false):
+			_fail("blueprint column %s does not block: %s" % [str(Vector2i(wx, anchor.y)), blocked.get("reason", "?")])
+			raised = false
+		var node: Node3D = feat_layer._nodes_by_cell.get(Vector2i(wx, anchor.y))
+		if node == null or str(node.get_meta("building_visual_id", "")) != "stone_wall":
+			_fail("blueprint column %s has no stone wall visual" % str(Vector2i(wx, anchor.y)))
+	if _layers_at(anchor.x + 3, anchor.y) != beside:
+		raised = false
+	if not raised:
+		_fail("wall segment must raise only its three columns by two cells")
+		return
+	_ok("live blueprint place wrote 6 cells in %d chunk remesh(es) and blocks" % remesh)
+
+
+func _flat_blueprint_anchor(world, player) -> Vector2i:
+	var origin: Vector3 = player.get_voxel_position()
+	var px := int(floor(origin.x))
+	var pz := int(floor(origin.z))
+	for dz in range(-5, 6):
+		for dx in range(-5, 4):
+			var ax := px + dx
+			var az := pz + dz
+			if _blueprint_run_clear(world, player, ax, az):
+				return Vector2i(ax, az)
+	return Vector2i(-1000000, 0)
+
+
+func _blueprint_run_clear(world, player, ax: int, az: int) -> bool:
+	var height := world.get_surface_height(float(ax), float(az))
+	for x in 3:
+		var wx := ax + x
+		if not _ActionTargeting._column_in_range(player, wx, az, 8.0):
+			return false
+		if not _TerrainEdits.can_edit(wx, az):
+			return false
+		if absf(world.get_surface_height(float(wx), float(az)) - height) > 0.01:
+			return false
+		if _TerrainEdits.get_build_tile(wx, az) >= 0:
+			return false
+		if not _FeatureRegistry.get_feature(wx, az).is_empty():
+			return false
+	return true
+
+
+func _layers_at(x: int, z: int) -> int:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	return int(round(_TerrainEdits.get_height_delta(x, z) / maxf(layer, 0.001)))
 
 
 func _finish() -> void:

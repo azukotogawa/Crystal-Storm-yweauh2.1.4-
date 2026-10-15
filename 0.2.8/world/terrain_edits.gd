@@ -147,6 +147,131 @@ static func dig_cells(cells: Array, editor: Object = null) -> Dictionary:
 	}
 
 
+static func place_cells(cells: Array, tile_id: int, editor: Object = null, build_id: StringName = &"") -> Dictionary:
+	var world = _place_world(editor)
+	var accepted := _blueprint_stack(cells, world)
+	if accepted.is_empty():
+		if not cells.is_empty():
+			_place_fail(editor, "Can't place here")
+		return _empty_place()
+	var ws = _ws()
+	ws.begin_batch()
+	var placed: Array[Vector3i] = []
+	var columns := {}
+	for cell in accepted:
+		if not build_wall(cell.x, cell.z, tile_id):
+			for done in placed:
+				unstack_build(done.x, done.z)
+			ws.end_batch()
+			_place_fail(editor, "Stack full")
+			return _empty_place()
+		placed.append(cell)
+		columns[Vector2i(cell.x, cell.z)] = true
+	if build_id != &"" and editor != null and editor.has_method("stamp_blueprint_column"):
+		for col_v in columns.keys():
+			editor.stamp_blueprint_column(col_v, build_id)
+	ws.end_batch()
+	return _finish_place(placed, columns, editor)
+
+
+static func _place_world(editor: Object):
+	if editor != null and "world" in editor:
+		return editor.world
+	return null
+
+
+static func _place_fail(editor: Object, reason: String) -> void:
+	if editor != null and "last_fail_reason" in editor and str(editor.last_fail_reason).is_empty():
+		editor.last_fail_reason = reason
+
+
+static func _empty_place() -> Dictionary:
+	return {
+		"placed": [],
+		"placed_count": 0,
+		"columns": [],
+		"chunks": [],
+		"remesh_count": 0,
+		"water_count": 0,
+		"crystal_count": 0,
+	}
+
+
+static func _blueprint_stack(cells: Array, world) -> Array[Vector3i]:
+	var by_col := {}
+	var seen := {}
+	for raw in cells:
+		if not (raw is Vector3i):
+			return []
+		var cell: Vector3i = raw
+		if seen.has(cell):
+			continue
+		seen[cell] = true
+		if not can_edit(cell.x, cell.z):
+			return []
+		var key := Vector2i(cell.x, cell.z)
+		if not by_col.has(key):
+			by_col[key] = []
+		(by_col[key] as Array).append(cell)
+	var ordered: Array[Vector3i] = []
+	for key_v in by_col.keys():
+		var key: Vector2i = key_v
+		var stack: Array = by_col[key]
+		stack.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+			return a.y < b.y
+		)
+		var layers: int = int(_ws().height_delta.get(key, 0))
+		if layers + stack.size() > 8:
+			return []
+		var expect := surface_block_y(world, key.x, key.y) + 1
+		for item in stack:
+			var stacked: Vector3i = item
+			if stacked.y != expect:
+				return []
+			ordered.append(stacked)
+			expect += 1
+	return ordered
+
+
+static func _finish_place(placed: Array[Vector3i], columns: Dictionary, editor: Object) -> Dictionary:
+	var by_chunk := {}
+	for col_v in columns.keys():
+		var col: Vector2i = col_v
+		var key := chunk_for_column(col.x, col.y)
+		if not by_chunk.has(key):
+			by_chunk[key] = []
+		(by_chunk[key] as Array).append(col)
+	var chunk_keys: Array = by_chunk.keys()
+	var remesh := 0
+	var water := 0
+	var crystal := 0
+	for key_v in chunk_keys:
+		var key: Vector2i = key_v
+		var cols: Array = by_chunk[key]
+		if editor != null and editor.has_method("remesh_break_chunk"):
+			editor.remesh_break_chunk(key, cols)
+		remesh += 1
+		if editor != null and editor.has_method("update_break_water"):
+			editor.update_break_water(key, cols)
+		water += 1
+		if editor != null and editor.has_method("update_place_crystal"):
+			editor.update_place_crystal(key, cols)
+		elif editor != null and editor.has_method("update_break_crystal"):
+			editor.update_break_crystal(key, cols)
+		crystal += 1
+	if editor != null and editor.has_method("flush_break_chunks") and not chunk_keys.is_empty():
+		editor.flush_break_chunks()
+	return {
+		"placed": placed,
+		"placed_count": placed.size(),
+		"columns": columns.keys(),
+		"chunks": chunk_keys,
+		"remesh_count": remesh,
+		"water_count": water,
+		"crystal_count": crystal,
+	}
+
+
 static func clip_breakable_cells(cells: Array, world, editor = null) -> Array[Vector3i]:
 	var out: Array[Vector3i] = []
 	var seen := {}

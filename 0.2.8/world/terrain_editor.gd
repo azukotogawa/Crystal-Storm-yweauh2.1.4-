@@ -18,6 +18,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _LivingForce = preload("res://world/living_force.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 
 const REBUILD_EDGE_BAND := 1
 
@@ -33,6 +34,7 @@ var _growth_manager: Node
 var last_fail_reason: String = ""
 var last_build_id: StringName = &""
 var last_stroke_stats: Dictionary = {}
+var last_place_batch: Dictionary = {}
 var _living_push_accum: float = 0.0
 var _living_crystal: Node
 var _living_crystal_tries: int = 0
@@ -369,6 +371,139 @@ func try_build_gate(world_pos: Vector3, inventory) -> bool:
 
 func try_build_bridge(world_pos: Vector3, inventory) -> bool:
 	return try_build(world_pos, inventory, &"bridge")
+
+
+func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName, quarter: int = 0) -> bool:
+	last_fail_reason = ""
+	last_build_id = &""
+	last_place_batch = {}
+	if not _StructureBlueprints.LARGE_STRUCTURES:
+		last_fail_reason = "Structures are off"
+		return false
+	if world == null or chunk_manager == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	if inventory == null:
+		last_fail_reason = "No inventory"
+		return false
+	var bp := _StructureBlueprints.get_blueprint(blueprint_id)
+	if bp.is_empty():
+		last_fail_reason = "No blueprint"
+		return false
+	var weapon_script = load("res://weapons/weapon_controller.gd")
+	var plan: Dictionary = weapon_script.ghost_preview(blueprint_id, world_pos, quarter, world)
+	if not bool(plan.get("valid", false)):
+		last_fail_reason = _blueprint_reject_reason(plan)
+		return false
+	var tile := _blueprint_tile(bp)
+	var build_id := _build_id_for_tile(tile)
+	var paid_with := str(bp.get("cost", {}).get("id", "stone"))
+	var paid_count := _scaled_structure_cost(int(bp.get("cost", {}).get("count", 0)))
+	var wood_count := _scaled_structure_cost(int(bp.get("cost", {}).get("wood_fallback", 0)))
+	var currency := _take_structure_payment(inventory, paid_with, paid_count, wood_count)
+	if currency.is_empty():
+		return false
+	var refund_n := paid_count if currency == paid_with else wood_count
+	var cells: Array[Vector3i] = []
+	for item in plan.get("cells", []):
+		cells.append((item as Dictionary)["at"])
+	var batch: Dictionary = _TerrainEdits.place_cells(cells, tile, self, build_id)
+	last_place_batch = batch
+	if int(batch.get("placed_count", 0)) != cells.size() or cells.is_empty():
+		if inventory.has_method("add_item") and refund_n > 0:
+			inventory.add_item(currency, refund_n)
+		if str(last_fail_reason).is_empty():
+			last_fail_reason = "Can't place here"
+		return false
+	_refresh_blueprint_columns(batch.get("columns", []))
+	last_build_id = build_id
+	var anchor := Vector2i(floori(world_pos.x), floori(world_pos.z))
+	var place_pos := Vector3(float(anchor.x) + 0.5, world.get_surface_height(float(anchor.x), float(anchor.y)), float(anchor.y) + 0.5)
+	structure_placed.emit(anchor.x, anchor.y, build_id, place_pos)
+	return true
+
+
+func stamp_blueprint_column(col: Vector2i, build_id: StringName) -> void:
+	_BuildingRegistry.ensure_builtins()
+	var def = _BuildingRegistry.get_def(build_id)
+	if def == null:
+		return
+	var resist := clampf(float(def.flow_resistance), 0.02, 0.98)
+	var visual_id := str(def.resolved_visual_id()) if def.has_method("resolved_visual_id") else str(build_id)
+	_FeatureRegistry.register_feature(col.x, col.y, _WorldFeatureTypes.FeatureKind.NONE, {
+		"build_id": str(build_id),
+		"visual_id": visual_id,
+		"flow_resistance": resist,
+		"player_built": true,
+		"is_passage": bool(def.is_passage),
+		"is_bridge": bool(def.is_bridge),
+		"raises_terrain": true,
+	})
+
+
+func update_place_crystal(_chunk: Vector2i, columns: Array) -> void:
+	_living_crystal_react(columns, &"build")
+	if columns.is_empty():
+		return
+	var col: Vector2i = columns[0]
+	terrain_edited.emit(col.x, col.y, &"build")
+
+
+func _blueprint_tile(bp: Dictionary) -> int:
+	var listed: Array = bp.get("cells", [])
+	if listed.is_empty():
+		return _VoxelTypes.STONE
+	return int((listed[0] as Dictionary).get("tile", _VoxelTypes.STONE))
+
+
+func _build_id_for_tile(tile: int) -> StringName:
+	_BuildingRegistry.ensure_builtins()
+	var wood = _BuildingRegistry.get_def(&"wood_wall")
+	if wood != null and int(wood.tile_id) == tile:
+		return &"wood_wall"
+	return &"stone_wall"
+
+
+func _scaled_structure_cost(count: int) -> int:
+	if count <= 0:
+		return 0
+	var mult := 1.0
+	if is_inside_tree():
+		var player := get_tree().get_first_node_in_group("player")
+		if player and player.has_method("get_stat"):
+			mult = maxf(player.get_stat(_StatIds.BUILD_COST), 0.1)
+	return maxi(1, int(ceil(float(count) * mult)))
+
+
+func _take_structure_payment(inventory, paid_with: String, paid_count: int, wood_count: int) -> String:
+	if paid_count <= 0:
+		return paid_with
+	if inventory.has_method("consume_item") and inventory.consume_item(paid_with, paid_count):
+		return paid_with
+	if paid_with == "stone" and wood_count > 0 and inventory.consume_item("wood", wood_count):
+		return "wood"
+	last_fail_reason = "Need %d %s" % [paid_count, paid_with]
+	return ""
+
+
+func _blueprint_reject_reason(plan: Dictionary) -> String:
+	for item in plan.get("cells", []):
+		if bool((item as Dictionary).get("valid", false)):
+			continue
+		if str((item as Dictionary).get("reason", "")) == "unsupported":
+			return "Needs support"
+		return "Can't place here"
+	return "Can't place here"
+
+
+func _refresh_blueprint_columns(columns: Array) -> void:
+	var feat_layer = get_tree().get_first_node_in_group("feature_visual_layer") if is_inside_tree() else null
+	for col_v in columns:
+		if not (col_v is Vector2i):
+			continue
+		var col: Vector2i = col_v
+		if feat_layer and feat_layer.has_method("refresh_cell"):
+			feat_layer.refresh_cell(col.x, col.y)
 
 
 func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone_wall") -> bool:

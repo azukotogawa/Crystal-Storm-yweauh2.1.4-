@@ -1027,24 +1027,29 @@ func _try_place_selected() -> void:
 		_cooldown_timer = 0.035
 		return
 	var place_id: String = get_place_id()
+	var built_id := StringName(place_id)
 	var ok := false
-	match place_id:
-		"fill":
-			ok = _terrain_editor.try_fill(target, inventory)
-		"cardinal_ramp":
-			ok = _terrain_editor.try_place_cardinal_ramp(target, inventory)
-		"corner_ramp":
-			ok = _terrain_editor.try_place_corner_ramp(target, inventory)
-		"gate":
-			ok = _terrain_editor.try_build_gate(target, inventory)
-		"bridge":
-			ok = _terrain_editor.try_build_bridge(target, inventory)
-		_:
-			ok = _terrain_editor.try_build(target, inventory, &"stone_wall")
+	if _StructureBlueprints.LARGE_STRUCTURES and selected_blueprint_id() != &"":
+		built_id = selected_blueprint_id()
+		ok = _terrain_editor.try_place_blueprint(target, inventory, built_id, blueprint_quarter)
+	else:
+		match place_id:
+			"fill":
+				ok = _terrain_editor.try_fill(target, inventory)
+			"cardinal_ramp":
+				ok = _terrain_editor.try_place_cardinal_ramp(target, inventory)
+			"corner_ramp":
+				ok = _terrain_editor.try_place_corner_ramp(target, inventory)
+			"gate":
+				ok = _terrain_editor.try_build_gate(target, inventory)
+			"bridge":
+				ok = _terrain_editor.try_build_bridge(target, inventory)
+			_:
+				ok = _terrain_editor.try_build(target, inventory, &"stone_wall")
 	if ok:
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
-		structure_built.emit(StringName(place_id), target)
-		_flash_build_feedback(target, StringName(place_id))
+		structure_built.emit(built_id, target)
+		_flash_build_feedback(target, built_id)
 		_sync_impact_pose(_place_anim_id())
 		_notify_block_place(target)
 		_sfx("build_place", target)
