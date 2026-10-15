@@ -151,11 +151,7 @@ static func run_mesh_stage(
 		}
 	if mesh_source != "cache":
 		var t_rebuild := Time.get_ticks_usec()
-		var result: Dictionary = (
-			host._build_mesh(data)
-			if full_rebuild
-			else host._build_mesh_region(data, patch_rect, false)
-		)
+		var result: Dictionary = _host_build_mesh(host, data, full_rebuild, patch_rect)
 		quads = result.get("quads", [])
 		count = int(result.get("count", 0))
 		mesh_source = "generate"
@@ -185,6 +181,16 @@ static func run_mesh_stage(
 		"plan_lookup_us": plan_lookup_us,
 		"rebuild_us": rebuild_us,
 	}
+
+
+static func _host_build_mesh(host, data: ChunkData, full_rebuild: bool, patch_rect: Rect2i) -> Dictionary:
+	if not ChunkData.USE_MICRO_BRICKS and host.has_method("_build_macro_mesh_region"):
+		if full_rebuild and host.has_method("_build_macro_mesh"):
+			return host._build_macro_mesh(data)
+		return host._build_macro_mesh_region(data, patch_rect, false)
+	if full_rebuild:
+		return host._build_mesh(data)
+	return host._build_mesh_region(data, patch_rect, false)
 
 
 static func _mesh_plan_cache_active():

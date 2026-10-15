@@ -887,12 +887,22 @@ func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
 
 
 func _build_mesh(data: ChunkData) -> Dictionary:
+	if not ChunkData.USE_MICRO_BRICKS:
+		return _build_macro_mesh(data)
 	var built := _build_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
 	sync_ramp_map_to_mesh(data, built.get("quads", []))
 	return built
 
 
+func _build_macro_mesh(data: ChunkData) -> Dictionary:
+	var built := _build_macro_mesh_region(data, Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), true)
+	sync_ramp_map_to_mesh(data, built.get("quads", []))
+	return built
+
+
 func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false) -> Dictionary:
+	if not ChunkData.USE_MICRO_BRICKS:
+		return _build_macro_mesh_region(data, rect, full_chunk)
 	if not data._maps_resident:
 		data.ensure_column_maps()
 	var out_quads := []
@@ -902,7 +912,7 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	var z1 := rect.position.y + rect.size.y
 
 	data._mesh_job_micro_skip = {}
-	if ChunkData.USE_MICRO_BRICKS and _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
+	if _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
 		data._mesh_job_micro_skip = _MicroTerrainMeshCompositor.build_skip_set(data, rect)
 
 	if not full_chunk:
@@ -925,9 +935,41 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 		_emit_cave_faces(data, out_quads)
 	var micro_skip: Dictionary = data._mesh_job_micro_skip
 	data._mesh_job_micro_skip = {}
-	if ChunkData.USE_MICRO_BRICKS and not micro_skip.is_empty():
+	if not micro_skip.is_empty():
 		_MicroTerrainMeshCompositor.compose(data, rect, out_quads, self, micro_skip)
 
+	return {
+		"quads": out_quads,
+		"count": out_quads.size()
+	}
+
+
+func _build_macro_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false) -> Dictionary:
+	if not data._maps_resident:
+		data.ensure_column_maps()
+	var out_quads := []
+	var x0 := rect.position.x
+	var z0 := rect.position.y
+	var x1 := rect.position.x + rect.size.x
+	var z1 := rect.position.y + rect.size.y
+	data._mesh_job_micro_skip = {}
+	if not full_chunk:
+		_clear_ramp_map_in_rect(data, rect)
+	var concave_cells := {}
+	if full_chunk:
+		_emit_ramps(data, out_quads, concave_cells)
+	else:
+		_emit_ramps_in_rect(data, out_quads, concave_cells, rect)
+	_emit_dug_strata_region(data, out_quads, x0, z0, x1, z1)
+	_emit_build_strata_region(data, out_quads, x0, z0, x1, z1)
+	_greedy_mesh_plane_region(data, Vector3i(0, 1, 0), FACE_TOP, out_quads, x0, z0, x1, z1)
+	_greedy_mesh_plane_region(data, Vector3i(-1, 0, 0), FACE_NEG_X, out_quads, x0, z0, x1, z1)
+	_greedy_mesh_plane_region(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads, x0, z0, x1, z1)
+	_greedy_mesh_plane_region(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads, x0, z0, x1, z1)
+	_greedy_mesh_plane_region(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads, x0, z0, x1, z1)
+	_emit_water_lids_region(data, out_quads, x0, z0, x1, z1)
+	if MESH_CAVES and full_chunk:
+		_emit_cave_faces(data, out_quads)
 	return {
 		"quads": out_quads,
 		"count": out_quads.size()
