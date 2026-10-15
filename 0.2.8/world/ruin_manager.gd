@@ -4,6 +4,18 @@ extends Node
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
+const _RelicRegistry = preload("res://relics/relic_registry.gd")
+
+const WORLD_DENSITY := true
+
+const LORE_LINES := [
+	"Treasure hunters broke this seal and the crystal woke.",
+	"A hunter's note: we opened the chest. The crystal followed.",
+	"Hunters packed these relics. One crystal was already loose.",
+	"Treasure hunters opened the chest. The crystal escaped with them.",
+	"Scratched by a hunter: leave the crystal shut.",
+	"The last hunter wrote: the crystal is out. Take what remains.",
+]
 
 @export var ruin_count: int = 6
 @export var min_distance_from_origin: float = 48.0
@@ -65,14 +77,10 @@ func _place_ruins() -> void:
 			continue
 
 		var center := Vector2i(wx, wz)
-		var ruin_data := {
-			"center": center,
-			"name": "Ruin %d" % (placed.size() + 1),
-			"radius": 5,
-		}
+		var ruin_data := _site_record(placed.size(), center)
 		ruins.append(ruin_data)
 		placed.append(center)
-		_stamp_ruin(center, str(ruin_data.name))
+		install_site(ruin_data, WORLD_DENSITY)
 		ruin_registered.emit(ruin_data)
 
 
@@ -88,17 +96,74 @@ func _is_valid_ruin_site(wx: int, wz: int) -> bool:
 	return true
 
 
-func _stamp_ruin(center: Vector2i, ruin_name: String = "Forgotten Ruin") -> void:
+func _site_record(site_index: int, center: Vector2i) -> Dictionary:
+	if WORLD_DENSITY:
+		return treasure_site(site_index, center)
+	return {
+		"center": center,
+		"name": "Ruin %d" % (site_index + 1),
+		"radius": 5,
+	}
+
+
+static func treasure_site(site_index: int, center: Vector2i) -> Dictionary:
+	var pool: Array[StringName] = _RelicRegistry.ruin_loot_pool()
+	var relic: StringName = &""
+	if not pool.is_empty():
+		relic = pool[posmod(site_index, pool.size())]
+	var h: int = absi(hash(center) + site_index * 17)
+	var lore: String = LORE_LINES[posmod(site_index, LORE_LINES.size())]
+	return {
+		"center": center,
+		"name": "Treasure Site %d" % (site_index + 1),
+		"radius": 5,
+		"treasure_site": true,
+		"lore": lore,
+		"chest": {
+			"relics": [relic],
+			"resources": {
+				"stone": 4 + (h % 5),
+				"herb": 1 + (int(h / 5) % 3),
+				"wood": 2 + (int(h / 11) % 4),
+			},
+		},
+	}
+
+
+static func feature_payload(site: Dictionary, density_on: bool) -> Dictionary:
+	var center: Vector2i = site.get("center", Vector2i.ZERO)
+	if not density_on:
+		return {
+			"center": center,
+			"name": str(site.get("name", "Forgotten Ruin")),
+			"is_spawn_point": true,
+		}
+	var chest: Dictionary = site.get("chest", {})
+	return {
+		"center": center,
+		"name": str(site.get("name", "Treasure Site")),
+		"is_spawn_point": false,
+		"treasure_site": true,
+		"lore": str(site.get("lore", "")),
+		"chest": chest.duplicate(true),
+	}
+
+
+func install_site(site: Dictionary, density_on: bool = WORLD_DENSITY) -> void:
+	var center: Vector2i = site.get("center", Vector2i.ZERO)
+	_stamp_payload(center, feature_payload(site, density_on))
+
+
+func _stamp_payload(center: Vector2i, payload: Dictionary) -> void:
 	for dx in range(-5, 6):
 		for dz in range(-5, 6):
 			if Vector2(dx, dz).length() > 5.0:
 				continue
 			var wx := center.x + dx
 			var wz := center.y + dz
-			_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.RUIN, {
-				"center": center,
-				"name": ruin_name,
-				"is_spawn_point": true,
-			})
+			var cell: Dictionary = payload.duplicate(true)
+			if dx != 0 or dz != 0:
+				cell.erase("chest")
+			_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.RUIN, cell)
 			if absi(dx) <= 1 and absi(dz) <= 1:
 				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.STONE2, true)

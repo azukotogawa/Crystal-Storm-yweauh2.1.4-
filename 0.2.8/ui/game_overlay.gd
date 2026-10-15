@@ -379,6 +379,9 @@ func _on_ruin_expedition(result: Dictionary) -> void:
 		parts.append("Relic: %s" % rname)
 	if guardians > 0:
 		parts.append("%d guardians wake!" % guardians)
+	var lore := str(result.get("lore", ""))
+	if lore != "":
+		parts.append(lore)
 	_show_toast(" · ".join(parts))
 	_update_game_hud()
 

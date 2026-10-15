@@ -5,6 +5,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
+const _RuinManager = preload("res://world/ruin_manager.gd")
 
 signal ruin_discovered(ruin_name: String, center: Vector2i, power_bonus: float)
 signal ruin_expedition_completed(result: Dictionary)
@@ -202,12 +203,13 @@ func discover_ruin_at(center: Vector2i) -> Dictionary:
 	var feat: Dictionary = _FeatureRegistry.get_feature(center.x, center.y)
 	if feat.has("name"):
 		ruin_name = str(feat.name)
+	var lore := str(feat.get("lore", ""))
 	if _crystal and _crystal.has_method("grant_feed_power"):
 		_crystal.grant_feed_power(ruin_power_bonus)
 	elif _crystal and _crystal.has_method("_add_power"):
 		_crystal._add_power(ruin_power_bonus)
-	var loot: Dictionary = _grant_ruin_loot(center)
-	var relic_id: StringName = _try_grant_ruin_relic(center)
+	var loot: Dictionary = _grant_ruin_loot(center, feat)
+	var relic_id: StringName = _try_grant_ruin_relic(center, feat)
 	var guardians: int = _spawn_ruin_guardians(center)
 	var result := {
 		"center": center,
@@ -216,13 +218,14 @@ func discover_ruin_at(center: Vector2i) -> Dictionary:
 		"loot": loot,
 		"relic_id": str(relic_id),
 		"guardians": guardians,
+		"lore": lore,
 		"discovered_count": _discovered_ruins.size(),
 	}
 	ruin_discovered.emit(ruin_name, center, ruin_power_bonus)
 	ruin_expedition_completed.emit(result)
 	print(
-		"[LivingWorld] Expedition %s at %s — crystal +%.0f · loot %s · relic=%s · guardians=%d"
-		% [ruin_name, center, ruin_power_bonus, loot, str(relic_id), guardians]
+		"[LivingWorld] Expedition %s at %s — crystal +%.0f · loot %s · relic=%s · guardians=%d · %s"
+		% [ruin_name, center, ruin_power_bonus, loot, str(relic_id), guardians, lore]
 	)
 	return result
 
@@ -236,10 +239,22 @@ func get_ruins_hud_line() -> String:
 	var n: int = _discovered_ruins.size()
 	if total <= 0:
 		return ""
-	return "Ruins %d/%d" % [n, total]
+	var label := "Treasure ruins" if _RuinManager.WORLD_DENSITY else "Ruins"
+	return "%s %d/%d" % [label, n, total]
 
 
-func _grant_ruin_loot(center: Vector2i) -> Dictionary:
+func _grant_ruin_loot(center: Vector2i, feat: Dictionary = {}) -> Dictionary:
+	var chest: Dictionary = feat.get("chest", {})
+	var packed: Dictionary = chest.get("resources", {})
+	if not packed.is_empty():
+		if _player and "inventory" in _player and _player.inventory:
+			var inv = _player.inventory
+			if inv.has_method("add_item"):
+				for key in packed.keys():
+					var n := int(packed[key])
+					if n > 0:
+						inv.add_item(str(key), n)
+		return packed.duplicate()
 	var stone_n := ruin_loot_stone
 	var herb_n := ruin_loot_herb
 	var h: int = absi(hash(center))
@@ -248,14 +263,14 @@ func _grant_ruin_loot(center: Vector2i) -> Dictionary:
 	if h % 5 == 0:
 		herb_n += 1
 	if _player and "inventory" in _player and _player.inventory:
-		var inv = _player.inventory
-		if inv.has_method("add_item"):
-			inv.add_item("stone", stone_n)
-			inv.add_item("herb", herb_n)
+		var inv_plain = _player.inventory
+		if inv_plain.has_method("add_item"):
+			inv_plain.add_item("stone", stone_n)
+			inv_plain.add_item("herb", herb_n)
 	return {"stone": stone_n, "herb": herb_n}
 
 
-func _try_grant_ruin_relic(center: Vector2i) -> StringName:
+func _try_grant_ruin_relic(center: Vector2i, feat: Dictionary = {}) -> StringName:
 	_RelicRegistry.ensure_builtins()
 	if _player == null:
 		return &""
@@ -265,18 +280,36 @@ func _try_grant_ruin_relic(center: Vector2i) -> StringName:
 	if relic_mgr == null or not relic_mgr.has_method("equip"):
 		return &""
 	var equipped: Array = relic_mgr.equipped if "equipped" in relic_mgr else []
-	var pool: Array[StringName] = _RelicRegistry.ruin_loot_pool()
-	if pool.is_empty():
-		return &""
-	var start: int = absi(hash(center)) % pool.size()
-	for i in pool.size():
-		var rid: StringName = pool[(start + i) % pool.size()]
+	var ordered: Array[StringName] = _relic_order(center, feat)
+	for rid in ordered:
 		if rid in equipped:
 			continue
 		if relic_mgr.equip(rid):
 			_relics_found += 1
 			return rid
 	return &""
+
+
+func _relic_order(center: Vector2i, feat: Dictionary) -> Array[StringName]:
+	var ordered: Array[StringName] = []
+	var chest: Dictionary = feat.get("chest", {})
+	var listed: Array = chest.get("relics", [])
+	for item in listed:
+		var rid := StringName(str(item))
+		if rid != &"" and rid not in ordered:
+			ordered.append(rid)
+	var pool: Array[StringName] = _RelicRegistry.ruin_loot_pool()
+	if ordered.is_empty():
+		if pool.is_empty():
+			return ordered
+		var start: int = absi(hash(center)) % pool.size()
+		for i in pool.size():
+			ordered.append(pool[(start + i) % pool.size()])
+		return ordered
+	for rid in pool:
+		if rid not in ordered:
+			ordered.append(rid)
+	return ordered
 
 
 func _spawn_ruin_guardians(center: Vector2i) -> int:
