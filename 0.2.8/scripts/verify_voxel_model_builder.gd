@@ -1,6 +1,7 @@
 extends SceneTree
 
 const _Model = preload("res://helpers/voxel_model_builder.gd")
+const _Body = preload("res://player/player_body_mesh.gd")
 
 var _failed := 0
 
@@ -15,16 +16,20 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	if _Model.USE_GRID_PARTS:
-		_fail("USE_GRID_PARTS must stay off so current part visuals remain")
 	var body_src := FileAccess.get_file_as_string("res://player/player_body_mesh.gd")
+	var apply_at := body_src.find("static func apply_to")
+	var slab_at := body_src.find("if USE_SLAB_BODY:", apply_at)
+	var grid_at := body_src.find("USE_GRID_PARTS", apply_at)
 	if body_src.find("USE_GRID_PARTS") < 0 or body_src.find("_apply_rig") < 0 or body_src.find("USE_SLAB_BODY") < 0:
 		_fail("player body must keep the slab and part-rig fallback")
+	elif apply_at < 0 or slab_at < 0 or grid_at < 0 or slab_at > grid_at:
+		_fail("slab fallback must be checked before the voxel grid")
 	var entity_src := FileAccess.get_file_as_string("res://entities/world_entity.gd")
 	if entity_src.find("USE_GRID_PARTS") < 0 or entity_src.find("_ensure_sprite") < 0 or entity_src.find("_ensure_voxel_model") < 0:
 		_fail("world entity must keep the sprite and voxel-prop fallback")
-	if not _Model.parts_for(&"player").is_empty():
-		_fail("player grid parts must stay empty until a model is authored")
+	if not _Model.parts_for(&"rabbit").is_empty():
+		_fail("creature grids must stay empty until one creature is authored")
+	_check_player_grid()
 	var tunic := Color(0.22, 0.42, 0.34)
 	var boot := Color(0.20, 0.14, 0.10)
 	var palette := PackedColorArray([Color.BLACK, tunic, boot])
@@ -111,6 +116,64 @@ func _run() -> void:
 	holder.free()
 	rig.free()
 	_finish()
+
+
+func _check_player_grid() -> void:
+	if not _Model.USE_GRID_PARTS:
+		_fail("player grid flag should start on")
+		_Model.USE_GRID_PARTS = true
+	var ids := {}
+	for part in _Model.parts_for(&"player"):
+		ids[str(part.get("id", ""))] = part
+	for need in ["head", "torso", "upper_arm_l", "lower_arm_l", "upper_arm_r", "lower_arm_r", "leg_l", "leg_r", "held_item"]:
+		if not ids.has(need):
+			_fail("player grid missing %s" % need)
+			return
+	if not bool((ids["held_item"] as Dictionary).get("socket", false)):
+		_fail("held item part is not a socket")
+		return
+	var height := 3.2
+	var radius := _Body.half_width_for_height(height)
+	var mi := MeshInstance3D.new()
+	root.add_child(mi)
+	_Body.apply_to(mi, height, radius)
+	var skel := mi.get_node_or_null("PlayerRig") as Skeleton3D
+	var anim := mi.get_node_or_null("PlayerAnim") as AnimationPlayer
+	var socket := mi.get_node_or_null("PlayerRig/held_item") as BoneAttachment3D
+	if skel == null or anim == null or socket == null or skel.find_bone("HeldSocket") < 0:
+		_fail("grid rig is missing PlayerRig, PlayerAnim, or the held socket")
+	elif socket.bone_name != "HeldSocket":
+		_fail("held socket is not on HeldSocket")
+	else:
+		var tunic := Color(0.22, 0.42, 0.34)
+		var torso := skel.get_node_or_null("torso/Mesh") as MeshInstance3D
+		if torso == null or torso.mesh == null:
+			_fail("torso mesh missing")
+		else:
+			var cols: PackedColorArray = torso.mesh.surface_get_arrays(0)[Mesh.ARRAY_COLOR]
+			var flat := true
+			for col in cols:
+				if not _flat_albedo(col, tunic) and not _flat_albedo(col, Color(0.42, 0.28, 0.14)):
+					flat = false
+					break
+			if not flat:
+				_fail("torso vertex colors are not the flat palette")
+			else:
+				print("OK player grid socket %s" % socket.bone_name)
+	_Model.USE_GRID_PARTS = false
+	var fallback := MeshInstance3D.new()
+	root.add_child(fallback)
+	_Body.apply_to(fallback, height, radius)
+	var sprite_rig := fallback.get_node_or_null("PlayerRig") as Skeleton3D
+	if sprite_rig == null or sprite_rig.find_bone("Head") < 0:
+		_fail("grid flag off did not restore the sprite part rig")
+	elif fallback.get_node_or_null("PlayerRig/held_item") != null:
+		_fail("sprite fallback still spawned the voxel socket")
+	else:
+		print("OK grid flag off restores the sprite rig")
+	_Model.USE_GRID_PARTS = true
+	fallback.free()
+	mi.free()
 
 
 func _check_lit(mesh: ArrayMesh, albedo: Color) -> void:

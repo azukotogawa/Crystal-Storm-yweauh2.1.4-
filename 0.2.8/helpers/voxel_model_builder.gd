@@ -1,7 +1,7 @@
 class_name VoxelModelBuilder
 extends RefCounted
 
-const USE_GRID_PARTS := false
+static var USE_GRID_PARTS := true
 
 static var _wind_sign: float = 0.0
 
@@ -48,12 +48,83 @@ class _Buf:
 		return mesh
 
 
-static func parts_for(_who: StringName) -> Array:
+static func player_grid_size() -> Vector3i:
+	return Vector3i(8, 17, 4)
+
+
+static func parts_for(who: StringName) -> Array:
+	if who == &"player":
+		return _player_parts()
 	return []
 
 
-static func palette_for(_who: StringName) -> PackedColorArray:
-	return PackedColorArray()
+static func palette_for(who: StringName) -> PackedColorArray:
+	if who != &"player":
+		return PackedColorArray()
+	return PackedColorArray([
+		Color(0, 0, 0),
+		Color(0.86, 0.62, 0.42),
+		Color(0.28, 0.16, 0.10),
+		Color(0.22, 0.42, 0.34),
+		Color(0.42, 0.28, 0.14),
+		Color(0.20, 0.14, 0.10),
+		Color(0.08, 0.08, 0.10),
+	])
+
+
+static func _player_parts() -> Array:
+	var skin := 1
+	var hair := 2
+	var tunic := 3
+	var belt := 4
+	var boot := 5
+	var eye := 6
+	var torso: Array = []
+	_fill(torso, 1, 7, 0, 7, 12, 4, tunic)
+	_fill(torso, 1, 6, 0, 7, 7, 4, belt)
+	var head: Array = []
+	_fill(head, 2, 15, 0, 6, 17, 4, hair)
+	_fill(head, 2, 13, 0, 6, 15, 4, skin)
+	_fill(head, 3, 14, 3, 5, 15, 4, eye)
+	var arm_l: Array = []
+	_fill(arm_l, 0, 9, 1, 2, 12, 3, tunic)
+	var arm_r: Array = []
+	_fill(arm_r, 6, 9, 1, 8, 12, 3, tunic)
+	var fore_l: Array = []
+	_fill(fore_l, 0, 7, 1, 2, 9, 3, skin)
+	var fore_r: Array = []
+	_fill(fore_r, 6, 7, 1, 8, 9, 3, skin)
+	var leg_l: Array = []
+	_fill(leg_l, 1, 2, 1, 3, 6, 3, tunic)
+	_fill(leg_l, 1, 0, 1, 3, 2, 3, boot)
+	var leg_r: Array = []
+	_fill(leg_r, 5, 2, 1, 7, 6, 3, tunic)
+	_fill(leg_r, 5, 0, 1, 7, 2, 3, boot)
+	return [
+		_part("torso", "Torso", "Root", torso),
+		_part("head", "Head", "Torso", head),
+		_part("upper_arm_l", "UpperArm_L", "Torso", arm_l),
+		_part("lower_arm_l", "LowerArm_L", "UpperArm_L", fore_l),
+		_part("upper_arm_r", "UpperArm_R", "Torso", arm_r),
+		_part("lower_arm_r", "LowerArm_R", "UpperArm_R", fore_r),
+		_part("leg_l", "Leg_L", "Root", leg_l),
+		_part("leg_r", "Leg_R", "Root", leg_r),
+		{"id": "held_item", "bone": "HeldSocket", "parent": "LowerArm_R", "socket": true, "cells": []},
+	]
+
+
+static func _part(id: String, bone: String, parent: String, cells: Array) -> Dictionary:
+	var pivot := "top"
+	if id == "head" or id == "torso":
+		pivot = "bottom"
+	return {"id": id, "bone": bone, "parent": parent, "pivot": pivot, "cells": cells}
+
+
+static func _fill(into: Array, x0: int, y0: int, z0: int, x1: int, y1: int, z1: int, mat: int) -> void:
+	for z in range(z0, z1):
+		for y in range(y0, y1):
+			for x in range(x0, x1):
+				into.append(Vector4i(x, y, z, mat))
 
 
 static func face_count(mesh: ArrayMesh) -> int:
@@ -89,6 +160,37 @@ static func build_mesh(cells: Array, palette, cube: float) -> ArrayMesh:
 	for axis in 3:
 		_emit_axis(buf, occ, size, palette, cube, shift, axis, 1)
 		_emit_axis(buf, occ, size, palette, cube, shift, axis, -1)
+	return buf.commit()
+
+
+static func build_bricks(cells: Array, palette, cube: float) -> ArrayMesh:
+	if cube <= 0.0 or cells.is_empty():
+		return null
+	var packed := _pack(cells)
+	var occ: Dictionary = packed["occ"]
+	if occ.is_empty():
+		return null
+	_ensure_wind()
+	var buf := _Buf.new()
+	buf.wind_sign = _wind_sign
+	var shift: Vector3 = Vector3(packed["origin"]) * cube
+	for key in occ.keys():
+		var at: Vector3i = key
+		var col := _palette_at(palette, int(occ[key]))
+		for axis in 3:
+			var u := (axis + 1) % 3
+			var v := (axis + 2) % 3
+			for sign in [-1, 1]:
+				var nb := at
+				if axis == 0:
+					nb.x += sign
+				elif axis == 1:
+					nb.y += sign
+				else:
+					nb.z += sign
+				if int(occ.get(nb, 0)) > 0:
+					continue
+				_emit_rect(buf, axis, sign, _axis_i(at, u), _axis_i(at, v), _axis_i(at, axis), 1, 1, col, cube, shift, u, v)
 	return buf.commit()
 
 

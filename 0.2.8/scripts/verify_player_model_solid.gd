@@ -1,6 +1,7 @@
 extends SceneTree
 
 const _Body = preload("res://player/player_body_mesh.gd")
+const _Model = preload("res://helpers/voxel_model_builder.gd")
 const _WS = preload("res://config/world_settings.gd")
 
 const _TUNICS := Color(0.22, 0.42, 0.34, 1.0)
@@ -286,6 +287,12 @@ func _run() -> void:
 	if front_n <= 0 or back_n <= 0 or side_n <= 0:
 		push_error("missing front/back/side faces for tint check")
 		failed = true
+	elif _Model.USE_GRID_PARTS:
+		if not _flat_palette(colors):
+			push_error("grid parts must keep flat palette colors, not painted shade")
+			failed = true
+		else:
+			print("OK grid albedo is flat")
 	elif (back_lum / float(back_n)) >= (front_lum / float(front_n)) * 0.92:
 		push_error("back faces should be a darker tint of the front art")
 		failed = true
@@ -367,6 +374,26 @@ func _run() -> void:
 
 func _near(a: Color, b: Color) -> bool:
 	return absf(a.r - b.r) < 0.04 and absf(a.g - b.g) < 0.04 and absf(a.b - b.b) < 0.04
+
+
+func _flat_palette(colors: PackedColorArray) -> bool:
+	var allowed: Array[Color] = [
+		Color(0.86, 0.62, 0.42),
+		Color(0.28, 0.16, 0.10),
+		Color(0.22, 0.42, 0.34),
+		Color(0.42, 0.28, 0.14),
+		Color(0.20, 0.14, 0.10),
+		Color(0.08, 0.08, 0.10),
+	]
+	for col in colors:
+		var matched := false
+		for swatch in allowed:
+			if _near(col, swatch):
+				matched = true
+				break
+		if not matched:
+			return false
+	return true
 
 
 func _dominant(n: Vector3) -> String:

@@ -89,28 +89,106 @@ static func half_width_for_height(body_height: float) -> float:
 
 static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
 	_drop_rig(mesh_instance)
-	if _VoxelModel.USE_GRID_PARTS and _apply_grid_rig(mesh_instance, height, radius):
-		return
 	if USE_SLAB_BODY:
 		_apply_slab(mesh_instance, height, radius)
-	else:
-		_apply_rig(mesh_instance, height, radius)
+		return
+	if _VoxelModel.USE_GRID_PARTS and _apply_grid_rig(mesh_instance, height, radius):
+		return
+	_apply_rig(mesh_instance, height, radius)
 
 
 static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radius: float) -> bool:
 	var parts: Array = _VoxelModel.parts_for(&"player")
-	if parts.is_empty():
+	var grid: Vector3i = _VoxelModel.player_grid_size()
+	if parts.is_empty() or height <= 0.0 or grid.y <= 0:
 		return false
-	var cube := height
-	if parts[0] is Dictionary and (parts[0] as Dictionary).has("cube"):
-		cube = float((parts[0] as Dictionary)["cube"])
-	var rig := _VoxelModel.build_rig(parts, _VoxelModel.palette_for(&"player"), cube)
-	if rig == null:
-		return false
+	var cube := height / float(grid.y)
+	var shift := Vector3(-float(grid.x), -float(grid.y), -float(grid.z)) * cube * 0.5
+	var palette := _VoxelModel.palette_for(&"player")
 	mesh_instance.mesh = null
+	mesh_instance.material_override = make_material()
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mesh_instance.position.y = height * 0.5
-	mesh_instance.add_child(rig)
+	var skel := Skeleton3D.new()
+	skel.name = "PlayerRig"
+	var root := skel.add_bone("Root")
+	skel.set_bone_rest(root, Transform3D.IDENTITY)
+	var bone_of := {"Root": root}
+	var pivot_of := {"Root": Vector3.ZERO}
+	var bound := {}
+	for part in parts:
+		if not (part is Dictionary):
+			skel.free()
+			return false
+		var spec: Dictionary = part
+		var bone_name := str(spec.get("bone", ""))
+		var parent_name := str(spec.get("parent", "Root"))
+		var part_id := str(spec.get("id", bone_name))
+		if bone_name == "" or not bone_of.has(parent_name):
+			skel.free()
+			return false
+		var parent_pivot: Vector3 = pivot_of[parent_name]
+		var mesh: ArrayMesh = null
+		var pivot := parent_pivot
+		if bool(spec.get("socket", false)):
+			pivot = pivot_of.get(parent_name + ":hand", parent_pivot) as Vector3
+		else:
+			mesh = _VoxelModel.build_bricks(spec.get("cells", []), palette, cube)
+			if mesh == null:
+				skel.free()
+				return false
+			mesh = _shift_mesh(mesh, shift)
+			pivot = _joint_pivot(part_id, mesh.get_aabb())
+			var box: AABB = mesh.get_aabb()
+			var mid := box.position + box.size * 0.5
+			pivot_of[bone_name + ":hand"] = Vector3(mid.x, box.position.y, mid.z)
+		var idx := skel.add_bone(bone_name)
+		skel.set_bone_parent(idx, int(bone_of[parent_name]))
+		skel.set_bone_rest(idx, Transform3D(Basis.IDENTITY, pivot - parent_pivot))
+		bone_of[bone_name] = idx
+		if mesh != null:
+			pivot_of[bone_name] = pivot
+		var att := BoneAttachment3D.new()
+		att.name = part_id
+		att.bone_name = bone_name
+		att.bone_idx = idx
+		skel.add_child(att)
+		if mesh != null:
+			var part_mi := MeshInstance3D.new()
+			part_mi.name = "Mesh"
+			part_mi.mesh = mesh
+			part_mi.material_override = _VoxelModel.make_material()
+			part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			part_mi.position = -pivot
+			att.add_child(part_mi)
+		bound[part_id] = true
+	for need in ["head", "torso", "upper_arm_l", "lower_arm_l", "upper_arm_r", "lower_arm_r", "leg_l", "leg_r", "held_item"]:
+		if not bound.has(need):
+			skel.free()
+			return false
+	skel.reset_bone_poses()
+	_flush_bones(skel)
+	mesh_instance.add_child(skel)
+	_attach_anim(mesh_instance, height, pivot_of)
 	return true
+
+
+static func _shift_mesh(mesh: ArrayMesh, offset: Vector3) -> ArrayMesh:
+	var src: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = src[Mesh.ARRAY_VERTEX]
+	var moved := PackedVector3Array()
+	moved.resize(verts.size())
+	for i in verts.size():
+		moved[i] = verts[i] + offset
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = moved
+	arrays[Mesh.ARRAY_NORMAL] = src[Mesh.ARRAY_NORMAL]
+	arrays[Mesh.ARRAY_COLOR] = src[Mesh.ARRAY_COLOR]
+	arrays[Mesh.ARRAY_INDEX] = src[Mesh.ARRAY_INDEX]
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return out
 
 
 static func _apply_slab(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
