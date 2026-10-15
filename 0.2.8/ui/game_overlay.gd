@@ -655,6 +655,10 @@ func _update_game_hud() -> void:
 	# the 0.0% that made the threat look absent.
 	if tiles > 0 and cov_pct < 0.05:
 		crystal_bit = "Crystal %dc · cap %.0f%%" % [tiles, max_cov]
+	if _game_manager.has_method("coverage_hud_note"):
+		var cap_note: String = str(_game_manager.coverage_hud_note(cov_pct / 100.0))
+		if cap_note != "":
+			crystal_bit = "%s · %s" % [crystal_bit, cap_note]
 	var bearing := _crystal_bearing_bit()
 	if bearing != "":
 		crystal_bit = "%s · %s" % [crystal_bit, bearing]
@@ -1123,6 +1127,10 @@ func _update_objective_hud() -> void:
 		_objective_phase.text = parts[0]
 		_objective_spawns.text = parts[1]
 		_objective_coverage.text = parts[2]
+		if _game_manager and _game_manager.has_method("coverage_hud_note"):
+			var cap_note: String = str(_game_manager.coverage_hud_note(coverage))
+			if cap_note != "":
+				_objective_coverage.text = "%s · %s" % [_objective_coverage.text, cap_note]
 		_objective_bearing.text = parts[3]
 	if _objective_arrow:
 		_objective_arrow.rotation = bearing.rotation

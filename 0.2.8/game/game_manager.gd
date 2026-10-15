@@ -5,6 +5,8 @@ const _GameConfig = preload("res://config/game_config.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
+const DEATH_ONLY_LOSS := true
+
 enum Phase { MAZE, ASSAULT, VICTORY }
 enum RunState { PLAYING, WON, LOST }
 
@@ -31,6 +33,8 @@ var boss_defeated: bool = false
 var _stats_bound: bool = false
 var fallen_towns: int = 0
 var last_town_penalty: String = ""
+var coverage_warning: String = ""
+var _coverage_warned: bool = false
 var _town_penalty_bound: bool = false
 
 var _player: Node3D
@@ -126,8 +130,31 @@ func _distance_to_crystal_pressure() -> float:
 func _check_crystal_overrun() -> void:
 	if _crystal == null or not _crystal.has_method("get_coverage_ratio"):
 		return
-	if _crystal.get_coverage_ratio() >= max_crystal_coverage:
-		_set_lost("The crystal consumed the map.")
+	var ratio: float = float(_crystal.get_coverage_ratio())
+	if ratio < max_crystal_coverage:
+		return
+	if DEATH_ONLY_LOSS:
+		_note_coverage_pressure()
+		return
+	_set_lost("The crystal consumed the map.")
+
+
+func coverage_hud_note(ratio: float) -> String:
+	if not DEATH_ONLY_LOSS or ratio < max_crystal_coverage:
+		return ""
+	return "over cap"
+
+
+func _note_coverage_pressure() -> void:
+	if _coverage_warned:
+		return
+	_coverage_warned = true
+	coverage_warning = "Crystal coverage is past the cap."
+	if not is_inside_tree():
+		return
+	var overlay = get_tree().get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("_show_toast"):
+		overlay.call("_show_toast", coverage_warning)
 
 
 func _bind_town_penalty() -> void:
@@ -152,9 +179,15 @@ func _on_town_fallen(town_name: String, center: Vector2i) -> void:
 		lost = int(entity_mgr.dismiss_town_defenders(center))
 	last_town_penalty = "%s fell — crystal +%.0f power, %d defenders lost" % [town_name, surge, lost]
 	print("[Game] Town penalty: ", last_town_penalty)
+	if not is_inside_tree():
+		if not DEATH_ONLY_LOSS:
+			_set_lost("%s fell." % town_name)
+		return
 	var overlay = get_tree().get_first_node_in_group("game_overlay")
 	if overlay and overlay.has_method("_show_toast"):
 		overlay.call("_show_toast", last_town_penalty)
+	if not DEATH_ONLY_LOSS:
+		_set_lost("%s fell." % town_name)
 
 
 func _apply_crystal_damage(delta: float) -> void:
