@@ -33,6 +33,7 @@ func _run() -> void:
 	_test_gen_macro_no_micro()
 	_test_dig_micro_not_in_export()
 	_test_v1_migrate_rederive_micro()
+	_test_flag_off_collapses_micro_to_whole_blocks()
 	_finish()
 
 
@@ -183,3 +184,85 @@ func _test_v1_migrate_rederive_micro() -> void:
 
 	_ChunkDataPool.release(data)
 	_TerrainEdits.reset()
+
+
+func _test_flag_off_collapses_micro_to_whole_blocks() -> void:
+	var raw := {
+		"schema_version": 2,
+		"world_seed": 4242,
+		"world_state": {
+			"height_delta": {
+				"6,8": -0.4,
+				"4,4": -2,
+				"8,8": 0.2,
+			},
+			"build_tile": {},
+			"micro_bricks": {
+				"6,8": {"dug_layers": 0.4, "reason": 1, "surface_tile": 2},
+				"3,3": {"dug_layers": 2, "reason": 1},
+				"1,2": {"reason": 3, "surface_tile": 5},
+				"9,9": {"reason": 2, "dug_layers": 0},
+			},
+		},
+	}
+	var kept: Dictionary = _SaveSchema.validate_and_migrate(raw.duplicate(true))
+	if not bool(kept.get("ok", false)):
+		_fail("flag-on migrate failed: %s" % str(kept.get("reason")))
+		return
+	var kept_ws: Dictionary = kept.get("data", {}).get("world_state", {})
+	if not kept_ws.has("micro_bricks"):
+		_fail("flag on must keep micro bricks")
+		return
+	if not is_equal_approx(float(kept_ws.get("height_delta", {}).get("6,8", 0)), -0.4):
+		_fail("flag on must keep fractional height_delta")
+		return
+
+	var previous: bool = _ChunkData.USE_MICRO_BRICKS
+	_ChunkData.USE_MICRO_BRICKS = false
+	var mig: Dictionary = _SaveSchema.validate_and_migrate(raw.duplicate(true))
+	if not bool(mig.get("ok", false)):
+		_fail("flag-off migrate failed: %s" % str(mig.get("reason")))
+		_ChunkData.USE_MICRO_BRICKS = previous
+		return
+	var data_mig: Dictionary = mig.get("data", {})
+	var mark := _failed
+	var encoded := JSON.stringify(data_mig)
+	for banned in ["micro_brick", "micro_grid", "micro_bricks", "bricks", "FLAG_MICRO"]:
+		if encoded.find(banned) >= 0:
+			_fail("collapsed save still has %s" % banned)
+	var ws_block: Dictionary = data_mig.get("world_state", {})
+	var hd: Dictionary = ws_block.get("height_delta", {})
+	var bt: Dictionary = ws_block.get("build_tile", {})
+	if int(hd.get("6,8", 0)) != -1:
+		_fail("partial dig must collapse to one whole block, got %s" % str(hd.get("6,8", null)))
+	if int(hd.get("3,3", 0)) != -2:
+		_fail("two dug layers must stay two whole blocks, got %s" % str(hd.get("3,3", null)))
+	if int(hd.get("4,4", 0)) != -2:
+		_fail("whole dig must stay -2, got %s" % str(hd.get("4,4", null)))
+	if int(hd.get("8,8", 0)) != 1:
+		_fail("partial raise must collapse to one whole block, got %s" % str(hd.get("8,8", null)))
+	if hd.has("9,9"):
+		_fail("cliff brick must not become a height edit")
+	if int(bt.get("1,2", -1)) != 5:
+		_fail("build brick must become build_tile 5, got %s" % str(bt.get("1,2", null)))
+	for key in hd.keys():
+		if not hd[key] is int:
+			_fail("collapsed height_delta %s is not a whole layer" % str(key))
+
+	_TerrainEdits.reset()
+	_WorldState.get_active().import_persistence_bundle(ws_block)
+	var data := _make_chunk(4242)
+	data.derive_micro_from_terrain_edits()
+	for cell in [Vector2i(6, 8), Vector2i(3, 3), Vector2i(1, 2), Vector2i(9, 9), Vector2i(4, 4)]:
+		if data.has_micro_brick(cell.x, cell.y):
+			_fail("flag off load must not allocate a micro brick at %s" % cell)
+		elif data.macro_grid == null or not is_equal_approx(
+			data.get_surface_y(cell.x, cell.y),
+			data.macro_grid.get_surface_y(cell.x, cell.y)
+		):
+			_fail("collapsed column must stay a whole macro block at %s" % cell)
+	if _failed == mark:
+		print("OK flag off collapses micro bricks to whole blocks")
+	_ChunkDataPool.release(data)
+	_TerrainEdits.reset()
+	_ChunkData.USE_MICRO_BRICKS = previous

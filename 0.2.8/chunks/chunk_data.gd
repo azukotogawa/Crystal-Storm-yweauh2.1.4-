@@ -7,7 +7,7 @@ const _WorldState = preload("res://world/world_state.gd")
 const _MacroLayerGrid = preload("res://helpers/macro_layer_grid.gd")
 const _MicroLayerGrid = preload("res://helpers/micro_layer_grid.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
-const USE_MICRO_BRICKS: bool = true
+static var USE_MICRO_BRICKS: bool = true
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
