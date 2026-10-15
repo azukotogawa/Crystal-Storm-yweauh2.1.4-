@@ -4,6 +4,7 @@ extends Node
 const _GameConfig = preload("res://config/game_config.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _Progression = preload("res://systems/progression_service.gd")
 
 const DEATH_ONLY_LOSS := true
 
@@ -27,10 +28,16 @@ var run_started_msec: int = 0
 var spawns_destroyed: int = 0
 var crystal_cells_broken: int = 0
 var enemies_killed: int = 0
+var blocks_mined: int = 0
+var structures_placed: int = 0
+var ruins_discovered: int = 0
+var pois_discovered: int = 0
 var relics_taken: int = 0
 var deaths: int = 0
 var boss_defeated: bool = false
 var _stats_bound: bool = false
+var _structure_xp_bound: bool = false
+var _discovery_xp_bound: bool = false
 var fallen_towns: int = 0
 var last_town_penalty: String = ""
 var coverage_warning: String = ""
@@ -86,6 +93,8 @@ func _process(delta: float) -> void:
 		profiler.begin("game_manager")
 	if not _town_penalty_bound:
 		_bind_town_penalty()
+	if not _structure_xp_bound or not _discovery_xp_bound:
+		_bind_xp_sources()
 	_update_phase()
 	_check_crystal_overrun()
 	if _player and _crystal:
@@ -263,8 +272,38 @@ func note_crystal_broken(count: int = 1) -> void:
 	crystal_cells_broken += maxi(count, 0)
 
 
-func note_enemy_killed() -> void:
+func note_enemy_killed(tier: int = 0) -> void:
 	enemies_killed += 1
+	_grant_xp(_Progression.xp_for_kill(tier))
+
+
+func note_crystal_damaged(amount: float, broken: bool = false) -> void:
+	if broken:
+		note_crystal_broken(1)
+	_grant_xp(_Progression.xp_for_crystal_hit(amount, broken))
+
+
+func note_blocks_mined(count: int = 1) -> void:
+	var n := maxi(count, 0)
+	if n == 0:
+		return
+	blocks_mined += n
+	_grant_xp(_Progression.XP_BLOCK_MINED * n)
+
+
+func note_structure_placed() -> void:
+	structures_placed += 1
+	_grant_xp(_Progression.XP_STRUCTURE_PLACED)
+
+
+func note_ruin_discovered() -> void:
+	ruins_discovered += 1
+	_grant_xp(_Progression.XP_RUIN_DISCOVERED)
+
+
+func note_poi_discovered() -> void:
+	pois_discovered += 1
+	_grant_xp(_Progression.XP_POI_DISCOVERED)
 
 
 func note_relic_taken() -> void:
@@ -317,9 +356,54 @@ func _on_spawn_destroyed_stat(_spawn) -> void:
 	note_spawn_destroyed()
 
 
-func _on_crystal_mass_stat(_pos: Vector3, _amount: float, broken: bool) -> void:
-	if broken:
-		note_crystal_broken(1)
+func _on_crystal_mass_stat(_pos: Vector3, amount: float, broken: bool) -> void:
+	note_crystal_damaged(amount, broken)
+
+
+func _bind_xp_sources() -> void:
+	if not is_inside_tree():
+		return
+	var tree := get_tree()
+	if not _structure_xp_bound:
+		var player = tree.get_first_node_in_group("player")
+		var weapon = player.get_node_or_null("WeaponController") if player else null
+		if weapon and weapon.has_signal("structure_built"):
+			if not weapon.structure_built.is_connected(_on_structure_placed_stat):
+				weapon.structure_built.connect(_on_structure_placed_stat)
+			_structure_xp_bound = true
+	if not _discovery_xp_bound:
+		var living = tree.get_first_node_in_group("living_world_director")
+		if living == null:
+			return
+		if living.has_signal("ruin_discovered") and not living.ruin_discovered.is_connected(_on_ruin_discovered_stat):
+			living.ruin_discovered.connect(_on_ruin_discovered_stat)
+		if living.has_signal("poi_discovered") and not living.poi_discovered.is_connected(_on_poi_discovered_stat):
+			living.poi_discovered.connect(_on_poi_discovered_stat)
+		_discovery_xp_bound = true
+
+
+func _on_structure_placed_stat(build_id: StringName, _world_pos: Vector3) -> void:
+	if build_id == &"repair":
+		return
+	note_structure_placed()
+
+
+func _on_ruin_discovered_stat(_ruin_name: String, _center: Vector2i, _power_bonus: float) -> void:
+	note_ruin_discovered()
+
+
+func _on_poi_discovered_stat(_poi_name: String) -> void:
+	note_poi_discovered()
+
+
+func _grant_xp(amount: int) -> void:
+	if amount <= 0:
+		return
+	var svc = _Progression.get_active()
+	if svc == null and is_inside_tree():
+		svc = get_tree().get_first_node_in_group("progression_service")
+	if svc and svc.has_method("add_xp"):
+		svc.add_xp(amount)
 
 
 func _on_relic_equipped_stat(_relic_id: StringName) -> void:

@@ -757,6 +757,12 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		var broken := 1
 		if listed:
 			broken = maxi(int(batch.get("dug_count", 1)), 1)
+		var mined := broken
+		if not listed and _terrain_editor != null and "last_stroke_stats" in _terrain_editor:
+			var cells := int(_terrain_editor.last_stroke_stats.get("cell_count", 0))
+			mined = cells
+		if mined > 0:
+			_note_mined_blocks(mined)
 		_cooldown_timer = _terrain_editor.get_dig_delay(target) * ItemTypes.dig_time_scale(broken)
 		_flash_dig_feedback(target)
 		if listed:
@@ -792,6 +798,14 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			)
 
 	attacked.emit(item_id, target)
+
+
+func _note_mined_blocks(count: int) -> void:
+	if count <= 0 or not is_inside_tree():
+		return
+	var gm = get_tree().get_first_node_in_group("game_manager")
+	if gm and gm.has_method("note_blocks_mined"):
+		gm.note_blocks_mined(count)
 
 
 func dig_brush_radius() -> int:

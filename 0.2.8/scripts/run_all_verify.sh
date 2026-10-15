@@ -108,6 +108,7 @@ SUITES=(
 	"res://scripts/verify_crystal_breaking.gd"
 	"res://scripts/verify_corruption.gd"
 	"res://scripts/verify_p2_progression_feedback.gd"
+	"res://scripts/verify_progression.gd"
 	"res://scripts/verify_item_icons.gd"
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_swim.gd"

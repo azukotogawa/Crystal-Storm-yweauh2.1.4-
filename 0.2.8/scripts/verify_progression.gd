@@ -6,13 +6,7 @@ var _failed: int = 0
 
 
 func _init() -> void:
-	_run()
-	if _failed == 0:
-		print("All progression tests OK")
-		quit(0)
-	else:
-		push_error("verify_progression: %d failure(s)" % _failed)
-		quit(1)
+	call_deferred("_run")
 
 
 func _fail(msg: String) -> void:
@@ -25,6 +19,15 @@ func _run() -> void:
 	_check_flag_and_curve()
 	_check_level_up()
 	_check_registered()
+	_check_source_amounts()
+	_check_source_wiring()
+	await _check_live_sources()
+	if _failed == 0:
+		print("All progression tests OK")
+		quit(0)
+	else:
+		push_error("verify_progression: %d failure(s)" % _failed)
+		quit(1)
 
 
 func _check_flag_and_curve() -> void:
@@ -91,3 +94,138 @@ func _check_registered() -> void:
 		_fail("main scene is missing ProgressionService")
 	else:
 		print("OK progression registered")
+
+
+func _check_source_amounts() -> void:
+	if _Progression.xp_for_kill(0) != 8 or _Progression.xp_for_kill(2) != 20 or _Progression.xp_for_kill(4) != 32:
+		_fail("kill xp drifted from 8 + 6 * tier")
+		return
+	if _Progression.xp_for_kill(-1) != 0:
+		_fail("negative kill tier must grant no xp")
+		return
+	if _Progression.kill_tier(&"origin_warden") != 4 or _Progression.kill_tier(&"shard_guard") != 2:
+		_fail("named kill tiers drifted")
+		return
+	if _Progression.kill_tier(&"town_militia") != -1 or _Progression.kill_tier(&"no_such_kind") != 0:
+		_fail("friendly or unknown kill tier drifted")
+		return
+	if _Progression.xp_for_crystal_hit(0.0, false) != 0:
+		_fail("an empty crystal hit must grant no xp")
+		return
+	if _Progression.xp_for_crystal_hit(0.4, false) != _Progression.XP_CRYSTAL_HIT:
+		_fail("crystal hit xp drifted")
+		return
+	var broken_xp := _Progression.XP_CRYSTAL_HIT + _Progression.XP_CRYSTAL_CELL
+	if _Progression.xp_for_crystal_hit(0.4, true) != broken_xp:
+		_fail("broken crystal cell xp drifted")
+		return
+	if _Progression.XP_BLOCK_MINED != 1 or _Progression.XP_STRUCTURE_PLACED != 12:
+		_fail("mine or place amounts drifted")
+		return
+	if _Progression.XP_RUIN_DISCOVERED != 25 or _Progression.XP_POI_DISCOVERED != 20:
+		_fail("discovery amounts drifted")
+		return
+	print("OK xp source amounts")
+
+
+func _check_source_wiring() -> void:
+	var gm := FileAccess.get_file_as_string("res://game/game_manager.gd")
+	var rewards := FileAccess.get_file_as_string("res://helpers/combat_rewards.gd")
+	var weapon := FileAccess.get_file_as_string("res://weapons/weapon_controller.gd")
+	if "kill_tier" not in rewards or "note_enemy_killed" not in rewards:
+		_fail("kills must pass a tier into note_enemy_killed")
+		return
+	if "note_blocks_mined" not in weapon:
+		_fail("the dig stroke must note blocks mined")
+		return
+	var hooks := ["note_crystal_damaged", "note_structure_placed", "note_ruin_discovered", "note_poi_discovered"]
+	for hook in hooks:
+		if hook not in gm:
+			_fail("game manager is missing %s" % hook)
+			return
+	if "structure_built" not in gm or "ruin_discovered" not in gm or "crystal_mass_hit" not in gm:
+		_fail("xp sources are not bound to the existing signals")
+		return
+	print("OK xp sources wired")
+
+
+func _check_live_sources() -> void:
+	var svc := _Progression.new()
+	root.add_child(svc)
+	var crystal := _CrystalStub.new()
+	root.add_child(crystal)
+	crystal.add_to_group("crystal_manager")
+	var player := Node3D.new()
+	root.add_child(player)
+	player.add_to_group("player")
+	var weapon := _WeaponStub.new()
+	weapon.name = "WeaponController"
+	player.add_child(weapon)
+	var living := _LivingStub.new()
+	root.add_child(living)
+	living.add_to_group("living_world_director")
+	var gm_script = load("res://game/game_manager.gd")
+	var gm = gm_script.new()
+	root.add_child(gm)
+	for _i in 12:
+		await process_frame
+		if gm._structure_xp_bound and gm._discovery_xp_bound and gm._stats_bound:
+			break
+	if not gm._structure_xp_bound or not gm._discovery_xp_bound or not gm._stats_bound:
+		_fail("xp source signals did not bind")
+		return
+	gm.note_enemy_killed(1)
+	if gm.enemies_killed != 1 or svc.xp != _Progression.xp_for_kill(1):
+		_fail("tier 1 kill xp is %d" % svc.xp)
+		return
+	var after_kill := svc.xp
+	gm.note_enemy_killed(-1)
+	if gm.enemies_killed != 2 or svc.xp != after_kill:
+		_fail("friendly kill should count and grant no xp")
+		return
+	crystal.crystal_mass_hit.emit(Vector3.ZERO, 0.4, true)
+	var after_crystal := after_kill + _Progression.xp_for_crystal_hit(0.4, true)
+	if gm.crystal_cells_broken != 1 or svc.xp != after_crystal:
+		_fail("crystal hit left xp %d broken %d" % [svc.xp, gm.crystal_cells_broken])
+		return
+	weapon.structure_built.emit(&"wall_segment", Vector3.ZERO)
+	weapon.structure_built.emit(&"repair", Vector3.ZERO)
+	if gm.structures_placed != 1 or svc.xp != after_crystal + _Progression.XP_STRUCTURE_PLACED:
+		_fail("structure place xp drifted, placed %d xp %d" % [gm.structures_placed, svc.xp])
+		return
+	living.ruin_discovered.emit("Forgotten Ruin", Vector2i(3, 4), 6.0)
+	living.poi_discovered.emit("Cache")
+	gm.note_blocks_mined(4)
+	gm.note_blocks_mined(0)
+	var total := _Progression.xp_for_kill(1) + _Progression.xp_for_crystal_hit(0.4, true)
+	total += _Progression.XP_STRUCTURE_PLACED + _Progression.XP_RUIN_DISCOVERED + _Progression.XP_POI_DISCOVERED
+	total += 4 * _Progression.XP_BLOCK_MINED
+	var expect_level := 1
+	var remain := total
+	while remain >= _Progression.xp_to_advance(expect_level):
+		remain -= _Progression.xp_to_advance(expect_level)
+		expect_level += 1
+	if gm.ruins_discovered != 1 or gm.pois_discovered != 1 or gm.blocks_mined != 4:
+		_fail("discovery or mine counters drifted")
+		return
+	if svc.level != expect_level or svc.xp != remain:
+		_fail("source total drifted, level %d xp %d want level %d xp %d" % [svc.level, svc.xp, expect_level, remain])
+		return
+	print("OK xp source grants")
+
+
+class _CrystalStub extends Node:
+	var strength_tier: int = 0
+	signal all_spawns_destroyed
+	signal crystal_touched_player
+	signal spawn_destroyed
+	signal crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool)
+
+
+class _WeaponStub extends Node:
+	signal structure_built(build_id: StringName, world_pos: Vector3)
+
+
+class _LivingStub extends Node:
+	signal ruin_discovered(ruin_name: String, center: Vector2i, power_bonus: float)
+	signal poi_discovered(poi_name: String)

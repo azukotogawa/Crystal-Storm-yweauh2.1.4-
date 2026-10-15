@@ -1,6 +1,8 @@
 class_name CombatRewards
 extends RefCounted
 
+const _Progression = preload("res://systems/progression_service.gd")
+
 
 static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: String) -> Dictionary:
 	var empty := {"item_id": "", "count": 0, "label": ""}
@@ -8,7 +10,7 @@ static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: S
 		return empty
 	var gm = tree.get_first_node_in_group("game_manager")
 	if gm and gm.has_method("note_enemy_killed"):
-		gm.note_enemy_killed()
+		gm.note_enemy_killed(_Progression.kill_tier(kind))
 	var label: String = display_name if display_name != "" else str(kind).replace("_", " ")
 	var loot: Dictionary = _loot_for_kind(kind)
 	var item_id: String = str(loot.get("item_id", ""))

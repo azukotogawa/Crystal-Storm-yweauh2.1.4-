@@ -143,6 +143,7 @@ func get_plant_delay() -> float:
 
 func try_dig(world_pos: Vector3) -> bool:
 	last_fail_reason = ""
+	last_stroke_stats = {}
 	if world == null or chunk_manager == null:
 		last_fail_reason = "Terrain not ready"
 		return false
