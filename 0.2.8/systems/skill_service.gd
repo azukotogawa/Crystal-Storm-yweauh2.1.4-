@@ -4,6 +4,7 @@ extends Node
 const _Progression = preload("res://systems/progression_service.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _Dash = preload("res://player/dash_skill.gd")
+const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 
 const SKILLS_ENABLED := true
 const ACTIVE_SLOTS := 3
@@ -18,7 +19,7 @@ const TREE_BUILDER := &"builder"
 const CATALOG := {
 	&"dash": {"kind": KIND_ACTIVE, "cost": 1, "cooldown": _Dash.COOLDOWN, "tree": TREE_FIGHTER},
 	&"ground_slam": {"kind": KIND_ACTIVE, "cost": 1, "cooldown": DEFAULT_COOLDOWN, "tree": TREE_MINER},
-	&"crystal_pulse": {"kind": KIND_ACTIVE, "cost": 1, "cooldown": DEFAULT_COOLDOWN, "tree": TREE_FIGHTER},
+	&"crystal_pulse": {"kind": KIND_ACTIVE, "cost": 1, "cooldown": _Pulse.COOLDOWN, "tree": TREE_FIGHTER},
 	&"quick_wall": {"kind": KIND_ACTIVE, "cost": 1, "cooldown": DEFAULT_COOLDOWN, "tree": TREE_BUILDER},
 	&"fighter_passive": {"kind": KIND_PASSIVE, "cost": 1, "cooldown": 0.0, "tree": TREE_FIGHTER},
 	&"miner_passive": {"kind": KIND_PASSIVE, "cost": 1, "cooldown": 0.0, "tree": TREE_MINER},

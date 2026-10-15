@@ -26,6 +26,7 @@ func _run() -> void:
 	_check_save_round_trip()
 	_check_dash()
 	_check_ground_slam()
+	_check_crystal_pulse()
 	if _failed == 0:
 		print("All skills tests OK")
 		quit(0)
@@ -552,6 +553,168 @@ func _check_ground_slam() -> void:
 		return
 	_cleanup_slam(pair, player, skills, edits)
 	print("OK ground slam")
+
+
+func _check_crystal_pulse() -> void:
+	var pulse = preload("res://player/crystal_pulse_skill.gd")
+	var settings = preload("res://config/world_settings.gd")
+	pulse.clear()
+	var spec: Dictionary = _Skills.CATALOG[&"crystal_pulse"]
+	if float(spec.get("cooldown", -1.0)) != pulse.COOLDOWN or pulse.COOLDOWN <= _Skills.DEFAULT_COOLDOWN:
+		_fail("crystal pulse cooldown must be its own clock, got %s" % str(spec.get("cooldown", -1.0)))
+		return
+	if pulse.RADIUS < 2.0 or pulse.DURATION < 1.0 or pulse.SLOW <= 0.0 or pulse.SLOW >= 1.0 or pulse.DAMAGE <= 0.0:
+		_fail("crystal pulse radius, duration, slow, or damage is not a short slow field")
+		return
+	var center := Vector2i(8, 8)
+	if not pulse.covers(Vector2i(11, 8), center) or pulse.covers(Vector2i(13, 8), center):
+		_fail("crystal pulse radius did not cover 3 columns and exclude 5")
+		return
+	if absf(pulse.spread_scale(Vector2i(8, 8), Vector2i(9, 8)) - 1.0) > 0.001:
+		_fail("crystal spread slowed with no pulse armed")
+		pulse.clear()
+		return
+	pulse.arm(center)
+	if absf(pulse.spread_scale(Vector2i(8, 8), Vector2i(12, 8)) - pulse.SLOW) > 0.001:
+		_fail("an edge inside the pulse did not slow")
+		pulse.clear()
+		return
+	if absf(pulse.spread_scale(Vector2i(20, 20), Vector2i(21, 20)) - 1.0) > 0.001:
+		_fail("an edge outside the pulse slowed")
+		pulse.clear()
+		return
+	_GameplayInput.pause_open = true
+	pulse.advance(pulse.DURATION)
+	_GameplayInput.pause_open = false
+	if not pulse.active():
+		_fail("pause expired the crystal pulse")
+		pulse.clear()
+		return
+	pulse.advance(pulse.DURATION)
+	if pulse.active() or absf(pulse.spread_scale(center, center) - 1.0) > 0.001:
+		_fail("the crystal pulse outlasted its duration")
+		pulse.clear()
+		return
+	var fluid_src := FileAccess.get_file_as_string("res://crystal/crystal_fluid_sim.gd")
+	var sim_src := FileAccess.get_file_as_string("res://crystal/crystal_simulation.gd")
+	if not fluid_src.contains("_Pulse.spread_scale(") or not sim_src.contains("_Pulse.advance("):
+		_fail("crystal flow does not read the pulse slow")
+		return
+	var open_depth: float = _pulse_downhill(pulse, false)
+	var slow_depth: float = _pulse_downhill(pulse, true)
+	pulse.clear()
+	if open_depth <= 0.05 or slow_depth <= 0.02 or slow_depth > open_depth * 0.75:
+		_fail("pulse downhill depth %s vs open %s" % [slow_depth, open_depth])
+		return
+	var body := FileAccess.get_file_as_string("res://player/player.gd")
+	if not body.contains("cast_crystal_pulse") or not body.contains("_Pulse.arm"):
+		_fail("the player must cast crystal pulse")
+		pulse.clear()
+		return
+	var svc := FileAccess.get_file_as_string("res://systems/skill_service.gd")
+	if svc.contains("spread_scale(") or svc.contains(".arm("):
+		_fail("the pulse effect must stay off the skill service")
+		pulse.clear()
+		return
+	var scale: float = settings.get_active().voxel_scale
+	var foe := _SlamFoe.new()
+	foe.position = Vector3((8.5) * scale, 1.0, 8.5 * scale)
+	var far := _SlamFoe.new()
+	far.position = Vector3(14.5 * scale, 1.0, 8.5 * scale)
+	var beast := _SlamFoe.new()
+	beast.position = Vector3(8.5 * scale, 1.0, 9.5 * scale)
+	var dead := _SlamFoe.new()
+	dead.health = 0.0
+	dead.position = Vector3(7.5 * scale, 1.0, 8.5 * scale)
+	var pair = _pair(1)
+	var skills = pair.skills
+	var player := Player.new()
+	player.voxel_position = Vector3(8.2, 1.0, 8.1)
+	root.add_child(foe)
+	foe.add_to_group("crystal_enemy")
+	root.add_child(dead)
+	dead.add_to_group("crystal_enemy")
+	skills.unlock(&"crystal_pulse")
+	skills.equip(0, &"crystal_pulse")
+	player._bind_dash()
+	if not skills.skill_activated.is_connected(player._on_skill_activated):
+		_fail("player did not listen for crystal pulse")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	pulse.clear()
+	player.cast_crystal_pulse([foe, far, beast, dead, foe])
+	if absf(foe.health - (30.0 - pulse.DAMAGE)) > 0.01 or foe.last_source != pulse.SKILL_ID:
+		_fail("crystal pulse did not damage the crystal enemy, health %s" % foe.health)
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	if absf(far.health - 30.0) > 0.01 or absf(beast.health - 30.0) > 0.01 or absf(dead.health) > 0.01:
+		_fail("crystal pulse hit someone outside the radius, wildlife, or a dead body")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	if not pulse.covers(center, player.cast_crystal_pulse([]).get("center", Vector2i.ZERO)):
+		_fail("crystal pulse did not arm on the player column")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	pulse.clear()
+	foe.health = 30.0
+	if not skills.try_activate(0):
+		_fail("equipped crystal pulse did not activate")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	if absf(skills.cooldown_left(0) - pulse.COOLDOWN) > 0.001:
+		_fail("crystal pulse cooldown did not start at its own length")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	if absf(foe.health - (30.0 - pulse.DAMAGE)) > 0.01 or not pulse.active():
+		_fail("activating crystal pulse did not hit or arm")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	_GameplayInput.pause_open = true
+	var paused: Dictionary = player.cast_crystal_pulse([foe])
+	_GameplayInput.pause_open = false
+	if not paused.is_empty() or absf(foe.health - (30.0 - pulse.DAMAGE)) > 0.01 or not pulse.active():
+		_fail("pause started a crystal pulse or cleared the one already running")
+		_cleanup_pulse(pair, player, skills, pulse)
+		return
+	_cleanup_pulse(pair, player, skills, pulse)
+	print("OK crystal pulse")
+
+
+func _pulse_downhill(pulse, slowed: bool) -> float:
+	var fluid_sim = preload("res://crystal/crystal_fluid_sim.gd")
+	var terrain_q = preload("res://crystal/crystal_terrain_query.gd")
+	var sim_cfg = preload("res://config/crystal_sim_config.gd")
+	pulse.clear()
+	var cfg = sim_cfg.create_default()
+	cfg.pressure_flow_rate = 1.4
+	cfg.max_flow_per_cell = 8.0
+	cfg.max_outflow_ratio = 0.95
+	cfg.lateral_spread_bias = 0.0
+	var heights: Dictionary = {}
+	for x in 12:
+		for z in 12:
+			heights[Vector2i(x, z)] = 10.0
+	heights[Vector2i(6, 5)] = 8.0
+	var terrain = terrain_q.new()
+	terrain.test_base_heights = heights
+	var sim = fluid_sim.new(cfg, terrain)
+	sim.empty_cell_inflow_cap = 3.0
+	sim.set_depth(Vector2i(5, 5), 2.2, 0, false)
+	if slowed:
+		pulse.arm(Vector2i(5, 5))
+	sim.tick_flow(0.25)
+	var depth: float = sim.get_depth_at(6, 5)
+	pulse.clear()
+	return depth
+
+
+func _cleanup_pulse(pair: Dictionary, player: Player, skills, pulse) -> void:
+	pulse.clear()
+	_GameplayInput.pause_open = false
+	if skills.skill_activated.is_connected(player._on_skill_activated):
+		skills.skill_activated.disconnect(player._on_skill_activated)
+	player.free()
+	_drop(pair)
 
 
 func _cleanup_slam(pair: Dictionary, player: Player, skills, edits) -> void:

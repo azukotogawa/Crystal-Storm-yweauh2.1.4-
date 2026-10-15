@@ -18,6 +18,7 @@ const _Water = preload("res://helpers/water_locomotion.gd")
 const _MoveFeel = preload("res://player/move_feel.gd")
 const _Dash = preload("res://player/dash_skill.gd")
 const _Slam = preload("res://player/ground_slam_skill.gd")
+const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
@@ -1082,6 +1083,9 @@ func _on_skill_activated(_slot: int, skill_id: StringName) -> void:
 	if skill_id == _Slam.SKILL_ID:
 		cast_ground_slam()
 		return
+	if skill_id == _Pulse.SKILL_ID:
+		cast_crystal_pulse()
+		return
 	if skill_id != _Dash.SKILL_ID:
 		return
 	if _GameplayInput.blocks_actions():
@@ -1105,6 +1109,19 @@ func cast_ground_slam(extra: Array = []) -> Dictionary:
 	var batch: Dictionary = _Slam.break_ground(world, editor, center)
 	batch["hits"] = _Slam.strike(nodes, center, _ws(), self)
 	return batch
+
+
+func cast_crystal_pulse(extra: Array = []) -> Dictionary:
+	if _GameplayInput.blocks_actions():
+		return {}
+	var center := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	_Pulse.arm(center)
+	var nodes: Array = extra.duplicate()
+	var tree: SceneTree = _scene_tree()
+	if tree != null:
+		for node in tree.get_nodes_in_group("crystal_enemy"):
+			nodes.append(node)
+	return {"hits": _Pulse.strike(nodes, center, _ws(), self), "center": center}
 
 
 func _bind_dash() -> void:

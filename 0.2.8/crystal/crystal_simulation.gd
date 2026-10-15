@@ -9,6 +9,7 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _PlantableRegistry = preload("res://world/plantable_registry.gd")
 const _PlantableDef = preload("res://config/plantable_def.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 
 var config: _CrystalSimConfig
 var fluid: _CrystalFluidSim
@@ -205,6 +206,7 @@ func tick(snapshot) -> Array:
 		))
 
 	event_count += last_events.size()
+	_Pulse.advance(float(snapshot.delta))
 	_clear_pending_tick()
 	last_tick_complete = true
 	return last_events

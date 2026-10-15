@@ -6,6 +6,7 @@ const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 
 signal depth_changed(pos: Vector2i)
 signal depth_cleared(pos: Vector2i)
@@ -612,7 +613,7 @@ func _flow_job_continue() -> Array:
 				_prof_flow_transfers += 1
 
 		if has_best:
-			var birth: float = _frontier_birth_depth() * spread_mult
+			var birth: float = _frontier_birth_depth() * spread_mult * _Pulse.spread_scale(pos, best_neighbor)
 			var gain: float = minf(best_transfer, empty_cell_inflow_cap)
 			if gain < config.min_depth and best_conduct >= 0.25 and birth >= config.min_depth:
 				gain = birth
@@ -809,7 +810,7 @@ func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos
 		elif from_depth >= config.min_depth:
 			combined *= maxf(config.river_flow_factor, 0.32)
 
-	return combined
+	return combined * _Pulse.spread_scale(from_pos, to_pos)
 
 
 func _cliff_blocked(from: Vector2i, to: Vector2i) -> bool:
