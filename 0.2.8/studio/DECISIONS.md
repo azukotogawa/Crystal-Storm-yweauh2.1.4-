@@ -22,7 +22,7 @@ IDs never change or get reused. New decisions go at the end of their section wit
 ## Crystal
 
 - D-001 [crystal] Crystal is the defining world-changing force that progressively takes over the world | status: decided | 2026-08-31
-- D-002 [crystal] Crystal spreads from crystal spawn points | status: built | 2026-07-15 | verify: verified | ref: `crystal/crystal_fluid_sim.gd:340` | sym: `tick_emitters` | checked_on: 2026-10-14
+- D-002 [crystal] Crystal spreads from crystal spawn points | status: rejected | 2026-07-15 | verify: verified | ref: `crystal/crystal_fluid_sim.gd:340` | sym: `tick_emitters` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
 - D-003 [crystal] Crystal absorption can increase crystal power/tier | status: built | 2026-07-15 | verify: verified | ref: `crystal/crystal_manager.gd:1682` | sym: `tier_from_power` | checked_on: 2026-10-14
 - D-004 [crystal] Crystal absorption unlocks enemy types | status: built | 2026-07-15 | verify: verified | ref: `crystal/crystal_evolution.gd:55` | sym: `enemy_unlocked.emit` | checked_on: 2026-10-14
 - D-005 [crystal] Farmland absorption unlocks `farm_bomber` | status: built | 2026-07-15 | verify: verified | ref: `crystal/crystal_evolution.gd:77` | sym: `farm_bomber` | checked_on: 2026-10-14
@@ -62,12 +62,12 @@ IDs never change or get reused. New decisions go at the end of their section wit
 - D-036 [voxels] Atlas shader supports separate cube-face textures for top, side, and bottom | status: built | 2026-04 | verify: verified | ref: `helpers/voxel_types.gd:80` | sym: `get_atlas_coord_for_face` | checked_on: 2026-10-14
 - D-037 [voxels] Terrain textures are biome-dependent | status: built | 2026-04 | verify: verified | ref: `helpers/voxel_types.gd:288` | sym: `biome_to_voxel_id` | checked_on: 2026-10-14
 - D-038 [voxels] Smooth lighting uses ambient and face shading | status: built | 2026-04 | verify: verified | ref: `helpers/chunk_surface_mesh_builder.gd:804` | sym: `_face_shade` | checked_on: 2026-10-14 | note: vertex AO in helpers/terrain_vertex_ao.gd
-- D-039 [voxels] Macro terrain is a dense per-chunk surface/tile/flags grid | status: built | 2026-08-15 | verify: verified | ref: `helpers/macro_layer_grid.gd:18` | sym: `_surface_y` | checked_on: 2026-10-14
-- D-040 [voxels] Sparse micro bricks are used for selected digging, building, and cliff details | status: built | 2026-08-15 | verify: verified | ref: `helpers/micro_layer_grid.gd:27` | sym: `_bricks` | checked_on: 2026-10-14
-- D-041 [voxels] Micro voxels are not a uniformly finer voxel volume; they are sparse detail/meshing isolation over macro terrain | status: decided | 2026-08-15
-- D-042 [voxels] Macro voxels should be approximately twice the size of the earlier normal voxel scale to reduce the amount of terrain represented | status: decided | 2026-07-08
-- D-043 [voxels] Micro voxels should be used selectively for player digging and specific terrain features | status: decided | 2026-07-08
-- D-044 [voxels] A proposal described each macro voxel as X times the size of a micro voxel; the exact final ratio is not established in this ledger | status: proposed | 2026-07-08
+- D-039 [voxels] Macro terrain is a dense per-chunk surface/tile/flags grid | status: rejected | 2026-08-15 | verify: verified | ref: `helpers/macro_layer_grid.gd:18` | sym: `_surface_y` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: built)
+- D-040 [voxels] Sparse micro bricks are used for selected digging, building, and cliff details | status: rejected | 2026-08-15 | verify: verified | ref: `helpers/micro_layer_grid.gd:27` | sym: `_bricks` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: built)
+- D-041 [voxels] Micro voxels are not a uniformly finer voxel volume; they are sparse detail/meshing isolation over macro terrain | status: rejected | 2026-08-15 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: decided)
+- D-042 [voxels] Macro voxels should be approximately twice the size of the earlier normal voxel scale to reduce the amount of terrain represented | status: rejected | 2026-07-08 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: decided)
+- D-043 [voxels] Micro voxels should be used selectively for player digging and specific terrain features | status: rejected | 2026-07-08 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: decided)
+- D-044 [voxels] A proposal described each macro voxel as X times the size of a micro voxel; the exact final ratio is not established in this ledger | status: rejected | 2026-07-08 | superseded: 2026-10-14 by D-222, D-223, D-224 (was: proposed)
 - D-045 [voxels] Terrain edits should rebuild affected chunks and neighboring geometry | status: built | 2026-08-15 | verify: verified | ref: `helpers/terrain_dirty_scope.gd:143` | sym: `_add_neighbor_band` | checked_on: 2026-10-14
 - D-046 [voxels] Worker pipeline stages are snapshot, column, mesh, buffer, and apply | status: built | 2026-08-15 | verify: verified | ref: `chunks/chunk_pipeline.gd:5` | sym: `STAGE_SNAPSHOT` | checked_on: 2026-10-14
 - D-047 [voxels] Worker jobs use frozen overlay stamps and stale jobs are dropped | status: built | 2026-08-15 | verify: verified | ref: `chunks/chunk_manager.gd:3317` | sym: `is_mesh_job_stale` | checked_on: 2026-10-14 | note: overlay stamp captured at chunk_data.gd:203
@@ -90,8 +90,8 @@ IDs never change or get reused. New decisions go at the end of their section wit
 - D-064 [voxels] Sword input must never accidentally trigger terrain digging/removal | status: decided | 2026-08-21
 - D-065 [voxels] Terrain interaction range should be 8 voxel columns | status: decided | 2026-08-21
 - D-066 [voxels] Weapon combat range should remain separate from terrain interaction range | status: decided | 2026-08-21
-- D-067 [voxels] Open question: should the final world remain primarily a surface-heightfield with sparse micro bricks, or evolve toward more complete volumetric voxel occupancy? | status: proposed
-- D-068 [voxels] Open question: what exact macro-to-micro size ratio should be authoritative? | status: proposed
+- D-067 [voxels] Open question: should the final world remain primarily a surface-heightfield with sparse micro bricks, or evolve toward more complete volumetric voxel occupancy? | status: rejected | superseded: 2026-10-14 by D-222, D-223, D-224 (was: proposed)
+- D-068 [voxels] Open question: what exact macro-to-micro size ratio should be authoritative? | status: rejected | superseded: 2026-10-14 by D-222, D-223, D-224 (was: proposed)
 
 ## Water
 
@@ -120,10 +120,10 @@ IDs never change or get reused. New decisions go at the end of their section wit
 
 - D-089 [combat] Combat includes melee and ranged attacks | status: built | 2026-07-15 | verify: verified | ref: `weapons/weapon_controller.gd:353` | sym: `WeaponKind.MELEE` | checked_on: 2026-10-14
 - D-090 [combat] Sword and bow are part of the practical starting item set | status: built | 2026-07-15 | verify: verified | ref: `player/player.gd:847` | sym: `wooden_sword` | checked_on: 2026-10-14
-- D-091 [combat] The player can attack crystal spawn points | status: built | 2026-07-15 | verify: verified | ref: `weapons/weapon_controller.gd:429` | sym: `damage_spawn_at_world` | checked_on: 2026-10-14
-- D-092 [combat] Destroying non-boss spawn points weakens crystal emission | status: built | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:158` | sym: `weaken_factor` | checked_on: 2026-10-14
-- D-093 [combat] The origin boss remains sealed until all non-boss/secondary spawn points are destroyed | status: built | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:138` | sym: `Origin boss sealed` | checked_on: 2026-10-14 | note: origin warden must also be defeated (:139)
-- D-094 [combat] Destroying all crystal spawn points is the hard victory condition | status: built | 2026-07-15 | verify: stale | ref: `game/game_manager.gd:190` | sym: `notify_boss_defeated` | checked_on: 2026-10-14 | note: killing the origin warden is now a second victory path; all-spawns victory still at :180
+- D-091 [combat] The player can attack crystal spawn points | status: rejected | 2026-07-15 | verify: verified | ref: `weapons/weapon_controller.gd:429` | sym: `damage_spawn_at_world` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
+- D-092 [combat] Destroying non-boss spawn points weakens crystal emission | status: rejected | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:158` | sym: `weaken_factor` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
+- D-093 [combat] The origin boss remains sealed until all non-boss/secondary spawn points are destroyed | status: rejected | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:138` | sym: `Origin boss sealed` | checked_on: 2026-10-14 | note: origin warden must also be defeated (:139) | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
+- D-094 [combat] Destroying all crystal spawn points is the hard victory condition | status: rejected | 2026-07-15 | verify: stale | ref: `game/game_manager.gd:190` | sym: `notify_boss_defeated` | checked_on: 2026-10-14 | note: killing the origin warden is now a second victory path; all-spawns victory still at :180 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
 - D-095 [combat] Player death is a loss condition | status: built | 2026-07-15 | verify: verified | ref: `game/game_manager.gd:205` | sym: `_on_player_died` | checked_on: 2026-10-14
 - D-096 [combat] Combat should be responsive and readable and should feel like an action game rather than a purely strategic simulation | status: decided | 2026-08
 - D-097 [combat] Effects and game-feel milestone M5 was reported merged | status: built | 2026-10-14 | verify: verified | ref: `systems/juice.gd:23` | sym: `set_preset` | checked_on: 2026-10-14 | note: merge itself not checkable; effects code present (juice.gd, vfx_pool.gd, hit_markers.gd)
@@ -192,8 +192,8 @@ IDs never change or get reused. New decisions go at the end of their section wit
 
 ## Progression
 
-- D-151 [progression] The run's central win condition is destroying all crystal spawn points, including the origin boss | status: built | 2026-07-15 | verify: stale | ref: `game/game_manager.gd:190` | sym: `notify_boss_defeated` | checked_on: 2026-10-14 | note: origin warden kill is now also a win; all-spawns path at :180
-- D-152 [progression] Non-boss spawns must be destroyed before the origin boss becomes vulnerable | status: built | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:77` | sym: `boss_sealed` | checked_on: 2026-10-14
+- D-151 [progression] The run's central win condition is destroying all crystal spawn points, including the origin boss | status: rejected | 2026-07-15 | verify: stale | ref: `game/game_manager.gd:190` | sym: `notify_boss_defeated` | checked_on: 2026-10-14 | note: origin warden kill is now also a win; all-spawns path at :180 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
+- D-152 [progression] Non-boss spawns must be destroyed before the origin boss becomes vulnerable | status: rejected | 2026-07-15 | verify: verified | ref: `crystal/spawn_point_controller.gd:77` | sym: `boss_sealed` | checked_on: 2026-10-14 | superseded: 2026-10-14 by D-225, D-226, D-227 (was: built)
 - D-153 [progression] Excessive crystal coverage causes loss | status: built | 2026-07-15 | verify: verified | ref: `game/game_manager.gd:128` | sym: `max_crystal_coverage` | checked_on: 2026-10-14
 - D-154 [progression] Player death causes loss | status: built | 2026-07-15 | verify: verified | ref: `game/game_manager.gd:207` | sym: `You died.` | checked_on: 2026-10-14
 - D-155 [progression] Town loss causes loss | status: built | 2026-07-15 | verify: stale | ref: `game/game_manager.gd:141` | sym: `_on_town_fallen` | checked_on: 2026-10-14 | note: town loss is a penalty, not a run loss
@@ -265,6 +265,23 @@ IDs never change or get reused. New decisions go at the end of their section wit
 - D-212 [tech] `verify_ramp_flank_faces`, `ridge_cardinal`, and `side_cell` were reported as stale fixtures after a placement-rule change, not necessarily production regressions | status: bug | 2026-10 | verify: verified | ref: `scripts/verify_ramp_flank_faces.gd:1` | checked_on: 2026-10-14 | note: the three fixture scripts still exist (also verify_ramp_ridge_cardinal.gd, verify_ramp_side_cell.gd); failure not re-run
 - D-213 [tech] Open question: what is the current authoritative state of the full suite after the most recent Crystal Storm changes? | status: proposed
 
+## Design Pivot (2026-10-14)
+
+Decided by Cole and his brother on 2026-10-14 (11:40 PM PT). These override the older entries marked `superseded` below and in their sections.
+
+- D-221 [art] Player, creatures and characters are true voxelized 3D models (built from voxels, lit and shadowed like the world), not billboards, 2D sprites or sprite regions cut onto flat parts; the player rig and creature work steer toward this | status: decided | 2026-10-14
+- D-222 [voxels] The macro/micro voxel split (macro heightfield plus sparse micro bricks, two voxel sizes) is rejected as a design direction; one block size for player-facing terrain | status: rejected | 2026-10-14 | note: replaced by D-223 and D-224; removal is planned in studio/plans/2026-10-14-design-pivot.md
+- D-223 [voxels] Tools can break more than one block at a time (area/multi-block breaking, e.g. 1x2, 3x3, line, by tool tier) instead of relying on finer micro voxels for detail | status: decided | 2026-10-14
+- D-224 [voxels] Players craft and place structures larger than one block, such as walls, in the style of Sanctum 2 (pre-shaped multi-block pieces snapped to the grid) | status: decided | 2026-10-14
+- D-225 [crystal] There is exactly one crystal. Premise: the players are treasure hunters who accidentally released it. This replaces multiple crystal spawn points, secondary/ruin/artifact spawns and the origin-boss victory structure | status: decided | 2026-10-14
+- D-226 [progression] Win condition: destroy the single crystal | status: decided | 2026-10-14
+- D-227 [combat] The boss is a mob/entity that spawns when the player gets close to destroying the crystal, so it appears near the end of that fight; it is not a sealed origin spawn point | status: decided | 2026-10-14
+- D-228 [world] The world feels empty; it needs more content and density (points of interest, props, wildlife, loot, encounters) | status: decided | 2026-10-14
+- D-229 [art] Lighting and shadows must improve (real-time shadows, ambient occlusion, characters and structures casting shadows) | status: decided | 2026-10-14
+- D-230 [progression] A level/XP system is the next confirmed system | status: decided | 2026-10-14
+- D-231 [progression] Skill abilities follow the level/XP system | status: decided | 2026-10-14
+- D-232 [progression] Loss conditions under the one-crystal premise are open; see Q-027 | status: proposed | 2026-10-14
+
 ## Rejected / Superseded Decisions
 
 - D-214 [tech] A Python/2.5D implementation path was abandoned in favor of Godot 4 and a 3D voxel engine | status: rejected | 2026-04
@@ -274,3 +291,4 @@ IDs never change or get reused. New decisions go at the end of their section wit
 - D-218 [tech] Broad refactors or unrelated changes during focused bug fixes are not acceptable | status: rejected | 2026-08-21
 - D-219 [voxels] Assuming every ramp issue is a topology problem was superseded by investigations identifying mesh-face ownership and cache-state defects | status: rejected | 2026-10
 - D-220 [voxels] Treating “break a block and the ramps look correct” as an acceptable workaround for initial-load mesh defects is rejected | status: rejected | 2026-10
+- Superseded on 2026-10-14 (status changed in place, see their sections): D-002, D-091, D-092, D-093, D-094, D-151, D-152 -> D-225..D-227 (one crystal); D-039..D-044, D-067, D-068 -> D-222..D-224 (macro/micro). No billboard-sprite decision existed in the ledger; D-221 sets voxel models.

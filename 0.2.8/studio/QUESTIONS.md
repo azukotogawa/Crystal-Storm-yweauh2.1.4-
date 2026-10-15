@@ -12,8 +12,8 @@ Cole answers inline. Once answered, the decision moves to `studio/DECISIONS.md` 
 - Q-002 | 2026-10-14 | ledger import | [crystal] What exact materials resist, slow, redirect, or accelerate crystal? | answer:
 - Q-003 | 2026-10-14 | ledger import | [crystal] Does crystal permanently convert terrain, temporarily coat it, or support both behaviors? | answer:
 - Q-004 | 2026-10-14 | ledger import | [crystal] How should crystal propagation interact with chunk boundaries and unloaded regions? | answer:
-- Q-005 | 2026-10-14 | ledger import | [voxels] Is the current macro-heightfield plus sparse micro-brick architecture sufficient for the long-term 3D voxel vision? | answer:
-- Q-006 | 2026-10-14 | ledger import | [voxels] What is the final macro-to-micro voxel size ratio? | answer:
+- Q-005 | 2026-10-14 | ledger import | [voxels] Is the current macro-heightfield plus sparse micro-brick architecture sufficient for the long-term 3D voxel vision? | answer: macro/micro rejected 2026-10-14 -> D-222
+- Q-006 | 2026-10-14 | ledger import | [voxels] What is the final macro-to-micro voxel size ratio? | answer: macro/micro rejected 2026-10-14 -> D-222
 - Q-007 | 2026-10-14 | ledger import | [voxels] Which construction types are essential for the next playable milestone? | answer:
 - Q-008 | 2026-10-14 | ledger import | [voxels] Should structural collapse be a core mechanic or remain out of scope? | answer:
 - Q-009 | 2026-10-14 | ledger import | [water] Is free-flowing water visibly simulated throughout the world, or are some areas still represented only by atlas terrain tiles? | answer:
@@ -34,3 +34,9 @@ Cole answers inline. Once answered, the decision moves to `studio/DECISIONS.md` 
 - Q-024 | 2026-10-14 | ledger import | [UI] Which diagnostic overlays belong in normal gameplay? | answer:
 - Q-025 | 2026-10-14 | ledger import | [tech] What are the current live results of the full verification suite and the remaining manual camera/player checks? | answer:
 - Q-026 | 2026-10-14 | ledger import | [tech] Which items in this historical ledger have been superseded by changes after their recorded dates? | answer:
+- Q-027 | 2026-10-14 | design pivot | [progression] Loss conditions with one crystal: which apply? Options: (a) player death (permadeath roguelike run end, or team wipe in co-op); (b) crystal coverage passes a threshold (current max_crystal_coverage 0.72) and the world is overrun; (c) the crystal reaches/consumes a protected place (base camp, town or the treasure site); (d) a storm timer: the crystal finishes charging after N days/phases | answer:
+- Q-028 | 2026-10-14 | design pivot | [combat] At what crystal health does the boss mob spawn (e.g. 25 % left), is it one boss or a wave with it, and can the crystal still be damaged while the boss lives? | answer:
+- Q-029 | 2026-10-14 | design pivot | [crystal] Where does the single crystal start (map center, the treasure site, a seeded corner like the old origin) and does it move, grow or relocate? | answer:
+- Q-030 | 2026-10-14 | design pivot | [art] Voxel model resolution for characters and creatures (voxels per world block, e.g. 8 or 16 per block) and whether models are authored in a tool (MagicaVoxel .vox) or generated from code | answer:
+- Q-031 | 2026-10-14 | design pivot | [progression] XP sources (kills, crystal damage, mining, building, exploring) and whether levels persist between runs (D-158 said no meta-progression) | answer:
+- Q-032 | 2026-10-14 | design pivot | [voxels] Which multi-block break shapes per tool tier, and which large structures come first (wall segments, gates, towers, stairs)? | answer:

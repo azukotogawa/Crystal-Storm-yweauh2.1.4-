@@ -13,3 +13,6 @@ Topic → decision IDs in `studio/DECISIONS.md`. Open questions: `studio/QUESTIO
 - **art** (10): D-171..180
 - **UI** (7): D-181..187
 - **tech** (29): D-188..214, D-217..218
+- **design pivot 2026-10-14** (12): D-221..232 (art D-221, D-229; voxels D-222..224; crystal D-225; progression D-226, D-230..232; combat D-227; world D-228)
+- **superseded 2026-10-14**: D-002, D-039..044, D-067..068, D-091..094, D-151..152
+- Plan: `studio/plans/2026-10-14-design-pivot.md`. New questions: Q-027..032.
