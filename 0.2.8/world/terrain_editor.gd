@@ -380,7 +380,7 @@ func try_build_bridge(world_pos: Vector3, inventory) -> bool:
 	return try_build(world_pos, inventory, &"bridge")
 
 
-func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName, quarter: int = 0) -> bool:
+func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName, quarter: int = 0, cost_scale: float = 1.0) -> bool:
 	last_fail_reason = ""
 	last_build_id = &""
 	last_place_batch = {}
@@ -403,7 +403,7 @@ func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName
 		last_fail_reason = _blueprint_reject_reason(plan)
 		return false
 	var tile := _blueprint_tile(bp)
-	var spent := _pay_blueprint(inventory, bp, blueprint_id)
+	var spent := _pay_blueprint(inventory, bp, blueprint_id, cost_scale)
 	if spent.is_empty():
 		return false
 	var wall_cells: Array[Vector3i] = []
@@ -541,24 +541,31 @@ func _scaled_structure_cost(count: int) -> int:
 	return maxi(1, int(ceil(float(count) * mult)))
 
 
-func _pay_blueprint(inventory, bp: Dictionary, blueprint_id: StringName) -> Array:
+func _line_count(count: int, cost_scale: float) -> int:
+	var scaled := _scaled_structure_cost(count)
+	if cost_scale >= 0.999 or scaled <= 0:
+		return scaled
+	return maxi(1, int(ceil(float(scaled) * clampf(cost_scale, 0.0, 1.0))))
+
+
+func _pay_blueprint(inventory, bp: Dictionary, blueprint_id: StringName, cost_scale: float = 1.0) -> Array:
 	var piece := _StructureCrafting.item_id(blueprint_id)
-	if inventory.has_method("count_item") and int(inventory.count_item(piece)) > 0:
+	if cost_scale >= 0.999 and inventory.has_method("count_item") and int(inventory.count_item(piece)) > 0:
 		if not inventory.consume_item(piece, 1):
 			last_fail_reason = "Need a crafted piece"
 			return []
 		return [{"id": piece, "count": 1}]
 	var scaled: Array = []
 	for line in bp.get("recipe", []):
-		var need := _scaled_structure_cost(int((line as Dictionary).get("count", 0)))
+		var need := _line_count(int((line as Dictionary).get("count", 0)), cost_scale)
 		if need <= 0:
 			continue
 		scaled.append({"id": str((line as Dictionary).get("id", "")), "count": need})
 	if not scaled.is_empty() and _inventory_covers(inventory, scaled) and _consume_lines(inventory, scaled):
 		return scaled
 	var paid_with := str(bp.get("cost", {}).get("id", "stone"))
-	var paid_count := _scaled_structure_cost(int(bp.get("cost", {}).get("count", 0)))
-	var wood_count := _scaled_structure_cost(int(bp.get("cost", {}).get("wood_fallback", 0)))
+	var paid_count := _line_count(int(bp.get("cost", {}).get("count", 0)), cost_scale)
+	var wood_count := _line_count(int(bp.get("cost", {}).get("wood_fallback", 0)), cost_scale)
 	var currency := _take_structure_payment(inventory, paid_with, paid_count, wood_count)
 	if currency.is_empty():
 		return []

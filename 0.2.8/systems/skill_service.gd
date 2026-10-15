@@ -146,6 +146,12 @@ func cooldown_left(slot: int) -> float:
 	return _cooldown[slot]
 
 
+func release_cooldown(slot: int) -> void:
+	if not _slot_ok(slot):
+		return
+	_cooldown[slot] = 0.0
+
+
 func try_activate(slot: int) -> bool:
 	if not SKILLS_ENABLED:
 		return false

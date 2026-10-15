@@ -27,6 +27,7 @@ func _run() -> void:
 	_check_dash()
 	_check_ground_slam()
 	_check_crystal_pulse()
+	_check_quick_wall()
 	if _failed == 0:
 		print("All skills tests OK")
 		quit(0)
@@ -680,6 +681,194 @@ func _check_crystal_pulse() -> void:
 	print("OK crystal pulse")
 
 
+func _check_quick_wall() -> void:
+	var wall = preload("res://player/quick_wall_skill.gd")
+	var edits = preload("res://world/terrain_edits.gd")
+	var features = preload("res://world/feature_registry.gd")
+	var integrity = preload("res://helpers/structure_integrity.gd")
+	var settings = preload("res://config/world_settings.gd")
+	var inventory_script = preload("res://inventory/inventory.gd")
+	var spec: Dictionary = _Skills.CATALOG[&"quick_wall"]
+	if float(spec.get("cooldown", -1.0)) != _Skills.DEFAULT_COOLDOWN:
+		_fail("quick wall cooldown stays the catalog placeholder until Q-046")
+		return
+	if wall.BLUEPRINT_ID != &"wall_segment" or wall.COST_SCALE <= 0.0 or wall.COST_SCALE >= 1.0:
+		_fail("quick wall must place a wall segment at a reduced cost")
+		return
+	var full := wall.full_count()
+	var half := wall.reduced_count(full)
+	var wood_full := wall.wood_full()
+	var wood_half := wall.reduced_count(wood_full)
+	if full < 2 or half >= full or half != maxi(1, int(ceil(float(full) * wall.COST_SCALE))):
+		_fail("quick wall stone cost %s did not reduce from %s" % [half, full])
+		return
+	if wood_half >= wood_full or wood_half < 1:
+		_fail("quick wall wood fallback did not reduce")
+		return
+	if wall.anchor_column(Vector2i(4, 4), Vector2(0, -1)) != Vector2i(4, 3):
+		_fail("quick wall did not sit one column in front of the player")
+		return
+	if wall.quarter_for_facing(Vector2(0, -1)) != 0 or wall.quarter_for_facing(Vector2(1, 0)) != 3 or wall.quarter_for_facing(Vector2(-1, 0)) != 1:
+		_fail("quick wall did not turn the segment across the facing")
+		return
+	var src := FileAccess.get_file_as_string("res://player/quick_wall_skill.gd")
+	if not src.contains("try_place_blueprint") or src.contains("get_build_delay"):
+		_fail("quick wall must place the blueprint immediately")
+		return
+	var body := FileAccess.get_file_as_string("res://player/player.gd")
+	if not body.contains("cast_quick_wall") or not body.contains("_Wall.place"):
+		_fail("the player must cast quick wall")
+		return
+	var svc := FileAccess.get_file_as_string("res://systems/skill_service.gd")
+	if svc.contains("try_place_blueprint") or svc.contains("wall_segment"):
+		_fail("the wall place must stay off the skill service")
+		return
+	edits.reset()
+	features.reset()
+	integrity.reset()
+	var world := _SlamWorld.new()
+	var editor := TerrainEditor.new()
+	var chunks := ChunkManager.new()
+	root.add_child(editor)
+	editor.world = world
+	editor.chunk_manager = chunks
+	if absf(editor.get_build_delay() - 0.03) > 0.0001:
+		_fail("quick wall changed the build delay")
+		_cleanup_wall(null, null, null, editor, chunks, edits, features, integrity)
+		return
+	var pair = _pair(1)
+	var skills = pair.skills
+	var player := Player.new()
+	player.world = world
+	player.voxel_position = Vector3(4.2, 1.0, 4.1)
+	player.locked_yaw_degrees = 0.0
+	var bag = inventory_script.new()
+	player.inventory = bag
+	skills.unlock(&"quick_wall")
+	skills.equip(0, &"quick_wall")
+	player._bind_dash()
+	if not skills.skill_activated.is_connected(player._on_skill_activated):
+		_fail("player did not listen for quick wall")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	bag.add_item(wall.material_id(), half)
+	_GameplayInput.pause_open = true
+	var paused: Dictionary = player.cast_quick_wall()
+	_GameplayInput.pause_open = false
+	if not paused.is_empty() or bag.count_item(wall.material_id()) != half:
+		_fail("pause placed a quick wall")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	if player.cast_quick_wall().get("placed", false) != true or bag.count_item(wall.material_id()) != 0:
+		_fail("quick wall did not place at the reduced stone cost, reason %s" % editor.last_fail_reason)
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	var layer: float = settings.get_active().layer_height()
+	for col in [Vector2i(4, 3), Vector2i(5, 3), Vector2i(6, 3)]:
+		if absf(edits.get_height_delta(col.x, col.y) - layer * 2.0) > 0.001:
+			_fail("wall column %s is not two layers" % col)
+			_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+			return
+		if str(features.get_feature(col.x, col.y).get("build_id", "")) != "stone_wall":
+			_fail("wall column %s is not a stone wall" % col)
+			_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+			return
+	if absf(edits.get_height_delta(4, 4)) > 0.001 or absf(edits.get_height_delta(7, 3)) > 0.001:
+		_fail("quick wall raised a column outside the segment")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	edits.reset()
+	features.reset()
+	integrity.reset()
+	bag.add_item("wall_segment", 1)
+	bag.add_item(wall.material_id(), half)
+	if player.cast_quick_wall().get("placed", false) != true or bag.count_item("wall_segment") != 1 or bag.count_item(wall.material_id()) != 0:
+		_fail("quick wall spent the crafted piece or skipped the reduced stone cost")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	edits.reset()
+	features.reset()
+	integrity.reset()
+	var priced = inventory_script.new()
+	priced.add_item(wall.material_id(), full - 1)
+	if editor.try_place_blueprint(Vector3(20, 0, 20), priced, wall.BLUEPRINT_ID, 0):
+		_fail("a normal wall placed without the full stone cost")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	if priced.count_item(wall.material_id()) != full - 1:
+		_fail("a refused full-price wall spent stone")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	priced.add_item(wall.material_id(), 1)
+	if not editor.try_place_blueprint(Vector3(20, 0, 20), priced, wall.BLUEPRINT_ID, 0) or priced.count_item(wall.material_id()) != 0:
+		_fail("a normal wall did not charge the full stone cost, reason %s" % editor.last_fail_reason)
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	edits.reset()
+	features.reset()
+	integrity.reset()
+	var timber = inventory_script.new()
+	timber.add_item("wood", wood_half)
+	player.inventory = timber
+	if player.cast_quick_wall().get("placed", false) != true or timber.count_item("wood") != 0:
+		_fail("quick wall did not take the reduced wood fallback, reason %s" % editor.last_fail_reason)
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	edits.reset()
+	features.reset()
+	integrity.reset()
+	var short = inventory_script.new()
+	short.add_item(wall.material_id(), half - 1)
+	player.inventory = short
+	if not skills.try_activate(0):
+		_fail("equipped quick wall did not activate")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	if skills.cooldown_left(0) > 0.001 or short.count_item(wall.material_id()) != half - 1 or absf(edits.get_height_delta(4, 3)) > 0.001:
+		_fail("a short stack still placed or kept the cooldown")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	short.add_item(wall.material_id(), 1)
+	if not skills.try_activate(0) or short.count_item(wall.material_id()) != 0:
+		_fail("activating quick wall did not place the segment, reason %s" % editor.last_fail_reason)
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	if absf(skills.cooldown_left(0) - _Skills.DEFAULT_COOLDOWN) > 0.001:
+		_fail("quick wall cooldown did not start")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	if skills.try_activate(0):
+		_fail("quick wall activated again during its cooldown")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	_GameplayInput.pause_open = true
+	var held: Dictionary = player.cast_quick_wall()
+	_GameplayInput.pause_open = false
+	if not held.is_empty():
+		_fail("pause started a second quick wall")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+	print("OK quick wall")
+
+
+func _cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity) -> void:
+	_GameplayInput.pause_open = false
+	if player != null and skills != null and skills.skill_activated.is_connected(player._on_skill_activated):
+		skills.skill_activated.disconnect(player._on_skill_activated)
+	if player != null:
+		player.free()
+	if pair != null:
+		_drop(pair)
+	if editor != null:
+		editor.free()
+	if chunks != null:
+		chunks.free()
+	edits.reset()
+	features.reset()
+	integrity.reset()
+
+
 func _pulse_downhill(pulse, slowed: bool) -> float:
 	var fluid_sim = preload("res://crystal/crystal_fluid_sim.gd")
 	var terrain_q = preload("res://crystal/crystal_terrain_query.gd")
@@ -731,6 +920,9 @@ class _SlamWorld:
 	func get_surface_height(wx: float, wz: float) -> float:
 		var edits = preload("res://world/terrain_edits.gd")
 		return edits.get_height_delta(floori(wx), floori(wz))
+
+	func get_tile_type(_wx: float, _wz: float) -> int:
+		return 0
 
 	func invalidate_column_cache(_wx: int, _wz: int) -> void:
 		pass

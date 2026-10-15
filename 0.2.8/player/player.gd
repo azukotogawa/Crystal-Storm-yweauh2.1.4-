@@ -19,6 +19,7 @@ const _MoveFeel = preload("res://player/move_feel.gd")
 const _Dash = preload("res://player/dash_skill.gd")
 const _Slam = preload("res://player/ground_slam_skill.gd")
 const _Pulse = preload("res://player/crystal_pulse_skill.gd")
+const _Wall = preload("res://player/quick_wall_skill.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
@@ -1079,7 +1080,13 @@ func begin_dash(dir: Vector2) -> bool:
 	return true
 
 
-func _on_skill_activated(_slot: int, skill_id: StringName) -> void:
+func _on_skill_activated(slot: int, skill_id: StringName) -> void:
+	if skill_id == _Wall.SKILL_ID:
+		if not bool(cast_quick_wall().get("placed", false)):
+			var skills = _skill_service()
+			if skills != null and skills.has_method("release_cooldown"):
+				skills.release_cooldown(slot)
+		return
 	if skill_id == _Slam.SKILL_ID:
 		cast_ground_slam()
 		return
@@ -1109,6 +1116,18 @@ func cast_ground_slam(extra: Array = []) -> Dictionary:
 	var batch: Dictionary = _Slam.break_ground(world, editor, center)
 	batch["hits"] = _Slam.strike(nodes, center, _ws(), self)
 	return batch
+
+
+func cast_quick_wall() -> Dictionary:
+	if _GameplayInput.blocks_actions():
+		return {}
+	var feet := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	var facing := rotate_input_to_world(Vector2(0.0, -1.0), locked_yaw_degrees)
+	var editor = null
+	var tree: SceneTree = _scene_tree()
+	if tree != null:
+		editor = tree.get_first_node_in_group("terrain_editor")
+	return _Wall.place(editor, inventory, feet, facing)
 
 
 func cast_crystal_pulse(extra: Array = []) -> Dictionary:
