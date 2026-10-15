@@ -2,6 +2,7 @@ class_name SpawnPointController
 extends RefCounted
 
 const _CombatLog = preload("res://systems/combat_log.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 signal spawn_destroyed(spawn: CrystalSpawnPoint)
 signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
@@ -37,6 +38,8 @@ func get_active_spawns() -> Array[CrystalSpawnPoint]:
 
 
 func count_active_non_boss() -> int:
+	if _GameConfig.SINGLE_CRYSTAL:
+		return 0
 	var n := 0
 	for spawn in _spawns:
 		if spawn.active and not spawn.is_boss:
@@ -47,7 +50,7 @@ func count_active_non_boss() -> int:
 func can_damage_spawn(spawn: CrystalSpawnPoint) -> bool:
 	if spawn == null or not spawn.active:
 		return false
-	if spawn.is_boss and count_active_non_boss() > 0:
+	if not _GameConfig.SINGLE_CRYSTAL and spawn.is_boss and count_active_non_boss() > 0:
 		return false
 	if spawn.is_boss and origin_warden_alive:
 		return false
@@ -74,7 +77,7 @@ func get_progress() -> Dictionary:
 		"last_destroyed": last_destroyed_label,
 		"emit_weaken_mult": emit_weaken_mult,
 		"boss_active": _is_boss_active(),
-		"boss_sealed": _is_boss_active() and count_active_non_boss() > 0,
+		"boss_sealed": not _GameConfig.SINGLE_CRYSTAL and _is_boss_active() and count_active_non_boss() > 0,
 		"warden_alive": origin_warden_alive,
 	}
 
@@ -155,7 +158,7 @@ func _try_damage_spawn(spawn: CrystalSpawnPoint, amount: float) -> bool:
 
 func _on_destroyed(spawn: CrystalSpawnPoint) -> void:
 	last_destroyed_label = spawn.display_name
-	if not spawn.is_boss and spawn.weaken_factor > 0.0:
+	if not _GameConfig.SINGLE_CRYSTAL and not spawn.is_boss and spawn.weaken_factor > 0.0:
 		emit_weaken_mult = maxf(emit_weaken_mult * (1.0 - spawn.weaken_factor), 0.25)
 	rebuild_active_cache()
 	var active_n := get_active_spawns().size()

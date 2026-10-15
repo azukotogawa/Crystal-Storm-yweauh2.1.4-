@@ -4,6 +4,7 @@ extends RefCounted
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 signal depth_changed(pos: Vector2i)
@@ -339,7 +340,13 @@ func _cell_active(pos: Vector2i) -> bool:
 
 func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 1.0) -> void:
 	var mult: float = maxf(emit_weaken_mult, 0.05) * _spread_pressure_mult()
-	for spawn in spawn_points:
+	var sources: Array = spawn_points
+	if _GameConfig.SINGLE_CRYSTAL:
+		sources = _single_emitter(spawn_points)
+		if sources.is_empty():
+			return
+		mult *= _single_pressure_scale(sources[0])
+	for spawn in sources:
 		if not spawn.active:
 			continue
 		var pos: Vector2i = spawn.world_pos
@@ -351,6 +358,40 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		if room <= 0.0:
 			continue
 		set_depth(pos, current + minf(added, room), spawn.id)
+
+
+func _single_emitter(spawn_points: Array) -> Array:
+	var fallback = null
+	for spawn in spawn_points:
+		if not spawn.active:
+			continue
+		if fallback == null:
+			fallback = spawn
+		if _cell_active(spawn.world_pos):
+			return [spawn]
+	if fallback == null:
+		return []
+	return [fallback]
+
+
+func _legacy_emit_pressure() -> float:
+	var ruins := 2
+	var arts := 1
+	if config != null:
+		ruins = maxi(int(config.ruin_spawn_count), 0)
+		arts = maxi(int(config.artifact_spawn_count), 0)
+	return (
+		_CrystalTypes.emit_rate_for(_CrystalTypes.SpawnKind.ORIGIN)
+		+ _CrystalTypes.emit_rate_for(_CrystalTypes.SpawnKind.RUIN) * float(ruins)
+		+ _CrystalTypes.emit_rate_for(_CrystalTypes.SpawnKind.ARTIFACT) * float(arts)
+	)
+
+
+func _single_pressure_scale(spawn) -> float:
+	var rate: float = float(spawn.emit_rate)
+	if rate <= 0.001:
+		return 1.0
+	return _legacy_emit_pressure() / rate
 
 
 func tick_flow(delta: float) -> Array:

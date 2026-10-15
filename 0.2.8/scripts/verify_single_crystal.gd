@@ -6,6 +6,9 @@ const _Def = preload("res://config/spawn_point_def.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _Fluid = preload("res://crystal/crystal_fluid_sim.gd")
 const _TerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
+const _Ctrl = preload("res://crystal/spawn_point_controller.gd")
+const _Spawn = preload("res://crystal/crystal_spawn_point.gd")
+const _SimConfig = preload("res://config/crystal_sim_config.gd")
 
 var _failed: int = 0
 
@@ -22,6 +25,7 @@ func _fail(msg: String) -> void:
 
 func _run() -> void:
 	_check_config()
+	_check_emission()
 	if _failed == 0:
 		await _check_world_start()
 	_finish()
@@ -68,6 +72,70 @@ func _check_config() -> void:
 		_fail("registry dropped a crystal def")
 		return
 	print("OK one crystal health=%.0f rule=%s" % [one.max_health, String(one.position_rule)])
+
+
+func _check_emission() -> void:
+	_Registry.ensure_builtins()
+	var origin = _Registry.get_def(&"origin_boss")
+	var ruin = _Registry.get_def(&"ruin_miniboss")
+	var art = _Registry.get_def(&"artifact_node")
+	var spawns: Array = [
+		_Spawn.from_def(1, Vector2i(0, 0), origin),
+		_Spawn.from_def(2, Vector2i(80, 0), ruin),
+		_Spawn.from_def(3, Vector2i(0, 90), ruin),
+		_Spawn.from_def(4, Vector2i(-70, 40), art),
+	]
+	var cfg = _SimConfig.create_default()
+	var terrain = _TerrainQuery.new()
+	terrain.sim_config = cfg
+	var sim = _Fluid.new(cfg, terrain)
+	for spawn in spawns:
+		sim.set_depth(spawn.world_pos, 1.0, spawn.id, false)
+	sim.tick_emitters(spawns, 1.0, 1.0)
+	var expected := 6.1
+	var got: float = sim.get_depth_at(0, 0)
+	if absf(got - (1.0 + expected)) > 0.05:
+		_fail("one emitter depth %.3f expected %.3f" % [got, 1.0 + expected])
+		return
+	if absf(sim.get_depth_at(80, 0) - 1.0) > 0.001:
+		_fail("secondary ruin emitter still ran")
+		return
+	if absf(sim.get_depth_at(0, 90) - 1.0) > 0.001:
+		_fail("second ruin emitter still ran")
+		return
+	if absf(sim.get_depth_at(-70, 40) - 1.0) > 0.001:
+		_fail("artifact emitter still ran")
+		return
+	spawns[0].active = false
+	sim.set_depth(spawns[1].world_pos, 1.0, spawns[1].id, false)
+	sim.tick_emitters(spawns, 1.0, 1.0)
+	var ruin_depth: float = sim.get_depth_at(80, 0)
+	if absf(ruin_depth - (1.0 + expected)) > 0.05:
+		_fail("fallback emitter depth %.3f expected %.3f" % [ruin_depth, 1.0 + expected])
+		return
+	var gated: Array = [
+		_Spawn.from_def(1, Vector2i(0, 0), origin),
+		_Spawn.from_def(2, Vector2i(40, 40), ruin),
+		_Spawn.from_def(3, Vector2i(-30, 20), art),
+	]
+	var ctrl = _Ctrl.new()
+	ctrl.set_spawns(gated)
+	if ctrl.count_active_non_boss() != 0:
+		_fail("single crystal still counts secondary spawns")
+		return
+	var prog: Dictionary = ctrl.get_progress()
+	if bool(prog.get("boss_sealed", true)):
+		_fail("boss_sealed still set with one crystal")
+		return
+	if not ctrl.can_damage_spawn(gated[0]):
+		_fail("origin spawn stayed sealed")
+		return
+	var weaken_before: float = ctrl.emit_weaken_mult
+	ctrl.damage_spawn_at_world(gated[1].world_pos, 500.0, 2.0)
+	if absf(ctrl.emit_weaken_mult - weaken_before) > 0.001:
+		_fail("weaken_factor still reduced emission")
+		return
+	print("OK one emitter pressure=%.1f secondaries unchanged" % expected)
 
 
 func _finish() -> void:
