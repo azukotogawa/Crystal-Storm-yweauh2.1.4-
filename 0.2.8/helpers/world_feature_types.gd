@@ -10,6 +10,7 @@ enum FeatureKind {
 	BUSH,
 	ANIMAL_SPAWN,
 	RUIN,
+	POI,
 }
 
 enum AnimalKind {

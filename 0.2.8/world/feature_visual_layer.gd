@@ -9,6 +9,7 @@ const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
+const _PoiScatter = preload("res://world/poi_scatter.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
@@ -313,7 +314,7 @@ func _populate_chunk(coord: Vector2i) -> void:
 			var wx := min_x + x
 			var wz := min_z + z
 			var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
-			if feat.is_empty() or not _is_player_built_visual(feat):
+			if feat.is_empty() or not (_is_player_built_visual(feat) or _is_poi_visual(feat)):
 				continue
 			var anchor := _spawn_feature_anchor(wx, wz, feat)
 			if anchor == null:
@@ -328,7 +329,7 @@ func _populate_chunk(coord: Vector2i) -> void:
 			var wx := min_x + x
 			var wz := min_z + z
 			var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
-			if feat.is_empty() or _is_player_built_visual(feat):
+			if feat.is_empty() or _is_player_built_visual(feat) or _is_poi_visual(feat):
 				continue
 			var anchor := _spawn_feature_anchor(wx, wz, feat)
 			if anchor == null:
@@ -340,6 +341,10 @@ func _populate_chunk(coord: Vector2i) -> void:
 			break
 
 	_nodes_by_chunk[coord] = chunk_nodes
+
+
+func _is_poi_visual(feat: Dictionary) -> bool:
+	return int(feat.get("kind", _WorldFeatureTypes.FeatureKind.NONE)) == _WorldFeatureTypes.FeatureKind.POI
 
 
 func _is_player_built_visual(feat: Dictionary) -> bool:
@@ -389,6 +394,10 @@ func _make_feature_anchor(wx: int, wz: int, feat: Dictionary) -> Node3D:
 			if not _is_ruin_visual_cell(wx, wz, feat):
 				return null
 			return _make_building_anchor(wx, wz, col_x, col_z, "ruin_pillar", Vector3(1.2, 2.4, 1.2), 0.0)
+		_WorldFeatureTypes.FeatureKind.POI:
+			var poi_anchor := _PoiScatter.build_visual(str(feat.get("poi_kind", "")))
+			poi_anchor.position = _anchor_pos(col_x, col_z, 0.0)
+			return poi_anchor
 		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING:
 			return _make_building_anchor(wx, wz, col_x, col_z, "town_hall", Vector3(2.4, 3.0, 2.4), 0.0)
 		_WorldFeatureTypes.FeatureKind.TOWN:

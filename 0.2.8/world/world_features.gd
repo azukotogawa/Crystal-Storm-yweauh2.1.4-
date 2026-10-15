@@ -6,6 +6,7 @@ const _TownManager = preload("res://world/town_manager.gd")
 const _VegetationManager = preload("res://world/vegetation_manager.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")
 const _RuinManager = preload("res://world/ruin_manager.gd")
+const _PoiScatter = preload("res://world/poi_scatter.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 const _StartupTotal = preload("res://systems/startup_total_profiler.gd")
 
@@ -167,6 +168,15 @@ func _seed_content(perf_svc) -> void:
 		_StartupProfiler.end("fs/await_frame_after_ruin")
 	else:
 		_StartupProfiler.mark("fs/ruin_generation", 0)
+
+	if _PoiScatter.ENABLED and world != null and not safe_mode:
+		_crash_crumb("WorldFeatures._seed_content → PoiScatter.place ENTER")
+		_StartupProfiler.begin("fs/poi_scatter")
+		_PoiScatter.place(world)
+		_StartupProfiler.end("fs/poi_scatter")
+		_crash_crumb("WorldFeatures._seed_content → PoiScatter.place EXIT")
+	else:
+		_StartupProfiler.mark("fs/poi_scatter", 0)
 
 	var entity_mgr = get_node_or_null("EntityManager")
 	if entity_mgr and not safe_mode:
