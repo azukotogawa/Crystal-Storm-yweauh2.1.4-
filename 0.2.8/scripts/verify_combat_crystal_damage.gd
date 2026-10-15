@@ -4,7 +4,8 @@ extends SceneTree
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _SpawnPointController = preload("res://crystal/spawn_point_controller.gd")
 const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
-const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
+const _SpawnPointRegistry = preload("res://config/spawn_point_registry.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WeaponController = preload("res://weapons/weapon_controller.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
@@ -17,9 +18,17 @@ func _init() -> void:
 func _run() -> void:
 	var failed := false
 	var spawn_cell := Vector2i(6, 6)
-	var spawn := _CrystalSpawnPoint.new(1, spawn_cell, _CrystalTypes.SpawnKind.RUIN, 80.0, false)
+	_SpawnPointRegistry.ensure_builtins()
+	var crystal_def := _SpawnPointDef.make_released()
+	var spawn := _CrystalSpawnPoint.from_def(1, spawn_cell, crystal_def)
 	var ctrl := _SpawnPointController.new()
-	ctrl.set_spawns([spawn])
+	var ruin := _CrystalSpawnPoint.from_def(9, Vector2i(40, 40), _SpawnPointRegistry.get_def(&"ruin_miniboss"))
+	ctrl.set_spawns([spawn, ruin])
+	if bool(ctrl.get_progress().get("boss_sealed", true)):
+		push_error("one crystal must not be sealed beside a ruin")
+		failed = true
+	else:
+		print("OK one crystal is not sealed")
 
 	var player := Player.new()
 	player.voxel_position = Vector3(8.5, 12.0, 8.5)
@@ -72,7 +81,7 @@ func _run() -> void:
 	holder.add_child(weapon)
 	weapon.player = prod_player
 	var cm: _CrystalManager = _CrystalManager.new()
-	cm.harness_setup_spawns([_CrystalSpawnPoint.new(2, spawn_cell, _CrystalTypes.SpawnKind.RUIN, 60.0, false)])
+	cm.harness_setup_spawns([_CrystalSpawnPoint.from_def(2, spawn_cell, crystal_def)])
 	weapon.crystal_manager = cm
 
 	var prod_spawn: CrystalSpawnPoint = cm.get_spawn_at_cell(spawn_cell.x, spawn_cell.y)

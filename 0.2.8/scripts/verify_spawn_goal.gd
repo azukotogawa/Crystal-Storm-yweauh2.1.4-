@@ -9,6 +9,7 @@ const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _GameConfig = preload("res://config/game_config.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 const _GameManager = preload("res://game/game_manager.gd")
 const _ConfigJsonIO = preload("res://systems/config_json_io.gd")
 const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
@@ -32,9 +33,14 @@ func _run_all() -> void:
 	_compile_check()
 	_test_game_config_spawn_defaults()
 	_test_json_spawn_roundtrip()
-	_test_controller_boss_gate_and_victory()
-	_test_controller_save_roundtrip()
-	_test_crystal_manager_damage_path()
+	if _GameConfig.SINGLE_CRYSTAL:
+		_test_one_crystal_damage_and_victory()
+		_test_one_crystal_save_roundtrip()
+		_test_one_crystal_manager_damage()
+	else:
+		_test_controller_boss_gate_and_victory()
+		_test_controller_save_roundtrip()
+		_test_crystal_manager_damage_path()
 	_test_emit_weaken_in_tick_emitters()
 	_test_game_manager_victory_phase()
 	_test_game_manager_coverage_lose()
@@ -62,6 +68,19 @@ func _test_game_config_spawn_defaults() -> void:
 	var cfg = _GameConfig.create_default()
 	if cfg.spawn_points.is_empty():
 		_fail("GameConfig.spawn_points empty after ensure_defaults")
+		return
+	if _GameConfig.SINGLE_CRYSTAL:
+		var active: Array = _SpawnPointRegistry.active_defs()
+		if active.size() != 1 or active[0] == null or active[0].id != &"released_crystal":
+			_fail("active defs should be the one released crystal")
+			return
+		if absf(float(active[0].max_health) - _SpawnPointDef.RELEASED_CRYSTAL_HEALTH) > 0.01:
+			_fail("released crystal health expected %.0f" % _SpawnPointDef.RELEASED_CRYSTAL_HEALTH)
+			return
+		if _SpawnPointRegistry.defs_for(false).size() != 3:
+			_fail("flag-off defs should keep origin, ruin, and artifact")
+			return
+		_log("OK one crystal active id=%s health=%.0f" % [String(active[0].id), float(active[0].max_health)])
 		return
 	if cfg.spawn_points.size() < 3:
 		_fail("GameConfig.spawn_points expected >= 3 builtins")
@@ -93,6 +112,10 @@ func _test_json_spawn_roundtrip() -> void:
 	_log("OK JSON spawn_points roundtrip count=%d" % imported.spawn_points.size())
 
 
+func _released_at(spawn_id: int, cell: Vector2i) -> CrystalSpawnPoint:
+	return _CrystalSpawnPoint.from_def(spawn_id, cell, _SpawnPointDef.make_released())
+
+
 func _make_test_spawns() -> Array:
 	_SpawnPointRegistry.ensure_builtins()
 	var boss_def = _SpawnPointRegistry.get_def(&"origin_boss")
@@ -103,6 +126,101 @@ func _make_test_spawns() -> Array:
 		_CrystalSpawnPoint.from_def(2, Vector2i(40, 40), ruin_def),
 		_CrystalSpawnPoint.from_def(3, Vector2i(-30, 20), art_def),
 	]
+
+
+func _test_one_crystal_damage_and_victory() -> void:
+	var beside := _SpawnPointController.new()
+	var heart := _released_at(1, Vector2i.ZERO)
+	var ruin_def = _SpawnPointRegistry.get_def(&"ruin_miniboss")
+	var ruin := _CrystalSpawnPoint.from_def(2, Vector2i(40, 40), ruin_def)
+	beside.set_spawns([heart, ruin])
+	var progress: Dictionary = beside.get_progress()
+	if bool(progress.get("boss_sealed", false)):
+		_fail("one crystal must not seal while a ruin remains")
+		return
+	var before: float = heart.health
+	beside.damage_spawn_at_world(heart.world_pos, 25.0, 2.0)
+	if heart.health >= before - 0.01:
+		_fail("one crystal must take damage beside a ruin")
+		return
+	beside.damage_spawn_at_world(ruin.world_pos, 500.0, 2.0)
+	if beside.emit_weaken_mult < 1.0:
+		_fail("ruin destroy must not weaken the one crystal")
+		return
+
+	var ctrl := _SpawnPointController.new()
+	var crystal := _released_at(1, Vector2i.ZERO)
+	ctrl.set_spawns([crystal])
+	var state := {"victory": false}
+	ctrl.all_spawns_destroyed.connect(func(): state.victory = true)
+	ctrl.damage_spawn_at_world(crystal.world_pos, crystal.health, 2.0)
+	if not state.victory:
+		_fail("destroying the one crystal should fire all_spawns_destroyed")
+		return
+	if ctrl.get_active_spawns().size() != 0:
+		_fail("no active crystal after it is destroyed")
+		return
+	_log("OK one crystal damage and victory")
+
+
+func _test_one_crystal_save_roundtrip() -> void:
+	var ctrl := _SpawnPointController.new()
+	var crystal := _released_at(1, Vector2i.ZERO)
+	crystal.health = 80.0
+	var ruin := _CrystalSpawnPoint.from_def(2, Vector2i(40, 40), _SpawnPointRegistry.get_def(&"ruin_miniboss"))
+	ruin.health = 42.0
+	ctrl.set_spawns([crystal, ruin])
+	ctrl.boss_spawned = true
+	ctrl.last_destroyed_label = "Crystal"
+	var rows: Array = ctrl.export_spawn_rows()
+	if rows.size() != 1:
+		_fail("one crystal save should keep a single row, got %d" % rows.size())
+		return
+	if absf(float(rows[0].get("health", -1.0)) - 80.0) > 0.001:
+		_fail("one crystal save lost health")
+		return
+	if not bool(rows[0].get("boss_spawned", false)):
+		_fail("one crystal save lost boss_spawned")
+		return
+	var meta: Dictionary = ctrl.export_meta()
+	if absf(float(meta.get("crystal_health", -1.0)) - 80.0) > 0.001 or not bool(meta.get("boss_spawned", false)):
+		_fail("one crystal meta lost health or boss_spawned")
+		return
+	if str(meta.get("last_destroyed_label", "")) != "Crystal":
+		_fail("one crystal meta lost last_destroyed_label")
+		return
+	var legacy: Array = [
+		{"kind": int(_CrystalTypes.SpawnKind.ORIGIN), "def_id": "origin_boss", "is_boss": true, "health": 140.0},
+		{"kind": int(_CrystalTypes.SpawnKind.RUIN), "def_id": "ruin_miniboss", "is_boss": false, "health": 42.0},
+	]
+	var kept: Array = ctrl.keep_origin_save_rows(legacy)
+	if kept.size() != 1 or absf(float(kept[0].get("health", -1.0)) - 140.0) > 0.001:
+		_fail("multi-spawn save should keep only the origin row")
+		return
+	_log("OK one crystal save row health=80")
+
+
+func _test_one_crystal_manager_damage() -> void:
+	var cm := _CrystalManager.new()
+	var crystal := _released_at(1, Vector2i.ZERO)
+	cm.harness_setup_spawns([crystal])
+	var state := {"victory": false}
+	cm.all_spawns_destroyed.connect(func(): state.victory = true)
+	var before: float = crystal.health
+	cm.damage_spawn_at_world(crystal.world_pos, 40.0, 2.0)
+	if crystal.health >= before - 0.01:
+		_fail("CrystalManager should damage the one crystal with no seal")
+		return
+	if state.victory:
+		_fail("a chip of crystal health must not win")
+		return
+	if not cm.damage_spawn_at_world(crystal.world_pos, crystal.health, 2.0):
+		_fail("CrystalManager should destroy the one crystal")
+		return
+	if not state.victory:
+		_fail("CrystalManager should win when the one crystal is destroyed")
+		return
+	_log("OK CrystalManager one crystal victory")
 
 
 func _test_controller_boss_gate_and_victory() -> void:
@@ -240,6 +358,9 @@ func _test_game_manager_victory_phase() -> void:
 	if gm.phase != _GameManager.Phase.VICTORY:
 		_fail("GameManager should set Phase.VICTORY")
 		return
+	if _GameConfig.SINGLE_CRYSTAL and gm.victory_reason != "crystal":
+		_fail("one crystal victory_reason expected crystal got %s" % gm.victory_reason)
+		return
 	_log("OK GameManager Phase.VICTORY + RunState.WON")
 
 
@@ -258,6 +379,12 @@ func _test_game_manager_coverage_lose() -> void:
 
 func _test_full_game_spawn_defaults() -> void:
 	var cfg = _CrystalSimConfig.create_default()
+	if _GameConfig.SINGLE_CRYSTAL:
+		if _SpawnPointRegistry.active_defs().size() != 1:
+			_fail("full game should place one crystal")
+			return
+		_log("OK one crystal run; ruin=%d artifact=%d stay as pressure scale only" % [cfg.ruin_spawn_count, cfg.artifact_spawn_count])
+		return
 	if cfg.ruin_spawn_count < 1 or cfg.artifact_spawn_count < 1:
 		_fail("full game needs ruin and artifact spawn counts")
 		return

@@ -2,6 +2,7 @@ extends SceneTree
 
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _SpawnPointDef = preload("res://config/spawn_point_def.gd")
 
 const _SEEDS: Array[int] = [0, 1, 2, 3, 5, 7, 8, 13, 42, 55, 77, 99, 100, 12349]
 
@@ -23,8 +24,13 @@ func _run() -> void:
 		world.apply_seed(seed_value)
 		crystal._spawn_points.clear()
 		var land: Vector2i = crystal._resolve_origin_spawn_position()
-		var boss := CrystalSpawnPoint.new(0, land, _CrystalTypes.SpawnKind.ORIGIN, 500.0, true)
-		crystal._spawn_points.append(boss)
+		var released := CrystalSpawnPoint.from_def(0, land, _SpawnPointDef.make_released())
+		crystal._spawn_points.append(released)
+		if released.is_boss or crystal.get_active_spawns().size() != 1:
+			push_error("seed %d expected one released crystal, boss=%s count=%d" % [
+				seed_value, released.is_boss, crystal.get_active_spawns().size(),
+			])
+			failed = true
 		var col: Vector2i = player._resolve_spawn_column()
 		var center: Vector2 = world.spawn_river_center()
 		var dx := float(col.x) - center.x
