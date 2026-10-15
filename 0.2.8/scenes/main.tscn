@@ -43,6 +43,18 @@ ambient_light_color = Color(0.34, 0.38, 0.48, 1)
 ambient_light_energy = 0.22
 tonemap_mode = 2
 tonemap_exposure = 0.72
+ssao_enabled = true
+ssao_radius = 0.55
+ssao_intensity = 0.85
+ssao_power = 1.5
+ssao_detail = 0.35
+fog_enabled = true
+fog_light_color = Color(0.72, 0.78, 0.9, 1)
+fog_light_energy = 0.28
+fog_sun_scatter = 0.08
+fog_density = 0.00032
+fog_aerial_perspective = 0.12
+fog_sky_affect = 0.35
 
 [node name="Game" type="Node3D" unique_id=238200303]
 script = ExtResource("1_2f3dj")
@@ -139,9 +151,18 @@ environment = SubResource("Environment_tipki")
 transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
 light_color = Color(0.72, 0.78, 0.9, 1)
 light_energy = 0.58
-shadow_enabled = false
+shadow_enabled = true
+shadow_bias = 0.04
+shadow_normal_bias = 1.0
+shadow_blur = 0.55
 directional_shadow_mode = 1
-directional_shadow_max_distance = 80.0
+directional_shadow_blend_splits = true
+directional_shadow_max_distance = 220.0
+directional_shadow_split_1 = 0.86
+directional_shadow_split_2 = 0.94
+directional_shadow_split_3 = 0.98
+directional_shadow_fade_start = 0.92
+directional_shadow_pancake_size = 36.0
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1228396210]
 script = ExtResource("4_272bh")

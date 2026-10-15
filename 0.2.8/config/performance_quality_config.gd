@@ -135,6 +135,43 @@ var damage_number_lifetime: float = 0.9
 @export_group("Profiling")
 @export var perf_profiler_enabled: bool = true
 
+@export_group("Scene Light")
+@export var scene_shadows: bool = true
+@export_range(0.0, 0.2, 0.005)
+var shadow_bias: float = 0.04
+@export_range(0.0, 4.0, 0.05)
+var shadow_normal_bias: float = 1.0
+@export_range(0.0, 2.0, 0.05)
+var shadow_blur: float = 0.55
+@export_range(0, 2, 1)
+var shadow_split_mode: int = 1
+@export_range(40.0, 400.0, 1.0)
+var shadow_max_distance: float = 220.0
+@export_range(0.05, 0.98, 0.01)
+var shadow_split_1: float = 0.86
+@export_range(0.05, 0.99, 0.01)
+var shadow_split_2: float = 0.94
+@export_range(0.05, 0.99, 0.01)
+var shadow_split_3: float = 0.98
+@export_range(0.0, 80.0, 1.0)
+var shadow_pancake: float = 36.0
+@export_range(256, 8192, 256)
+var shadow_atlas_size: int = 2048
+@export var ssao_enabled: bool = true
+@export_range(0.1, 4.0, 0.05)
+var ssao_radius: float = 0.55
+@export_range(0.0, 4.0, 0.05)
+var ssao_intensity: float = 0.85
+@export var fog_enabled: bool = true
+@export_range(0.0, 0.02, 0.00001)
+var fog_density: float = 0.00032
+@export_range(0.0, 2.0, 0.01)
+var fog_light_energy: float = 0.28
+@export_range(0.0, 2.0, 0.01)
+var ambient_light_energy: float = 0.22
+@export_range(0.2, 2.0, 0.01)
+var tonemap_exposure: float = 0.72
+
 
 static func create_default() -> PerformanceQualityConfig:
 	return apply_preset(Preset.MEDIUM)
@@ -202,6 +239,7 @@ static func apply_safe_mode() -> PerformanceQualityConfig:
 	c.max_damage_labels = 0
 	c.max_burst_sprites = 0
 	c.perf_profiler_enabled = true
+	paint_scene_light(c)
 	return c
 
 
@@ -400,4 +438,53 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.perf_profiler_enabled = true
 		_:
 			pass
+	paint_scene_light(c)
 	return c
+
+
+static func paint_scene_light(c: PerformanceQualityConfig) -> void:
+	c.ambient_light_energy = 0.22
+	c.tonemap_exposure = 0.72
+	c.ssao_radius = 0.55
+	c.ssao_intensity = 0.85
+	c.fog_density = 0.00032
+	c.fog_light_energy = 0.28
+	c.shadow_bias = 0.04
+	c.shadow_normal_bias = 1.0
+	c.shadow_blur = 0.55
+	c.shadow_max_distance = 220.0
+	c.shadow_split_1 = 0.86
+	c.shadow_split_2 = 0.94
+	c.shadow_split_3 = 0.98
+	c.shadow_pancake = 36.0
+	var cheap := c.preset == Preset.LOW or c.preset == Preset.SAFE
+	if cheap:
+		c.scene_shadows = false
+		c.ssao_enabled = false
+		c.fog_enabled = false
+		c.shadow_split_mode = 1
+		c.shadow_atlas_size = 1024
+		return
+	if c.preset == Preset.HIGH:
+		c.scene_shadows = true
+		c.ssao_enabled = true
+		c.fog_enabled = true
+		c.ssao_radius = 0.8
+		c.ssao_intensity = 1.15
+		c.fog_density = 0.0004
+		c.shadow_bias = 0.03
+		c.shadow_normal_bias = 0.85
+		c.shadow_blur = 0.4
+		c.shadow_max_distance = 260.0
+		c.shadow_split_1 = 0.62
+		c.shadow_split_2 = 0.78
+		c.shadow_split_3 = 0.92
+		c.shadow_split_mode = 2
+		c.shadow_atlas_size = 4096
+		c.shadow_pancake = 40.0
+		return
+	c.scene_shadows = true
+	c.ssao_enabled = true
+	c.fog_enabled = true
+	c.shadow_split_mode = 1
+	c.shadow_atlas_size = 2048
