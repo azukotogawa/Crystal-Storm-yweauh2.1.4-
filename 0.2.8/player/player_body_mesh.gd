@@ -8,6 +8,7 @@ const CONTENT_W := 16
 const CONTENT_H := 34
 const USE_SLAB_BODY := false
 const _Author = preload("res://assets/player/author_player.gd")
+const _VoxelModel = preload("res://helpers/voxel_model_builder.gd")
 
 const _TINT_SIDE := 0.62
 const _TINT_BACK := 0.50
@@ -88,10 +89,28 @@ static func half_width_for_height(body_height: float) -> float:
 
 static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
 	_drop_rig(mesh_instance)
+	if _VoxelModel.USE_GRID_PARTS and _apply_grid_rig(mesh_instance, height, radius):
+		return
 	if USE_SLAB_BODY:
 		_apply_slab(mesh_instance, height, radius)
 	else:
 		_apply_rig(mesh_instance, height, radius)
+
+
+static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radius: float) -> bool:
+	var parts: Array = _VoxelModel.parts_for(&"player")
+	if parts.is_empty():
+		return false
+	var cube := height
+	if parts[0] is Dictionary and (parts[0] as Dictionary).has("cube"):
+		cube = float((parts[0] as Dictionary)["cube"])
+	var rig := _VoxelModel.build_rig(parts, _VoxelModel.palette_for(&"player"), cube)
+	if rig == null:
+		return false
+	mesh_instance.mesh = null
+	mesh_instance.position.y = height * 0.5
+	mesh_instance.add_child(rig)
+	return true
 
 
 static func _apply_slab(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:

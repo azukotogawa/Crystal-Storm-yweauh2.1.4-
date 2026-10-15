@@ -16,6 +16,7 @@ const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _CreaturePose = preload("res://entities/creature_pose.gd")
 const _VoxelCreature = preload("res://helpers/voxel_creature_builder.gd")
+const _VoxelModel = preload("res://helpers/voxel_model_builder.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -142,6 +143,8 @@ func _column_world_position(cell: Vector2i) -> Vector3:
 
 func _ensure_visual(tint: Color) -> void:
 	_base_tint = tint
+	if _VoxelModel.USE_GRID_PARTS and _ensure_grid_model(tint):
+		return
 	if _VoxelCreature.USE_PART_RIG and _ensure_part_rig(tint):
 		return
 	if _part_rig and is_instance_valid(_part_rig):
@@ -156,6 +159,29 @@ func _ensure_visual(tint: Color) -> void:
 		_ensure_sprite(registry, tex, tint)
 	else:
 		_ensure_mesh(tint)
+
+
+func _ensure_grid_model(_tint: Color) -> bool:
+	var parts: Array = _VoxelModel.parts_for(entity_kind)
+	if parts.is_empty():
+		return false
+	var cube := 1.0
+	if parts[0] is Dictionary and (parts[0] as Dictionary).has("cube"):
+		cube = float((parts[0] as Dictionary)["cube"])
+	var built: Node3D = _VoxelModel.build_rig(parts, _VoxelModel.palette_for(entity_kind), cube)
+	if built == null:
+		return false
+	if _sprite:
+		_sprite.visible = false
+	if _mesh:
+		_mesh.visible = false
+	if _voxel_prop:
+		_voxel_prop.visible = false
+	if _part_rig and is_instance_valid(_part_rig):
+		_part_rig.queue_free()
+	_part_rig = built
+	add_child(_part_rig)
+	return true
 
 
 func _ensure_part_rig(tint: Color) -> bool:
