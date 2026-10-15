@@ -13,6 +13,11 @@ const _TINT_SIDE := 0.62
 const _TINT_BACK := 0.50
 const _TINT_TOP := 0.84
 const _TINT_BOTTOM := 0.42
+const _ANIM_LEN := TAU
+const _ANIM_STEPS := 16
+const _WALK_AMP := 0.70
+const _RUN_AMP := 1.05
+const _ARM_SHARE := 0.65
 
 static var _wind_sign: float = 0.0
 
@@ -98,11 +103,31 @@ static func _apply_slab(mesh_instance: MeshInstance3D, height: float, radius: fl
 
 
 static func _drop_rig(mesh_instance: MeshInstance3D) -> void:
-	var old := mesh_instance.get_node_or_null("PlayerRig")
-	if old == null:
+	for node_name in ["PlayerRig", "PlayerAnim"]:
+		var old := mesh_instance.get_node_or_null(node_name)
+		if old == null:
+			continue
+		mesh_instance.remove_child(old)
+		old.free()
+
+
+static func play_pose(mesh_instance: MeshInstance3D, pose: String, phase: float) -> void:
+	if USE_SLAB_BODY or mesh_instance == null:
 		return
-	mesh_instance.remove_child(old)
-	old.free()
+	var skel := mesh_instance.get_node_or_null("PlayerRig") as Skeleton3D
+	var player := mesh_instance.get_node_or_null("PlayerAnim") as AnimationPlayer
+	if skel == null or player == null:
+		return
+	var clip := pose if player.has_animation(pose) else "idle"
+	if str(player.assigned_animation) != clip:
+		player.play(clip)
+	var length := _ANIM_LEN
+	var anim := player.get_animation(clip)
+	if anim != null:
+		length = anim.length
+	skel.reset_bone_poses()
+	player.seek(fposmod(phase, maxf(length, 0.001)), true)
+	_flush_bones(skel)
 
 
 static func make_material() -> StandardMaterial3D:
@@ -331,7 +356,111 @@ static func _apply_rig(mesh_instance: MeshInstance3D, height: float, radius: flo
 		_apply_slab(mesh_instance, height, radius)
 		return
 	skel.reset_bone_poses()
+	_flush_bones(skel)
 	mesh_instance.add_child(skel)
+	_attach_anim(mesh_instance, height, pivot_of)
+
+
+static func _flush_bones(skel: Skeleton3D) -> void:
+	if skel.has_method("force_update_all_bone_transforms"):
+		skel.force_update_all_bone_transforms()
+
+
+static func _attach_anim(mesh_instance: MeshInstance3D, height: float, pivots: Dictionary) -> void:
+	var player := AnimationPlayer.new()
+	player.name = "PlayerAnim"
+	player.root_node = NodePath("..")
+	player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+	mesh_instance.add_child(player)
+	var lib := AnimationLibrary.new()
+	lib.add_animation(&"idle", _anim_idle(height, pivots))
+	lib.add_animation(&"walk", _anim_gait(_WALK_AMP, height, pivots))
+	lib.add_animation(&"run", _anim_gait(_RUN_AMP, height, pivots))
+	lib.add_animation(&"jump", _anim_jump(height, pivots))
+	lib.add_animation(&"fall", _anim_fall(height, pivots))
+	lib.add_animation(&"land", _anim_land())
+	player.add_animation_library(&"", lib)
+
+
+static func _new_clip() -> Animation:
+	var anim := Animation.new()
+	anim.length = _ANIM_LEN
+	anim.loop_mode = Animation.LOOP_LINEAR
+	return anim
+
+
+static func _bone_path(bone_name: String) -> NodePath:
+	return NodePath("PlayerRig:" + bone_name)
+
+
+static func _track(anim: Animation, kind: Animation.TrackType, bone_name: String) -> int:
+	var track := anim.add_track(kind)
+	anim.track_set_path(track, _bone_path(bone_name))
+	anim.track_set_interpolation_type(track, Animation.INTERPOLATION_LINEAR)
+	return track
+
+
+static func _add_rot_sin(anim: Animation, bone_name: String, amp: float) -> void:
+	var track := _track(anim, Animation.TYPE_ROTATION_3D, bone_name)
+	for i in _ANIM_STEPS:
+		var t := _ANIM_LEN * float(i) / float(_ANIM_STEPS)
+		anim.rotation_track_insert_key(track, t, Quaternion(Vector3(1, 0, 0), sin(t) * amp))
+
+
+static func _add_pos_sin(anim: Animation, bone_name: String, base: Vector3, lift: float, freq: float) -> void:
+	var track := _track(anim, Animation.TYPE_POSITION_3D, bone_name)
+	for i in _ANIM_STEPS:
+		var t := _ANIM_LEN * float(i) / float(_ANIM_STEPS)
+		anim.position_track_insert_key(track, t, base + Vector3(0, sin(t * freq) * lift, 0))
+
+
+static func _add_pos_hold(anim: Animation, bone_name: String, offset: Vector3) -> void:
+	var track := _track(anim, Animation.TYPE_POSITION_3D, bone_name)
+	anim.position_track_insert_key(track, 0.0, offset)
+
+
+static func _add_scale_hold(anim: Animation, bone_name: String, scale: Vector3) -> void:
+	var track := _track(anim, Animation.TYPE_SCALE_3D, bone_name)
+	anim.scale_track_insert_key(track, 0.0, scale)
+
+
+static func _anim_idle(height: float, pivots: Dictionary) -> Animation:
+	var anim := _new_clip()
+	_add_pos_sin(anim, "Torso", pivots["Torso"], height * 0.045, 1.0)
+	return anim
+
+
+static func _anim_gait(amp: float, height: float, pivots: Dictionary) -> Animation:
+	var anim := _new_clip()
+	_add_pos_sin(anim, "Torso", pivots["Torso"], height * 0.018, 2.0)
+	_add_rot_sin(anim, "Leg_R", amp)
+	_add_rot_sin(anim, "Leg_L", -amp)
+	_add_rot_sin(anim, "UpperArm_R", -amp * _ARM_SHARE)
+	_add_rot_sin(anim, "UpperArm_L", amp * _ARM_SHARE)
+	return anim
+
+
+static func _anim_jump(height: float, pivots: Dictionary) -> Animation:
+	var anim := _new_clip()
+	var tuck := Vector3(0, height * 0.22, height * 0.08)
+	_add_scale_hold(anim, "Torso", Vector3(1, 1.08, 1))
+	_add_pos_hold(anim, "Leg_L", pivots["Leg_L"] + tuck)
+	_add_pos_hold(anim, "Leg_R", pivots["Leg_R"] + tuck)
+	return anim
+
+
+static func _anim_fall(height: float, pivots: Dictionary) -> Animation:
+	var anim := _new_clip()
+	var reach := Vector3(0, -height * 0.02, height * 0.18)
+	_add_pos_hold(anim, "Leg_L", pivots["Leg_L"] + reach)
+	_add_pos_hold(anim, "Leg_R", pivots["Leg_R"] + reach)
+	return anim
+
+
+static func _anim_land() -> Animation:
+	var anim := _new_clip()
+	_add_scale_hold(anim, "Root", Vector3(1.16, 0.68, 1.10))
+	return anim
 
 
 static func _fallback_box(width: float, height: float, body_d: float) -> ArrayMesh:

@@ -33,6 +33,7 @@ func _run() -> void:
 	world.world_seed = 99
 	_pad(world, 16, 40, 16, 24)
 	var player := _make_player(world)
+	_require_anim_driver(player)
 	var rest: PackedVector3Array = _verts(player.player_mesh)
 	var boot_i := _boot_index(rest)
 	var chest_i := _chest_index(rest)
@@ -189,17 +190,43 @@ func _tick(player: Player, frames: int) -> void:
 
 
 func _verts(mi: MeshInstance3D) -> PackedVector3Array:
-	var skel := mi.get_node_or_null("PlayerRig")
+	var skel := mi.get_node_or_null("PlayerRig") as Skeleton3D
 	if skel == null:
 		return _surface_verts(mi)
+	if skel.has_method("force_update_all_bone_transforms"):
+		skel.force_update_all_bone_transforms()
 	var all := PackedVector3Array()
 	for att in skel.get_children():
+		if not (att is BoneAttachment3D):
+			continue
+		var bone := int((att as BoneAttachment3D).bone_idx)
+		var pose := skel.get_bone_global_pose(bone)
 		for ch in att.get_children():
 			if ch is MeshInstance3D:
+				var part_xf := pose * (ch as Node3D).transform
 				var part := _surface_verts(ch)
 				for v in part:
-					all.push_back(v)
+					all.push_back(part_xf * v)
 	return all
+
+
+func _require_anim_driver(player: Player) -> void:
+	var src := FileAccess.get_file_as_string("res://player/player.gd")
+	if src.find("USE_SLAB_BODY") < 0 or src.find("_locomotion.apply") < 0:
+		_fail("slab flag no longer selects the vertex pose path")
+	var anim := player.player_mesh.get_node_or_null("PlayerAnim") as AnimationPlayer
+	if _Body.USE_SLAB_BODY:
+		if anim != null:
+			_fail("slab body spawned PlayerAnim")
+		return
+	if anim == null:
+		_fail("part rig is missing PlayerAnim")
+		return
+	for clip_name in ["idle", "walk", "run", "jump", "fall", "land"]:
+		if not anim.has_animation(clip_name):
+			_fail("PlayerAnim missing %s" % clip_name)
+	if _failed == 0:
+		print("OK rig AnimationPlayer idle walk run jump")
 
 
 func _surface_verts(mi: MeshInstance3D) -> PackedVector3Array:

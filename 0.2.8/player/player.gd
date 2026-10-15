@@ -1089,7 +1089,10 @@ func _apply_walk_bob(delta: float) -> void:
 		_bob_phase += delta * _MoveFeel.bob_rate(pose == "run")
 	elif pose == "idle":
 		_bob_phase += delta * 2.4
-	_locomotion.apply(player_mesh, pose, _bob_phase)
+	if _PlayerBodyMesh.USE_SLAB_BODY:
+		_locomotion.apply(player_mesh, pose, _bob_phase)
+	else:
+		_PlayerBodyMesh.play_pose(player_mesh, pose, _bob_phase)
 	player_mesh.position.y = _mesh_rest_y
 	player_mesh.scale = Vector3.ONE
 
