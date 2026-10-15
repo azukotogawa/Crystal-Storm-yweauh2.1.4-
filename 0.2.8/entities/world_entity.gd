@@ -15,6 +15,7 @@ const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _CreaturePose = preload("res://entities/creature_pose.gd")
+const _VoxelCreature = preload("res://helpers/voxel_creature_builder.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -38,6 +39,7 @@ var _profiler_bound: bool = false
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
 var _voxel_prop: Node3D
+var _part_rig: Node3D
 var _bob_phase: float = 0.0
 var _bob_ready: bool = false
 var locomotion_pose: String = "idle"
@@ -140,6 +142,10 @@ func _column_world_position(cell: Vector2i) -> Vector3:
 
 func _ensure_visual(tint: Color) -> void:
 	_base_tint = tint
+	if _VoxelCreature.USE_PART_RIG and _ensure_part_rig(tint):
+		return
+	if _part_rig and is_instance_valid(_part_rig):
+		_part_rig.visible = false
 	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if registry != null and bool(registry.get("entity_voxel_models_enabled")):
 		_ensure_voxel_model(tint)
@@ -150,6 +156,27 @@ func _ensure_visual(tint: Color) -> void:
 		_ensure_sprite(registry, tex, tint)
 	else:
 		_ensure_mesh(tint)
+
+
+func _ensure_part_rig(tint: Color) -> bool:
+	var registry = get_tree().get_first_node_in_group("game_visual_registry") if is_inside_tree() else null
+	var img: Image = _VoxelCreature.image_of(_resolve_entity_texture(registry))
+	var ws = WorldSettings.get_active()
+	var height: float = ws.small_creature_height()
+	var built: Node3D = _VoxelCreature.build(img, _VoxelCreature.parts_for(entity_kind), height, tint)
+	if built == null:
+		return false
+	if _sprite:
+		_sprite.visible = false
+	if _mesh:
+		_mesh.visible = false
+	if _voxel_prop:
+		_voxel_prop.visible = false
+	if _part_rig and is_instance_valid(_part_rig):
+		_part_rig.queue_free()
+	_part_rig = built
+	add_child(_part_rig)
+	return true
 
 
 func _hook_visual_registry() -> void:
@@ -240,6 +267,11 @@ func _ensure_mesh(tint: Color) -> void:
 
 func get_combat_center() -> Vector3:
 	var center := global_position
+	if _part_rig and is_instance_valid(_part_rig) and _part_rig.visible:
+		var rig_h := float(_part_rig.get_meta("model_height", 0.0))
+		if rig_h > 0.01:
+			center.y += rig_h * 0.42
+			return center
 	if _voxel_prop and is_instance_valid(_voxel_prop):
 		var h := _VoxelPropBuilder.model_height(_voxel_prop)
 		if h > 0.01:
@@ -527,6 +559,8 @@ func _die() -> void:
 
 
 func _active_visual() -> Node3D:
+	if _part_rig and is_instance_valid(_part_rig) and _part_rig.visible:
+		return _part_rig
 	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
 		return _voxel_prop
 	if _sprite and is_instance_valid(_sprite) and _sprite.visible:
@@ -572,6 +606,9 @@ func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> voi
 	elif locomotion_pose == "attack":
 		rate = 8.0
 	_bob_phase += delta * rate
+	if _VoxelCreature.USE_PART_RIG and _part_rig and is_instance_valid(_part_rig) and _part_rig.visible:
+		_VoxelCreature.apply_pose(_part_rig, locomotion_pose, _bob_phase)
+		return
 	var vis := _active_visual()
 	if vis == null or vis != _voxel_prop:
 		return
