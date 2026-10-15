@@ -23,6 +23,7 @@ func _run() -> void:
 	_check_source_wiring()
 	await _check_level_rewards()
 	await _check_live_sources()
+	await _check_save_round_trip()
 	await _check_xp_hud()
 	if _failed == 0:
 		print("All progression tests OK")
@@ -291,6 +292,88 @@ func _check_level_rewards() -> void:
 	root.remove_child(svc)
 	svc.free()
 	print("OK level rewards")
+
+
+func _check_save_round_trip() -> void:
+	var save_src := FileAccess.get_file_as_string("res://systems/save_game_service.gd")
+	var import_at := save_src.find("progression.import_state")
+	var player_at := save_src.find("player.apply_save_state")
+	if import_at < 0 or player_at < 0 or import_at > player_at:
+		_fail("progression must load before the player snapshot")
+		return
+	for group_name in ["player", "progression_service", "save_game_service"]:
+		_drop_group(group_name)
+	var stats_script = load("res://stats/stat_component.gd")
+	var ids = load("res://stats/stat_ids.gd")
+	var player := Node3D.new()
+	player.name = "Player"
+	var stats = stats_script.new()
+	stats.name = "StatComponent"
+	player.add_child(stats)
+	root.add_child(player)
+	player.add_to_group("player")
+	var svc := _Progression.new()
+	root.add_child(svc)
+	for _i in 8:
+		await process_frame
+		if stats.sheet != null:
+			break
+	if stats.sheet == null:
+		_fail("stat sheet was not ready for the xp save")
+		player.free()
+		svc.free()
+		return
+	var into := _Progression.xp_to_advance(1) + _Progression.xp_to_advance(2) + 17
+	svc.add_xp(into)
+	svc.skill_points = 1
+	if svc.level != 3 or svc.xp != 17 or svc.skill_points != 1:
+		_fail("save setup drifted, level %d xp %d points %d" % [svc.level, svc.xp, svc.skill_points])
+		player.free()
+		svc.free()
+		return
+	var save_script = load("res://systems/save_game_service.gd")
+	save_script.pending_continue = false
+	save_script.pending_load_slot = -1
+	var save = save_script.new()
+	var cfg_script = load("res://config/save_game_config.gd")
+	save.config = cfg_script.create_default()
+	save.config.auto_save_enabled = false
+	root.add_child(save)
+	var snap: Dictionary = save.collect_snapshot()
+	var block: Dictionary = snap.get("progression", {})
+	if int(block.get("level", 0)) != 3 or int(block.get("xp", -1)) != 17 or int(block.get("skill_points", -1)) != 1:
+		_fail("run snapshot progression is %s" % str(block))
+		save.free()
+		player.free()
+		svc.free()
+		return
+	svc.level = 1
+	svc.xp = 0
+	svc.skill_points = 0
+	svc.apply_level_rewards(stats)
+	if not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0):
+		_fail("cleared level reward left max health %s" % stats.get_stat(ids.MAX_HEALTH))
+		save.free()
+		player.free()
+		svc.free()
+		return
+	await save._apply_runtime_state(snap)
+	var two := 2.0
+	if svc.level != 3 or svc.xp != 17 or svc.skill_points != 1:
+		_fail("loaded run is level %d xp %d points %d" % [svc.level, svc.xp, svc.skill_points])
+	elif not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0 + _Progression.HP_PER_LEVEL * two):
+		_fail("loaded level reward max health is %s" % stats.get_stat(ids.MAX_HEALTH))
+	else:
+		var older: Dictionary = snap.duplicate(true)
+		older.erase("progression")
+		await save._apply_runtime_state(older)
+		if svc.level != 3 or svc.xp != 17 or svc.skill_points != 1:
+			_fail("a save without progression wiped the run")
+		else:
+			print("OK xp save round trip")
+	save.free()
+	player.free()
+	svc.free()
 
 
 func _drop_group(group_name: String) -> void:

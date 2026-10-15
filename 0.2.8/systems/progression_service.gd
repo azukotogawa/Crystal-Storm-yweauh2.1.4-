@@ -126,6 +126,23 @@ func apply_level_rewards(stats) -> void:
 		stats.apply_modifier(mod)
 
 
+func export_state() -> Dictionary:
+	return {
+		"level": level,
+		"xp": xp,
+		"skill_points": skill_points,
+	}
+
+
+func import_state(data: Dictionary) -> void:
+	if data.is_empty():
+		return
+	level = maxi(int(data.get("level", level)), 1)
+	xp = maxi(int(data.get("xp", xp)), 0)
+	skill_points = maxi(int(data.get("skill_points", skill_points)), 0)
+	_push_level_rewards()
+
+
 func _raise_levels() -> void:
 	var guard := 0
 	var gained := 0

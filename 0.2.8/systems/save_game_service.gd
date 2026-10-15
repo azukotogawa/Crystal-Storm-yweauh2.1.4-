@@ -530,6 +530,12 @@ func _apply_runtime_state(data: Dictionary) -> void:
 	if town_def and town_def.has_method("import_state") and data.has("town_defense"):
 		town_def.import_state(data.town_defense)
 
+	var progression = get_tree().get_first_node_in_group("progression_service")
+	if progression and progression.has_method("import_state") and data.has("progression") and data.progression is Dictionary:
+		var pdata: Dictionary = data.progression
+		if not pdata.is_empty():
+			progression.import_state(pdata)
+
 	var player = get_tree().get_first_node_in_group("player")
 	if player and player.has_method("apply_save_state") and data.has("player"):
 		player.apply_save_state(data.player)
@@ -666,6 +672,9 @@ func collect_snapshot() -> Dictionary:
 		"extensions": _SaveSchema.future_extension_stubs(),
 	}
 
+	var progression = get_tree().get_first_node_in_group("progression_service")
+	if progression and progression.has_method("export_state"):
+		snapshot["progression"] = progression.export_state()
 	if player and player.has_method("export_save_state"):
 		snapshot["player"] = player.export_save_state()
 	if crystal and crystal.has_method("export_state"):
