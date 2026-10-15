@@ -14,6 +14,8 @@ const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _Chunks = preload("res://chunks/chunk_manager.gd")
 const _Panel = preload("res://ui/inventory_panel.gd")
 const _Settings = preload("res://config/world_settings.gd")
+const _Integrity = preload("res://helpers/structure_integrity.gd")
+const _WorldState = preload("res://world/world_state.gd")
 
 var _failed: int = 0
 
@@ -44,6 +46,7 @@ func _run() -> void:
 	_test_ghost_validity()
 	_test_ghost_uses_build_highlight()
 	_test_craft_then_place()
+	_test_damage_and_repair()
 	if _failed == 0:
 		print("All structure blueprint tests OK")
 		quit(0)
@@ -456,6 +459,107 @@ func _place_gate_stairs_tower(editor, world) -> bool:
 		return false
 	print("OK gate, stairs, and small tower place from their blueprints")
 	return true
+
+
+func _test_damage_and_repair() -> void:
+	_Edits.reset()
+	_Features.reset()
+	_Integrity.reset()
+	var editor = _TerrainEditor.new()
+	var world = _FlatWorld.new()
+	var chunks = _Chunks.new()
+	editor.world = world
+	editor.chunk_manager = chunks
+	var inv = _Inventory.new()
+	inv.add_item("stone", 20)
+	if not editor.try_place_blueprint(Vector3(4.2, 0.0, 6.2), inv, _Blueprints.WALL_SEGMENT, 0):
+		_fail("damage test could not place a wall segment: %s" % editor.last_fail_reason)
+		_release_place(editor, world, chunks)
+		return
+	var rec := _Integrity.record_at(Vector2i(4, 6))
+	if int(rec.get("structure_hp", 0)) != 48 or int(rec.get("structure_max", 0)) != 48:
+		_fail("wall segment HP is %s/%s, want 48/48" % [rec.get("structure_hp"), rec.get("structure_max")])
+		_release_place(editor, world, chunks)
+		return
+	if not editor.try_place_blueprint(Vector3(10.2, 0.0, 6.2), inv, _Blueprints.WALL_SEGMENT, 0):
+		_fail("damage test could not place the second wall: %s" % editor.last_fail_reason)
+		_release_place(editor, world, chunks)
+		return
+	var enemy: Dictionary = _Integrity.damage_around(Vector2i(3, 6), 10.0, null)
+	if not bool(enemy.get("hit", false)) or bool(enemy.get("destroyed", false)) or int(enemy.get("hp", 0)) != 38:
+		_fail("an adjacent enemy hit should leave the wall at 38 HP, got %s" % enemy)
+		_release_place(editor, world, chunks)
+		return
+	if int(_Integrity.record_at(Vector2i(10, 6)).get("structure_hp", 0)) != 48:
+		_fail("enemy damage must stay on the wall that was hit")
+		_release_place(editor, world, chunks)
+		return
+	var crystal: Array = _Integrity.erode_columns([Vector2i(4, 6), Vector2i(5, 6), Vector2i(6, 6)], null)
+	if crystal.size() != 1 or int(crystal[0].get("hp", 0)) != 36 or str(crystal[0].get("source", "")) != "crystal":
+		_fail("crystal should chip a touched wall once, got %s" % crystal)
+		_release_place(editor, world, chunks)
+		return
+	var broke: Dictionary = _Integrity.repair_at(Vector2i(5, 6), _Inventory.new())
+	if bool(broke.get("repaired", false)):
+		_fail("repair without stone must fail")
+		_release_place(editor, world, chunks)
+		return
+	var payer = _Inventory.new()
+	payer.add_item("stone", 1)
+	if not editor.try_repair_structure(Vector3(5.2, 0.0, 6.2), payer):
+		_fail("the player must repair a damaged structure with stone")
+		_release_place(editor, world, chunks)
+		return
+	if payer.count_item("stone") != 0 or int(_Integrity.record_at(Vector2i(6, 6)).get("structure_hp", 0)) != 44:
+		_fail("one stone must restore 8 HP on every column of that wall")
+		_release_place(editor, world, chunks)
+		return
+	var weapon_src := (_Weapon as GDScript).source_code
+	var enemy_src := str((load("res://entities/crystal_enemy.gd") as GDScript).source_code)
+	var animal_src := str((load("res://entities/world_entity.gd") as GDScript).source_code)
+	var crystal_src := str((load("res://crystal/crystal_manager.gd") as GDScript).source_code)
+	if "try_repair_structure" not in weapon_src or "chip_enemy" not in enemy_src or "chip_enemy" not in animal_src or "_erode_structures" not in crystal_src:
+		_fail("the player, enemies, and the crystal must call structure damage and repair")
+		_release_place(editor, world, chunks)
+		return
+	_WorldState.reset_trace_counters()
+	var dead: Dictionary = _Integrity.apply_damage(Vector2i(4, 6), 100.0, &"enemy", null)
+	var bumps := _WorldState.get_trace_bump_count()
+	_WorldState.stop_trace_counters()
+	if not bool(dead.get("destroyed", false)) or int(dead.get("edits", 0)) != 1 or int(dead.get("removed", 0)) != 6 or bumps != 1:
+		_fail("destroying a wall must remove its 6 cells in one edit, got %s bumps %d" % [dead, bumps])
+		_release_place(editor, world, chunks)
+		return
+	if _layers_at(4, 6) != 0 or _layers_at(5, 6) != 0 or _layers_at(6, 6) != 0:
+		_fail("a destroyed wall must drop every column")
+		_release_place(editor, world, chunks)
+		return
+	if not _Features.get_feature(4, 6).is_empty() or not _Features.get_feature(5, 6).is_empty():
+		_fail("a destroyed wall must clear its cells")
+		_release_place(editor, world, chunks)
+		return
+	if int(_Integrity.record_at(Vector2i(10, 6)).get("structure_hp", 0)) != 48:
+		_fail("destroying one wall must leave the other")
+		_release_place(editor, world, chunks)
+		return
+	if not editor.try_place_blueprint(Vector3(4.2, 0.0, 14.2), inv, _Blueprints.GATE, 0):
+		_fail("damage test could not place a gate: %s" % editor.last_fail_reason)
+		_release_place(editor, world, chunks)
+		return
+	var gate_dead: Dictionary = _Integrity.apply_damage(Vector2i(5, 14), 400.0, &"crystal", null)
+	if not bool(gate_dead.get("destroyed", false)) or int(gate_dead.get("edits", 0)) != 1 or int(gate_dead.get("removed", 0)) != 5:
+		_fail("destroying a gate must remove the posts and the opening in one edit, got %s" % gate_dead)
+		_release_place(editor, world, chunks)
+		return
+	if _layers_at(4, 14) != 0 or _layers_at(6, 14) != 0 or not _Features.get_feature(5, 14).is_empty():
+		_fail("a destroyed gate must clear the posts and the opening")
+		_release_place(editor, world, chunks)
+		return
+	_release_place(editor, world, chunks)
+	_Edits.reset()
+	_Features.reset()
+	_Integrity.reset()
+	print("OK structures track HP, take enemy and crystal damage, repair with stone, and fall in one edit")
 
 
 func _layers_at(x: int, z: int) -> int:

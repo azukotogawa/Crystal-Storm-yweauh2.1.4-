@@ -26,6 +26,7 @@ const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _CrystalPalette = preload("res://ui/crystal_palette.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _GameConfig = preload("res://config/game_config.gd")
+const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
 const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
@@ -1477,6 +1478,35 @@ func _finish_tick_side_effects(events: Array, profiler = null) -> void:
 		profiler.set_gauge("crystal_new_cells", float(_last_crystal_new_cells))
 		if _simulation:
 			profiler.set_gauge("crystal_changed_cells", float(_simulation.last_mesh_dirty_count))
+	_erode_structures(events)
+
+
+func _erode_structures(events: Array) -> void:
+	if _StructureIntegrity.live_count() <= 0 or _simulation == null or _simulation.fluid == null:
+		return
+	var changed: Array = []
+	for ev_v in events:
+		if not ev_v is Dictionary:
+			continue
+		if int(ev_v.get("kind", 0)) != _CrystalSimEvents.Kind.FLOW_BATCH:
+			continue
+		var listed = ev_v.get("changed", [])
+		if listed is Array:
+			changed = listed
+	if changed.is_empty():
+		return
+	var fluid = _simulation.fluid
+	var min_d := 0.05
+	if fluid.config != null:
+		min_d = float(fluid.config.min_depth)
+	var live: Array[Vector2i] = []
+	for raw in changed:
+		if raw is Vector2i and float(fluid.depth.get(raw, 0.0)) >= min_d:
+			live.append(raw)
+	if live.is_empty():
+		return
+	var editor = get_tree().get_first_node_in_group("terrain_editor") if is_inside_tree() else null
+	_StructureIntegrity.erode_columns(live, editor)
 
 
 func _dispatch_sim_events(events: Array) -> void:

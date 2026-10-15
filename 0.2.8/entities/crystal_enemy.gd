@@ -14,6 +14,7 @@ const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _CreaturePose = preload("res://entities/creature_pose.gd")
+const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
 
 signal detonated(damage: float)
 signal attacked_player(damage: float)
@@ -575,6 +576,7 @@ func _physics_process(delta: float) -> void:
 		did_attack = true
 		_damage_player(contact_damage, &"", global_position)
 		attacked_player.emit(contact_damage)
+	_StructureIntegrity.chip_enemy(self_cell, contact_damage, did_attack, brain, self)
 	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
@@ -749,6 +751,7 @@ func _detonate() -> void:
 		var dist := global_position.distance_to(target_pos)
 		if dist <= detonate_radius + 0.5:
 			_damage_player(contact_damage, &"", global_position)
+	_StructureIntegrity.chip_enemy(_EntityNavigation.column_pos(global_position), contact_damage, true, null, self)
 	detonated.emit(contact_damage)
 	_sfx("enemy_death", global_position)
 	_release_death_visual()

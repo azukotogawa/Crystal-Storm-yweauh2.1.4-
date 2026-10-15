@@ -17,6 +17,7 @@ const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _CreaturePose = preload("res://entities/creature_pose.gd")
 const _VoxelCreature = preload("res://helpers/voxel_creature_builder.gd")
 const _VoxelModel = preload("res://helpers/voxel_model_builder.gd")
+const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
 
 signal died(entity: WorldEntity, world_pos: Vector2i)
 signal attacked_player(damage: float)
@@ -442,6 +443,7 @@ func _physics_process(delta: float) -> void:
 			if _player.has_method("take_damage"):
 				_player.take_damage(config.contact_damage)
 			attacked_player.emit(config.contact_damage)
+	_StructureIntegrity.chip_enemy(self_cell, config.contact_damage, did_attack, brain, self)
 	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")

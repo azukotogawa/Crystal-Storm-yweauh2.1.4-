@@ -362,6 +362,64 @@ static func unstack_build(wx: int, wz: int) -> bool:
 	return true
 
 
+static func remove_structure_cells(cells: Array, editor: Object = null) -> Dictionary:
+	const _Features = preload("res://world/feature_registry.gd")
+	var ws = _ws()
+	var removed: Array[Vector3i] = []
+	var columns := {}
+	ws.begin_batch()
+	for raw in cells:
+		if not raw is Dictionary:
+			continue
+		var at := Vector3i(int(raw.get("x", 0)), int(raw.get("y", 0)), int(raw.get("z", 0)))
+		var role := str(raw.get("role", "wall"))
+		if role == "passage":
+			clear_build_tile(at.x, at.z)
+		elif not unstack_build(at.x, at.z):
+			continue
+		removed.append(at)
+		columns[Vector2i(at.x, at.z)] = true
+	for col_v in columns.keys():
+		var col: Vector2i = col_v
+		_Features.clear_feature(col.x, col.y)
+	ws.end_batch()
+	var by_chunk := {}
+	for col_v in columns.keys():
+		var col: Vector2i = col_v
+		var key := chunk_for_column(col.x, col.y)
+		if not by_chunk.has(key):
+			by_chunk[key] = []
+		(by_chunk[key] as Array).append(col)
+	var chunk_keys: Array = by_chunk.keys()
+	var remesh := 0
+	var water := 0
+	var crystal := 0
+	for key_v in chunk_keys:
+		var key: Vector2i = key_v
+		var cols: Array = by_chunk[key]
+		if editor != null and editor.has_method("remesh_break_chunk"):
+			editor.remesh_break_chunk(key, cols)
+		remesh += 1
+		if editor != null and editor.has_method("update_break_water"):
+			editor.update_break_water(key, cols)
+		water += 1
+		if editor != null and editor.has_method("update_break_crystal"):
+			editor.update_break_crystal(key, cols)
+		crystal += 1
+	if editor != null and editor.has_method("flush_break_chunks") and not chunk_keys.is_empty():
+		editor.flush_break_chunks()
+	return {
+		"removed": removed,
+		"removed_count": removed.size(),
+		"columns": columns.keys(),
+		"chunks": chunk_keys,
+		"remesh_count": remesh,
+		"water_count": water,
+		"crystal_count": crystal,
+		"edits": 1 if not removed.is_empty() else 0,
+	}
+
+
 static func clear_build_tile(wx: int, wz: int) -> void:
 	if not can_edit(wx, wz):
 		return

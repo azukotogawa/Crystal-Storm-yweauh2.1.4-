@@ -1074,7 +1074,10 @@ func _try_place_selected() -> void:
 	var place_id: String = get_place_id()
 	var built_id := StringName(place_id)
 	var ok := false
-	if _StructureBlueprints.LARGE_STRUCTURES and active_blueprint_id() != &"":
+	if _StructureBlueprints.LARGE_STRUCTURES and _terrain_editor.has_method("try_repair_structure") and _terrain_editor.try_repair_structure(target, inventory):
+		ok = true
+		built_id = &"repair"
+	elif _StructureBlueprints.LARGE_STRUCTURES and active_blueprint_id() != &"":
 		built_id = active_blueprint_id()
 		ok = _terrain_editor.try_place_blueprint(target, inventory, built_id, blueprint_quarter)
 	else:

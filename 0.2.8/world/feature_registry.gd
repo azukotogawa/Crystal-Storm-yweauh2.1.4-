@@ -47,6 +47,9 @@ static func on_session_changed() -> void:
 	_plant_denial_cache.clear()
 	_denial_spatial.clear()
 	_invalidate_derived()
+	var integrity = load("res://helpers/structure_integrity.gd")
+	if integrity and integrity.has_method("forget_session"):
+		integrity.forget_session()
 
 
 static func reset() -> void:

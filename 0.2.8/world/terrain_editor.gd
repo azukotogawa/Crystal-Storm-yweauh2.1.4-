@@ -20,6 +20,7 @@ const _WorldState = preload("res://world/world_state.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 const _StructureCrafting = preload("res://helpers/structure_crafting.gd")
+const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
 
 const REBUILD_EDGE_BAND := 1
 
@@ -438,9 +439,26 @@ func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName
 		shown.append(col)
 	_refresh_blueprint_columns(shown)
 	last_build_id = build_id
-	var anchor := Vector2i(floori(world_pos.x), floori(world_pos.z))
+	var anchor: Vector2i = plan.get("anchor", Vector2i(floori(world_pos.x), floori(world_pos.z)))
+	var tracked: Array = []
+	for item in plan.get("cells", []):
+		var row: Dictionary = item
+		if row.get("at") is Vector3i:
+			tracked.append({"at": row["at"], "role": str(row.get("role", "wall"))})
+	_StructureIntegrity.bind(blueprint_id, anchor, tracked)
 	var place_pos := Vector3(float(anchor.x) + 0.5, world.get_surface_height(float(anchor.x), float(anchor.y)), float(anchor.y) + 0.5)
 	structure_placed.emit(anchor.x, anchor.y, build_id, place_pos)
+	return true
+
+
+func try_repair_structure(world_pos: Vector3, inventory) -> bool:
+	if not _StructureBlueprints.LARGE_STRUCTURES:
+		return false
+	var col := Vector2i(floori(world_pos.x), floori(world_pos.z))
+	var healed: Dictionary = _StructureIntegrity.repair_at(col, inventory)
+	if not bool(healed.get("repaired", false)):
+		return false
+	last_fail_reason = ""
 	return true
 
 
