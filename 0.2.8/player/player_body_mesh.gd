@@ -130,6 +130,40 @@ static func play_pose(mesh_instance: MeshInstance3D, pose: String, phase: float)
 	_flush_bones(skel)
 
 
+static func play_use(mesh_instance: MeshInstance3D, clip: String, unit: float, aim: Vector3) -> bool:
+	if USE_SLAB_BODY or mesh_instance == null or clip == "":
+		return false
+	var skel := mesh_instance.get_node_or_null("PlayerRig") as Skeleton3D
+	var player := mesh_instance.get_node_or_null("PlayerAnim") as AnimationPlayer
+	if skel == null or player == null or not player.has_animation(clip):
+		return false
+	var upper := skel.find_bone("UpperArm_R")
+	if upper < 0:
+		return false
+	if str(player.assigned_animation) != clip:
+		player.play(clip)
+	var anim := player.get_animation(clip)
+	var length := 1.0 if anim == null else anim.length
+	player.seek(clampf(unit, 0.0, 0.999) * length, true)
+	var posed := skel.get_bone_pose_rotation(upper)
+	skel.set_bone_pose_rotation(upper, _aim_yaw(skel, aim) * posed)
+	_flush_bones(skel)
+	return true
+
+
+static func _aim_yaw(skel: Skeleton3D, aim: Vector3) -> Quaternion:
+	var flat := Vector3(aim.x, 0.0, aim.z)
+	if flat.length_squared() < 0.0001:
+		return Quaternion.IDENTITY
+	flat = skel.global_transform.basis.inverse() * flat
+	flat.y = 0.0
+	if flat.length_squared() < 0.0001:
+		return Quaternion.IDENTITY
+	flat = flat.normalized()
+	var from := Vector3(0.0, 0.0, -1.0)
+	return Quaternion(Vector3.UP, atan2(from.cross(flat).y, from.dot(flat)))
+
+
 static func make_material() -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -379,6 +413,11 @@ static func _attach_anim(mesh_instance: MeshInstance3D, height: float, pivots: D
 	lib.add_animation(&"jump", _anim_jump(height, pivots))
 	lib.add_animation(&"fall", _anim_fall(height, pivots))
 	lib.add_animation(&"land", _anim_land())
+	lib.add_animation(&"swing_sword", _anim_swing_sword())
+	lib.add_animation(&"swing_pick", _anim_swing_pick())
+	lib.add_animation(&"swing_hammer", _anim_swing_hammer())
+	lib.add_animation(&"bow_draw", _anim_bow_draw())
+	lib.add_animation(&"bow_aim", _anim_bow_aim())
 	player.add_animation_library(&"", lib)
 
 
@@ -460,6 +499,99 @@ static func _anim_fall(height: float, pivots: Dictionary) -> Animation:
 static func _anim_land() -> Animation:
 	var anim := _new_clip()
 	_add_scale_hold(anim, "Root", Vector3(1.16, 0.68, 1.10))
+	return anim
+
+
+static func _use_clip() -> Animation:
+	var anim := Animation.new()
+	anim.length = 1.0
+	anim.loop_mode = Animation.LOOP_NONE
+	return anim
+
+
+static func _use_quat(pitch: float, yaw: float, roll: float) -> Quaternion:
+	return Quaternion(Vector3.UP, yaw) * Quaternion(Vector3.RIGHT, pitch) * Quaternion(Vector3.FORWARD, roll)
+
+
+static func _add_rot_keys(anim: Animation, bone_name: String, keys: Array) -> void:
+	var track := _track(anim, Animation.TYPE_ROTATION_3D, bone_name)
+	for key in keys:
+		var row: Array = key
+		anim.rotation_track_insert_key(track, float(row[0]), _use_quat(float(row[1]), float(row[2]), float(row[3])))
+
+
+static func _anim_swing_sword() -> Animation:
+	var anim := _use_clip()
+	_add_rot_keys(anim, "UpperArm_R", [
+		[0.0, 0.85, 0.0, 0.15],
+		[0.42, 1.45, 1.05, 0.2],
+		[0.999, 0.7, -0.35, 0.05],
+	])
+	_add_rot_keys(anim, "LowerArm_R", [
+		[0.0, 0.15, 0.0, 0.0],
+		[0.42, 0.35, 0.0, 0.0],
+		[0.999, 0.1, 0.0, 0.0],
+	])
+	return anim
+
+
+static func _anim_swing_pick() -> Animation:
+	var anim := _use_clip()
+	_add_rot_keys(anim, "UpperArm_R", [
+		[0.0, 0.4, 0.0, 0.05],
+		[0.45, 1.85, 0.15, 0.0],
+		[0.999, 0.6, 0.0, 0.0],
+	])
+	_add_rot_keys(anim, "LowerArm_R", [
+		[0.0, -0.45, 0.0, 0.0],
+		[0.45, 0.25, 0.0, 0.0],
+		[0.999, 0.05, 0.0, 0.0],
+	])
+	return anim
+
+
+static func _anim_swing_hammer() -> Animation:
+	var anim := _use_clip()
+	_add_rot_keys(anim, "UpperArm_R", [
+		[0.0, 0.5, 0.0, 0.08],
+		[0.403, 2.45, 0.0, 0.1],
+		[0.62, 1.05, 0.0, 0.05],
+		[0.999, 0.55, 0.0, 0.0],
+	])
+	_add_rot_keys(anim, "LowerArm_R", [
+		[0.0, -0.2, 0.0, 0.0],
+		[0.403, -0.7, 0.0, 0.0],
+		[0.62, 0.15, 0.0, 0.0],
+		[0.999, 0.0, 0.0, 0.0],
+	])
+	return anim
+
+
+static func _anim_bow_aim() -> Animation:
+	var anim := _use_clip()
+	_add_rot_keys(anim, "UpperArm_R", [
+		[0.0, 1.12, 0.0, 0.0],
+		[0.999, 1.12, 0.0, 0.0],
+	])
+	_add_rot_keys(anim, "LowerArm_R", [
+		[0.0, -0.18, 0.0, 0.0],
+		[0.999, -0.18, 0.0, 0.0],
+	])
+	return anim
+
+
+static func _anim_bow_draw() -> Animation:
+	var anim := _use_clip()
+	_add_rot_keys(anim, "UpperArm_R", [
+		[0.0, 1.12, 0.0, 0.0],
+		[0.7, 1.2, 0.0, 0.0],
+		[0.999, 1.12, 0.0, 0.0],
+	])
+	_add_rot_keys(anim, "LowerArm_R", [
+		[0.0, -0.18, 0.0, 0.0],
+		[0.7, -0.95, 0.0, 0.0],
+		[0.999, -0.15, 0.0, 0.0],
+	])
 	return anim
 
 

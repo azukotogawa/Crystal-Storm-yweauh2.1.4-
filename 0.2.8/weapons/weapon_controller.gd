@@ -366,7 +366,21 @@ func _attack_forward() -> Vector3:
 
 
 func _aim_forward(range_v: float) -> Vector3:
+	if _held_is_ranged():
+		var aimed := _ActionTargeting.cursor_cell_under_mouse(player, range_v)
+		if aimed != Vector3.ZERO and player != null and "voxel_position" in player:
+			var offset := Vector3(aimed.x - float(player.voxel_position.x), 0.0, aimed.z - float(player.voxel_position.z))
+			if offset.length_squared() > 0.04:
+				return offset.normalized()
 	return _ActionTargeting.cursor_aim(player, range_v)
+
+
+func _held_is_ranged() -> bool:
+	var def := ItemTypes.get_def(_active_item_id())
+	if def.is_empty():
+		return false
+	return int(def.get("category", -1)) == ItemTypes.Category.WEAPON \
+		and int(def.get("weapon_kind", -1)) == ItemTypes.WeaponKind.RANGED
 
 
 func _held_aim_range() -> float:
@@ -383,7 +397,9 @@ func _held_aim_range() -> float:
 func _face_held() -> void:
 	if _held == null or player == null:
 		return
-	_held.face(_aim_forward(_held_aim_range()))
+	var aim := _aim_forward(_held_aim_range())
+	_held.face(aim)
+	_held.pose_rig(aim)
 
 
 func _attack_origin(chest_ratio: float = 0.5) -> Vector3:

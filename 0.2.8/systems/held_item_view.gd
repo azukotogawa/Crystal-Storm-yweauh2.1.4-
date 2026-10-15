@@ -5,6 +5,7 @@ extends Node3D
 const _ItemAnim = preload("res://systems/item_anim.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _Body = preload("res://player/player_body_mesh.gd")
 
 const _BRICK_PATH := "res://assets/art/voxel_brick.png"
 const _PART_COUNT := 6
@@ -14,6 +15,8 @@ var _item: MeshInstance3D
 var _parts: Array[MeshInstance3D] = []
 var _arm_mat: StandardMaterial3D
 var _item_id: String = ""
+var _pose_kind: int = 0
+var _pose_unit: float = 0.0
 var _vs: float = 2.0
 var _ready_visual: bool = false
 static var _brick_tex: Texture2D
@@ -61,9 +64,13 @@ func show_item(item_id: String) -> void:
 	_item_id = item_id
 	var spec: Dictionary = _ItemAnim.spec_for(item_id)
 	var kind := int(spec.get("kind", _ItemAnim.Kind.NONE))
+	_pose_kind = kind
+	_pose_unit = 0.0
 	_tint_for(item_id, kind)
 	_apply_unit(kind, 0.0, float(spec.get("impact_ratio", 0.42)))
 	visible = kind != _ItemAnim.Kind.NONE and item_id != ""
+	if is_inside_tree():
+		pose_rig(-global_transform.basis.z)
 
 
 func apply_playback(pb) -> void:
@@ -74,8 +81,12 @@ func apply_playback(pb) -> void:
 	if item_id != _item_id:
 		_item_id = item_id
 		_tint_for(item_id, int(pb.kind))
+	_pose_kind = int(pb.kind)
+	_pose_unit = pb.unit()
 	_apply_unit(int(pb.kind), pb.unit(), float(pb.impact_ratio))
 	visible = int(pb.kind) != _ItemAnim.Kind.NONE
+	if is_inside_tree():
+		pose_rig(-global_transform.basis.z)
 
 
 func face(forward: Vector3) -> void:
@@ -85,6 +96,35 @@ func face(forward: Vector3) -> void:
 	if flat.length_squared() < 0.0001:
 		return
 	look_at(global_position + flat, Vector3.UP)
+
+
+func pose_rig(aim: Vector3) -> void:
+	var host := get_parent()
+	if host == null:
+		return
+	var mesh := host.get("player_mesh") as MeshInstance3D
+	if mesh == null:
+		return
+	var clip := _use_clip()
+	if clip == "":
+		_arm.visible = _pose_kind != _ItemAnim.Kind.NONE
+		return
+	if _Body.play_use(mesh, clip, _pose_unit, aim):
+		_arm.visible = false
+	else:
+		_arm.visible = _pose_kind != _ItemAnim.Kind.NONE
+
+
+func _use_clip() -> String:
+	if _pose_kind == _ItemAnim.Kind.AIM:
+		return "bow_draw" if _pose_unit > 0.04 else "bow_aim"
+	if _pose_kind != _ItemAnim.Kind.SWING:
+		return ""
+	if _item_id == "crystal_hammer":
+		return "swing_hammer"
+	if _item_id == "stone_pick":
+		return "swing_pick"
+	return "swing_sword"
 
 
 func visual_child_count() -> int:

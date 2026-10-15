@@ -757,6 +757,53 @@ static func warp_mouse_to_column(
 		vp.warp_mouse(screen)
 
 
+static func cursor_cell_under_mouse(player: Node3D, range_v: float) -> Vector3:
+	if player == null or not player.is_inside_tree():
+		return Vector3.ZERO
+	var cam: Camera3D = player.get("camera") as Camera3D
+	var vp: Viewport = player.get_viewport()
+	if cam == null or vp == null:
+		return Vector3.ZERO
+	var mouse := vp.get_mouse_position()
+	var rect := vp.get_visible_rect()
+	if rect.size.x > 4.0 and rect.size.y > 4.0:
+		if mouse.x < rect.position.x - 2.0 or mouse.y < rect.position.y - 2.0 \
+				or mouse.x > rect.end.x + 2.0 or mouse.y > rect.end.y + 2.0:
+			return Vector3.ZERO
+	var origin := cam.project_ray_origin(mouse)
+	var dir := cam.project_ray_normal(mouse)
+	if dir.length_squared() < 0.0000001 or absf(dir.y) < 0.00001:
+		return Vector3.ZERO
+	dir = dir.normalized()
+	var world := _player_world(player)
+	var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
+	var ws = _WorldSettings.get_active()
+	var plane_y: float = player.global_position.y
+	var seed_x := 0
+	var seed_z := 0
+	var seeded := false
+	for _refine in 5:
+		var t_plane: float = (plane_y - origin.y) / dir.y
+		if t_plane < 0.0:
+			break
+		var hit: Vector3 = origin + dir * t_plane
+		seed_x = floori(ws.world_to_column(hit.x))
+		seed_z = floori(ws.world_to_column(hit.z))
+		seeded = true
+		if world == null:
+			break
+		var next_y: float = _walkable_top(world, chunk_manager, float(seed_x) + 0.5, float(seed_z) + 0.5)
+		if absf(next_y - plane_y) < 0.02:
+			break
+		plane_y = next_y
+	if not seeded or not _column_in_range(player, seed_x, seed_z, range_v):
+		return Vector3.ZERO
+	var py := 0.0
+	if "voxel_position" in player:
+		py = float(player.voxel_position.y)
+	return Vector3(float(seed_x) + 0.5, py, float(seed_z) + 0.5)
+
+
 static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD

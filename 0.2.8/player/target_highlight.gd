@@ -258,6 +258,10 @@ func _process(delta: float) -> void:
 		)
 		if hover_col == Vector3.ZERO:
 			hover_col = _ActionTargeting.target_column(player, range_v)
+		if _held_is_ranged():
+			var aimed := _ActionTargeting.cursor_cell_under_mouse(player, maxf(range_v, HOVER_PICK_RANGE))
+			if aimed != Vector3.ZERO:
+				hover_col = aimed
 
 		var hover_cell := Vector2i(floori(hover_col.x), floori(hover_col.z)) if hover_col != Vector3.ZERO \
 			else Vector2i(999999, 999999)
@@ -406,6 +410,14 @@ func _aim_is_static(range_v: float, build_held: bool) -> bool:
 		if not is_equal_approx(float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y)), _aim_depth):
 			return false
 	return true
+
+
+func _held_is_ranged() -> bool:
+	var def := _ItemTypes.get_def(_active_item_id())
+	if def.is_empty():
+		return false
+	return int(def.get("category", -1)) == _ItemTypes.Category.WEAPON \
+		and int(def.get("weapon_kind", -1)) == _ItemTypes.WeaponKind.RANGED
 
 
 func _active_item_id() -> String:
