@@ -9,7 +9,7 @@ const FACE_POS_Z := 6
 
 
 static func build_skip_set(data: ChunkData, rect: Rect2i) -> Dictionary:
-	if data == null or not data.is_micro_terrain_enabled() or data.micro_grid == null:
+	if not ChunkData.USE_MICRO_BRICKS or data == null or not data.is_micro_terrain_enabled() or data.micro_grid == null:
 		return {}
 	var out: Dictionary = {}
 	for cell_variant in data.micro_grid.micro_cells_in_rect(rect):
@@ -24,7 +24,7 @@ static func compose(
 	cm,
 	skip_set: Dictionary
 ) -> int:
-	if data == null or skip_set.is_empty() or cm == null:
+	if not ChunkData.USE_MICRO_BRICKS or data == null or skip_set.is_empty() or cm == null:
 		return 0
 	var cells_meshed := 0
 	for key_variant in skip_set.keys():
@@ -41,7 +41,7 @@ static func emit_micro_column_mesh(
 	out_quads: Array,
 	cm
 ) -> bool:
-	if data == null or cm == null:
+	if not ChunkData.USE_MICRO_BRICKS or data == null or cm == null:
 		return false
 	if data.has_ramp(lx, lz):
 		var entry: Dictionary = data.get_ramp_entry(lx, lz)

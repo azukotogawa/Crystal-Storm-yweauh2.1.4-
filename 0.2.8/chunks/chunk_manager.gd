@@ -902,7 +902,7 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	var z1 := rect.position.y + rect.size.y
 
 	data._mesh_job_micro_skip = {}
-	if _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
+	if ChunkData.USE_MICRO_BRICKS and _mesh_defer_micro_columns and data.is_micro_terrain_enabled():
 		data._mesh_job_micro_skip = _MicroTerrainMeshCompositor.build_skip_set(data, rect)
 
 	if not full_chunk:
@@ -925,7 +925,7 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 		_emit_cave_faces(data, out_quads)
 	var micro_skip: Dictionary = data._mesh_job_micro_skip
 	data._mesh_job_micro_skip = {}
-	if not micro_skip.is_empty():
+	if ChunkData.USE_MICRO_BRICKS and not micro_skip.is_empty():
 		_MicroTerrainMeshCompositor.compose(data, rect, out_quads, self, micro_skip)
 
 	return {
@@ -957,6 +957,8 @@ func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int, for_top: bool =
 
 func _build_micro_mesh_region(data: ChunkData, rect: Rect2i) -> Dictionary:
 	var out_quads: Array = []
+	if not ChunkData.USE_MICRO_BRICKS or not data.is_micro_terrain_enabled():
+		return {"quads": out_quads, "count": 0, "cells_meshed": 0}
 	var skip_set: Dictionary = _MicroTerrainMeshCompositor.build_skip_set(data, rect)
 	var cells_meshed: int = _MicroTerrainMeshCompositor.compose(data, rect, out_quads, self, skip_set)
 	return {"quads": out_quads, "count": out_quads.size(), "cells_meshed": cells_meshed}

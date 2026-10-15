@@ -7,6 +7,7 @@ const _WorldState = preload("res://world/world_state.gd")
 const _MacroLayerGrid = preload("res://helpers/macro_layer_grid.gd")
 const _MicroLayerGrid = preload("res://helpers/micro_layer_grid.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
+const USE_MICRO_BRICKS: bool = true
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
@@ -533,7 +534,7 @@ func is_macro_terrain_enabled() -> bool:
 
 
 func is_micro_terrain_enabled() -> bool:
-	return s_micro_enabled_from_env
+	return USE_MICRO_BRICKS and s_micro_enabled_from_env
 
 
 func sync_macro_mode_from_env() -> void:
