@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://systems/composition_root.gd" id="1_compose"]
 [ext_resource type="Script" path="res://systems/spatial_query_service.gd" id="1_spatial"]
 [ext_resource type="Script" path="res://systems/progression_service.gd" id="1_xp"]
+[ext_resource type="Script" path="res://systems/skill_service.gd" id="1_skills"]
 [ext_resource type="Script" uid="uid://d3w80x6oii1yr" path="res://chunks/voxel_world.gd" id="2_lquwl"]
 [ext_resource type="Script" uid="uid://canda3bkb61ef" path="res://player/player.gd" id="4_272bh"]
 [ext_resource type="Script" uid="uid://cal8x0hpofgxq" path="res://ui/debug_panel.gd" id="7_272bh"]
@@ -68,6 +69,9 @@ script = ExtResource("1_spatial")
 
 [node name="ProgressionService" type="Node" parent="."]
 script = ExtResource("1_xp")
+
+[node name="SkillService" type="Node" parent="."]
+script = ExtResource("1_skills")
 
 [node name="ConfigService" type="Node" parent="." unique_id=368487200]
 script = ExtResource("1_cfg")

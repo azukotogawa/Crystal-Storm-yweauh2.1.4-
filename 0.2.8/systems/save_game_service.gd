@@ -536,6 +536,12 @@ func _apply_runtime_state(data: Dictionary) -> void:
 		if not pdata.is_empty():
 			progression.import_state(pdata)
 
+	var skills = get_tree().get_first_node_in_group("skill_service")
+	if skills and skills.has_method("import_state") and data.has("skills") and data.skills is Dictionary:
+		var sdata: Dictionary = data.skills
+		if not sdata.is_empty():
+			skills.import_state(sdata)
+
 	var player = get_tree().get_first_node_in_group("player")
 	if player and player.has_method("apply_save_state") and data.has("player"):
 		player.apply_save_state(data.player)
@@ -675,6 +681,9 @@ func collect_snapshot() -> Dictionary:
 	var progression = get_tree().get_first_node_in_group("progression_service")
 	if progression and progression.has_method("export_state"):
 		snapshot["progression"] = progression.export_state()
+	var skills = get_tree().get_first_node_in_group("skill_service")
+	if skills and skills.has_method("export_state"):
+		snapshot["skills"] = skills.export_state()
 	if player and player.has_method("export_save_state"):
 		snapshot["player"] = player.export_save_state()
 	if crystal and crystal.has_method("export_state"):

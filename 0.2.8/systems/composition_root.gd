@@ -54,6 +54,7 @@ const ID_COMBAT_VFX := &"combat_visual_feedback"
 const ID_GAME_MANAGER := &"game_manager"
 const ID_SPATIAL := &"spatial_query_service"
 const ID_PROGRESSION := &"progression_service"
+const ID_SKILLS := &"skill_service"
 
 static var _active = null
 
@@ -399,6 +400,7 @@ func _register_scene_services(game: Node) -> void:
 	_try_register(game, "WorldVisuals", ID_WORLD_VISUALS, [ID_VISUAL_REG, ID_CHUNKS])
 	_try_register(game, "GameManager", ID_GAME_MANAGER, [ID_CONFIG, ID_CRYSTAL])
 	_register_progression(game)
+	_register_skills(game)
 	var features_node = game.get_node_or_null("WorldFeatures")
 	if features_node:
 		var em = features_node.get_node_or_null("EntityManager")
@@ -425,6 +427,18 @@ func _register_progression(game: Node) -> void:
 		node.name = "ProgressionService"
 		game.add_child(node)
 	registry.register(ID_PROGRESSION, node, [])
+
+
+func _register_skills(game: Node) -> void:
+	var node = game.get_node_or_null("SkillService")
+	if node == null:
+		var script = load("res://systems/skill_service.gd")
+		if script == null:
+			return
+		node = script.new()
+		node.name = "SkillService"
+		game.add_child(node)
+	registry.register(ID_SKILLS, node, [ID_PROGRESSION])
 
 
 func _rebuild_resolved_config(cfg, perf) -> void:

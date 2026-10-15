@@ -98,6 +98,17 @@ func add_xp(amount: int) -> void:
 	xp_gained.emit(amount, xp)
 
 
+func spend_skill_points(amount: int) -> bool:
+	if amount < 0:
+		return false
+	if amount == 0:
+		return true
+	if skill_points < amount:
+		return false
+	skill_points -= amount
+	return true
+
+
 func reward_steps() -> int:
 	return maxi(level - 1, 0)
 
