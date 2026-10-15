@@ -6,6 +6,7 @@ This tree is a Godot 4.7 game. There is no Cargo, npm, or Makefile build. Import
 
 
 QUICK_CHECK: bash .cursor/skills/verify-crystal-storm/cs-verify.sh quick
+QUICK_CHECK_OK: QUICK OK
 
 The line above is read by the queue feeder after each job (run from the repo root, 10 min timeout). It runs import + `verify_stability_perf.gd` + `verify_content_contracts.gd` (steps 1-2 below, ~15 s) and exits non-zero on any missing marker. Logs go to `/mnt/d/csmerge/verify-evidence/quick-<timestamp>/`. Launch, feature drives, and cleanup are scripted in `.cursor/skills/verify-crystal-storm/SKILL.md`.
 
