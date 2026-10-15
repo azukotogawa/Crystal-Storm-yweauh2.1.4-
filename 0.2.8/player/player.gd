@@ -16,6 +16,7 @@ const _ContactShadow = preload("res://helpers/contact_shadow.gd")
 const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 const _MoveFeel = preload("res://player/move_feel.gd")
+const _Dash = preload("res://player/dash_skill.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
@@ -49,6 +50,11 @@ var _has_damage_origin: bool = false
 const HIT_KNOCK_COLUMNS := 1.25
 const HIT_KNOCK_HEAVY_COLUMNS := 2.05
 const HIT_KNOCK_SPEED := 7.0
+var _dash_left: float = 0.0
+var _dash_invuln: float = 0.0
+var _dash_dir: Vector2 = Vector2.ZERO
+var _wish_xz: Vector2 = Vector2.ZERO
+var _dash_bound: bool = false
 
 var voxel_position := Vector3(0.0, 0.0, 0.0)
 var _move_vel_xz: Vector2 = Vector2.ZERO
@@ -224,6 +230,10 @@ func _enter_tree():
 	add_to_group("player")
 
 
+func _exit_tree() -> void:
+	_unbind_dash()
+
+
 func _ready():
 	motion_mode = MOTION_MODE_FLOATING
 	floor_max_angle = deg_to_rad(_ws().player_slope_limit_degrees)
@@ -350,6 +360,8 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_bind_dash()
+	_tick_dash_invuln(delta)
 	if not world_ready:
 		return
 	var measure := _phys_measure or OS.get_environment("CRYSTALSTORM_PLAYER_PHYSICS_MEASURE") == "1"
@@ -451,10 +463,14 @@ func _physics_process(delta: float) -> void:
 	var airborne := (current_state == State.JUMPING or current_state == State.FALLING) and not _landed_hold
 	t0 = Time.get_ticks_usec() if measure else 0
 	var desired_vel := Vector2.ZERO
+	_wish_xz = Vector2.ZERO
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_yaw_degrees)
+		_wish_xz = move_vec
 		desired_vel = move_vec * speed
-	if _knock_left > 0.0:
+	if _dash_left > 0.0:
+		_tick_dash_move(delta, airborne)
+	elif _knock_left > 0.0:
 		_tick_player_knockback(delta, airborne)
 		var drag := move_friction * (_Water.SWIM_FRICTION_MULT if submerged else 1.0)
 		_move_vel_xz = _move_vel_xz.move_toward(Vector2.ZERO, drag * delta)
@@ -984,6 +1000,9 @@ func set_damage_origin(origin: Vector3) -> void:
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:
+	if _dash_invuln > 0.0:
+		_has_damage_origin = false
+		return
 	if amount <= 0.0:
 		_has_damage_origin = false
 		return
@@ -1046,6 +1065,75 @@ func _knock_away_dir() -> Vector2:
 	if away.length_squared() < 0.0001:
 		return Vector2(1.0, 0.0)
 	return away.normalized()
+
+
+func begin_dash(dir: Vector2) -> bool:
+	if _dash_left > 0.0 or _dash_invuln > 0.0:
+		return false
+	_dash_dir = _Dash.direction(dir, Vector2.ZERO)
+	_dash_left = _Dash.DISTANCE
+	_dash_invuln = _Dash.INVULN
+	_knock_left = 0.0
+	return true
+
+
+func _on_skill_activated(_slot: int, skill_id: StringName) -> void:
+	if skill_id != _Dash.SKILL_ID:
+		return
+	if _GameplayInput.blocks_actions():
+		return
+	var facing := rotate_input_to_world(Vector2(0.0, -1.0), locked_yaw_degrees)
+	begin_dash(_Dash.direction(_wish_xz, facing))
+
+
+func _bind_dash() -> void:
+	if _dash_bound:
+		return
+	var skills = _skill_service()
+	if skills == null or not skills.has_signal("skill_activated"):
+		return
+	if not skills.skill_activated.is_connected(_on_skill_activated):
+		skills.skill_activated.connect(_on_skill_activated)
+	_dash_bound = true
+
+
+func _unbind_dash() -> void:
+	if not _dash_bound:
+		return
+	var skills = _skill_service()
+	if skills != null and skills.has_signal("skill_activated") and skills.skill_activated.is_connected(_on_skill_activated):
+		skills.skill_activated.disconnect(_on_skill_activated)
+	_dash_bound = false
+
+
+func _skill_service():
+	if is_inside_tree():
+		var node = get_tree().get_first_node_in_group("skill_service")
+		if node != null:
+			return node
+	return load("res://systems/skill_service.gd").get_active()
+
+
+func _tick_dash_invuln(delta: float) -> void:
+	if _dash_invuln <= 0.0:
+		return
+	_dash_invuln = maxf(_dash_invuln - delta, 0.0)
+
+
+func _tick_dash_move(delta: float, airborne: bool) -> void:
+	if _dash_left <= 0.0:
+		return
+	var step := _Dash.step_columns(_dash_left, delta)
+	if _floor_probe == null or step <= 0.0:
+		_dash_left = 0.0
+		return
+	var before := Vector2(voxel_position.x, voxel_position.z)
+	_try_move_delta(_dash_dir * step, airborne, delta)
+	var moved := before.distance_to(Vector2(voxel_position.x, voxel_position.z))
+	if moved < step * 0.2:
+		_dash_left = 0.0
+		return
+	_dash_left = maxf(_dash_left - step, 0.0)
 
 
 func _tick_hit_iframes(delta: float) -> void:

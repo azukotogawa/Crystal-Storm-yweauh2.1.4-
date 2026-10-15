@@ -24,6 +24,7 @@ func _run() -> void:
 	_check_cooldowns()
 	_check_hotkeys()
 	_check_save_round_trip()
+	_check_dash()
 	if _failed == 0:
 		print("All skills tests OK")
 		quit(0)
@@ -171,12 +172,12 @@ func _check_unlock_and_slots() -> void:
 func _check_cooldowns() -> void:
 	var pair = _pair(1)
 	var skills = pair.skills
-	skills.unlock(&"dash")
-	skills.equip(0, &"dash")
+	skills.unlock(&"ground_slam")
+	skills.equip(0, &"ground_slam")
 	var fired: Array = []
 	skills.skill_activated.connect(func(slot: int, skill_id: StringName) -> void: fired.append([slot, String(skill_id)]))
-	if not skills.try_activate(0) or fired != [[0, "dash"]]:
-		_fail("equipped dash did not activate")
+	if not skills.try_activate(0) or fired != [[0, "ground_slam"]]:
+		_fail("equipped ground slam did not activate")
 		_drop(pair)
 		return
 	if skills.cooldown_left(0) != _Skills.DEFAULT_COOLDOWN:
@@ -295,3 +296,133 @@ func _check_save_round_trip() -> void:
 	_drop(other)
 	_drop(pair)
 	print("OK skills save round trip")
+
+
+func _check_dash() -> void:
+	var dash = preload("res://player/dash_skill.gd")
+	var spec: Dictionary = _Skills.CATALOG[&"dash"]
+	if float(spec.get("cooldown", 0.0)) != dash.COOLDOWN or dash.COOLDOWN <= _Skills.DEFAULT_COOLDOWN:
+		_fail("dash cooldown must be its own clock, got %s" % str(spec.get("cooldown", 0.0)))
+		return
+	if dash.DISTANCE <= 0.0 or dash.DURATION <= 0.0 or dash.INVULN < dash.DURATION:
+		_fail("dash burst or invulnerability is not a short window past the slide")
+		return
+	var left: float = float(dash.DISTANCE)
+	var moved := 0.0
+	var elapsed := 0.0
+	var guard := 0
+	while left > 0.001 and guard < 30:
+		var step: float = dash.step_columns(left, 1.0 / 60.0)
+		if step <= 0.0:
+			_fail("dash step stalled")
+			return
+		left -= step
+		moved += step
+		elapsed += 1.0 / 60.0
+		guard += 1
+	if absf(moved - dash.DISTANCE) > 0.001 or elapsed + 0.0001 < dash.DURATION or elapsed > dash.DURATION + (1.0 / 60.0) + 0.001:
+		_fail("dash travel %.3f in %.3f s, want %.3f in %.3f s" % [moved, elapsed, dash.DISTANCE, dash.DURATION])
+		return
+	var pair = _pair(1)
+	var skills = pair.skills
+	skills.unlock(&"dash")
+	skills.equip(0, &"dash")
+	var player := Player.new()
+	player.health = 80.0
+	player.max_health = 100.0
+	player.voxel_position = Vector3(3.0, 1.0, 5.0)
+	player.locked_yaw_degrees = 0.0
+	player._wish_xz = Vector2(0.0, 1.0)
+	player._bind_dash()
+	if not skills.skill_activated.is_connected(player._on_skill_activated):
+		_fail("player did not listen for dash")
+		_drop(pair)
+		player.free()
+		return
+	if not skills.try_activate(0) or player._dash_dir.y < 0.9 or absf(player._dash_left - dash.DISTANCE) > 0.001:
+		_fail("activating dash did not aim the burst along the wish")
+		_drop(pair)
+		player.free()
+		return
+	if absf(skills.cooldown_left(0) - dash.COOLDOWN) > 0.001:
+		_fail("dash activate did not start its cooldown")
+		_drop(pair)
+		player.free()
+		return
+	player._knock_left = 1.5
+	if player.begin_dash(Vector2(-1.0, 0.0)):
+		_fail("a second dash refreshed the window")
+		_drop(pair)
+		player.free()
+		return
+	if player._knock_left < 1.0:
+		_fail("a refused dash cleared knockback")
+		_drop(pair)
+		player.free()
+		return
+	player.take_damage(12.0)
+	player.damage_source_hint = &"crystal_field"
+	player.take_damage(5.0, &"crystal_field")
+	if absf(player.health - 80.0) > 0.01 or player._knock_left < 1.0:
+		_fail("dash invulnerability let a hit or crystal pressure through")
+		_drop(pair)
+		player.free()
+		return
+	player._tick_dash_invuln(dash.INVULN)
+	player.damage_source_hint = &"hit"
+	player.take_damage(5.0, &"hit")
+	if player.health >= 80.0:
+		_fail("damage did not land after the dash window")
+		_drop(pair)
+		player.free()
+		return
+	player._dash_invuln = 0.0
+	player._dash_left = dash.DISTANCE
+	player._dash_dir = Vector2(1.0, 0.0)
+	var x := player.voxel_position.x
+	player._tick_dash_move(0.05, false)
+	if player._dash_left > 0.0 or absf(player.voxel_position.x - x) > 0.001:
+		_fail("a dash with no floor probe stuck or skipped the probe")
+		_drop(pair)
+		player.free()
+		return
+	player._wish_xz = Vector2.ZERO
+	player._dash_left = 0.0
+	player._dash_invuln = 0.0
+	player.locked_yaw_degrees = 0.0
+	player._on_skill_activated(0, &"dash")
+	if player._dash_dir.y > -0.9 or absf(player._dash_dir.x) > 0.1:
+		_fail("an idle dash should face the camera forward, got %s" % player._dash_dir)
+		_drop(pair)
+		player.free()
+		return
+	_GameplayInput.pause_open = true
+	player._dash_left = 0.0
+	player._dash_invuln = 0.0
+	player._on_skill_activated(0, &"dash")
+	_GameplayInput.pause_open = false
+	if player._dash_left > 0.0:
+		_fail("pause started a dash")
+		_drop(pair)
+		player.free()
+		return
+	var body := FileAccess.get_file_as_string("res://player/player.gd")
+	var tick_at := body.find("func _tick_dash_move")
+	var next_at := body.find("\nfunc ", tick_at + 10)
+	var tick := body.substr(tick_at, next_at - tick_at)
+	if not tick.contains("_try_move_delta"):
+		_fail("dash must step through the walk probe")
+		_drop(pair)
+		player.free()
+		return
+	var svc := FileAccess.get_file_as_string("res://systems/skill_service.gd")
+	if svc.contains("_try_move_delta") or svc.contains("_dash_invuln"):
+		_fail("the dash burst must stay on the player")
+		_drop(pair)
+		player.free()
+		return
+	if skills.skill_activated.is_connected(player._on_skill_activated):
+		skills.skill_activated.disconnect(player._on_skill_activated)
+	player.free()
+	_drop(pair)
+	print("OK dash burst")
