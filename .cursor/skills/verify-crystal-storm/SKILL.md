@@ -17,6 +17,7 @@ bash $S doctor           # read-only health check
 bash $S quick            # import + stability + contracts  (~15 s) = QUICK_CHECK
 bash $S launch 8         # headless boot of main.tscn + 8 s scripted play (~25 s)
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
+bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
 bash $S cleanup          # kill only our Godot pids, delete scratch, KEEP evidence
 ```
 
@@ -38,9 +39,13 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 
 `bash $S feature <name>` runs that feature's headless suite and checks its terminal marker and that no line starts with `FAIL`. Names: `full-map`, `water`, `save-continue`, `dig`, `frontend`. Each maps to a recipe in `features/`. These suites drive the real nodes (`ui/topographical_map.gd`, `fluids/voxel_fluid_service.gd`, `systems/save_game_service.gd`, `world/terrain_edits.gd`, `systems/world_manager.gd`) and the real input actions in `project.godot` (`toggle_map`, `attack`, `jump`, `quick_save`, `pause`…), not test-only endpoints. `launch` is the only end-to-end path through `main.tscn`.
 
+## Record
+
+`bash $S record <mode...>` wraps any existing subcommand (`quick`, `launch [SEC]`, `feature <name>`). It sets `RUN_ID` to `<YYYYMMDD-HHMMSS>-<mode>` (spaces become dashes), runs that mode with Godot `--write-movie` / `--fixed-fps 30` / `--disable-vsync`, then converts each AVI (or PNG sequence) to mp4 with the portable ffmpeg at `C:\Users\cwith\pivot\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe`. Output is `D:\ARCHIVE\CrystalStorm\verify-evidence\<run-id>\*.mp4`. Import is not recorded (no frame loop). Missing ffmpeg or a missing evidence directory prints `RECORD FAIL:` and exits 1. Success prints `RECORD OK` and the mp4 paths.
+
 ## Evidence
 
-- Location: `/mnt/d/csmerge/verify-evidence/$RUN_ID/` (Windows `D:\csmerge\verify-evidence\`). Outside the repo, survives cleanup. Never commit it.
+- Location: `/mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID/` (Windows `D:\ARCHIVE\CrystalStorm\verify-evidence\`). Outside the repo, survives cleanup. Never commit it.
 - Files: `<step>.log` per Godot run (the command line, start time, full stdout/stderr, `# exit=N`), `smoke.log`, and `scripted_smoke_evidence.md` copied out of the scratch dir (per-check `**X OK**`/`**X FAIL**` lines: Dig, Entities, Combat, Vegetation, Streaming, Jump, Ramp, Crystal edge, Session).
 - Proof standard: quote the marker lines and the exit code. A dig counts only with a column height delta and mesh `surface_y` corroboration (smoke Dig line). A save counts only after reload (save-continue suite). Exit 0 alone is never proof; one `FAIL` line fails the step. Never set `SMOKE_FORCE_FAIL`, never loosen a marker, never re-run only the green steps.
 - Headless Godot cannot screenshot. Visual claims (textures, animations, lighting) stay unverified unless Cole runs the windowed script.

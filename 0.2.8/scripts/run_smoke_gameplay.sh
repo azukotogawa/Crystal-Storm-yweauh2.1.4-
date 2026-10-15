@@ -4,6 +4,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="${SMOKE_LOG:-}"
 ARGS=(--headless --path "$ROOT" -s "$ROOT/scripts/smoke_gameplay.gd")
+if [[ -n "${CS_VERIFY_MOVIE_FILE:-}" ]]; then
+	ARGS=(--write-movie "$CS_VERIFY_MOVIE_FILE" --fixed-fps 30 --disable-vsync "${ARGS[@]}")
+fi
 export CRYSTALSTORM_PERF_PRESET=medium
 export CRYSTALSTORM_PROBE_ABRUPT_EXIT=1
 export SMOKE_SESSION_SEC="${SMOKE_SESSION_SEC:-30}"

@@ -6,14 +6,148 @@ ROOT="$REPO/0.2.8"
 export PATH="/home/cwith/csmerge-bin:$PATH"; hash -r
 export WSLENV="SMOKE_SESSION_SEC${WSLENV:+:$WSLENV}"
 STATE=/tmp/cs-verify; mkdir -p "$STATE"
-if [ "${1:-}" = quick ] && [ -z "${RUN_ID:-}" ]; then RUN_ID="quick-$(date +%Y%m%d-%H%M%S)"
-else RUN_ID="${RUN_ID:-$(cat "$STATE/run_id" 2>/dev/null || date +%Y%m%d-%H%M%S)}"; echo "$RUN_ID" > "$STATE/run_id"; fi
-EVID="/mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID"
+EVID_ROOT="${CS_VERIFY_EVID_ROOT:-/mnt/d/ARCHIVE/CrystalStorm/verify-evidence}"
+FFMPEG_PORTABLE="/mnt/c/Users/cwith/pivot/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe"
+RECORD=0
+FFMPEG=""
+
+record_fail() { echo "RECORD FAIL: $*" >&2; exit 1; }
+
+find_ffmpeg() {
+  if [ -n "${CS_VERIFY_FFMPEG:-}" ]; then
+    [ -f "$CS_VERIFY_FFMPEG" ] && { echo "$CS_VERIFY_FFMPEG"; return 0; }
+    return 1
+  fi
+  local c
+  for c in "$FFMPEG_PORTABLE" \
+    /mnt/c/Users/cwith/pivot/ffmpeg/bin/ffmpeg.exe \
+    /mnt/c/Users/cwith/pivot/ffmpeg/ffmpeg.exe; do
+    [ -f "$c" ] && { echo "$c"; return 0; }
+  done
+  return 1
+}
+
+cmd="${1:-}"; shift || true
+if [ "$cmd" = record ]; then
+  RECORD=1
+  [ -d "$EVID_ROOT" ] || record_fail "evidence dir missing: D:\\ARCHIVE\\CrystalStorm\\verify-evidence\\ ($EVID_ROOT)"
+  FFMPEG=$(find_ffmpeg) || record_fail "portable ffmpeg not found under C:\\Users\\cwith\\pivot\\ffmpeg\\ (expected ffmpeg-9.0.2-essentials_build\\bin\\ffmpeg.exe)"
+  [ $# -ge 1 ] || record_fail "usage: record <mode...>  (example: record feature dig)"
+  slug=$(printf '%s' "$*" | tr -s '[:space:]' '-' | tr -cd 'A-Za-z0-9._-')
+  [ -n "$slug" ] || record_fail "empty mode"
+  RUN_ID="$(date +%Y%m%d-%H%M%S)-$slug"
+  echo "$RUN_ID" > "$STATE/run_id"
+  cmd="${1:-}"; shift || true
+elif [ "$cmd" = quick ] && [ -z "${RUN_ID:-}" ]; then
+  RUN_ID="quick-$(date +%Y%m%d-%H%M%S)"
+else
+  RUN_ID="${RUN_ID:-$(cat "$STATE/run_id" 2>/dev/null || date +%Y%m%d-%H%M%S)}"; echo "$RUN_ID" > "$STATE/run_id"
+fi
+EVID="$EVID_ROOT/$RUN_ID"
 SCRATCH_W="/mnt/d/csmerge/verify-scratch/$RUN_ID"
 export CRYSTALSTORM_SCRATCH="D:/csmerge/verify-scratch/$RUN_ID"
 export CRYSTALSTORM_BAKE_RADIUS=2 CRYSTALSTORM_FULL_WORLD_BAKE=0 CRYSTALSTORM_BAKE_ON_NEW=0 CRYSTALSTORM_PERF_PRESET=medium
 unset CRYSTALSTORM_PROBE_ABRUPT_EXIT
 mkdir -p "$EVID" "$SCRATCH_W"
+
+win_path() { wslpath -w "$1" | tr '\\' '/'; }
+
+movie_file_w() { win_path "$EVID/$1.avi"; }
+
+wants_movie_frames() {
+  local a
+  for a in "$@"; do
+    [ "$a" = --import ] && return 1
+  done
+  return 0
+}
+
+convert_movie() {
+  local name="$1"
+  local avi="$EVID/$name.avi"
+  local wav="$EVID/$name.wav"
+  local out="$EVID/$name.mp4"
+  local log="$EVID/$name-ffmpeg.log"
+  local out_win in_win seq_win wav_win
+  out_win=$(win_path "$out")
+  if [ -f "$avi" ]; then
+    in_win=$(win_path "$avi")
+    if ! "$FFMPEG" -y -i "$in_win" -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$out_win" >"$log" 2>&1; then
+      echo "RECORD FAIL: ffmpeg could not convert $name.avi (see $log)" >&2
+      return 1
+    fi
+  else
+    local pngs=()
+    shopt -s nullglob
+    pngs=("$EVID/${name}"*.png)
+    shopt -u nullglob
+    if [ ${#pngs[@]} -eq 0 ]; then
+      echo "RECORD FAIL: no movie output for $name under $EVID" >&2
+      return 1
+    fi
+    seq_win=$(win_path "$EVID/${name}%08d.png")
+    local args=(-y -framerate 30 -start_number 0 -i "$seq_win")
+    if [ -f "$wav" ]; then
+      wav_win=$(win_path "$wav")
+      args+=(-i "$wav_win" -c:a aac -shortest)
+    fi
+    args+=(-c:v libx264 -pix_fmt yuv420p -movflags +faststart "$out_win")
+    if ! "$FFMPEG" "${args[@]}" >"$log" 2>&1; then
+      echo "RECORD FAIL: ffmpeg could not convert $name png sequence (see $log)" >&2
+      return 1
+    fi
+  fi
+  echo "RECORD mp4=$out"
+}
+
+run_godot(){ local name="$1"; shift
+  local extra=()
+  if [ "$RECORD" = 1 ] && wants_movie_frames "$@"; then
+    extra=(--write-movie "$(movie_file_w "$name")" --fixed-fps 30 --disable-vsync)
+  fi
+  { echo "\$ godot ${extra[*]-} $*"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
+  godot "${extra[@]}" "$@" >> "$EVID/$name.log" 2>&1 & local pid=$!
+  echo "$pid" >> "$STATE/pids"; wait "$pid"; local rc=$?
+  echo "# exit=$rc end=$(date -Is)" >> "$EVID/$name.log"; return $rc; }
+
+finish_record() {
+  local rc=$1
+  [ "$RECORD" = 1 ] || return "$rc"
+  local avi name
+  local mp4s=()
+  shopt -s nullglob
+  for avi in "$EVID"/*.avi; do
+    name=$(basename "$avi" .avi)
+    [ -f "$EVID/$name.mp4" ] || convert_movie "$name" || rc=1
+  done
+  if [ "$rc" -eq 0 ]; then
+    local png_base png
+    for png in "$EVID"/*00000000.png; do
+      png_base=$(basename "$png" 00000000.png)
+      [ -f "$EVID/$png_base.mp4" ] || convert_movie "$png_base" || rc=1
+    done
+  fi
+  mp4s=("$EVID"/*.mp4)
+  shopt -u nullglob
+  if [ ${#mp4s[@]} -eq 0 ]; then
+    echo "RECORD FAIL: no mp4 written under $EVID"
+    return 1
+  fi
+  if [ "$rc" -ne 0 ]; then
+    echo "RECORD FAIL rc=$rc evidence=$EVID"
+    return "$rc"
+  fi
+  echo "RECORD OK evidence=$EVID"
+  printf '%s\n' "${mp4s[@]}"
+  return 0
+}
+
+record_trap() {
+  local rc=$?
+  trap - EXIT
+  finish_record "$rc"
+  exit $?
+}
 
 declare -A SUITE=( [full-map]=verify_full_map_toggle [water]=verify_water_body
   [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow )
@@ -21,15 +155,10 @@ declare -A MARK=( [full-map]="All full map toggle tests OK" [water]="All water b
   [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" )
 declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 
-run_godot(){ local name="$1"; shift
-  { echo "\$ godot $*"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
-  godot "$@" >> "$EVID/$name.log" 2>&1 & local pid=$!
-  echo "$pid" >> "$STATE/pids"; wait "$pid"; local rc=$?
-  echo "# exit=$rc end=$(date -Is)" >> "$EVID/$name.log"; return $rc; }
 bad(){ grep -qE 'SCRIPT ERROR|Parse Error|Failed to load script' "$1"; }
 
-cmd="${1:-}"; shift || true
 [ "$cmd" = quick ] && rmdir "$SCRATCH_W" 2>/dev/null
+[ "$RECORD" = 1 ] && trap record_trap EXIT
 case "$cmd" in
 doctor)
   ok=1
@@ -51,6 +180,7 @@ quick)
   echo "QUICK OK (import, stability, contracts) evidence=$EVID" ;;
 launch)
   sec="${1:-8}"
+  if [ "$RECORD" = 1 ]; then export CS_VERIFY_MOVIE_FILE="$(movie_file_w launch)"; fi
   ( cd "$ROOT" && SMOKE_SESSION_SEC="$sec" SMOKE_LOG="$EVID/smoke.log" bash scripts/run_smoke_gameplay.sh >/dev/null ) & p=$!
   echo "$p" >> "$STATE/pids"; wait $p; r=$?
   cp -f "$SCRATCH_W/scripted_smoke_evidence.md" "$EVID/" 2>/dev/null
@@ -68,5 +198,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) sed -n '2,8p' "$0"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|feature <name>|cleanup|record <mode...>"; exit 2 ;;
 esac
