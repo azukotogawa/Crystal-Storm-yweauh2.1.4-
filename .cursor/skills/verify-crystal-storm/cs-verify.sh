@@ -52,6 +52,9 @@ mkdir -p "$EVID" "$SCRATCH_W"
 
 win_path() { wslpath -w "$1" | tr '\\' '/'; }
 
+export CRYSTALSTORM_RUN_ID="$RUN_ID"
+export CRYSTALSTORM_EVIDENCE="$(win_path "$EVID")"
+
 movie_file_w() { win_path "$EVID/$1.avi"; }
 
 wants_movie_frames() {

@@ -47,6 +47,7 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 
 - Location: `/mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID/` (Windows `D:\ARCHIVE\CrystalStorm\verify-evidence\`). Outside the repo, survives cleanup. Never commit it.
 - Files: `<step>.log` per Godot run (the command line, start time, full stdout/stderr, `# exit=N`), `smoke.log`, and `scripted_smoke_evidence.md` copied out of the scratch dir (per-check `**X OK**`/`**X FAIL**` lines: Dig, Entities, Combat, Vegetation, Streaming, Jump, Ramp, Crystal edge, Session).
+- Step shots: `cs-verify.sh` exports `CRYSTALSTORM_EVIDENCE` (Windows path of this run's folder) and `CRYSTALSTORM_RUN_ID`. A windowed probe calls `await ProbeCapture.capture_step("step_name")` (`0.2.8/helpers/probe_capture.gd`) and gets `<index>_<step_name>.png` in `<run>/steps/`. The index continues from pngs already in that folder. Headless returns empty and does not grab the viewport. Self-test: `godot --path 0.2.8 -s res://scripts/verify_probe_capture.gd` (prints `PROBE CAPTURE OK`).
 - Proof standard: quote the marker lines and the exit code. A dig counts only with a column height delta and mesh `surface_y` corroboration (smoke Dig line). A save counts only after reload (save-continue suite). Exit 0 alone is never proof; one `FAIL` line fails the step. Never set `SMOKE_FORCE_FAIL`, never loosen a marker, never re-run only the green steps.
 - Headless Godot cannot screenshot. Visual claims (textures, animations, lighting) stay unverified unless Cole runs the windowed script.
 
