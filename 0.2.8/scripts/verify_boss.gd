@@ -106,8 +106,14 @@ func _victory() -> bool:
 		push_error("fresh game should be playing")
 		return false
 	_BossBrain.on_warden_killed(self)
-	if gm.run_state != _GameManager.RunState.WON or str(gm.victory_reason) != "boss":
-		push_error("warden death should win the run as a boss victory")
+	if gm.run_state != _GameManager.RunState.PLAYING or gm.phase == _GameManager.Phase.VICTORY:
+		push_error("warden death must not win while one crystal is the goal")
+		return false
+	if str(gm.victory_reason) == "boss":
+		push_error("warden death must not set a boss victory")
+		return false
+	if not gm.boss_defeated:
+		push_error("warden death must record boss_defeated")
 		return false
 	var loss := _GameManager.new()
 	loss.run_state = _GameManager.RunState.LOST
@@ -115,7 +121,7 @@ func _victory() -> bool:
 	if loss.run_state != _GameManager.RunState.LOST:
 		push_error("a loss must stay a loss when the warden dies")
 		return false
-	print("OK boss death wins and does not override a loss")
+	print("OK boss death is a stat and does not override a loss")
 	return true
 
 

@@ -5,6 +5,8 @@ const _CrystalEnemy = preload("res://entities/crystal_enemy.gd")
 const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
+const _BossBrain = preload("res://entities/boss_brain.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 
 signal enemy_spawned(enemy_id: StringName, world_pos: Vector2i)
@@ -28,12 +30,15 @@ var _game_manager: GameManager
 var _first_spawn_announced: bool = false
 var _guarded_spawn_ids: Dictionary = {}
 var _guardian_timer: float = 0.0
+var _crystal_boss_spawned: bool = false
+var _boss_watch_connected: bool = false
 
 
 func _ready() -> void:
 	add_to_group("crystal_enemy_spawner")
 	_EnemySpawnRegistry.ensure_builtins()
 	call_deferred("_bind")
+	call_deferred("_arm_boss_watch")
 
 
 func _bind() -> void:
@@ -47,10 +52,91 @@ func _bind() -> void:
 			evo.enemy_unlocked.connect(_on_enemy_unlocked)
 
 
+func _arm_boss_watch() -> void:
+	_bind()
+	if _boss_watch_connected:
+		return
+	if _crystal == null or not _crystal.has_signal("spawn_damaged"):
+		return
+	if not _crystal.spawn_damaged.is_connected(_on_crystal_health_for_boss):
+		_crystal.spawn_damaged.connect(_on_crystal_health_for_boss)
+	_boss_watch_connected = true
+	_consider_crystal_boss()
+
+
+func _on_crystal_health_for_boss(spawn: CrystalSpawnPoint, _amount: float) -> void:
+	_consider_one_spawn_for_boss(spawn)
+
+
+func _consider_crystal_boss() -> void:
+	if not _GameConfig.SINGLE_CRYSTAL or _crystal_boss_spawned:
+		return
+	if _living_warden():
+		_crystal_boss_spawned = true
+		return
+	if _crystal == null or not _crystal.has_method("get_active_spawns"):
+		return
+	for spawn in _crystal.get_active_spawns():
+		if _consider_one_spawn_for_boss(spawn):
+			return
+
+
+func _consider_one_spawn_for_boss(spawn) -> bool:
+	if not _GameConfig.SINGLE_CRYSTAL or _crystal_boss_spawned:
+		return false
+	if spawn == null or not bool(spawn.active):
+		return false
+	var max_hp := float(spawn.max_health)
+	if max_hp <= 0.0:
+		return false
+	if not _BossBrain.spawns_at_health_ratio(float(spawn.health) / max_hp):
+		return false
+	return _spawn_boss_near_crystal(spawn)
+
+
+func _spawn_boss_near_crystal(spawn) -> bool:
+	_bind()
+	if _player == null:
+		return false
+	if _living_warden():
+		_crystal_boss_spawned = true
+		return false
+	var cell: Vector2i = spawn.world_pos
+	var offsets: Array[Vector2i] = [
+		Vector2i(2, 0),
+		Vector2i(-2, 0),
+		Vector2i(0, 2),
+		Vector2i(0, -2),
+	]
+	for off in offsets:
+		var at: Vector2i = cell + off
+		if not spawn_enemy_at_column(&"origin_warden", at.x, at.y, cell, true):
+			continue
+		_crystal_boss_spawned = true
+		var enemy: Node = _active[_active.size() - 1]
+		if enemy.has_method("bind_heart"):
+			enemy.bind_heart(cell)
+		return true
+	return false
+
+
+func _living_warden() -> bool:
+	for enemy in _active:
+		if not is_instance_valid(enemy):
+			continue
+		if enemy.get("enemy_id") != &"origin_warden":
+			continue
+		if float(enemy.get("health")) > 0.0:
+			return true
+	return false
+
+
 func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("enemy_spawner")
+	if not _boss_watch_connected:
+		_arm_boss_watch()
 	_prune_active()
 	if _crystal == null or _player == null:
 		if profiler and profiler.has_method("end"):
@@ -141,7 +227,7 @@ func spawn_enemy_now(enemy_id: StringName = &"") -> bool:
 	return _active.size() > before
 
 
-func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vector2i = Vector2i.ZERO) -> bool:
+func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vector2i = Vector2i.ZERO, ignore_cap: bool = false) -> bool:
 	_bind()
 	if _player == null:
 		return false
@@ -150,7 +236,7 @@ func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vecto
 	var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
 	if spawn_def == null:
 		return false
-	if _active.size() >= max_active:
+	if not ignore_cap and _active.size() >= max_active:
 		return false
 	var spawn_pos := _world_pos_for_column(wx, wz)
 	if spawn_pos == Vector3.ZERO:
@@ -323,6 +409,8 @@ func import_enemies(rows: Array) -> void:
 		if enemy.has_method("sync_spatial_index"):
 			enemy.sync_spatial_index()
 		_active.append(enemy)
+		if _GameConfig.SINGLE_CRYSTAL and enemy_id == &"origin_warden":
+			_crystal_boss_spawned = true
 
 
 func get_active_count() -> int:

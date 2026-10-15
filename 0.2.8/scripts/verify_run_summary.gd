@@ -29,6 +29,16 @@ func _run() -> void:
 	won.note_enemy_killed()
 	won.note_relic_taken()
 	won.notify_boss_defeated()
+	var mid: Dictionary = won.run_summary()
+	if str(mid.get("outcome", "")) != "playing":
+		_fail("boss death outcome is %s" % str(mid.get("outcome", "")))
+	if won.phase == _GameManager.Phase.VICTORY or won.run_state != _GameManager.RunState.PLAYING:
+		_fail("boss death ended the run")
+	if str(mid.get("victory_reason", "")) == "boss":
+		_fail("boss death set victory_reason")
+	if not bool(mid.get("boss_defeated", false)):
+		_fail("boss_defeated is false after notify_boss_defeated")
+	won._on_all_spawns_destroyed()
 	var win_data: Dictionary = won.run_summary()
 	if str(win_data.get("outcome", "")) != "win":
 		_fail("win outcome is %s" % str(win_data.get("outcome", "")))

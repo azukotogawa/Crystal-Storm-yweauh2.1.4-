@@ -27,6 +27,7 @@ var crystal_cells_broken: int = 0
 var enemies_killed: int = 0
 var relics_taken: int = 0
 var deaths: int = 0
+var boss_defeated: bool = false
 var _stats_bound: bool = false
 var fallen_towns: int = 0
 var last_town_penalty: String = ""
@@ -200,6 +201,10 @@ func _enter_victory() -> void:
 func notify_boss_defeated() -> void:
 	if run_state != RunState.PLAYING:
 		return
+	boss_defeated = true
+	if _GameConfig.SINGLE_CRYSTAL:
+		print("[Game] The boss fell.")
+		return
 	victory_reason = "boss"
 	print("[Game] Victory — the origin warden fell.")
 	if phase != Phase.VICTORY:
@@ -250,7 +255,7 @@ func run_summary() -> Dictionary:
 		"outcome": outcome,
 		"time_sec": elapsed,
 		"spawns_destroyed": spawns_destroyed,
-		"boss_defeated": victory_reason == "boss",
+		"boss_defeated": boss_defeated or victory_reason == "boss",
 		"crystal_broken": crystal_cells_broken,
 		"enemies_killed": enemies_killed,
 		"relics_taken": relics_taken,

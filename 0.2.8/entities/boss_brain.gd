@@ -5,6 +5,7 @@ const SLAM_WINDUP := 0.8
 const BURST_WINDUP := 0.8
 const CHARGE_WINDUP := 0.65
 const PHASE_HP := 0.5
+const BOSS_SPAWN_HEALTH_RATIO = 0.25
 
 const _RelicChoice = preload("res://relics/relic_choice.gd")
 
@@ -15,6 +16,10 @@ var cooldown: float = 0.0
 var action: StringName = &""
 var _phase2_fresh: bool = false
 var _burst_next: bool = true
+
+
+static func spawns_at_health_ratio(ratio: float) -> bool:
+	return ratio <= BOSS_SPAWN_HEALTH_RATIO
 
 
 func notify_hp_ratio(ratio: float) -> void:
