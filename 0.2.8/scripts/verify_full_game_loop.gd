@@ -128,17 +128,19 @@ func _run() -> void:
 	lose_gm._crystal = crystal
 	crystal.covered_cells = 50000
 	lose_gm._check_crystal_overrun()
-	if _GameManager.DEATH_ONLY_LOSS:
-		if lose_gm.run_state != _GameManager.RunState.PLAYING or lose_gm.coverage_warning == "":
-			push_error("coverage must pressure without a loss")
-			failed = true
-		else:
-			print("OK coverage over max stays playing")
-	elif lose_gm.run_state != _GameManager.RunState.LOST:
-		push_error("lose path not wired")
+	if lose_gm.run_state != _GameManager.RunState.PLAYING or lose_gm.coverage_warning == "":
+		push_error("coverage must pressure without a loss")
 		failed = true
 	else:
-		print("OK lose state on coverage overrun")
+		print("OK coverage over max stays playing")
+	var dead := _GameManager.new()
+	dead._on_player_died()
+	if dead.run_state != _GameManager.RunState.LOST or dead.last_loss_reason != "You died.":
+		push_error("death must be the loss, state=%s reason=%s" % [dead.run_state, dead.last_loss_reason])
+		failed = true
+	else:
+		print("OK lose state on death")
+	dead.free()
 
 	if failed:
 		_ProbeExit.finish_tree(self, 1, "Full game loop FAILED")

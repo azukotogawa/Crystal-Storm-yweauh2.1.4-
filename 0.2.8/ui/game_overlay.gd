@@ -1315,6 +1315,14 @@ func _on_phase_changed(new_phase: int) -> void:
 	_last_phase_for_toast = new_phase
 
 
+static func loss_panel_lines(reason: String) -> PackedStringArray:
+	var why := reason.strip_edges()
+	if why == "":
+		why = "You died."
+	var title := "You died" if why == "You died." else why.trim_suffix(".")
+	return PackedStringArray([title, "%s\nPress R to restart." % why])
+
+
 func _on_run_state_changed(new_state: int) -> void:
 	_panel.visible = true
 	if new_state == _GameManager.RunState.WON:
@@ -1332,14 +1340,12 @@ func _on_run_state_changed(new_state: int) -> void:
 				prog = "\nAll %d spawn points destroyed." % int(p.get("total", 0))
 			_subtitle.text = "You shattered every crystal heart.%s\nPress R to restart." % prog
 	elif new_state == _GameManager.RunState.LOST:
-		_title.text = "Run Over"
 		var reason := ""
 		if _game_manager and "last_loss_reason" in _game_manager:
 			reason = str(_game_manager.last_loss_reason)
-		if reason != "":
-			_subtitle.text = "%s\nPress R to restart." % reason
-		else:
-			_subtitle.text = "The corruption won this time.\nPress R to restart."
+		var lines := loss_panel_lines(reason)
+		_title.text = lines[0]
+		_subtitle.text = lines[1]
 	if new_state == _GameManager.RunState.WON or new_state == _GameManager.RunState.LOST:
 		_show_run_summary()
 	_update_map_temp_label()

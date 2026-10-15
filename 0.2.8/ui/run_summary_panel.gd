@@ -52,7 +52,7 @@ static func format_summary(summary: Dictionary) -> String:
 	if outcome == "win":
 		title = "Win"
 	elif outcome == "loss":
-		title = "Loss"
+		title = loss_heading(summary)
 	var boss := "yes" if bool(summary.get("boss_defeated", false)) else "no"
 	if _GameConfig.SINGLE_CRYSTAL:
 		var crystal := "yes" if _crystal_destroyed(summary) else "no"
@@ -76,6 +76,13 @@ static func format_summary(summary: Dictionary) -> String:
 		int(summary.get("relics_taken", 0)),
 		int(summary.get("deaths", 0)),
 	]
+
+
+static func loss_heading(summary: Dictionary) -> String:
+	var why := str(summary.get("loss_reason", "")).strip_edges()
+	if why == "":
+		return "You died"
+	return why.trim_suffix(".")
 
 
 static func _crystal_destroyed(summary: Dictionary) -> bool:

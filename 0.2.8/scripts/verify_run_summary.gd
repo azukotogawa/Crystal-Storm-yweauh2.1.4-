@@ -3,6 +3,7 @@ extends SceneTree
 
 const _GameManager = preload("res://game/game_manager.gd")
 const _RunSummary = preload("res://ui/run_summary_panel.gd")
+const _Overlay = preload("res://ui/game_overlay.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalSpawnPoint = preload("res://crystal/crystal_spawn_point.gd")
@@ -98,7 +99,16 @@ func _run() -> void:
 	panel.show_summary(win_data)
 	_check_panel(panel, "Win")
 	panel.show_summary(loss_data)
-	_check_panel(panel, "Loss")
+	_check_panel(panel, "You died")
+	var died_lines: PackedStringArray = _Overlay.loss_panel_lines("")
+	if died_lines[0] != "You died" or "corruption" in died_lines[1].to_lower():
+		_fail("loss panel still blames the corruption: %s" % str(died_lines))
+	var named: PackedStringArray = _Overlay.loss_panel_lines("You died.")
+	if named[0] != "You died" or not named[1].begins_with("You died."):
+		_fail("death panel copy is %s" % str(named))
+	var blank := _RunSummary.format_summary({"outcome": "loss", "time_sec": 1.0})
+	if not blank.begins_with("You died") or blank.begins_with("Loss"):
+		_fail("blank loss summary is %s" % blank)
 	var formatted := _RunSummary.format_summary(win_data)
 	var crystal_line := "Crystal destroyed: yes" if _GameConfig.SINGLE_CRYSTAL else "Spawns destroyed:"
 	var boss_line := "Boss defeated: yes" if _GameConfig.SINGLE_CRYSTAL else "Boss defeated:"
