@@ -99,7 +99,7 @@ func _check_panel(panel: Node, title: String) -> void:
 		_fail("summary body missing")
 		return
 	var text := body.text
-	for needle in [title, "Time:", "Spawns destroyed:", "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
+	for needle in [title, "Time:", "Crystal destroyed:", "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
 		if not text.contains(needle):
 			_fail("summary text missing %s" % needle)
 	var world_btn := panel.find_child("WorldSelectButton", true, false) as Button

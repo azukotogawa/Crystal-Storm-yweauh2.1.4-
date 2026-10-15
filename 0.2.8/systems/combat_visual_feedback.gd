@@ -12,6 +12,7 @@ const _Juice = preload("res://systems/juice.gd")
 const _HitMarkers = preload("res://systems/hit_markers.gd")
 const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 @export var enabled: bool = true
 
@@ -264,6 +265,8 @@ func _process(delta: float) -> void:
 	if _break_fx and _break_fx.has_live():
 		_break_fx.tick(delta)
 	_update_spawn_marker_flashes(delta)
+	if _GameConfig.SINGLE_CRYSTAL:
+		_update_boss_ring_target()
 	_update_boss_ring(delta)
 	_update_victory_flash(delta)
 	if not _dissolves.is_empty():
@@ -603,6 +606,9 @@ func _on_spawn_damaged(spawn: CrystalSpawnPoint, amount: float) -> void:
 func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 	if spawn == null:
 		return
+	if _GameConfig.SINGLE_CRYSTAL:
+		_on_released_crystal_destroyed(spawn)
+		return
 	var pos := _spawn_world_pos(spawn)
 	var tint := Color(1.0, 0.35, 0.95) if spawn.is_boss else Color(0.75, 0.4, 1.0)
 	_spawn_burst(pos + Vector3(0.0, 1.5, 0.0), tint, 6 if spawn.is_boss else 4)
@@ -611,6 +617,22 @@ func _on_spawn_destroyed(spawn: CrystalSpawnPoint) -> void:
 	_Juice.request_shake(0.7 if spawn.is_boss else 0.35)
 	if spawn.is_boss:
 		_boss_ring.visible = false
+
+
+func _on_released_crystal_destroyed(spawn: CrystalSpawnPoint) -> void:
+	var pos := _spawn_world_pos(spawn)
+	var tint := Color(0.9, 0.45, 1.0)
+	_spawn_burst(pos + Vector3(0.0, 1.5, 0.0), tint, 6)
+	_pool_burst(_VfxPool.Kind.SHATTER, pos + Vector3(0.0, _vox(0.4), 0.0), tint, 1.4)
+	_sfx(crystal_break_sfx(), pos)
+	_Juice.request_shake(0.7)
+	_pulse_spawn_marker(spawn, true)
+
+
+static func crystal_break_sfx() -> String:
+	if _GameConfig.SINGLE_CRYSTAL:
+		return "crystal_shatter"
+	return "spawn_destroyed"
 
 
 func _on_phase_changed(phase: int) -> void:
@@ -669,6 +691,9 @@ func _pulse_spawn_marker(spawn: CrystalSpawnPoint, _destroyed: bool) -> void:
 
 
 func _update_boss_ring_target() -> void:
+	if _GameConfig.SINGLE_CRYSTAL:
+		_place_boss_ring_on_warden()
+		return
 	if _crystal == null or not _crystal.has_method("get_spawn_progress"):
 		return
 	var prog: Dictionary = _crystal.get_spawn_progress()
@@ -680,6 +705,30 @@ func _update_boss_ring_target() -> void:
 			_boss_ring.global_position = _spawn_world_pos(spawn) + Vector3(0.0, 2.8, 0.0)
 			_boss_ring.visible = true
 			return
+
+
+func _place_boss_ring_on_warden() -> void:
+	if _boss_ring == null:
+		return
+	var warden := _living_origin_warden()
+	if warden == null:
+		_boss_ring.visible = false
+		return
+	_boss_ring.global_position = warden.global_position + Vector3(0.0, 2.8, 0.0)
+	_boss_ring.visible = true
+
+
+func _living_origin_warden() -> Node3D:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	for node in tree.get_nodes_in_group("origin_boss"):
+		if not (node is Node3D) or not is_instance_valid(node):
+			continue
+		if "health" in node and float(node.health) <= 0.0:
+			continue
+		return node as Node3D
+	return null
 
 
 func _update_labels(delta: float) -> void:

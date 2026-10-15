@@ -8,10 +8,13 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldState = preload("res://world/world_state.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 const _MARKER_TOWN_R := 2
 const _MARKER_RUIN_R := 3
 const _MARKER_SPAWN_R := 1
+const _MARKER_CRYSTAL_R := 2
+const _MARKER_CRYSTAL := 5
 
 
 static func build_local_map(
@@ -288,7 +291,9 @@ static func _prepare_marker_cells(job: Dictionary) -> void:
 		for spawn in crystal.get_active_spawns():
 			if spawn == null:
 				continue
-			_paint_disk(markers, spawn.world_pos, _MARKER_SPAWN_R, 3 if spawn.is_boss else 4)
+			var marker_kind := marker_kind_for_spawn(bool(spawn.is_boss))
+			var marker_r := _MARKER_CRYSTAL_R if marker_kind == _MARKER_CRYSTAL else _MARKER_SPAWN_R
+			_paint_disk(markers, spawn.world_pos, marker_r, marker_kind)
 
 	job.marker_cells = markers
 
@@ -429,12 +434,19 @@ static func _apply_crystal_tint(base: Color, job: Dictionary, key: Vector2i) -> 
 	return base.lerp(cfg.color_crystal, clampf(depth / 4.0, 0.25, 0.9))
 
 
+static func marker_kind_for_spawn(is_boss: bool) -> int:
+	if _GameConfig.SINGLE_CRYSTAL:
+		return _MARKER_CRYSTAL
+	return 3 if is_boss else 4
+
+
 static func _marker_color(kind: int, cfg: _TopographicalMapConfig) -> Color:
 	match kind:
 		1: return cfg.color_town
 		2: return cfg.color_ruin
 		3: return cfg.color_spawn_boss
 		4: return cfg.color_spawn_miniboss
+		5: return cfg.color_crystal
 		_: return cfg.color_town
 
 

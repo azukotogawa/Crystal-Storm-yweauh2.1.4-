@@ -74,7 +74,7 @@ func get_spawn_at_cell(wx: int, wz: int) -> CrystalSpawnPoint:
 
 func get_progress() -> Dictionary:
 	var active := get_active_spawns().size()
-	return {
+	var progress := {
 		"active": active,
 		"total": _spawns.size(),
 		"destroyed": _spawns.size() - active,
@@ -84,6 +84,12 @@ func get_progress() -> Dictionary:
 		"boss_sealed": not _GameConfig.SINGLE_CRYSTAL and _is_boss_active() and count_active_non_boss() > 0,
 		"warden_alive": origin_warden_alive,
 	}
+	if _GameConfig.SINGLE_CRYSTAL:
+		var origin := _origin_spawn()
+		progress["crystal_health"] = origin.health if origin != null else 0.0
+		progress["crystal_max_health"] = origin.max_health if origin != null else 0.0
+		progress["boss_spawned"] = boss_spawned
+	return progress
 
 
 func damage_spawn(spawn_id: int, amount: float) -> bool:

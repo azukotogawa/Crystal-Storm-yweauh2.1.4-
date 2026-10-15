@@ -13,6 +13,10 @@ const _GameManager = preload("res://game/game_manager.gd")
 const _Weapon = preload("res://weapons/weapon_controller.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _SimConfig = preload("res://config/crystal_sim_config.gd")
+const _Overlay = preload("res://ui/game_overlay.gd")
+const _Summary = preload("res://ui/run_summary_panel.gd")
+const _Map = preload("res://systems/topographical_map_builder.gd")
+const _CombatFx = preload("res://systems/combat_visual_feedback.gd")
 
 var _failed: int = 0
 
@@ -29,6 +33,7 @@ func _fail(msg: String) -> void:
 
 func _run() -> void:
 	_check_config()
+	_check_ui()
 	_check_emission()
 	_check_damage_victory()
 	if _failed == 0:
@@ -79,6 +84,48 @@ func _check_config() -> void:
 		_fail("registry dropped a crystal def")
 		return
 	print("OK one crystal health=%.0f rule=%s" % [one.max_health, String(one.position_rule)])
+
+
+func _check_ui() -> void:
+	var lines: String = _Overlay.build_single_crystal_objective_lines(
+		"Maze", 120.0, 500.0, 0.1, 4, "Nearest spawn: NE  10c", true
+	)
+	if "Destroy the crystal" not in lines or "120/500" not in lines or "Boss warning" not in lines:
+		_fail("objective lines missing crystal goal, hp, or boss warning: %s" % lines)
+		return
+	if "Spawns:" in lines or "sealed" in lines.to_lower() or "Nearest spawn" in lines:
+		_fail("objective lines still mention spawns or a seal: %s" % lines)
+		return
+	var quiet: String = _Overlay.build_single_crystal_objective_lines(
+		"Maze", 500.0, 500.0, 0.0, 0, "", false
+	)
+	if "Boss warning" in quiet or "Spawns" in quiet:
+		_fail("quiet objective should not warn or count spawns: %s" % quiet)
+		return
+	var summary: String = _Summary.format_summary({
+		"outcome": "win",
+		"victory_reason": "crystal",
+		"time_sec": 3.0,
+		"spawns_destroyed": 1,
+		"boss_defeated": true,
+		"crystal_broken": 2,
+		"enemies_killed": 1,
+		"relics_taken": 0,
+		"deaths": 0,
+	})
+	if "Crystal destroyed: yes" not in summary or "Boss defeated: yes" not in summary:
+		_fail("run summary missing crystal win lines: %s" % summary)
+		return
+	if "Spawns destroyed" in summary or "sealed" in summary.to_lower():
+		_fail("run summary still counts spawns: %s" % summary)
+		return
+	if _Map.marker_kind_for_spawn(false) != 5 or _Map.marker_kind_for_spawn(true) != 5:
+		_fail("map marker is not the single crystal")
+		return
+	if _CombatFx.crystal_break_sfx() != "crystal_shatter":
+		_fail("crystal break still uses a spawn cue")
+		return
+	print("OK single crystal objective, summary, map marker, break cue")
 
 
 func _check_emission() -> void:

@@ -11,6 +11,7 @@ const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -42,6 +43,9 @@ var _objective_spawns: Label = null
 var _objective_coverage: Label = null
 var _objective_bearing: Label = null
 var _objective_arrow: Label = null
+var _crystal_hp_bar: ProgressBar = null
+var _crystal_hp_label: Label = null
+var _boss_warned: bool = false
 var _boss: Node = null
 var _boss_panel: PanelContainer = null
 var _boss_label: Label = null
@@ -71,6 +75,8 @@ var _hk_run: int = -999
 var _hk_place: int = -999
 var _hk_biome: int = 0
 var _hk_relics: int = -1
+var _hk_crystal_hp: int = -999999
+var _hk_boss_warn: int = -1
 var _spawn_cell: Vector2i = Vector2i(999999, 999999)
 var _spawn_known: bool = false
 var _bake_done: int = -1
@@ -282,6 +288,9 @@ func _bind_enemy_spawner() -> void:
 
 
 func _on_crystal_enemy_spawned(enemy_id: StringName, _world_pos: Vector2i) -> void:
+	if _GameConfig.SINGLE_CRYSTAL and enemy_id == &"origin_warden":
+		_note_boss_warning(true)
+		return
 	if _mite_threat_toast_shown:
 		return
 	_mite_threat_toast_shown = true
@@ -452,6 +461,8 @@ func _spawn_goal_line() -> String:
 	if _crystal == null or not _crystal.has_method("get_spawn_progress"):
 		return ""
 	var prog: Dictionary = _crystal.get_spawn_progress()
+	if _GameConfig.SINGLE_CRYSTAL:
+		return _single_crystal_goal_line(prog)
 	var active: int = int(prog.get("active", 0))
 	var total: int = int(prog.get("total", 0))
 	if total <= 0:
@@ -466,6 +477,35 @@ func _spawn_goal_line() -> String:
 	if last != "":
 		line += " | Last: %s" % last
 	return line
+
+
+func _single_crystal_goal_line(prog: Dictionary) -> String:
+	var line := "Destroy the crystal"
+	var max_hp := float(prog.get("crystal_max_health", 0.0))
+	if max_hp > 0.0:
+		line = "Destroy the crystal  %d/%d" % [int(round(float(prog.get("crystal_health", 0.0)))), int(round(max_hp))]
+	if _boss_warning_on(prog):
+		line += " | Boss warning"
+	return line
+
+
+func _boss_warning_on(prog: Dictionary) -> bool:
+	return _boss_warned or bool(prog.get("boss_spawned", false)) or _tracked_boss_alive()
+
+
+func _tracked_boss_alive() -> bool:
+	if _boss == null or not is_instance_valid(_boss):
+		return false
+	if "health" in _boss and float(_boss.health) <= 0.0:
+		return false
+	return true
+
+
+func _note_boss_warning(active: bool) -> void:
+	if not _GameConfig.SINGLE_CRYSTAL or not active or _boss_warned:
+		return
+	_boss_warned = true
+	_show_toast("Boss warning — a warden guards the crystal")
 
 
 func _update_map_temp_label() -> void:
@@ -492,6 +532,9 @@ func _update_map_temp_label() -> void:
 		_phase_label.text = "Phase: Defeat%s" % suffix
 	elif _game_manager and _game_manager.phase == _GameManager.Phase.MAZE:
 		_phase_label.text = "Phase: Maze — dig & build routes · terrain buys time%s" % suffix
+	elif _GameConfig.SINGLE_CRYSTAL:
+		var crystal_goal := goal if goal != "" else "Destroy the crystal"
+		_phase_label.text = "Phase: Assault — %s%s" % [crystal_goal, suffix]
 	elif goal != "":
 		_phase_label.text = "Phase: Assault — fight the crystal · %s%s" % [goal, suffix]
 	else:
@@ -567,10 +610,16 @@ func _hud_should_skip() -> bool:
 			place = int(weapon.place_index)
 	var biome_h := _current_biome.hash()
 	var relics := _equipped_relic_names.size()
+	var crystal_hp := _hk_crystal_hp
+	var boss_warn := _hk_boss_warn
+	if _GameConfig.SINGLE_CRYSTAL and _crystal and _crystal.has_method("get_spawn_progress"):
+		var crystal_prog: Dictionary = _crystal.get_spawn_progress()
+		crystal_hp = int(round(float(crystal_prog.get("crystal_health", -1.0))))
+		boss_warn = 1 if _boss_warning_on(crystal_prog) else 0
 	var changed := (
 		cell != _hk_cell or tiles != _hk_tiles or phase != _hk_phase
 		or run_state != _hk_run or place != _hk_place or biome_h != _hk_biome
-		or relics != _hk_relics
+		or relics != _hk_relics or crystal_hp != _hk_crystal_hp or boss_warn != _hk_boss_warn
 	)
 	if changed:
 		_hk_cell = cell
@@ -580,6 +629,8 @@ func _hud_should_skip() -> bool:
 		_hk_place = place
 		_hk_biome = biome_h
 		_hk_relics = relics
+		_hk_crystal_hp = crystal_hp
+		_hk_boss_warn = boss_warn
 	_hud_skip = (not changed) and (posmod(frame, 20) != 0)
 	return _hud_skip
 
@@ -612,6 +663,8 @@ func _update_game_hud() -> void:
 		crystal_bit = "%s · %s" % [crystal_bit, wet_bit]
 	var prog: Dictionary = _crystal.get_spawn_progress() if _crystal.has_method("get_spawn_progress") else {}
 	var spawns_line := "%d/%d spawns" % [int(prog.get("active", 0)), int(prog.get("total", 0))]
+	if _GameConfig.SINGLE_CRYSTAL:
+		spawns_line = _crystal_hud_bit(prog)
 	var relic_line := ""
 	if not _equipped_relic_names.is_empty():
 		relic_line = "  |  Relics: %s" % ", ".join(_equipped_relic_names)
@@ -669,6 +722,16 @@ func _update_game_hud() -> void:
 	)
 
 
+func _crystal_hud_bit(prog: Dictionary) -> String:
+	var max_hp := float(prog.get("crystal_max_health", 0.0))
+	var bit := "Destroy the crystal"
+	if max_hp > 0.0:
+		bit = "Crystal %d/%d" % [int(round(float(prog.get("crystal_health", 0.0)))), int(round(max_hp))]
+	if _boss_warning_on(prog):
+		bit += " · boss warning"
+	return bit
+
+
 func _is_fight_item(item_id: String) -> bool:
 	var def := _ItemTypes.get_def(item_id)
 	if def.is_empty():
@@ -688,6 +751,8 @@ func _victory_reason() -> String:
 
 
 func _victory_phase_text(suffix: String) -> String:
+	if _GameConfig.SINGLE_CRYSTAL and _victory_reason() != "boss":
+		return "Phase: Victory — the crystal was destroyed%s" % suffix
 	if _victory_reason() == "boss":
 		return "Phase: Victory — the Origin Warden fell%s" % suffix
 	return "Phase: Victory — all spawns destroyed%s" % suffix
@@ -699,6 +764,8 @@ func track_boss(boss: Node) -> void:
 	_boss = boss
 	_boss_shown_hp = -1
 	_ensure_boss_bar()
+	if _GameConfig.SINGLE_CRYSTAL:
+		_note_boss_warning(true)
 
 
 func _ensure_boss_bar() -> void:
@@ -727,7 +794,7 @@ func _ensure_boss_bar() -> void:
 	_boss_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_boss_label.add_theme_font_size_override("font_size", 13)
 	_boss_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.86))
-	_boss_label.text = "Origin Warden"
+	_boss_label.text = "Boss warning" if _GameConfig.SINGLE_CRYSTAL else "Origin Warden"
 	box.add_child(_boss_label)
 	_boss_bar = ProgressBar.new()
 	_boss_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -774,7 +841,10 @@ func _update_boss_bar() -> void:
 	if shown != _boss_shown_hp:
 		_boss_shown_hp = shown
 		var phase := int(_boss.get("boss_phase"))
-		_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
+		if _GameConfig.SINGLE_CRYSTAL:
+			_boss_label.text = "Boss warning  %d / %d" % [shown, int(max_hp)]
+		else:
+			_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
 
 
 func _ensure_player_health_bar() -> void:
@@ -951,8 +1021,10 @@ func _ensure_objective_hud() -> void:
 	title.add_theme_color_override("font_color", Color(0.78, 0.62, 1.0))
 	box.add_child(title)
 	_objective_phase = _objective_line(box, "Phase: Maze")
-	_objective_spawns = _objective_line(box, "Spawns: — remaining")
+	_objective_spawns = _objective_line(box, "Destroy the crystal" if _GameConfig.SINGLE_CRYSTAL else "Spawns: — remaining")
 	_objective_coverage = _objective_line(box, "Crystal: 0.00%")
+	if _GameConfig.SINGLE_CRYSTAL:
+		_ensure_crystal_hp_bar(box)
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 6)
@@ -968,8 +1040,25 @@ func _ensure_objective_hud() -> void:
 	_objective_arrow.add_theme_font_size_override("font_size", 20)
 	_objective_arrow.add_theme_color_override("font_color", Color(0.95, 0.75, 1.0))
 	row.add_child(_objective_arrow)
-	_objective_bearing = _objective_line(row, "Nearest spawn")
+	_objective_bearing = _objective_line(row, "Crystal" if _GameConfig.SINGLE_CRYSTAL else "Nearest spawn")
 	add_child(_objective_panel)
+
+
+func _ensure_crystal_hp_bar(box: Node) -> void:
+	if _crystal_hp_bar != null:
+		return
+	_crystal_hp_label = _objective_line(box, "Crystal HP")
+	_crystal_hp_bar = ProgressBar.new()
+	_crystal_hp_bar.name = "CrystalHpBar"
+	_crystal_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_crystal_hp_bar.show_percentage = false
+	_crystal_hp_bar.min_value = 0.0
+	_crystal_hp_bar.max_value = 1.0
+	_crystal_hp_bar.value = 1.0
+	_crystal_hp_bar.custom_minimum_size = Vector2(220, 12)
+	box.add_child(_crystal_hp_bar)
+	if _objective_panel:
+		_objective_panel.offset_bottom = 176.0
 
 
 func _objective_line(parent: Node, text: String) -> Label:
@@ -1006,10 +1095,18 @@ func _update_objective_hud() -> void:
 			phase_name = "Victory"
 	var active := 0
 	var total := 0
+	var crystal_hp := 0.0
+	var crystal_max := 0.0
+	var boss_warning := false
 	if _crystal and _crystal.has_method("get_spawn_progress"):
 		var prog: Dictionary = _crystal.get_spawn_progress()
 		active = int(prog.get("active", 0))
 		total = int(prog.get("total", 0))
+		crystal_hp = float(prog.get("crystal_health", 0.0))
+		crystal_max = float(prog.get("crystal_max_health", 0.0))
+		boss_warning = _boss_warning_on(prog)
+		if _GameConfig.SINGLE_CRYSTAL:
+			_note_boss_warning(boss_warning)
 	var coverage := 0.0
 	var tiles := 0
 	if _crystal and _crystal.has_method("get_coverage_ratio"):
@@ -1018,6 +1115,9 @@ func _update_objective_hud() -> void:
 		tiles = int(_crystal.covered_cells)
 	var bearing := _nearest_spawn_bearing()
 	var lines := build_objective_lines(phase_name, active, total, coverage, tiles, bearing.text)
+	if _GameConfig.SINGLE_CRYSTAL:
+		lines = build_single_crystal_objective_lines(phase_name, crystal_hp, crystal_max, coverage, tiles, bearing.text, boss_warning)
+		_apply_crystal_hp_bar(crystal_hp, crystal_max)
 	var parts := lines.split("\n")
 	if parts.size() >= 4:
 		_objective_phase.text = parts[0]
@@ -1046,6 +1146,39 @@ static func build_objective_lines(
 		spawns = "%s (%d/%d)" % [spawns, spawns_remaining, spawns_total]
 	var bearing := bearing_text if bearing_text != "" else "Nearest spawn: —"
 	return "Phase: %s\n%s\n%s\n%s" % [phase_name, spawns, cov, bearing]
+
+
+static func build_single_crystal_objective_lines(
+	phase_name: String,
+	health: float,
+	max_health: float,
+	coverage_ratio: float,
+	tiles: int,
+	bearing_text: String,
+	boss_warning: bool
+) -> String:
+	var goal := "Destroy the crystal"
+	if max_health > 0.0:
+		goal = "Destroy the crystal  %d/%d" % [int(round(health)), int(round(max_health))]
+	if boss_warning:
+		goal += " · Boss warning"
+	var pct := coverage_ratio * 100.0
+	var cov := "Crystal: %.2f%%" % pct
+	if tiles > 0:
+		cov = "%s · %d tiles" % [cov, tiles]
+	var bearing := bearing_text if bearing_text != "" else "Crystal: —"
+	bearing = bearing.replace("Nearest spawn:", "Crystal:")
+	return "Phase: %s\n%s\n%s\n%s" % [phase_name, goal, cov, bearing]
+
+
+func _apply_crystal_hp_bar(health: float, max_health: float) -> void:
+	if _crystal_hp_bar == null:
+		return
+	var mx := maxf(max_health, 1.0)
+	_crystal_hp_bar.max_value = mx
+	_crystal_hp_bar.value = clampf(health, 0.0, mx)
+	if _crystal_hp_label:
+		_crystal_hp_label.text = "Crystal HP  %d / %d" % [int(round(health)), int(round(mx))]
 
 
 static func compass_from_delta(dx: float, dz: float) -> String:
@@ -1094,7 +1227,7 @@ func _spin_objective_arrow() -> void:
 
 
 func _nearest_spawn_bearing() -> Dictionary:
-	var empty := {"text": "Nearest spawn: —", "rotation": 0.0}
+	var empty := {"text": "Crystal: —" if _GameConfig.SINGLE_CRYSTAL else "Nearest spawn: —", "rotation": 0.0}
 	_spawn_known = false
 	var player := _cached_player() if is_inside_tree() else null
 	if player == null or not player.has_method("get_voxel_position"):
@@ -1115,6 +1248,8 @@ func _nearest_spawn_bearing() -> Dictionary:
 	var dx := float(cell.x) + 0.5 - pv.x
 	var dz := float(cell.y) + 0.5 - pv.z
 	var text := compass_from_delta(dx, dz)
+	if _GameConfig.SINGLE_CRYSTAL:
+		text = text.replace("Nearest spawn:", "Crystal:")
 	var rotation := 0.0
 	var cam := get_viewport().get_camera_3d() if get_viewport() else null
 	if cam:
@@ -1175,7 +1310,10 @@ func _on_phase_changed(new_phase: int) -> void:
 func _on_run_state_changed(new_state: int) -> void:
 	_panel.visible = true
 	if new_state == _GameManager.RunState.WON:
-		if _victory_reason() == "boss":
+		if _GameConfig.SINGLE_CRYSTAL and _victory_reason() != "boss":
+			_title.text = "Victory — Crystal Destroyed"
+			_subtitle.text = "You destroyed the crystal.\nPress R to restart."
+		elif _victory_reason() == "boss":
 			_title.text = "Victory — Origin Warden Fell"
 			_subtitle.text = "The warden is down. The storm breaks.\nPress R to restart."
 		else:

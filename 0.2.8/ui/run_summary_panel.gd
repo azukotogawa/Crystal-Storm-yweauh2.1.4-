@@ -2,6 +2,7 @@ class_name RunSummaryPanel
 extends VBoxContainer
 
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 
 var _body: Label
 var _summary: Dictionary = {}
@@ -53,6 +54,18 @@ static func format_summary(summary: Dictionary) -> String:
 	elif outcome == "loss":
 		title = "Loss"
 	var boss := "yes" if bool(summary.get("boss_defeated", false)) else "no"
+	if _GameConfig.SINGLE_CRYSTAL:
+		var crystal := "yes" if _crystal_destroyed(summary) else "no"
+		return "%s\nTime: %.1fs\nCrystal destroyed: %s\nBoss defeated: %s\nCrystal broken: %d\nEnemies killed: %d\nRelics taken: %d\nDeaths: %d" % [
+			title,
+			float(summary.get("time_sec", 0.0)),
+			crystal,
+			boss,
+			int(summary.get("crystal_broken", 0)),
+			int(summary.get("enemies_killed", 0)),
+			int(summary.get("relics_taken", 0)),
+			int(summary.get("deaths", 0)),
+		]
 	return "%s\nTime: %.1fs\nSpawns destroyed: %d\nBoss defeated: %s\nCrystal broken: %d\nEnemies killed: %d\nRelics taken: %d\nDeaths: %d" % [
 		title,
 		float(summary.get("time_sec", 0.0)),
@@ -63,6 +76,12 @@ static func format_summary(summary: Dictionary) -> String:
 		int(summary.get("relics_taken", 0)),
 		int(summary.get("deaths", 0)),
 	]
+
+
+static func _crystal_destroyed(summary: Dictionary) -> bool:
+	if str(summary.get("victory_reason", "")) == "crystal":
+		return true
+	return str(summary.get("outcome", "")) == "win" and int(summary.get("spawns_destroyed", 0)) > 0
 
 
 func _on_world_select() -> void:
