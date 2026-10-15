@@ -100,6 +100,8 @@ var entity_physics_skip_frames: int = 0
 @export var use_lightweight_entity_nav: bool = true
 @export_range(0.0, 1.0, 0.05)
 var vegetation_scatter_multiplier: float = 1.0
+@export_range(0, 48, 1)
+var props_per_chunk: int = 12
 
 @export_group("Vegetation Growth")
 @export var vegetation_growth_enabled: bool = true
@@ -225,6 +227,7 @@ static func apply_safe_mode() -> PerformanceQualityConfig:
 	c.entity_physics_skip_frames = 3
 	c.use_lightweight_entity_nav = true
 	c.vegetation_scatter_multiplier = 0.0
+	c.props_per_chunk = 0
 	c.vegetation_growth_enabled = false
 	c.vegetation_growth_hz = 1.0
 	c.vegetation_plants_per_tick = 4
@@ -295,6 +298,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.entity_physics_skip_frames = 2
 			c.use_lightweight_entity_nav = true
 			c.vegetation_scatter_multiplier = 0.35
+			c.props_per_chunk = 4
 			c.vegetation_growth_hz = 2.0
 			c.vegetation_plants_per_tick = 8
 			c.vegetation_env_check_interval = 8
@@ -358,6 +362,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.entity_physics_skip_frames = 0
 			c.use_lightweight_entity_nav = true
 			c.vegetation_scatter_multiplier = 1.05
+			c.props_per_chunk = 12
 			c.vegetation_growth_hz = 3.0
 			c.vegetation_plants_per_tick = 16
 			c.vegetation_env_check_interval = 4
@@ -421,6 +426,7 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.entity_physics_skip_frames = 0
 			c.use_lightweight_entity_nav = false
 			c.vegetation_scatter_multiplier = 1.0
+			c.props_per_chunk = 24
 			c.vegetation_growth_hz = 8.0
 			c.vegetation_plants_per_tick = 48
 			c.vegetation_env_check_interval = 2

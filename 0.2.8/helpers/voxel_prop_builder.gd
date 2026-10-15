@@ -40,6 +40,76 @@ static func build_plant(plant_id: String, stage: int, tint: Color = Color.WHITE,
 	return root
 
 
+static func build_scatter_prop(kind: String) -> Node3D:
+	match kind:
+		"bush":
+			var bush := build_plant("bush", 2)
+			bush.name = "VoxelProp"
+			return bush
+		"flower":
+			var flower := build_plant("wildflower", 2)
+			flower.name = "VoxelProp"
+			return flower
+		"log":
+			return _assemble_prop(_log_boxes(unit()))
+		"mushroom":
+			return _assemble_prop(_mushroom_boxes(unit()))
+		"fence":
+			return _assemble_prop(_fence_boxes(unit()))
+		_:
+			return _assemble_prop(_rock_boxes(unit()))
+
+
+static func _assemble_prop(boxes: Array) -> Node3D:
+	var root := Node3D.new()
+	root.name = "VoxelProp"
+	for spec in boxes:
+		root.add_child(_box_instance(spec.center, spec.size, spec.color))
+	return root
+
+
+static func _rock_boxes(u: float) -> Array:
+	var stone := Color(0.55, 0.54, 0.5)
+	return [
+		{"center": Vector3(0, u * 0.38, 0), "size": Vector3(u * 1.35, u * 0.7, u * 1.15), "color": stone},
+		{"center": Vector3(u * 0.28, u * 0.72, u * 0.08), "size": Vector3(u * 0.85, u * 0.55, u * 0.75), "color": stone.lightened(0.08)},
+		{"center": Vector3(-u * 0.35, u * 0.28, u * 0.22), "size": Vector3(u * 0.55, u * 0.4, u * 0.5), "color": stone.darkened(0.12)},
+	]
+
+
+static func _log_boxes(u: float) -> Array:
+	var bark := Color(0.42, 0.28, 0.16)
+	var cut := Color(0.62, 0.48, 0.28)
+	var length := u * 2.4
+	return [
+		{"center": Vector3(0, u * 0.38, 0), "size": Vector3(length, u * 0.7, u * 0.7), "color": bark},
+		{"center": Vector3(-length * 0.48, u * 0.38, 0), "size": Vector3(u * 0.12, u * 0.62, u * 0.62), "color": cut},
+		{"center": Vector3(length * 0.48, u * 0.38, 0), "size": Vector3(u * 0.12, u * 0.62, u * 0.62), "color": cut},
+	]
+
+
+static func _mushroom_boxes(u: float) -> Array:
+	return [
+		{"center": Vector3(0, u * 0.45, 0), "size": Vector3(u * 0.28, u * 0.9, u * 0.28), "color": Color(0.86, 0.82, 0.7)},
+		{"center": Vector3(0, u * 0.95, 0), "size": Vector3(u * 1.15, u * 0.38, u * 1.15), "color": Color(0.72, 0.18, 0.16)},
+		{"center": Vector3(-u * 0.28, u * 1.08, u * 0.12), "size": Vector3(u * 0.22, u * 0.12, u * 0.22), "color": Color(0.92, 0.9, 0.82)},
+		{"center": Vector3(u * 0.22, u * 1.06, -u * 0.18), "size": Vector3(u * 0.18, u * 0.1, u * 0.18), "color": Color(0.92, 0.9, 0.82)},
+	]
+
+
+static func _fence_boxes(u: float) -> Array:
+	var wood := Color(0.45, 0.32, 0.18)
+	var dark := Color(0.32, 0.22, 0.12)
+	var post_h := u * 1.35
+	var span := u * 1.7
+	return [
+		{"center": Vector3(-span, post_h * 0.5, 0), "size": Vector3(u * 0.28, post_h, u * 0.28), "color": dark},
+		{"center": Vector3(span, post_h * 0.5, 0), "size": Vector3(u * 0.28, post_h, u * 0.28), "color": dark},
+		{"center": Vector3(0, post_h * 0.42, 0), "size": Vector3(span * 2.0, u * 0.18, u * 0.16), "color": wood},
+		{"center": Vector3(0, post_h * 0.78, 0), "size": Vector3(span * 2.0, u * 0.16, u * 0.14), "color": wood},
+	]
+
+
 static func model_height(node: Node3D) -> float:
 	if node == null:
 		return 0.0

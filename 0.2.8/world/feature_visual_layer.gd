@@ -10,6 +10,7 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _PoiScatter = preload("res://world/poi_scatter.gd")
+const _PropScatter = preload("res://world/prop_scatter.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
@@ -30,6 +31,7 @@ var _stream_ready_us: int = 0
 var _stream_ready_max_us: int = 0
 var _stream_populate_n: int = 0
 var _stream_populate_us: int = 0
+var _props_per_chunk: int = 12
 
 
 func _ready() -> void:
@@ -187,6 +189,8 @@ func repopulate_all() -> void:
 func apply_performance_config(cfg) -> void:
 	if cfg == null:
 		return
+	if "props_per_chunk" in cfg:
+		_props_per_chunk = maxi(int(cfg.props_per_chunk), 0)
 	if _registry:
 		_registry.apply_performance_config(cfg)
 	if "feature_billboards_enabled" in cfg and not bool(cfg.feature_billboards_enabled):
@@ -340,7 +344,45 @@ func _populate_chunk(coord: Vector2i) -> void:
 		if placed >= budget:
 			break
 
+	_append_scatter_props(coord, chunk_nodes)
 	_nodes_by_chunk[coord] = chunk_nodes
+
+
+func _prop_budget() -> int:
+	if not _PropScatter.ENABLED:
+		return 0
+	if is_inside_tree():
+		var perf = get_tree().get_first_node_in_group("performance_service")
+		if perf != null and "quality" in perf and perf.quality != null and "props_per_chunk" in perf.quality:
+			return maxi(int(perf.quality.props_per_chunk), 0)
+	return maxi(_props_per_chunk, 0)
+
+
+func _append_scatter_props(coord: Vector2i, chunk_nodes: Array) -> void:
+	_bind_layer_roots()
+	if _vegetation_root == null:
+		return
+	var budget := _prop_budget()
+	if budget <= 0:
+		return
+	if world == null and is_inside_tree():
+		world = get_tree().get_first_node_in_group("world") as InfiniteNoiseWorld
+	var seed_value := 0
+	if world != null:
+		seed_value = int(world.world_seed)
+	var spots: Array[Dictionary] = _PropScatter.for_chunk(seed_value, coord.x, coord.y, budget, world)
+	for spot in spots:
+		var cell: Vector2i = spot.get("cell", Vector2i.ZERO)
+		if _nodes_by_cell.has(cell):
+			continue
+		var kind := str(spot.get("kind", "rock"))
+		var prop := _VoxelPropBuilder.build_scatter_prop(kind)
+		prop.set_meta("prop_kind", kind)
+		prop.add_to_group("scatter_prop")
+		prop.rotation.y = deg_to_rad(float(int(spot.get("yaw", 0))))
+		prop.position = _anchor_pos(float(cell.x) + 0.5, float(cell.y) + 0.5, 0.0)
+		_vegetation_root.add_child(prop)
+		chunk_nodes.append(prop)
 
 
 func _is_poi_visual(feat: Dictionary) -> bool:
