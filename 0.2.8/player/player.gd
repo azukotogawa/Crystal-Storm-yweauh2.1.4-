@@ -308,6 +308,7 @@ func _ready():
 	var natural := world.get_surface_height(spawn_x, spawn_z) if world else 0.0
 	_floor_probe.feet_height_hint = natural + _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
+	_pull_level_rewards()
 	max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
 	health = max_health
 	_publish_health()
@@ -908,6 +909,14 @@ func _resolve_spawn_column() -> Vector2i:
 
 func get_stat(stat_id: StringName) -> float:
 	return stat_component.get_stat(stat_id) if stat_component else 0.0
+
+
+func _pull_level_rewards() -> void:
+	if stat_component == null or not is_inside_tree():
+		return
+	var svc := get_tree().get_first_node_in_group("progression_service")
+	if svc and svc.has_method("apply_level_rewards"):
+		svc.apply_level_rewards(stat_component)
 
 
 func _publish_health() -> void:

@@ -21,6 +21,7 @@ func _run() -> void:
 	_check_registered()
 	_check_source_amounts()
 	_check_source_wiring()
+	await _check_level_rewards()
 	await _check_live_sources()
 	if _failed == 0:
 		print("All progression tests OK")
@@ -56,7 +57,7 @@ func _check_level_up() -> void:
 	svc.level_up.connect(func(lv: int) -> void: ups.append(lv))
 	svc.add_xp(0)
 	svc.add_xp(-3)
-	if svc.xp != 0 or svc.level != 1 or not gained.is_empty() or not ups.is_empty():
+	if svc.xp != 0 or svc.level != 1 or svc.skill_points != 0 or not gained.is_empty() or not ups.is_empty():
 		_fail("non-positive xp must not move the bar")
 		return
 	svc.add_xp(49)
@@ -64,7 +65,7 @@ func _check_level_up() -> void:
 		_fail("49 xp should stay level 1, got level %d xp %d" % [svc.level, svc.xp])
 		return
 	svc.add_xp(1)
-	if svc.level != 2 or svc.xp != 0 or ups != [2]:
+	if svc.level != 2 or svc.xp != 0 or svc.skill_points != 1 or ups != [2]:
 		_fail("50 xp should reach level 2, got level %d xp %d ups %s" % [svc.level, svc.xp, str(ups)])
 		return
 	var fresh = _Progression.new()
@@ -72,12 +73,12 @@ func _check_level_up() -> void:
 	fresh.level_up.connect(func(lv: int) -> void: multi.append(lv))
 	var into_3 := _Progression.xp_to_advance(1) + _Progression.xp_to_advance(2)
 	fresh.add_xp(into_3)
-	if fresh.level != 3 or fresh.xp != 0 or multi != [2, 3]:
+	if fresh.level != 3 or fresh.xp != 0 or fresh.skill_points != 2 or multi != [2, 3]:
 		_fail("stacked grant should reach level 3, got level %d xp %d ups %s" % [fresh.level, fresh.xp, str(multi)])
 		return
 	var spare := _Progression.xp_to_advance(3) - 1
 	fresh.add_xp(spare)
-	if fresh.level != 3 or fresh.xp != spare:
+	if fresh.level != 3 or fresh.xp != spare or fresh.skill_points != 2:
 		_fail("remainder under the next threshold drifted")
 		return
 	print("OK level-up")
@@ -208,10 +209,87 @@ func _check_live_sources() -> void:
 	if gm.ruins_discovered != 1 or gm.pois_discovered != 1 or gm.blocks_mined != 4:
 		_fail("discovery or mine counters drifted")
 		return
-	if svc.level != expect_level or svc.xp != remain:
-		_fail("source total drifted, level %d xp %d want level %d xp %d" % [svc.level, svc.xp, expect_level, remain])
+	if svc.level != expect_level or svc.xp != remain or svc.skill_points != expect_level - 1:
+		_fail("source total drifted, level %d xp %d points %d want level %d xp %d" % [svc.level, svc.xp, svc.skill_points, expect_level, remain])
 		return
 	print("OK xp source grants")
+
+
+func _check_level_rewards() -> void:
+	var stats_script = load("res://stats/stat_component.gd")
+	var relic_script = load("res://relics/relic_manager.gd")
+	var ids = load("res://stats/stat_ids.gd")
+	var player := Node3D.new()
+	player.name = "Player"
+	var stats = stats_script.new()
+	stats.name = "StatComponent"
+	player.add_child(stats)
+	var relics = relic_script.new()
+	relics.name = "RelicManager"
+	player.add_child(relics)
+	root.add_child(player)
+	player.add_to_group("player")
+	var svc = _Progression.new()
+	root.add_child(svc)
+	for _i in 8:
+		await process_frame
+		if stats.sheet != null and relics.get("_stat_component") != null:
+			break
+	if stats.sheet == null:
+		_fail("stat sheet was not ready for level rewards")
+		return
+	if not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0):
+		_fail("level 1 max health drifted")
+		return
+	if svc.skill_points != 0 or not svc.level_reward_modifiers().is_empty():
+		_fail("level 1 must store no reward")
+		return
+	svc.add_xp(_Progression.xp_to_advance(1))
+	if svc.level != 2 or svc.skill_points != 1:
+		_fail("first level reward did not store a skill point")
+		return
+	if not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0 + _Progression.HP_PER_LEVEL):
+		_fail("level 2 max health is %s" % stats.get_stat(ids.MAX_HEALTH))
+		return
+	if not is_equal_approx(stats.get_stat(ids.MELEE_DAMAGE), 1.0 + _Progression.DAMAGE_PER_LEVEL):
+		_fail("level 2 melee damage drifted")
+		return
+	if not is_equal_approx(stats.get_stat(ids.RANGED_DAMAGE), 1.0 + _Progression.DAMAGE_PER_LEVEL):
+		_fail("level 2 ranged damage drifted")
+		return
+	if not is_equal_approx(stats.get_stat(ids.DIG_SPEED), 1.0 + _Progression.DIG_SPEED_PER_LEVEL):
+		_fail("level 2 dig speed drifted")
+		return
+	svc.apply_level_rewards(stats)
+	if not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0 + _Progression.HP_PER_LEVEL):
+		_fail("applying the level reward twice stacked max health")
+		return
+	if not relics.equip(&"mason_glove"):
+		_fail("mason glove did not equip beside the level reward")
+		return
+	var dig_with_glove := (1.0 + _Progression.DIG_SPEED_PER_LEVEL) * 1.35
+	if not is_equal_approx(stats.get_stat(ids.DIG_SPEED), dig_with_glove):
+		_fail("dig speed did not keep the relic and the level reward, got %s" % stats.get_stat(ids.DIG_SPEED))
+		return
+	svc.add_xp(_Progression.xp_to_advance(2))
+	var two := 2.0
+	if svc.skill_points != 2:
+		_fail("second level did not store another skill point")
+		return
+	if not is_equal_approx(stats.get_stat(ids.MAX_HEALTH), 100.0 + _Progression.HP_PER_LEVEL * two):
+		_fail("two levels of max health drifted")
+		return
+	if not is_equal_approx(stats.get_stat(ids.MELEE_DAMAGE), 1.0 + _Progression.DAMAGE_PER_LEVEL * two):
+		_fail("two levels of damage drifted")
+		return
+	if not is_equal_approx(stats.get_stat(ids.DIG_SPEED), (1.0 + _Progression.DIG_SPEED_PER_LEVEL * two) * 1.35):
+		_fail("two levels of dig speed dropped the relic")
+		return
+	root.remove_child(player)
+	player.free()
+	root.remove_child(svc)
+	svc.free()
+	print("OK level rewards")
 
 
 class _CrystalStub extends Node:
