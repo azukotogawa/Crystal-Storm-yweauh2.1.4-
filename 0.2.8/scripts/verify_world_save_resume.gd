@@ -9,6 +9,7 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _Inventory = preload("res://inventory/inventory.gd")
 const _Player = preload("res://player/player.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 const WORLD_ID := "verify_resume_tmp"
 
@@ -77,6 +78,10 @@ class StubEnemies extends Node:
 
 func _init() -> void:
 	call_deferred("_run")
+
+
+func _shot(step_name: String) -> void:
+	await _Capture.capture_step(step_name)
 
 
 func _fail(msg: String) -> void:
@@ -234,6 +239,7 @@ func _run() -> void:
 		else:
 			_fail("continue file did not parse")
 
+	await _shot("save-alive-quit")
 	await _assert_menu_continue_loads(svc, player, entities, enemies)
 
 	player.health = 0.0
@@ -242,6 +248,7 @@ func _run() -> void:
 		_fail("dead quit must drop continue")
 	else:
 		print("OK dead quit drops continue")
+	await _shot("continue-dead")
 	var closed_script: GDScript = load("res://ui/frontend_root.gd") as GDScript
 	var closed: Control = closed_script.new()
 	root.add_child(closed)
@@ -253,6 +260,7 @@ func _run() -> void:
 		_fail("arm_continue_launch must reject a missing snapshot")
 	else:
 		print("OK Continue disabled without a snapshot")
+	await _shot("continue-disabled")
 	closed.queue_free()
 
 	_WorldManager.request_return_to_select()
@@ -337,6 +345,7 @@ func _assert_menu_continue_loads(svc: Node, player, entities, enemies) -> void:
 	if player.apply_count == 0:
 		_fail("continue load did not apply after spawn")
 		_SaveGameService.pending_continue = false
+		await _shot("continue-restore")
 		return
 	if not is_equal_approx(player.voxel_position.x, 18.0) or not is_equal_approx(player.voxel_position.z, 3.0):
 		_fail("continue load lost player position %s" % player.voxel_position)
@@ -364,6 +373,7 @@ func _assert_menu_continue_loads(svc: Node, player, entities, enemies) -> void:
 			_fail("continue load lost crystal enemies")
 		else:
 			print("OK continue load restores the alive snapshot")
+	await _shot("continue-restore")
 	_SaveGameService.pending_continue = false
 
 

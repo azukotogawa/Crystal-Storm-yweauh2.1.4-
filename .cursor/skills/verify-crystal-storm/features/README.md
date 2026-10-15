@@ -22,6 +22,7 @@ Maintained source for verifying Crystal Storm's player-facing behavior. Read thi
 - Quote the `OK …`/`FAIL …` lines and `# exit=` from `/mnt/d/csmerge/verify-evidence/$RUN_ID/feature-<name>.log`.
 - Mutations (dig, water spread, save) must show the stored result read back: height delta, wet cell count, reloaded snapshot.
 - Visual-only behavior (textures, animation, camera feel) cannot be proven headless. Report it as unverified, never as passed via a suite.
+- Each sub-feature slug is a named step. The suite `await`s `ProbeCapture.capture_step(slug)` when that step finishes. Headless and other non-rendering runs skip the png and still pass. `record` keeps the window, so the png lands in `<evidence>/<run-id>/steps/`.
 - An unreachable path gets the attempted command plus the unmet precondition.
 
 ## Feature entry contract

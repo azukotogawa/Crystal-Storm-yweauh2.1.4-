@@ -12,6 +12,31 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
+
+const _NAMED_SHOTS := {
+	"Bootstrap OK": ["boot"],
+	"Dig OK": ["dig", "dig-mesh"],
+	"Dig FAIL": ["dig", "dig-mesh"],
+	"Entities OK": ["entities"],
+	"Entities FAIL": ["entities"],
+	"Combat OK": ["combat"],
+	"Combat FAIL": ["combat"],
+	"Combat VFX OK": ["combat-vfx"],
+	"Combat VFX FAIL": ["combat-vfx"],
+	"Vegetation OK": ["vegetation"],
+	"Vegetation FAIL": ["vegetation"],
+	"Streaming OK": ["streaming"],
+	"Streaming FAIL": ["streaming"],
+	"Jump OK": ["jump"],
+	"Jump FAIL": ["jump"],
+	"Ramp OK": ["ramp"],
+	"Ramp FAIL": ["ramp"],
+	"Crystal edge OK": ["crystal-edge"],
+	"Crystal edge FAIL": ["crystal-edge"],
+	"Session OK": ["session"],
+	"Session FAIL": ["session"],
+}
 
 
 func _init() -> void:
@@ -21,6 +46,27 @@ func _init() -> void:
 
 func _force_fail_mode() -> String:
 	return OS.get_environment("SMOKE_FORCE_FAIL").strip_edges().to_lower()
+
+
+func _note(lines: PackedStringArray, line: String) -> void:
+	lines.append(line)
+	var key := _step_key(line)
+	if not _NAMED_SHOTS.has(key):
+		return
+	for step_name in _NAMED_SHOTS[key]:
+		await _Capture.capture_step(str(step_name))
+
+
+func _step_key(line: String) -> String:
+	if line.begins_with("- Bootstrap OK"):
+		return "Bootstrap OK"
+	var open := line.find("**")
+	if open < 0:
+		return ""
+	var close := line.find("**", open + 2)
+	if close < 0:
+		return ""
+	return line.substr(open + 2, close - open - 2)
 
 
 func _run() -> void:
@@ -40,6 +86,7 @@ func _run() -> void:
 	var main_packed: PackedScene = load(MAIN_SCENE) as PackedScene
 	if main_packed == null:
 		lines.append("## Bootstrap FAIL — could not load main scene")
+		await _Capture.capture_step("boot")
 		await _finish(lines, true)
 		return
 
@@ -77,6 +124,7 @@ func _run() -> void:
 
 	if player == null or chunk_manager == null or terrain == null:
 		lines.append("## Bootstrap FAIL — timeout waiting for playable state")
+		await _Capture.capture_step("boot")
 		await _finish(lines, true)
 		return
 
@@ -87,12 +135,12 @@ func _run() -> void:
 		await process_frame
 
 	lines.append("## P0 — Runtime")
-	lines.append("- Bootstrap OK: player, chunk_manager, terrain_editor, crystal_manager ready.")
+	await _note(lines, "- Bootstrap OK: player, chunk_manager, terrain_editor, crystal_manager ready.")
 
 	if _force_fail_mode() == "1":
 		lines.append("")
 		lines.append("## P0 — Forced fail (quit-path harness)")
-		lines.append("- **Dig FAIL**: SMOKE_FORCE_FAIL=1")
+		await _note(lines, "- **Dig FAIL**: SMOKE_FORCE_FAIL=1")
 		await _finish(lines, true)
 		return
 
@@ -108,10 +156,10 @@ func _run() -> void:
 	if weapon != null and not pick_def.is_empty() and weapon.has_method("_do_dig_attack") and weapon.has_method("_resolve_terrain_target"):
 		aimed = await _aim_dry_dig_column(player, world, chunk_manager, terrain, crystal, weapon, range_v)
 	if weapon == null or pick_def.is_empty() or not weapon.has_method("_do_dig_attack"):
-		lines.append("- **Dig FAIL**: WeaponController missing dig API")
+		await _note(lines, "- **Dig FAIL**: WeaponController missing dig API")
 		failed = true
 	elif aimed == Vector3.ZERO:
-		lines.append("- **Dig FAIL**: no dry column in interaction range (river and water-adjacent cells are not height edits)")
+		await _note(lines, "- **Dig FAIL**: no dry column in interaction range (river and water-adjacent cells are not height edits)")
 		failed = true
 	else:
 		dig_wx = floori(aimed.x)
@@ -129,18 +177,18 @@ func _run() -> void:
 		var mesh_ok := mesh_sy >= 0.0 and mesh_sy < before_h - 0.01 and absf(mesh_sy - after_h) < 0.2
 		dug = delta < -0.01 and after_h < before_h - 0.01 and mesh_ok
 		if dug:
-			lines.append(
+			await _note(lines,
 				"- **Dig OK**: WeaponController column (%d,%d) %.2f→%.2f delta=%.2f; chunk mesh surface_y=%.2f corroborates visible terrain edit."
 				% [dig_wx, dig_wz, before_h, after_h, delta, mesh_sy]
 			)
 		elif delta < -0.01 and after_h < before_h - 0.01:
-			lines.append(
+			await _note(lines,
 				"- **Dig FAIL**: data lowered but chunk mesh mismatch mesh_sy=%.2f after=%.2f at (%d,%d)."
 				% [mesh_sy, after_h, dig_wx, dig_wz]
 			)
 			failed = true
 		else:
-			lines.append("- **Dig FAIL**: target_col=(%d,%d) before=%.2f after=%.2f delta=%.2f mesh_sy=%.2f" % [
+			await _note(lines, "- **Dig FAIL**: target_col=(%d,%d) before=%.2f after=%.2f delta=%.2f mesh_sy=%.2f" % [
 				dig_wx, dig_wz, before_h, after_h, delta, mesh_sy
 			])
 			failed = true
@@ -184,11 +232,11 @@ func _run() -> void:
 		if sprite_stats.visible >= 1:
 			break
 	if sprite_stats.visible >= 1:
-		lines.append("- **Entities OK**: %d/%d textured billboard sprites (EntityManager spawn at %s)." % [
+		await _note(lines, "- **Entities OK**: %d/%d textured billboard sprites (EntityManager spawn at %s)." % [
 			sprite_stats.visible, sprite_stats.total, test_cell
 		])
 	else:
-		lines.append("- **Entities FAIL**: %d/%d textured sprites after EntityManager spawn." % [
+		await _note(lines, "- **Entities FAIL**: %d/%d textured sprites after EntityManager spawn." % [
 			sprite_stats.visible, sprite_stats.total
 		])
 		failed = true
@@ -226,9 +274,9 @@ func _run() -> void:
 		var hp_after: float = float(spawned_entity.get("health"))
 		melee_entity_ok = hp_after < hp_before - 0.01
 	if melee_entity_ok:
-		lines.append("- **Combat OK**: melee damaged spawned world_entity (HP reduced).")
+		await _note(lines, "- **Combat OK**: melee damaged spawned world_entity (HP reduced).")
 	else:
-		lines.append("- **Combat FAIL**: melee did not reduce spawned entity health.")
+		await _note(lines, "- **Combat FAIL**: melee did not reduce spawned entity health.")
 		failed = true
 
 	lines.append("")
@@ -247,11 +295,11 @@ func _run() -> void:
 			await process_frame
 	var veg_stats := _SmokeProbeHelpers.count_vegetation(visuals)
 	if veg_stats.textured >= 1:
-		lines.append("- **Vegetation OK**: %d/%d billboards textured (material-bound, not gray placeholder)." % [
+		await _note(lines, "- **Vegetation OK**: %d/%d billboards textured (material-bound, not gray placeholder)." % [
 			veg_stats.textured, veg_stats.total
 		])
 	else:
-		lines.append("- **Vegetation FAIL**: %d billboards, %d textured." % [veg_stats.total, veg_stats.textured])
+		await _note(lines, "- **Vegetation FAIL**: %d billboards, %d textured." % [veg_stats.total, veg_stats.textured])
 		failed = true
 
 	lines.append("")
@@ -271,12 +319,12 @@ func _run() -> void:
 	var chunks_after: int = chunk_manager.chunks.size()
 	var stream_audit := _SmokeProbeHelpers.audit_loaded_chunks(chunk_manager)
 	if chunks_after >= chunks_before and stream_audit.ok:
-		lines.append(
+		await _note(lines,
 			"- **Streaming OK**: chunks %d→%d after inward column move; %d loaded views with mesh instances, no holes."
 			% [chunks_before, chunks_after, stream_audit.total]
 		)
 	else:
-		lines.append(
+		await _note(lines,
 			"- **Streaming FAIL**: chunks %d→%d invalid=%d empty_mesh=%d missing_surface=%d"
 			% [
 				chunks_before, chunks_after,
@@ -336,11 +384,11 @@ func _run() -> void:
 	Input.action_release("ui_right")
 	jump_ok = air_seen and landed and moved
 	if jump_ok:
-		lines.append("- **Jump OK**: jump input + ui_right; air state seen, landed grounded, moved %.2f cols." % [
+		await _note(lines, "- **Jump OK**: jump input + ui_right; air state seen, landed grounded, moved %.2f cols." % [
 			float(player.get("voxel_position").x) - start_x
 		])
 	else:
-		lines.append("- **Jump FAIL**: jump input air=%s landed=%s moved=%s." % [air_seen, landed, moved])
+		await _note(lines, "- **Jump FAIL**: jump input air=%s landed=%s moved=%s." % [air_seen, landed, moved])
 		failed = true
 
 	lines.append("")
@@ -355,7 +403,7 @@ func _run() -> void:
 		var direct_vfx := _SmokeProbeHelpers.combat_vfx_active(combat_vfx)
 		if direct_vfx.ok:
 			vfx_ok = true
-			lines.append(
+			await _note(lines,
 				"- **Combat VFX OK**: damage label visible (%d labels, %d burst sprites after show_damage_column)."
 				% [direct_vfx.damage_labels, direct_vfx.burst_sprites]
 			)
@@ -375,12 +423,12 @@ func _run() -> void:
 		var hit_vfx := _SmokeProbeHelpers.combat_vfx_active(combat_vfx)
 		if hit_vfx.ok:
 			vfx_ok = true
-			lines.append(
+			await _note(lines,
 				"- **Combat VFX OK**: melee entity_hit produced VFX (%d labels, %d burst sprites)."
 				% [hit_vfx.damage_labels, hit_vfx.burst_sprites]
 			)
 	if not vfx_ok:
-		lines.append("- **Combat VFX FAIL**: no visible damage labels or burst sprites after hit.")
+		await _note(lines, "- **Combat VFX FAIL**: no visible damage labels or burst sprites after hit.")
 		failed = true
 
 	lines.append("")
@@ -391,16 +439,16 @@ func _run() -> void:
 	)
 	var layer_h: float = _WorldSettings.get_active().layer_height()
 	if concave_h >= 12.0 + layer_h * 0.5:
-		lines.append("- **Ramp OK**: concave walkable=%.2f above carved floor (probe math)." % concave_h)
+		await _note(lines, "- **Ramp OK**: concave walkable=%.2f above carved floor (probe math)." % concave_h)
 	else:
-		lines.append("- **Ramp FAIL**: concave walkable too low %.2f" % concave_h)
+		await _note(lines, "- **Ramp FAIL**: concave walkable too low %.2f" % concave_h)
 		failed = true
 	if probe != null and probe.has_method("sample_walkable_feet"):
 		var feet: float = probe.sample_walkable_feet(float(test_cell.x) + 0.5, float(test_cell.y) + 0.5)
 		if feet > 0.0:
-			lines.append("- **Ramp OK**: floor probe feet=%.2f at entity spawn column." % feet)
+			await _note(lines, "- **Ramp OK**: floor probe feet=%.2f at entity spawn column." % feet)
 		else:
-			lines.append("- **Ramp FAIL**: floor probe returned non-positive feet height.")
+			await _note(lines, "- **Ramp FAIL**: floor probe returned non-positive feet height.")
 			failed = true
 
 	lines.append("")
@@ -409,18 +457,18 @@ func _run() -> void:
 	var depth_far: float = crystal.get_depth_at(far_cell.x, far_cell.y) if crystal else 0.0
 	var loaded_far: bool = chunk_manager.is_world_cell_loaded(far_cell.x, far_cell.y) if chunk_manager.has_method("is_world_cell_loaded") else false
 	if not loaded_far and depth_far <= 0.01:
-		lines.append("- **Crystal edge OK**: far cell (%d,%d) unloaded, depth=%.2f." % [far_cell.x, far_cell.y, depth_far])
+		await _note(lines, "- **Crystal edge OK**: far cell (%d,%d) unloaded, depth=%.2f." % [far_cell.x, far_cell.y, depth_far])
 	else:
-		lines.append("- **Crystal edge FAIL**: far loaded=%s depth=%.2f (expected unloaded+zero)." % [loaded_far, depth_far])
+		await _note(lines, "- **Crystal edge FAIL**: far loaded=%s depth=%.2f (expected unloaded+zero)." % [loaded_far, depth_far])
 		failed = true
 	var cells_before: int = crystal.covered_cells if "covered_cells" in crystal else 0
 	for _w in 30:
 		await process_frame
 	var cells_after: int = crystal.covered_cells if "covered_cells" in crystal else 0
 	if cells_after >= cells_before:
-		lines.append("- **Crystal edge OK**: sim tick stable cells %d→%d near player bubble." % [cells_before, cells_after])
+		await _note(lines, "- **Crystal edge OK**: sim tick stable cells %d→%d near player bubble." % [cells_before, cells_after])
 	else:
-		lines.append("- **Crystal edge FAIL**: cell count dropped unexpectedly.")
+		await _note(lines, "- **Crystal edge FAIL**: cell count dropped unexpectedly.")
 		failed = true
 
 	lines.append("")
@@ -486,7 +534,7 @@ func _run() -> void:
 		and post_veg.textured >= 1
 	)
 	if session_ok:
-		lines.append(
+		await _note(lines,
 			"- **Session OK**: %.1fs / %.0fs target, %d frames, digs=%d jumps=%d attacks=%d; post-audit chunks=%d entities_peak=%d vegetation=%d."
 			% [
 				elapsed_sec, session_sec, session_frames, session_digs, session_jumps, session_attacks,
@@ -494,7 +542,7 @@ func _run() -> void:
 			]
 		)
 	else:
-		lines.append(
+		await _note(lines,
 			"- **Session FAIL**: elapsed=%.1fs target=%.0fs frames=%d audit_ok=%s entities_peak=%d veg=%d invalid=%d empty=%d."
 			% [
 				elapsed_sec, session_sec, session_frames, post_audit.ok,

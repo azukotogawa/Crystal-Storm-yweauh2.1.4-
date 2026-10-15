@@ -2,8 +2,17 @@ extends SceneTree
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 func _init() -> void:
+	call_deferred("_run")
+
+
+func _shot(step_name: String) -> void:
+	await _Capture.capture_step(step_name)
+
+
+func _run() -> void:
 	var failed := false
 	for path in [
 		"res://world/terrain_editor.gd",
@@ -32,6 +41,7 @@ func _init() -> void:
 		failed = true
 	else:
 		print("OK terrain dig delta=", _TerrainEdits.get_height_delta(4, 6))
+	await _shot("dig-delta")
 
 	var world_scr = load("res://world/InfiniteNoiseWorld.gd")
 	var world = world_scr.new()
@@ -43,6 +53,7 @@ func _init() -> void:
 		failed = true
 	else:
 		print("OK dig lowers surface natural=", natural, " edited=", edited)
+	await _shot("dig-surface")
 
 	var concave_h := TerrainRamps.walkable_height_from_entry(
 		world,

@@ -6,6 +6,7 @@ const _Builder = preload("res://systems/topographical_map_builder.gd")
 const _MapConfig = preload("res://config/topographical_map_config.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _Quality = preload("res://config/performance_quality_config.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 var _failed := false
 
@@ -19,13 +20,19 @@ func _fail(msg: String) -> void:
 	_failed = true
 
 
+func _shot(step_name: String) -> void:
+	await _Capture.capture_step(step_name)
+
+
 func _run() -> void:
 	_GameplayInput.map_open = false
 	_GameplayInput.pause_open = false
 	_GameplayInput.dev_chat_open = false
 	_GameplayInput.world_loading = false
 	_check_binding()
+	await _shot("map-binding")
 	_check_builder_extent()
+	await _shot("map-coverage")
 	await _check_ui()
 	_GameplayInput.map_open = false
 	_GameplayInput.pause_open = false
@@ -88,6 +95,7 @@ func _check_ui() -> void:
 	var hint: Label = map._map_key_hint
 	if panel == null or hint == null:
 		_fail("fullscreen panel or M hint missing")
+		await _shot("map-open")
 		map.queue_free()
 		await process_frame
 		return
@@ -119,6 +127,7 @@ func _check_ui() -> void:
 			_fail("queued full map is not the fullscreen size")
 		else:
 			print("OK M opens the full map and blocks actions")
+	await _shot("map-open")
 
 	if map.toggle_fullscreen_map():
 		_fail("second toggle should close the map")
@@ -128,6 +137,7 @@ func _check_ui() -> void:
 		_fail("closed map should release the mouse and z order")
 	else:
 		print("OK second toggle closes the map")
+	await _shot("map-close")
 
 	map.toggle_fullscreen_map()
 	_GameplayInput.pause_open = true
@@ -163,6 +173,7 @@ func _check_ui() -> void:
 		_fail("safe mode should keep the full map closed")
 	else:
 		print("OK safe mode closes the full map")
+	await _shot("map-auto-close")
 
 	var ev := InputEventKey.new()
 	ev.physical_keycode = KEY_M

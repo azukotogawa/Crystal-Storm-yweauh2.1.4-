@@ -3,6 +3,7 @@ extends SceneTree
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 const CAT := "user://worlds_test_frontend_flow/catalog.json"
 const SEED_COLD := 880021
@@ -26,6 +27,10 @@ func _fail(msg: String) -> void:
 
 func _ok(msg: String) -> void:
 	print("OK %s" % msg)
+
+
+func _shot(step_name: String) -> void:
+	await _Capture.capture_step(step_name)
 
 
 func _wipe_dir(rel: String) -> void:
@@ -117,6 +122,7 @@ func _run() -> void:
 	_WorldBakeService.ensure_active().delete_bake(SEED_INC, -1)
 	_WorldManager.reset_paths()
 	_wipe_dir("user://worlds_test_frontend_flow")
+	await _shot("frontend-catalog")
 	_finish()
 
 

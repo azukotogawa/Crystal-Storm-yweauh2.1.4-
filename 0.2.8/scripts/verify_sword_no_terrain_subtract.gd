@@ -4,9 +4,14 @@ extends SceneTree
 const _Inventory = preload("res://inventory/inventory.gd")
 const _WeaponController = preload("res://weapons/weapon_controller.gd")
 const _PlaceableCatalog = preload("res://helpers/placeable_catalog.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 
 func _init() -> void:
+	call_deferred("_run")
+
+
+func _run() -> void:
 	var failed := false
 	var src := (_WeaponController as GDScript).source_code
 	if "_is_active_combat_weapon" not in src:
@@ -65,7 +70,9 @@ func _init() -> void:
 		print("OK stone is neither a combat weapon nor a dig tool")
 
 	weapon.free()
+	await _Capture.capture_step("dig-sword-guard")
 	if failed:
 		quit(1)
+		return
 	print("All sword-no-terrain-subtract tests OK")
 	quit(0)

@@ -9,6 +9,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _Capture = preload("res://helpers/probe_capture.gd")
 
 
 var _failed: int = 0
@@ -21,6 +22,10 @@ func _init() -> void:
 func _fail(msg: String) -> void:
 	_failed += 1
 	push_error(msg)
+
+
+func _shot(step_name: String) -> void:
+	await _Capture.capture_step(step_name)
 
 
 func _run() -> void:
@@ -71,6 +76,7 @@ func _run() -> void:
 		_fail("body surface_y want %.2f got %.2f" % [src_top, sy])
 	else:
 		print("OK flood from river source surface_y=%.2f" % sy)
+	await _shot("water-flood")
 
 	_TerrainEdits.dig(4, 2, 1)
 	svc.call("recompute_region_now", 4, 2, 2, 8)
@@ -83,6 +89,7 @@ func _run() -> void:
 		_fail("connected wet cells must share surface_y %.2f vs %.2f" % [sy, sy2])
 	else:
 		print("OK propagation same surface_y")
+	await _shot("water-level")
 
 	_TerrainEdits.build_wall(3, 2, _VoxelTypes.STONE)
 	_TerrainEdits.build_wall(4, 2, _VoxelTypes.STONE)
@@ -123,6 +130,7 @@ func _run() -> void:
 		_fail("cell two away must stay dry while the block between is solid")
 	else:
 		print("OK blocked trench stays dry")
+	await _shot("water-dry")
 	tiles[Vector2i(3, 2)] = _VoxelTypes.RIVER
 	query.test_tiles = tiles
 	svc.call("requeue_neighbors_on_edit", 3, 2)
@@ -178,6 +186,7 @@ func _run() -> void:
 		_fail("long gap must not wet same-height ground")
 	elif chain_wet == 9:
 		print("OK full gap filled across follow-up ticks cells=%d" % chain_wet)
+	await _shot("water-gap-fill")
 
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
