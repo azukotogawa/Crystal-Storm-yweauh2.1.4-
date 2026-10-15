@@ -359,7 +359,6 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 	elif bool(job.get("channel_overlay", false)) and _ChannelRegistry.is_channel(wx, wz):
 		color = color.lerp(cfg.color_channel, 0.8)
 
-	# Intentional map edge: ocean/mountain borders + rim at playable half.
 	color = _apply_border_map_style(color, wx, wz, tile, cfg)
 
 	cache[key] = color
@@ -367,7 +366,6 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 	return _apply_crystal_tint(color, job, key)
 
 
-## Ocean rim / mountain wall read as deliberate map edges (not infinite noise).
 static func _apply_border_map_style(
 	base: Color, wx: int, wz: int, tile: int, cfg: _TopographicalMapConfig
 ) -> Color:
@@ -387,7 +385,6 @@ static func _apply_border_map_style(
 			color = color.lerp(cfg.color_ocean, 0.35)
 		elif _WorldBorder.is_border_mountain_tile(tile):
 			color = color.lerp(cfg.color_mountain, 0.3)
-	# Crisp rim just inside/outside the playable rectangle.
 	var rim: float = _WorldBorder.map_edge_rim_strength(float(wx), float(wz), 8.0)
 	if rim > 0.001:
 		var rim_color := Color(0.04, 0.05, 0.08, 1.0)

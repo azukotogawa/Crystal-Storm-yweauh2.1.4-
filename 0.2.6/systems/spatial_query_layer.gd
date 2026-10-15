@@ -1,9 +1,6 @@
 class_name SpatialQueryLayer
 extends RefCounted
-## Authoritative spatial discovery index. Indexes and returns references only — no gameplay.
-## Steady-state queries use a uniform grid (not full linear scans over all instances).
 
-## Typed categories (bit flags for multi-category queries).
 const CAT_TERRAIN := 1
 const CAT_CRYSTAL := 2
 const CAT_FLUID := 4
@@ -29,20 +26,19 @@ const CATEGORY_NAMES := {
 var cell_size: float = 8.0
 var chunk_size: int = 16
 
-## Instrumentation (for perf verifies / diagnostics).
 var cells_visited: int = 0
 var entries_examined: int = 0
 var query_count: int = 0
 
 var _next_id: int = 1
-var _entries: Dictionary = {}  # id -> Dictionary
-var _grid: Dictionary = {}  # Vector2i cell -> Dictionary of id -> true
-var _by_category: Dictionary = {}  # category int -> Dictionary of id -> true
-var _chunk_objects: Dictionary = {}  # Vector2i chunk -> Dictionary of id -> true
-var _loaded_chunks: Dictionary = {}  # Vector2i -> true
-var _static_ids: Dictionary = {}  # id -> true
-var _dynamic_ids: Dictionary = {}  # id -> true
-var _payload_to_id: Dictionary = {}  # instance_id (int) or stable string -> id
+var _entries: Dictionary = {}
+var _grid: Dictionary = {}
+var _by_category: Dictionary = {}
+var _chunk_objects: Dictionary = {}
+var _loaded_chunks: Dictionary = {}
+var _static_ids: Dictionary = {}
+var _dynamic_ids: Dictionary = {}
+var _payload_to_id: Dictionary = {}
 
 
 func clear() -> void:
@@ -69,7 +65,6 @@ func count_category(category: int) -> int:
 	return bag.size()
 
 
-## All entries matching category mask (no spatial filter). Prefer over huge-radius queries.
 func iter_category(categories: int = CAT_ALL) -> Array:
 	var hits: Array = []
 	for id_v in _entries.keys():
@@ -95,8 +90,6 @@ func get_entry(id: int) -> Dictionary:
 	return (_entries[id] as Dictionary).duplicate(true)
 
 
-## Insert object. payload may be Node, Object, Dictionary, or null.
-## stable_key used for deterministic tie-breaking (defaults to str(id)).
 func insert(
 	category: int,
 	pos: Vector3,
@@ -168,7 +161,6 @@ func find_id_by_payload(payload) -> int:
 	return int(_payload_to_id.get(key, -1))
 
 
-## Move dynamic (or any) object; only touches old/new grid cells.
 func move(id: int, new_pos: Vector3, new_radius: float = -1.0) -> bool:
 	if not _entries.has(id):
 		return false
@@ -209,7 +201,6 @@ func is_chunk_loaded(coord: Vector2i) -> bool:
 	return _loaded_chunks.has(coord)
 
 
-## WorldState / overlay region invalidation — removes static entries whose XZ falls in AABB.
 func invalidate_region(min_xz: Vector2, max_xz: Vector2, categories: int = CAT_ALL) -> int:
 	var removed := 0
 	var to_drop: Array = []
@@ -230,16 +221,14 @@ func invalidate_region(min_xz: Vector2, max_xz: Vector2, categories: int = CAT_A
 	return removed
 
 
-## Full rebuild helper used by save restore after clear.
 func rebuild_begin() -> void:
 	clear()
 
 
 func rebuild_end() -> void:
-	pass  # reserved for future compaction
+	pass
 
 
-# ── Queries ──────────────────────────────────────────────────────────────
 
 
 func query_radius(
@@ -330,7 +319,6 @@ func query_nearest(
 ) -> Array:
 	if max_count <= 0:
 		return []
-	# Expanding ring search until enough hits or max_radius.
 	query_count += 1
 	cells_visited = 0
 	entries_examined = 0
@@ -340,7 +328,7 @@ func query_nearest(
 	if is_finite(max_radius):
 		max_ring = int(ceil(max_radius / cell_size)) + 1
 	else:
-		max_ring = 64  # safety
+		max_ring = 64
 	var seen: Dictionary = {}
 	for ring in range(0, max_ring + 1):
 		var ring_cells := _ring_cells(center_cell, ring)
@@ -365,8 +353,6 @@ func query_nearest(
 				if dist > max_radius + float(e.radius):
 					continue
 				hits.append(_hit_dict(e, dist))
-		# After each ring, if we have enough within the covered radius, can stop early
-		# once ring*cell_size covers the k-th distance.
 		if hits.size() >= max_count and ring > 0:
 			_sort_hits(hits)
 			var kth: float = float(hits[max_count - 1].distance)
@@ -379,7 +365,6 @@ func query_nearest(
 	return hits
 
 
-## Line / object raycast in XZ (Y tolerance optional). Returns hits sorted by ray parameter t.
 func query_ray(
 	origin: Vector3,
 	direction: Vector3,
@@ -395,7 +380,6 @@ func query_ray(
 	if dir.length_squared() < 0.0001:
 		return []
 	dir = dir.normalized()
-	# March grid cells along the ray.
 	var hits: Array = []
 	var seen: Dictionary = {}
 	var step := cell_size * 0.5
@@ -416,7 +400,6 @@ func query_ray(
 					continue
 				var ep: Vector3 = e.pos
 				if absf(ep.y - origin.y) > y_tolerance and y_tolerance < INF:
-					# also check against closest point on ray
 					pass
 				var to_c := ep - origin
 				var tt := to_c.x * dir.x + to_c.z * dir.z
@@ -439,7 +422,6 @@ func query_ray(
 			return ta < tb
 		return str(a.stable_key) < str(b.stable_key)
 	)
-	# Dedupe by id
 	var unique: Array = []
 	var seen_id: Dictionary = {}
 	for h in hits:
@@ -453,7 +435,6 @@ func query_ray(
 	return unique
 
 
-## Iterate all entries whose grid cell is in [min_cell, max_cell] inclusive.
 func iter_region(min_cell: Vector2i, max_cell: Vector2i, categories: int = CAT_ALL) -> Array:
 	query_count += 1
 	cells_visited = 0
@@ -476,7 +457,6 @@ func iter_region(min_cell: Vector2i, max_cell: Vector2i, categories: int = CAT_A
 	return hits
 
 
-## Objects in chunks within Chebyshev neighborhood ring of center chunk (incl. center).
 func iter_chunk_neighborhood(center_chunk: Vector2i, ring: int = 1, categories: int = CAT_ALL) -> Array:
 	query_count += 1
 	var hits: Array = []
@@ -505,7 +485,6 @@ func iter_loaded_chunks() -> Array:
 	return out
 
 
-## Intentional O(n) full scan for perf regression baseline only.
 func query_radius_linear_scan(center: Vector3, radius: float, categories: int = CAT_ALL) -> Array:
 	query_count += 1
 	entries_examined = 0
@@ -553,7 +532,6 @@ func diagnostics() -> Dictionary:
 	}
 
 
-# ── Internals ────────────────────────────────────────────────────────────
 
 
 func _pos_to_cell(pos: Vector3) -> Vector2i:

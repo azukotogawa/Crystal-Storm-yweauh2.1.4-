@@ -1,15 +1,5 @@
 extends SceneTree
-## Headless: bow, sword, and the crystal hammer must aim at the cursor column
-## the pick uses. The old melee check calls _do_melee_attack with the mouse
-## off-screen, so the swing falls back to the camera. The bow never read the
-## mouse. The 2a cursor sat about two columns off axis, inside the hammer's
-## 2.2 hit range, so a hammer that ignores a farther cursor and slams along
-## the camera still passed. The root window's get_mouse_position stays at the
-## corner under --headless. A SubViewport reports the motion pushed into it,
-## which is the position the pick reads in game. This check pushes that
-## cursor, lets the real highlight publish the column, and presses attack.
 ## The hammer press waits through the 0.62 wind-up of the 1.1 s swing.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_cursor_aim.gd
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -43,7 +33,6 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	# Root get_mouse_position ignores push_input. A bare SubViewport does not.
 	var view := SubViewport.new()
 	view.name = "AimView"
 	view.size = Vector2i(1280, 720)
@@ -105,7 +94,6 @@ func _run() -> void:
 		_finish()
 		return
 	side = side.normalized()
-	# Two columns off the camera axis, inside the sword reach (2.8).
 	var aim_voxel := Vector3(col.x + side.x * 2.0, col.y, col.z + side.z * 2.0)
 	var aim_world := Vector3(
 		ws.column_to_world(aim_voxel.x),
@@ -191,8 +179,6 @@ func _run() -> void:
 	_finish()
 
 
-## Cursor sits past the hammer's 2.2 hit range and inside the pick's reach.
-## The slam still has to face that cursor, and the body on the cursor ray
 ## (inside the hit range) is the one that gets hit after the wind-up.
 func _check_hammer(
 	view: SubViewport,
@@ -227,9 +213,6 @@ func _check_hammer(
 	if shared == Vector3.ZERO:
 		_fail("hammer highlight did not publish the far cursor")
 		return
-	# The pitched iso ray does not land on the column the point was built from.
-	# The highlight column is the one the pick uses, so the swing is judged
-	# against that cell.
 	var got := Vector2i(floori(shared.x), floori(shared.z))
 	var cursor_delta := Vector2(float(got.x) + 0.5 - col.x, float(got.y) + 0.5 - col.z)
 	var cursor_dist := cursor_delta.length()
@@ -318,8 +301,6 @@ func _check_hammer(
 
 
 func _marker_matches(player: Player, strike_pos: Vector3, cell: Vector2i, camera_forward: Vector3) -> void:
-	# attacked() is the splash marker. It has to lie toward the cursor, not
-	# on the camera-forward cell the 2.2 range gate used to pick.
 	if strike_pos == Vector3.INF:
 		_fail("hammer swing did not publish a strike")
 		return

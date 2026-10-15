@@ -1,8 +1,5 @@
 class_name InputBindings
 extends RefCounted
-## Gameplay actions from project.godot, plus pause (Escape).
-## Defaults are captured once from the InputMap before any saved rebind is applied,
-## so Reset restores the input contract (WASD, Space jump, Q/E yaw).
 
 const ACTIONS: PackedStringArray = [
 	"move_forward", "move_back", "move_left", "move_right",
@@ -57,7 +54,6 @@ const LABELS := {
 
 static var _captured: bool = false
 static var _defaults: Dictionary = {}
-## Times `apply_saved` was entered, including installs that rewrite the InputMap.
 static var apply_saved_count: int = 0
 
 

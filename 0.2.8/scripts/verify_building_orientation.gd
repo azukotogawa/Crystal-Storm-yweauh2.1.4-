@@ -1,5 +1,4 @@
 extends SceneTree
-## Shipped StructureOrientation + WorldObject yaw contract (EW=0, NS=π/2).
 
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")

@@ -7,7 +7,6 @@ const _VegetationManager = preload("res://world/vegetation_manager.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")
 const _RuinManager = preload("res://world/ruin_manager.gd")
 
-# Orchestrates town, vegetation, and animal placement before chunk visuals finalize.
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager

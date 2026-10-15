@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: ActionTargeting modes + TargetHighlight wiring for dig/build/attack columns.
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")

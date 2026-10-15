@@ -1,7 +1,5 @@
 class_name SettingsMenu
 extends ScrollContainer
-## Shared settings body for the frontend and the pause menu.
-## Writes through PlayerSettings. Opening syncs with signals blocked, so it does not save.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
@@ -178,7 +176,6 @@ func is_rebind_listening() -> bool:
 	return _listen_action != ""
 
 
-## Drop a pending key capture and give focus back. Safe to call when nothing is listening.
 func cancel_rebind() -> void:
 	var was := _listen_action != ""
 	_listen_action = ""

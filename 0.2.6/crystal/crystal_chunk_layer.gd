@@ -110,7 +110,6 @@ func _apply_cell_transform(mm: MultiMesh, idx: int, cell: CrystalCell) -> void:
 	var voxel_s: float = ws.voxel_scale
 	var depth := maxf(cell.depth, 0.12)
 	var layer_h: float = ws.layer_height()
-	# Frontier cells read as a taller, wider purple front without changing sim depth.
 	var frontier_boost: float = 1.0
 	var footprint_mul: float = 1.0
 	if cell.is_frontier:

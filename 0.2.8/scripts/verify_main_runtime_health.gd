@@ -1,5 +1,4 @@
 extends SceneTree
-## Runtime health: load production main.tscn, audit chunk atlas + spawn markers + script-clean boot.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

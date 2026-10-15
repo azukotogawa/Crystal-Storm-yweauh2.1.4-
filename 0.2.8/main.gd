@@ -1,15 +1,4 @@
 extends Node3D
-## Root scene script for scenes/main.tscn.
-##
-## Boot is owned by CompositionRoot (child node):
-##   CONFIGURED → QUALITY_APPLIED → FEATURES_SEEDED → CHUNKS_CREATED
-##   → INITIAL_STREAM_READY → VISUALS_COMMITTED → RUNNING
-## Critical services are registered and handed off explicitly; groups remain
-## compatibility adapters for UI/debug discovery.
-##
-## LoadingScreen presents actual start-region bake/stream occupancy and fades
-## out at INITIAL_STREAM_READY (required nearby chunks resident). Gameplay
-## input stays blocked until that gate. Background fill may continue after.
 
 
 const _StartupTotal = preload("res://systems/startup_total_profiler.gd")

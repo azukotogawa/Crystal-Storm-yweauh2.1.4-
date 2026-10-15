@@ -9,9 +9,9 @@ const RENDER_DISTANCE := 4
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var job_queue := []
 var mutex := Mutex.new()
-var semaphore := Semaphore.new() # NEW: Keeps the thread asleep when idle
+var semaphore := Semaphore.new()
 var thread := Thread.new()
-var exit_thread := false        # NEW: Allows clean shutdowns
+var exit_thread := false
 var pending := {}
 
 var player: Node3D
@@ -31,12 +31,11 @@ func _ready():
 	if world == null:
 		world = get_node_or_null("../../World") as InfiniteNoiseWorld
 
-# CRITICAL: Ensures the thread shuts down cleanly when leaving the game
 func _exit_tree():
 	mutex.lock()
 	exit_thread = true
 	mutex.unlock()
-	semaphore.post() # Wake up thread so it reads the exit flag
+	semaphore.post()
 	thread.wait_to_finish()
 
 func request_chunk(coord):
@@ -48,12 +47,10 @@ func request_chunk(coord):
 	mutex.lock()
 	job_queue.append(coord)
 	mutex.unlock()
-	semaphore.post() # NEW: Signals the thread that work is available Immediately
+	semaphore.post()
 
 func _worker():
 	while not exit_thread:
-		# Wait passively here until semaphore.post() is called. 
-		# Uses ZERO CPU while waiting, completely eliminating micro-stutters.
 		semaphore.wait() 
 
 		mutex.lock()
@@ -64,21 +61,18 @@ func _worker():
 		var coord = job_queue.pop_front()
 		mutex.unlock()
 
-		# 1. Create LOCAL data
 		var data := ChunkData.new(coord)
 		_generate_chunk(data)
 		
-		# 2. Generate mesh locally (no class-level variables)
 		var local_quads = _build_mesh_in_thread(data)
 		
-		# 3. Send LOCAL data to main thread
 		call_deferred("_on_chunk_ready", data, local_quads)
 
 var height_map := []
 var top_type_map := []
 
 func _build_mesh_in_thread(data) -> Array:
-	var local_quads := [] # Scope stays inside this specific thread execution
+	var local_quads := []
 	var chunk_data = data
 	
 	# THREAD-SAFE FIX: Do not use class variables. Scope these locally!
@@ -126,7 +120,6 @@ func _build_mesh_in_thread(data) -> Array:
 				continue
 			var voxel_type = top_type_map[x][y]
 
-			# ---- EXPAND X ----
 			var w = 1
 			while x + w < ChunkData.SIZE:
 				if used[x + w][y]:
@@ -137,7 +130,6 @@ func _build_mesh_in_thread(data) -> Array:
 					break
 				w += 1
 
-			# ---- EXPAND Y ----
 			var d = 1
 			var done = false
 
@@ -159,28 +151,21 @@ func _build_mesh_in_thread(data) -> Array:
 				for dy in range(d):
 					used[x + dx][y + dy] = true
 
-			# ---- FIXED 1X1 EMIT: BRING BACK THE PLAINS ----
 			for dx in range(w):
 				for dy in range(d):
 					var tx = x + dx
 					var ty = y + dy
 
-					# 1. Check if there is an AIR block directly above this voxel on the Z axis.
-					# If there is air above it, it's a visible top surface and MUST be drawn!
 					var open_above = is_face_visible_global(tx, ty, h, 0, 0, 1, data)
 
-					# 2. Check the horizontal neighbors
 					var open_left  = is_face_visible_global(tx, ty, h, -1,  0, 0, data)
 					var open_right = is_face_visible_global(tx, ty, h,  1,  0, 0, data)
 					var open_top   = is_face_visible_global(tx, ty, h,  0, -1, 0, data)
 					var open_down  = is_face_visible_global(tx, ty, h,  0,  1, 0, data)
 
-					# CULL RULE: Only skip drawing if the block is completely buried 
-					# from the top AND all sides.
 					if not (open_above or open_left or open_right or open_top or open_down):
 						continue
 
-					# Emit your valid 1x1 isometric surface block
 					emit_surface_quad(
 						tx,
 						ty,
@@ -191,7 +176,6 @@ func _build_mesh_in_thread(data) -> Array:
 						local_quads
 					)
 			
-	# Automatically sort your chunks on the worker thread to clean up main loop latency
 	local_quads.sort_custom(func(a, b):
 		return a["sort_key"] < b["sort_key"]
 	)
@@ -241,7 +225,6 @@ func update_stream(cx:int, cy:int):
 
 	var needed := {}
 
-	# build desired set
 	for y in range(cy - RENDER_DISTANCE, cy + RENDER_DISTANCE + 1):
 		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 2):
 			var key = Vector2i(x, y)
@@ -250,7 +233,6 @@ func update_stream(cx:int, cy:int):
 			if not chunks.has(key):
 				request_chunk(key)
 
-	# unload old chunks
 	for key in chunks.keys():
 		if not needed.has(key):
 			chunks[key].queue_free()
@@ -267,8 +249,6 @@ func _generate_chunk(data: ChunkData):
 
 			var h = biome["render_height"]
 
-			# IMPORTANT: clamp into real voxel range
-			#var terrain_height = clamp(h + 20, 1, ChunkData.HEIGHT - 1)
 
 			var voxel_id = VoxelTypes.biome_to_voxel_id.get(
 				biome["name"],
@@ -296,7 +276,6 @@ func rebuild_chunks():
 	for coord: Vector2i in chunks.keys():
 		var chunk := chunks[coord]
 		
-		# Keep chunks at 0 depth, just update their active graphics
 		chunk.emit_quads()
 
 
@@ -335,21 +314,17 @@ func is_solid_voxel(x:int, y:int, z:int) -> bool:
 func is_blocked(x:int, y:int, z:int) -> bool:
 	return is_solid_voxel(x, y, z)
 
-# Update this method inside your worker loop
 func is_face_visible_global(local_x: int, local_y: int, local_z: int, dx: int, dy: int, dz: int, chunk_data: ChunkData) -> bool:
 	var nx = local_x + dx
 	var ny = local_y + dy
 	var nz = local_z + dz
 
-	# Convert to absolute world voxel positions using the data object's position
 	var world_x = local_x + chunk_data.position.x * ChunkData.SIZE
 	var world_y = local_y + chunk_data.position.y * ChunkData.SIZE
 	
-	# If the target coordinate is strictly inside this chunk, read local data instantly
 	if nx >= 0 and ny >= 0 and nz >= 0 and nx < ChunkData.SIZE and ny < ChunkData.SIZE and nz < ChunkData.HEIGHT:
 		return chunk_data.get_voxel(nx, ny, nz) == VoxelTypes.AIR
 
-	# If it crosses a boundary, look across into the neighboring chunk or world noise
 	var target_world_x = world_x + dx
 	var target_world_y = world_y + dy
 	
@@ -361,16 +336,13 @@ func get_global_voxel(wx: int, wy: int, wz: int) -> int:
 	if wz < 0 or wz >= ChunkData.HEIGHT:
 		return VoxelTypes.AIR
 		
-	# Calculate which chunk coordinates this world position lands on
 	var chunk_x = floori(wx / float(ChunkData.SIZE))
 	var chunk_y = floori(wy / float(ChunkData.SIZE))
 	var chunk_coord = Vector2i(chunk_x, chunk_y)
 	
-	# Extract the local index inside that specific chunk
 	var local_x = posmod(wx, ChunkData.SIZE)
 	var local_y = posmod(wy, ChunkData.SIZE)
 	
-	# Read the chunk safely if it exists, otherwise fall back to world generation rule
 	mutex.lock()
 	var chunk_exists = chunks.has(chunk_coord)
 	var chunk_node = chunks.get(chunk_coord)
@@ -379,7 +351,6 @@ func get_global_voxel(wx: int, wy: int, wz: int) -> int:
 	if chunk_exists and is_instance_valid(chunk_node) and chunk_node.chunk_data:
 		return chunk_node.chunk_data.get_voxel(local_x, local_y, wz)
 		
-	# If the chunk isn't loaded yet, check if the height matches the world noise
 	var biome = world.get_biome(wx, wy)
 	if wz < biome["render_height"]:
 		return VoxelTypes.biome_to_voxel_id.get(biome["name"], VoxelTypes.AIR)

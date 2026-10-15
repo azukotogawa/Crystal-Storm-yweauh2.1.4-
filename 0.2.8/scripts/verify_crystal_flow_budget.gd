@@ -1,5 +1,4 @@
 extends SceneTree
-## Budgeted tick_flow must match unbounded tick_flow for the same logical ticks.
 
 
 func _init() -> void:
@@ -12,7 +11,6 @@ func _init() -> void:
 
 	var tq_a = Terrain.new()
 	var tq_b = Terrain.new()
-	# Flat test heights
 	for x in range(-8, 9):
 		for z in range(-8, 9):
 			tq_a.test_base_heights[Vector2i(x, z)] = 40.0
@@ -25,7 +23,6 @@ func _init() -> void:
 	a.max_new_cells_per_tick = 0
 	b.max_new_cells_per_tick = 0
 
-	# Seed same blob
 	for x in range(-4, 5):
 		for z in range(-4, 5):
 			a.set_depth(Vector2i(x, z), 0.6, 0, false)
@@ -37,7 +34,7 @@ func _init() -> void:
 	for _i in 5:
 		a.tick_flow(0.05)
 
-	b.flow_budget_us = 50  # tiny budget forces multi-call resumes
+	b.flow_budget_us = 50
 	for _i in 5:
 		var guard := 0
 		while true:
@@ -50,7 +47,6 @@ func _init() -> void:
 				failed = true
 				break
 
-	# Compare depths
 	if a.depth.size() != b.depth.size():
 		push_error("cell count mismatch %d vs %d" % [a.depth.size(), b.depth.size()])
 		failed = true
@@ -64,7 +60,6 @@ func _init() -> void:
 	if not failed:
 		print("OK budgeted tick_flow matches unbounded cells=", a.depth.size())
 
-	# Simulation façade resume
 	var Sim = load("res://crystal/crystal_simulation.gd")
 	var Snap = load("res://crystal/crystal_sim_snapshot.gd")
 	var sim = Sim.new(cfg, tq_a)

@@ -52,9 +52,6 @@ static func build_mesh_payload(
 	}
 	payload["representation"] = "surface_mesh" if use_surface_mesh else "multimesh_legacy"
 	if use_surface_mesh:
-		# Always rebuild the ArrayMesh from the merged quad list (including ramps).
-		# Incremental vertex-slice reuse keyed by pre-clip greedy dim_x/dim_z
-		# dropped the rest of the chunk after a one-cell dig.
 		payload["terrain_buffer"] = PackedFloat32Array()
 		var cache_full := _TerrainSurfaceCache.build_from_quads(data, quads)
 		_TerrainSurfaceCache.attach_to_payload(cache_full, payload, true)

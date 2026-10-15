@@ -67,7 +67,6 @@ func _process(_delta: float) -> void:
 	var spawn_progress := "—"
 	var last_spawn_kill := "—"
 
-	# Find main nodes safely
 	var main = get_tree().root.get_node_or_null("Game")
 	var player = get_tree().get_first_node_in_group("player")
 	var world = get_tree().get_first_node_in_group("world")
@@ -75,11 +74,9 @@ func _process(_delta: float) -> void:
 	var chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	var crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 
-	# Seed
 	if world and "world_seed" in world:
 		seed_val = str(world.world_seed)
 
-	# Chunks
 	if chunk_manager:
 		if chunk_manager.has_method("get_chunk_count"):
 			chunks_count = chunk_manager.get_chunk_count()
@@ -97,7 +94,6 @@ func _process(_delta: float) -> void:
 				elif chunks_prop is Array:
 					chunks_count = chunks_prop.size()
 
-	# Player position
 	if player:
 		if player.has_method("get_voxel_position"):
 			var col: Vector3 = player.get_voxel_position()
@@ -108,14 +104,12 @@ func _process(_delta: float) -> void:
 		elif "global_position" in player:
 			player_voxel = player.global_position
 
-	# Current chunk
 	if player_voxel != Vector3.ZERO:
 		current_chunk = Vector2i(
 			floori(player_voxel.x / ChunkData.SIZE),
 			floori(player_voxel.z / ChunkData.SIZE)
 		)
 
-	# Map border zone + temperature theme
 	if world:
 		if player_voxel != Vector3.ZERO and world.has_method("get_map_zone_label"):
 			map_zone = world.get_map_zone_label(player_voxel.x, player_voxel.z)
@@ -132,7 +126,6 @@ func _process(_delta: float) -> void:
 	if player and "health" in player and "max_health" in player:
 		player_health = "%.0f/%.0f" % [player.health, player.max_health]
 
-	# Biome & Tile
 	if world and player_voxel != Vector3.ZERO:
 		var biome = world._get_biome_compute(player_voxel.x, 0.0, player_voxel.z)
 		if biome is Dictionary:
@@ -151,15 +144,12 @@ func _process(_delta: float) -> void:
 		else:
 			tile_name = str(raw_tile)
 
-	# Height
 	if world and player_voxel != Vector3.ZERO:
 		h = "%.1f" % TerrainRamps.walkable_height(world, player_voxel.x, player_voxel.z)
 
-	# Camera rotation
 	if camera and "rotation_degrees" in camera:
 		cam_rot = int(camera.rotation_degrees.y)
 
-	# Crystal
 	if crystal_manager and crystal_manager.has_method("get_debug_stats"):
 		var stats: Dictionary = crystal_manager.get_debug_stats()
 		crystal_tiles = int(stats.get("tiles", 0))

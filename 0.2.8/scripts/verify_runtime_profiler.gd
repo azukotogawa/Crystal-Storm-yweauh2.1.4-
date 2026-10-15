@@ -1,5 +1,4 @@
 extends SceneTree
-## Contract: PerfProfiler snapshot/report API exposes all OBJECTIVE perf sections.
 
 
 const _PerfProfiler = preload("res://systems/perf_profiler.gd")
@@ -91,7 +90,6 @@ func _run() -> void:
 		if not failed:
 			print("OK formatted runtime report headers")
 
-		# Bottleneck ranking API — worker stages must not dominate main hot list alone
 		if profiler.has_method("get_bottlenecks"):
 			if profiler.has_method("record_worker_stage"):
 				profiler.record_worker_stage("chunk_mesh", 2500)
@@ -106,10 +104,8 @@ func _run() -> void:
 				failed = true
 			else:
 				print("OK bottlenecks[0]=%s %.2fms" % [bots[0].get("name"), float(bots[0].get("ms", 0.0))])
-			# Main untracked accounting: worker stage must not inflate main tracked
 			if profiler.has_method("get_main_untracked_ms") and profiler.has_method("get_main_tracked_ms"):
 				var main_t: float = profiler.get_main_tracked_ms()
-				# crystal_sim 0.8 + player 0.5 = 1.3ms; worker mesh excluded
 				if main_t > 2.0:
 					push_error("main tracked too high with worker stage (got %.2f)" % main_t)
 					failed = true

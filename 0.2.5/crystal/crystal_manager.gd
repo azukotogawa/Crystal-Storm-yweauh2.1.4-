@@ -928,7 +928,6 @@ func get_spawn_progress() -> Dictionary:
 	return _spawn_ctrl.get_progress()
 
 
-## Headless test entry — wires spawns through the same controller path as runtime.
 func harness_setup_spawns(spawns: Array) -> void:
 	_spawn_points.clear()
 	for s in spawns:

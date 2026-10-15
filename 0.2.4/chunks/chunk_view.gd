@@ -1,4 +1,3 @@
-# Inside ChunkView.gd
 extends Node3D
 class_name ChunkView
 
@@ -8,9 +7,6 @@ class_name ChunkView
 var chunk_data: ChunkData
 var mesh_data: Dictionary
 
-# ─────────────────────────────────────────────
-# PUBLIC ENTRY
-# ─────────────────────────────────────────────
 func setup(data: ChunkData, mesh_data: Dictionary):
 	layer_container = $LayerContainer if $LayerContainer else get_node_or_null("LayerContainer")
 
@@ -18,18 +14,13 @@ func setup(data: ChunkData, mesh_data: Dictionary):
 	self.mesh_data = mesh_data
 	emit_quads()
 
-# ─────────────────────────────────────────────
-# RENDER
-# ─────────────────────────────────────────────
 func emit_quads():
 	for child in layer_container.get_children():
 		child.queue_free()
 
-	# If zero visible quads (surface only), skip rendering
 	if mesh_data.get("count", 0) == 0:
 		return
 
-	# Reuse existing MultiMeshInstance if possible
 	var mm_instance: MultiMeshInstance3D
 	if layer_container.has_node("mm_instance"):
 		mm_instance = layer_container.get_node("mm_instance")
@@ -47,20 +38,15 @@ func emit_quads():
 		mm.mesh.size = Vector3.ONE
 		mm_instance.multimesh = mm
 
-	# 1. Initialize count bounds
 	var instance_count = mesh_data["count"]
 	mm.instance_count = instance_count
 
 	if chunk_material:
 		mm_instance.material_override = chunk_material
 
-	# Precompute static offsets once
 	var chunk_offset_x = float(chunk_data.position.x * ChunkData.SIZE)
 	var chunk_offset_z = float(chunk_data.position.y * ChunkData.SIZE)
 
-	# 2. Build a single buffer (stride 16: 12 for 3x4 column-major transform + 4 custom data)
-	# and assign it in one shot. This replaces 2 * instance_count individual GL calls
-	# (set_transform + set_custom_data) and eliminates the lag spike on chunk load.
 	var quads = mesh_data["quads"]
 
 	var stride := 16
@@ -78,7 +64,6 @@ func emit_quads():
 		var oy = float(q["y"]) + sy * 0.5
 		var oz = float(q["z"]) + chunk_offset_z + sz * 0.5
 
-		# 3x4 column-major (basis scales + origin in the 4th "column" slots 3,7,11)
 		buffer[base + 0] = sx; buffer[base + 1] = 0;  buffer[base + 2] = 0;  buffer[base + 3] = ox
 		buffer[base + 4] = 0;  buffer[base + 5] = sy; buffer[base + 6] = 0;  buffer[base + 7] = oy
 		buffer[base + 8] = 0;  buffer[base + 9] = 0;  buffer[base + 10] = sz; buffer[base + 11] = oz

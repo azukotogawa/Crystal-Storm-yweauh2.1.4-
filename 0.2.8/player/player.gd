@@ -30,36 +30,27 @@ var player_material: StandardMaterial3D
 var _body_collision: CollisionShape3D
 
 @export var move_speed := 16.0
-## Horizontal acceleration / friction (units per second²) — removes binary start/stop grid feel.
 @export var move_accel := 95.0
 @export var move_friction := 85.0
-## Soft ground follow rate while walking (higher = stickier, lower = floatier).
 @export var ground_follow_rate := 24.0
 @export var max_health := 100.0
 
 signal died
-## current, maximum. The HUD health bar listens. Crystal ticks and heals both emit.
 signal health_changed(current: float, maximum: float)
 
 var health := 100.0
-## Burst hits set this. Crystal-field damage sets it to crystal_field before take_damage.
 var damage_source_hint: StringName = &"hit"
-## Seconds of invulnerability after a burst hit. Crystal pressure does not use this.
 var _hit_iframes: float = 0.0
 const HIT_IFRAMES := 0.6
-## Horizontal shove in column units. Burst hits set it. Crystal pressure does not.
 var _knock_left: float = 0.0
 var _knock_dir_xz: Vector2 = Vector2.ZERO
 var _damage_origin: Vector3 = Vector3.ZERO
 var _has_damage_origin: bool = false
 const HIT_KNOCK_COLUMNS := 1.25
 const HIT_KNOCK_HEAVY_COLUMNS := 2.05
-## Columns per second. A normal hit lasts about a fifth of a second.
 const HIT_KNOCK_SPEED := 7.0
 
-## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
-## Continuous horizontal velocity in column-space XZ (smooth micro-movement).
 var _move_vel_xz: Vector2 = Vector2.ZERO
 
 var sprite_scale_modifier := Vector2.ONE
@@ -68,7 +59,6 @@ var current_skew := 0.0
 enum State { IDLE, RUNNING, JUMPING, FALLING }
 var current_state := State.IDLE
 var landing_timer: float = 0.0
-## idle, walk, run, jump, fall, land. The mesh pose, not the juice node scale.
 var locomotion_pose: String = "idle"
 var _bob_phase: float = 0.0
 var _locomotion = _Locomotion.new()
@@ -81,24 +71,14 @@ var _audio: Node
 var _vfx: Node
 
 var is_input_locked: bool = false
-## True after a jump tap is consumed. is_action_just_pressed misses a press that
-## lands between flushes (smoke action_press + one frame + release).
 var _jump_latched: bool = false
-## Idle frames always see that one-frame tap. Physics may not run during it.
 var _jump_edge: bool = false
-## Seconds left to jump after the feet leave the ground.
 var _coyote_left: float = 0.0
-## A jump pressed in the air, waiting for the landing.
 var _jump_buffer: float = 0.0
-## This ascent already took the short-hop cut. A held jump never sets it.
 var _jump_cut: bool = false
-## Hold jump under a waterline to rise. A land jump clears the pool in one frame.
 var _swim_rise: bool = false
-## Hold sprint on land. A submerged body stays at swim speed.
 var is_sprinting: bool = false
-## True during the short settle after the feet touch. The speed keep runs once.
 var _landed_hold: bool = false
-## Compat 0–3 orbit index; writing also sets locked_yaw_degrees to that stop.
 var _locked_rotation: int = 0
 var locked_rotation: int:
 	set(v):
@@ -112,18 +92,16 @@ var camera: Camera3D
 var world_ready := false
 
 var _floor_probe: _VoxelFloorProbe
-## Overlap test runs every few physics frames (not a per-frame tree search).
 var _overlap_tick: int = 0
 var _unstuck_cooldown: float = 0.0
 const UNSTUCK_COOLDOWN := 0.45
 const OVERLAP_CHECK_FRAMES := 4
 
-## Physics process exclusive breakdown (CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1).
 var _phys_measure: bool = false
 var _phys_n: int = 0
 var _phys_sum_us: int = 0
 var _phys_max_us: int = 0
-var _phys_phase_sum: Dictionary = {}  # name -> us sum
+var _phys_phase_sum: Dictionary = {}
 var _phys_phase_max: Dictionary = {}
 var _phys_phase_calls: Dictionary = {}
 var _phys_worst_phases: Dictionary = {}
@@ -134,7 +112,6 @@ var _phys_call_snap: int = 0
 var _phys_call_grounded: int = 0
 var _phys_call_collide: int = 0
 var _phys_call_slope: int = 0
-## Slope is flat on almost every column. Recompute on cell change, at most every 4 ticks.
 var _slope_mul: float = 1.0
 var _slope_cell: Vector2i = Vector2i(2147483647, 0)
 var _slope_age: int = 99
@@ -262,7 +239,6 @@ func _ready():
 	relic_manager = _RelicManager.new()
 	relic_manager.name = "RelicManager"
 	add_child(relic_manager)
-	# Vertical-slice starter relic: measurable crystal flow dampening.
 	if relic_manager.has_method("equip"):
 		relic_manager.equip(&"crystal_ward")
 
@@ -306,9 +282,6 @@ func _ready():
 	if saved_pos is Vector3:
 		var saved: Vector3 = saved_pos
 		spawn_col = Vector2i(floori(saved.x), floori(saved.z))
-	# Publish the spawn column before the stream wait. ChunkManager follows
-	# voxel_position; leaving it at the origin loads the map centre while the
-	# crystal heart (and this body) sit in a corner.
 	var spawn_x := float(spawn_col.x) + 0.5
 	var spawn_z := float(spawn_col.y) + 0.5
 	voxel_position = Vector3(spawn_x, _ws().layer_height() * 4.0, spawn_z)
@@ -332,8 +305,6 @@ func _ready():
 	_mesh_rest_y = player_mesh.position.y
 	_ContactShadow.attach(self, 0.05, 1.6)
 
-	# Hint must sit on the surface slab. A hint of one layer is below every real
-	# column, and the old cave-floor query then returned a Y inside the top voxel.
 	var natural := world.get_surface_height(spawn_x, spawn_z) if world else 0.0
 	_floor_probe.feet_height_hint = natural + _ws().layer_height()
 	var surf := _sample_walkable_feet(spawn_x, spawn_z)
@@ -363,12 +334,10 @@ func _setup_body_collision() -> void:
 	_body_collision = CollisionShape3D.new()
 	_body_collision.name = "BodyCollision"
 	_body_collision.shape = capsule
-	# Capsule height includes the hemispheres. Center it so the bottom rests on the feet.
 	_body_collision.position.y = capsule.height * 0.5
 	add_child(_body_collision)
 
 
-## Records a jump tap even when no physics tick runs while Space is down.
 func _process(_delta: float) -> void:
 	if not world_ready:
 		return
@@ -420,7 +389,6 @@ func _physics_process(delta: float) -> void:
 		phase_local["input"] = Time.get_ticks_usec() - t0
 
 	var moving := input_dir != Vector2.ZERO
-	# Dry columns stop at a channel lookup. The feet probe runs only in water.
 	var swim := _water_here()
 	var submerged := bool(swim.get("submerged", false))
 	var wading := bool(swim.get("wading", false))
@@ -429,20 +397,17 @@ func _physics_process(delta: float) -> void:
 	var jump_held := false
 	if not jump_blocked:
 		jump_held = Input.is_action_pressed("jump")
-	# _jump_edge covers a tap that was pressed and released between physics ticks.
 	var jump_down := jump_held or (not jump_blocked and _jump_edge)
 	_swim_rise = false
 	if jump_blocked:
 		_jump_edge = false
 		_jump_buffer = 0.0
 	elif submerged and jump_down:
-		# Stay in the pool. The land impulse is several layers and ends the swim.
 		_jump_latched = true
 		_jump_edge = false
 		_jump_buffer = 0.0
 		_swim_rise = true
 	elif jump_down and not _jump_latched and current_state != State.JUMPING:
-		# Support is probed only on the press. Coyote covers the frames after a ledge.
 		var supported := current_state in [State.IDLE, State.RUNNING] and _can_initiate_jump(moving)
 		if _MoveFeel.can_jump(supported, _coyote_left):
 			_start_jump()
@@ -482,16 +447,13 @@ func _physics_process(delta: float) -> void:
 		phase_local["slope_speed"] = Time.get_ticks_usec() - t0
 		_phys_call_slope += 1
 
-	# The landing settle is already on the ground. A real fall still steers in the air.
 	var airborne := (current_state == State.JUMPING or current_state == State.FALLING) and not _landed_hold
 	t0 = Time.get_ticks_usec() if measure else 0
-	# Continuous accel/friction → micro-smooth starts/stops (no binary grid lurch).
 	var desired_vel := Vector2.ZERO
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_yaw_degrees)
 		desired_vel = move_vec * speed
 	if _knock_left > 0.0:
-		# The hit owns this step. Walk input resumes when the shove ends.
 		_tick_player_knockback(delta, airborne)
 		var drag := move_friction * (_Water.SWIM_FRICTION_MULT if submerged else 1.0)
 		_move_vel_xz = _move_vel_xz.move_toward(Vector2.ZERO, drag * delta)
@@ -525,7 +487,6 @@ func _physics_process(delta: float) -> void:
 				_jump_cut = true
 			velocity.y -= _gravity() * _MoveFeel.gravity_scale(velocity.y) * delta
 			if velocity.y <= 0.0:
-				# Gravity ate the impulse. Water catches the body; dry land still falls.
 				if _float_if_submerged(delta, voxel_position.y):
 					change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
 				else:
@@ -546,13 +507,9 @@ func _physics_process(delta: float) -> void:
 				change_state(State.RUNNING if moving or _move_vel_xz.length_squared() > 0.01 else State.IDLE)
 			else:
 				var next_pos := Vector3(voxel_position.x, next_y, voxel_position.z)
-				# is_colliding allows a fraction of a layer of sink. Stop at the walkable
-				# top instead, or a landing step sits inside the rendered slab.
 				var feet_h := _sample_walkable_feet(voxel_position.x, voxel_position.z)
 				var reached_feet := velocity.y <= 0.0 and next_pos.y <= feet_h
 				if reached_feet or is_colliding_at(next_pos):
-					# Land with a firm settle (not a mid-air soft float).
-					# The old speed scale ran every settle frame and stopped the run.
 					var first_contact := not _landed_hold
 					voxel_position.y = feet_h if reached_feet else _sample_walkable_feet(voxel_position.x, voxel_position.z)
 					velocity.y = 0.0
@@ -575,7 +532,6 @@ func _physics_process(delta: float) -> void:
 
 		State.IDLE, State.RUNNING:
 			_soft_follow_ground(delta)
-			# Water holds the body. A dry gap still becomes a fall.
 			if not bool(_water_here().get("submerged", false)) \
 					and not _is_grounded(moving or _move_vel_xz.length_squared() > 0.01):
 				change_state(State.FALLING)
@@ -619,8 +575,6 @@ func _physics_process(delta: float) -> void:
 
 
 func _slope_speed_multiplier(moving: bool = true) -> float:
-	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
-	# Idle never applies the multiplier, so the slope sample stays off the standing tick.
 	if not moving:
 		_slope_age = 99
 		return 1.0
@@ -676,8 +630,6 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 	if airborne:
 		max_step = _ws().max_step_up_jump()
 	var from := voxel_position
-	# The chest sits under the waterline. Measure the bank from that line,
-	# or a one-layer shore is taller than a step and the body cannot leave.
 	if not airborne:
 		var swim := _water_here()
 		if bool(swim.get("submerged", false)):
@@ -692,7 +644,6 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 	)
 
 
-## Full diagonal move first, then axis slide — removes grid-axis stutter without losing wall slide.
 func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
 	if not airborne and _try_water_bank_exit(move_delta):
 		return
@@ -725,8 +676,6 @@ func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
 			_move_vel_xz.y = 0.0
 
 
-## A 1-block shore is a walk from the waterline, but the capsule hits the face
-## while the chest is still in the pool. Step onto that column and stand.
 func _try_water_bank_exit(move_delta: Vector2) -> bool:
 	if move_delta.length_squared() < 0.0000001:
 		return false
@@ -798,7 +747,6 @@ func _tick_unstuck(delta: float) -> void:
 		return
 	var manual := false
 	if not _GameplayInput.blocks_actions() and InputMap.has_action("unstuck"):
-		# Pressed, not just the edge: a tap between flushes still counts, and the cooldown blocks repeats.
 		manual = Input.is_action_pressed("unstuck") and _unstuck_cooldown <= 0.0
 	if manual:
 		_apply_safe_stand()
@@ -808,7 +756,6 @@ func _tick_unstuck(delta: float) -> void:
 	if _overlap_tick < OVERLAP_CHECK_FRAMES:
 		return
 	_overlap_tick = 0
-	# Floating in a pool is not stuck inside the bed.
 	if bool(_water_here().get("submerged", false)):
 		return
 	if _floor_probe.body_overlaps_terrain(voxel_position, _player_height()):
@@ -836,7 +783,6 @@ func _sample_walkable_feet(wx: float, wz: float) -> float:
 func _ground_snap_distance(moving: bool) -> float:
 	var snap: float = _ws().floor_snap_distance()
 	if moving:
-		# Match probe min/max band while stepping between columns (avoids spurious FALLING).
 		snap += _ws().layer_height() * 0.45
 	return snap
 
@@ -865,14 +811,11 @@ func _try_buffered_jump() -> bool:
 
 
 func _can_initiate_jump(moving: bool) -> bool:
-	# A float counts as support, so a hop can leave the pool. Air over dry land cannot.
 	if bool(_water_here().get("submerged", false)):
 		return true
 	return _is_grounded(moving)
 
 
-## Channel or inland water under the feet. Ocean and dry land return a dry sample.
-## feet_y lets a fast fall count as entering the water before the body tunnels to the bed.
 func _water_here(feet_y: float = NAN) -> Dictionary:
 	var feet := voxel_position.y if is_nan(feet_y) else feet_y
 	if world == null:
@@ -887,7 +830,6 @@ func _water_here(feet_y: float = NAN) -> Dictionary:
 	return _Water.sample(world, col_x, col_z, feet, ground, _player_height())
 
 
-## True when this column's water holds the body. Snaps onto the float line from above.
 func _float_if_submerged(delta: float, feet_y: float) -> bool:
 	var info := _water_here(feet_y)
 	if not bool(info.get("submerged", false)):
@@ -908,8 +850,6 @@ func _give_starting_loadout() -> void:
 	inventory.set_slot(3, "wood", 16)
 	inventory.set_slot(4, "stone", 16)
 	inventory.set_slot(5, "herb", 4)
-	# Extra kit lives in the bag. Leather is already worn. No crafting bench:
-	# sling spends stone, elites drop bombs and crystal weave.
 	inventory.set_slot(8, "spear", 1)
 	inventory.set_slot(9, "crystal_hammer", 1)
 	inventory.set_slot(10, "sling", 1)
@@ -946,8 +886,6 @@ func _resolve_spawn_column() -> Vector2i:
 		var spawns: Array = crystal_manager.get_active_spawns()
 		if not spawns.is_empty():
 			source = spawns[0].world_pos
-	# Start outside assault_distance (~48) so the first minutes are pure MAZE prep:
-	# dig trenches / walls while watching crystal pressure build, then walk in to ASSAULT.
 	var ring_offsets: Array[Vector2i] = []
 	for dist in [56, 52, 60, 48, 64, 44]:
 		ring_offsets.append(Vector2i(dist, 0))
@@ -965,7 +903,6 @@ func _resolve_spawn_column() -> Vector2i:
 		if _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
 			continue
 		return candidate
-	# Last resort: still outside default assault_distance.
 	return source + Vector2i(56, -12)
 
 
@@ -1032,7 +969,6 @@ func apply_save_state(data: Dictionary) -> void:
 	_publish_health()
 
 
-## World position of the attacker. The next burst hit shoves away from it.
 func set_damage_origin(origin: Vector3) -> void:
 	_damage_origin = origin
 	_has_damage_origin = true
@@ -1074,7 +1010,6 @@ func _begin_hit_knockback(heavy: bool) -> void:
 	_has_damage_origin = false
 
 
-## Walk-probe step. A wall ends the shove. Ramps stay on the same ground follow.
 func _tick_player_knockback(delta: float, airborne: bool) -> void:
 	if _floor_probe == null or _knock_left <= 0.0:
 		_knock_left = 0.0
@@ -1089,7 +1024,6 @@ func _tick_player_knockback(delta: float, airborne: bool) -> void:
 	_knock_left = maxf(_knock_left - step, 0.0)
 
 
-## Column-space XZ, away from the attacker. A missing origin shoves backward.
 func _knock_away_dir() -> Vector2:
 	var away := Vector2.ZERO
 	if _has_damage_origin:
@@ -1117,7 +1051,6 @@ func _tick_hit_iframes(delta: float) -> void:
 		player_mesh.visible = true
 
 
-## Restore health from existing consumables (e.g. herb). No new survival meters.
 func heal(amount: float) -> void:
 	if amount <= 0.0:
 		return
@@ -1142,8 +1075,6 @@ func _apply_walk_bob(delta: float) -> void:
 		return
 	if _mesh_rest_y <= 0.0:
 		_mesh_rest_y = player_mesh.position.y
-	# Limb poses, not the old whole-body scale. A landing squash stays on the
-	# feet. Reduce-motion still skips the juice bob; the pose is the read.
 	var pose := "idle"
 	if current_state == State.FALLING and _landed_hold:
 		pose = "land"

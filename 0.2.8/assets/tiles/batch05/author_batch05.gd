@@ -1,6 +1,4 @@
 extends SceneTree
-## Author Batch 05 unshared cells. Usage:
-##   godot --headless --path . -s assets/tiles/batch05/author_batch05.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
@@ -17,23 +15,18 @@ const SLOTS := {
 	"mountain3": Vector2i(3, 5),
 }
 
-# Pine — cooler/darker than HILLS, not bark-brown TREE_TRUNK.
 const PINE := Color(0.10, 0.24, 0.16)
 const PINE_D := Color(0.06, 0.16, 0.10)
 const PINE_L := Color(0.16, 0.32, 0.18)
-# Jungle — wetter/deeper than HILLS, not a bush pad.
 const JUNG := Color(0.08, 0.26, 0.12)
 const JUNG_D := Color(0.04, 0.16, 0.08)
 const JUNG_L := Color(0.14, 0.36, 0.16)
-# Bush pad — round clumps, distinct from jungle field.
 const BUSH := Color(0.16, 0.28, 0.10)
 const BUSH_D := Color(0.10, 0.18, 0.06)
 const BUSH_L := Color(0.24, 0.38, 0.14)
-# Tuft — brighter marks than meadow GRASSLAND2.
 const TUFT := Color(0.34, 0.52, 0.16)
 const TUFT_D := Color(0.22, 0.38, 0.10)
 const TUFT_L := Color(0.48, 0.64, 0.22)
-# Peak — cooler than MOUNTAIN2, not ochre STONE2.
 const PEAK := Color(0.38, 0.44, 0.52)
 const PEAK_D := Color(0.24, 0.30, 0.38)
 const PEAK_L := Color(0.52, 0.58, 0.66)

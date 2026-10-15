@@ -37,13 +37,11 @@ static func ensure_builtins() -> void:
 	register(_make_ruin_seal())
 
 
-## Relics that can drop from ruin expeditions (exploration reward pool).
 static func ruin_loot_pool() -> Array[StringName]:
 	ensure_builtins()
 	return [&"pathfinder_charm", &"ruin_seal", &"flow_anchor", &"mason_glove"]
 
 
-## Vertical-slice starter: slows crystal fluid flow (measurable via get_crystal_flow_mult).
 static func _make_crystal_ward() -> _RelicDef:
 	var d := _RelicDef.new()
 	d.id = &"crystal_ward"
@@ -83,7 +81,6 @@ static func _make_mason_glove() -> _RelicDef:
 	d.build_cost_mult = 0.8
 	return d
 
-## Ruin find: move faster while scouting the wilds.
 static func _make_pathfinder_charm() -> _RelicDef:
 	var d := _RelicDef.new()
 	d.id = &"pathfinder_charm"
@@ -96,7 +93,6 @@ static func _make_pathfinder_charm() -> _RelicDef:
 	return d
 
 
-## Ruin find: resist crystal burn while exploring pressure fronts.
 static func _make_ruin_seal() -> _RelicDef:
 	var d := _RelicDef.new()
 	d.id = &"ruin_seal"

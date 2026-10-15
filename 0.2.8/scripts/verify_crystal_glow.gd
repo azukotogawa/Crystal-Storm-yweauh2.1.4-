@@ -1,8 +1,4 @@
 extends SceneTree
-## The crystal mass that draws must use the pulse shader, and crystal_time on that
-## material must move when CrystalManager._process runs. A shader on a side material
-## does not count.
-## Usage: godot --headless -s scripts/verify_crystal_glow.gd
 
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalCell = preload("res://crystal/crystal_cell.gd")

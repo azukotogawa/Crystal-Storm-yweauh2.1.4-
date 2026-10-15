@@ -1,12 +1,5 @@
 extends SceneTree
-## Pick, hammer, bow, and melee weapons must be voxel meshes in the hand,
 ## readable at the game camera (ortho 16) and actually drawn.
-## The old item-animation check called HeldItemView.show_item and measured a
-## Sprite3D pixel_size, so a flat billboard passed. This check selects the
-## hotbar slot and steps WeaponController._process, which is the path that
-## presents the item in game, then reads the window framebuffer.
-## Headless Godot does not rasterize. Run without --headless for the pixels.
-## Usage: godot --path 0.2.8 -s res://scripts/verify_held_item_mesh.gd
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
@@ -48,7 +41,6 @@ func _run() -> void:
 	var env_node := WorldEnvironment.new()
 	env_node.environment = env
 	root.add_child(env_node)
-	# Same sun vector the terrain shader uses, so the probe is not a black unlit pass.
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
 	sun.look_at_from_position(Vector3.ZERO, -Vector3(0.55, 0.82, 0.38), Vector3.UP)

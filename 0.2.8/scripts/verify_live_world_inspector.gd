@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless: shipped LiveWorldQuery + inspector API on a tiny world.
 
 const _LiveWorldQuery = preload("res://helpers/live_world_query.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -37,7 +36,6 @@ func _run() -> void:
 		"interactable", "terrain_layer", "discrepancies",
 		"neighbors", "water_sim", "mesh_current", "collision_current", "column_face_codes",
 	]
-	# Isolated world (no main.tscn bake).
 	var world = load("res://world/InfiniteNoiseWorld.gd").new(21)
 	root.add_child(world)
 	_TerrainEdits.reset()

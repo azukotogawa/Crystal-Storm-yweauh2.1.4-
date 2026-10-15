@@ -1,14 +1,11 @@
 class_name WorldBakeWorkerJob
 extends RefCounted
-## Pure package job for deferred world bake.
-## Frozen inputs only: coord, InfiniteNoiseWorld noise, mesh host, veg bucket, writer.
 ## Must not touch Nodes, scene tree, live WorldState overlays, crystal, or water.
 
 const CELLS := 16
 const CELLS2 := CELLS * CELLS
 
 
-## Same bytes as the previous inlined WorldBakeService._bake_one_chunk body.
 static func execute(coord: Vector2i, world, mesh_host, veg: Array, writer) -> Dictionary:
 	var t_all := Time.get_ticks_usec()
 	var out := {

@@ -1,6 +1,5 @@
 class_name MicroCliffDetector
 extends RefCounted
-## Detect cliff-edge columns that need localized micro refinement.
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")

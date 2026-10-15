@@ -1,7 +1,6 @@
 class_name SaveCodec
 extends RefCounted
 
-## Shared JSON-safe encoding for save snapshots.
 
 
 static func vec2i_key(v: Vector2i) -> String:

@@ -1,6 +1,5 @@
 extends SceneTree
 ## Binary-search which subsystem leaves a double-free on quit.
-## Usage: CRYSTALSTORM_ISOLATE=A|B|C|... godot --headless -s scripts/_repro_isolate_quit.gd
 
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "safe")
@@ -22,7 +21,6 @@ func _go() -> void:
 			quit(0)
 			return
 		"AUTOLOADS_ONLY":
-			# Just boot with autoloads, no main scene
 			print("[ISOLATE] autoloads only (PerfProfiler etc present)")
 			for _i in 30:
 				await process_frame
@@ -31,7 +29,6 @@ func _go() -> void:
 			return
 		"MAIN_NO_BOOT":
 			var game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
-			# Remove CompositionRoot so boot never runs
 			var cr = game.get_node_or_null("CompositionRoot")
 			if cr:
 				game.remove_child(cr)
@@ -98,7 +95,6 @@ func _boot_main_and_quit(kill_player: bool, kill_crystal: bool, kill_visuals: bo
 
 
 func _chunks_only() -> void:
-	## Minimal: Config + World + ChunkManager stream only, no player/crystal/visuals.
 	var root3d := Node3D.new()
 	root3d.name = "IsolateRoot"
 	root.add_child(root3d)
@@ -111,7 +107,6 @@ func _chunks_only() -> void:
 
 	var world = load("res://world/infinite_noise_world.gd").new() if ResourceLoader.exists("res://world/infinite_noise_world.gd") else null
 	if world == null:
-		# try class path
 		world = (load("res://world/InfiniteNoiseWorld.gd") as GDScript).new()
 	world.name = "World"
 	root3d.add_child(world)
@@ -125,7 +120,6 @@ func _chunks_only() -> void:
 	elif "world" in cm:
 		cm.world = world
 
-	# force a few chunks
 	for _i in 90:
 		await process_frame
 		if cm.has_method("update_player_position"):
@@ -139,20 +133,17 @@ func _chunks_only() -> void:
 
 
 func _materials_only() -> void:
-	## Touch ChunkView static shared materials/meshes then quit.
 	var root3d := Node3D.new()
 	root.add_child(root3d)
 	var view_script: GDScript = load("res://chunks/chunk_view.gd")
 	var view: Node3D = view_script.new()
 	view.name = "ChunkViewProbe"
-	# Need LayerContainer child as scene expects
 	var lc := Node3D.new()
 	lc.name = "LayerContainer"
 	view.add_child(lc)
 	root3d.add_child(view)
 	if view.has_method("_ensure_chunk_material"):
 		view._ensure_chunk_material()
-	# Create a MultiMesh using shared material path if possible
 	var mmi := MultiMeshInstance3D.new()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D

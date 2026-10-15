@@ -1,6 +1,4 @@
 extends SceneTree
-## Iso studio: town_hall vs ruin_pillar vs gate.
-## Usage: godot --path . -s scripts/verify_town_hall_studio_capture.gd
 
 
 const OUT := "C:/users/cwith/weed/crystalstorm/.tmp_town_hall_capture/studio_hall.png"

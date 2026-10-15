@@ -1,6 +1,4 @@
 extends SceneTree
-## Save architecture: schema, migration, corruption, round-trip, rollback, determinism.
-## Usage: godot --headless -s scripts/verify_save_architecture.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -41,7 +39,6 @@ func _run() -> void:
 
 
 func _test_schema_migration_and_corruption() -> void:
-	# v1 payload migrates to v2 with world_state
 	var v1 := {
 		"version": 1,
 		"world_seed": 42,
@@ -72,7 +69,6 @@ func _test_schema_migration_and_corruption() -> void:
 	if not ws_block.has("height_delta"):
 		_fail("world_state missing height_delta after migrate")
 
-	# Corruption: bad checksum
 	var good: Dictionary = _SaveSchema.attach_integrity({
 		"schema_version": 2,
 		"version": 2,
@@ -86,12 +82,10 @@ func _test_schema_migration_and_corruption() -> void:
 	elif str(bad.get("reason", "")) != "checksum_mismatch":
 		_fail("expected checksum_mismatch got %s" % str(bad.get("reason")))
 
-	# Truncated / null
 	var null_r: Dictionary = _SaveSchema.validate_and_migrate(null)
 	if bool(null_r.get("ok", true)):
 		_fail("null payload must fail")
 
-	# Too new
 	var future := {"schema_version": 99, "world_state": {}}
 	var fut: Dictionary = _SaveSchema.validate_and_migrate(future)
 	if bool(fut.get("ok", true)):
@@ -116,7 +110,6 @@ func _test_world_state_persistence_roundtrip() -> void:
 	if int(bundle.get("revision", -1)) != rev:
 		_fail("export must include live revision")
 
-	# Mutate live then reimport
 	_TerrainEdits.dig(7, 8, 1)
 	_WorldState.replace_active()
 	_WorldState.get_active().import_persistence_bundle(bundle)
@@ -125,8 +118,6 @@ func _test_world_state_persistence_roundtrip() -> void:
 		_fail("import must restore revision (got %d want %d)" % [ws2.revision, rev])
 	if not is_equal_approx(_TerrainEdits.get_height_delta(7, 8), float(-2) * 2.0) \
 			and not is_equal_approx(_TerrainEdits.get_height_delta(7, 8), -4.0):
-		# layer height may be 2.0 default → 2 digs * -2 layers = -4 if scale 2? dig stores layers
-		# get_height_delta returns layers * layer_height
 		pass
 	var layers_at: int = int(ws2.height_delta.get(Vector2i(7, 8), 0))
 	if layers_at != -2:
@@ -151,7 +142,6 @@ func _test_world_state_persistence_roundtrip() -> void:
 	print("OK world_state persistence roundtrip")
 
 
-## Real disk path: JSON.stringify/parse turns ints into floats; Vector2i must survive.
 func _test_json_disk_vector2i_roundtrip() -> void:
 	_WorldState.replace_active()
 	_FeatureRegistry.register_feature(10, 11, _WorldFeatureTypes.FeatureKind.RUIN, {
@@ -177,7 +167,6 @@ func _test_json_disk_vector2i_roundtrip() -> void:
 		},
 		"channels": {"channels": bundle.get("channels", {})},
 	})
-	# Simulate real disk: write JSON, parse floats back.
 	var json_text := JSON.stringify(sealed, "\t")
 	var parsed = JSON.parse_string(json_text)
 	if parsed == null or not parsed is Dictionary:
@@ -208,7 +197,6 @@ func _test_json_disk_vector2i_roundtrip() -> void:
 		var s0: Dictionary = spawns[0]
 		if not (s0.get("world_pos") is Vector2i):
 			_fail("entity_spawns.world_pos not Vector2i after JSON (got %s)" % [s0.get("world_pos")])
-		# get_spawns_in_chunk must not SCRIPT ERROR after JSON load
 		var in_chunk: Array = _FeatureRegistry.get_spawns_in_chunk(Vector2i(0, 0), 16)
 		var found := false
 		for s in in_chunk:
@@ -227,7 +215,6 @@ func _test_json_disk_vector2i_roundtrip() -> void:
 		if not (t0.get("center") is Vector2i):
 			_fail("town center not Vector2i after JSON (got %s)" % [t0.get("center")])
 
-	# Codec unit: float pair must restore to Vector2i
 	var restored = _SaveCodec.restore_feature_value([10.0, 11.0])
 	if not (restored is Vector2i) or restored != Vector2i(10, 11):
 		_fail("SaveCodec.restore_feature_value must accept float pairs from JSON.parse")

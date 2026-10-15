@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: high landing with two perpendicular step-down neighbors must not emit corner prisms.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

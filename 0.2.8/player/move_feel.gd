@@ -1,30 +1,17 @@
 class_name MoveFeel
 extends RefCounted
-## Sprint and jump-feel numbers for the player step.
-## Pure math. No terrain probes, so the 60 Hz tick stays the same shape.
 ## Ramps, floor snap, and lighting do not read this.
 
-## Hold sprint on dry ground. A column of water does not use this.
 const SPRINT_MULT := 1.62
-## A river tile is already slow. Sprint still helps, less than on grass.
 const WADE_SPRINT_MULT := 1.28
-## Air keeps momentum. Steering is softer than the ground.
 const AIR_CONTROL := 0.42
-## Releasing the keys on the ground stops sooner than the old glide.
 const GROUND_STOP_MULT := 1.35
-## Turning around uses a harder accel so the body does not ice-skate.
 const REVERSE_MULT := 2.1
-## Extra push for the first steps of a sprint, still on the ground only.
 const SPRINT_ACCEL_MULT := 1.2
-## Walk off a ledge and the jump still counts for this long.
 const COYOTE_SEC := 0.12
-## A jump pressed just before landing still fires.
 const JUMP_BUFFER_SEC := 0.12
-## Tap jump hops. Holding jump keeps the full rise.
 const JUMP_RELEASE_MULT := 0.48
-## Falling is heavier than the rise, so landings settle.
 const FALL_GRAVITY_MULT := 1.32
-## Landing keeps most of the run. The old 0.65 dump killed a sprint.
 const LAND_SPEED_KEEP := 0.84
 const SPRINT_BOB_RATE := 15.5
 const WALK_BOB_RATE := 11.0
@@ -34,7 +21,6 @@ static func sprint_multiplier(wading: bool) -> float:
 	return WADE_SPRINT_MULT if wading else SPRINT_MULT
 
 
-## Submerged bodies ignore sprint. The caller already applied the swim slow.
 static func apply_sprint(speed: float, sprinting: bool, submerged: bool, wading: bool) -> float:
 	if not sprinting or submerged:
 		return speed

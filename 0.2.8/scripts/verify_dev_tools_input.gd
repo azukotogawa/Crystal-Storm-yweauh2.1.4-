@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: F3/F11 dev shortcuts respect GameplayInput gate; chat blocks, closed allows.
 
 
 const _DevChatOverlay = preload("res://ui/dev_chat_overlay.gd")
@@ -31,7 +30,6 @@ func _run() -> void:
 	root.add_child(overlay)
 	await process_frame
 
-	# Chat closed: F3 toggles overlay.
 	var visible_before := panel.is_overlay_visible()
 	coordinator.toggle_debug_overlay()
 	await process_frame
@@ -41,7 +39,6 @@ func _run() -> void:
 	else:
 		print("OK F3 toggles overlay when chat closed")
 
-	# Chat closed: bug report writes bundle.
 	var bundle: Dictionary = coordinator.write_bug_report()
 	if bundle.get("state_path", "").is_empty():
 		push_error("F11 path should write state when chat closed")
@@ -49,7 +46,6 @@ func _run() -> void:
 	else:
 		print("OK F11 writes bug report when chat closed")
 
-	# Open chat: gameplay blocked.
 	var plain_t := InputEventKey.new()
 	plain_t.physical_keycode = KEY_T
 	plain_t.keycode = KEY_T
@@ -90,7 +86,6 @@ func _run() -> void:
 	else:
 		print("OK chat close unblocks gameplay")
 
-	# Simulate coordinator _unhandled_input with debug_overlay_toggle while chat open.
 	overlay._unhandled_input(plain_t)
 	await process_frame
 	var f3 := InputEventKey.new()

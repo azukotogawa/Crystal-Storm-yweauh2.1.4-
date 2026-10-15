@@ -37,21 +37,16 @@ func _ready():
 	var ground := get_ground_height(0, 0)
 	voxel_position = Vector3(0, 0, ground)
 
-	# === THE RENDER LAYER FORCE ===
 	if has_node("Sprite3D"):
 			var sprite_node = $Sprite3D
 			
 			var mat = StandardMaterial3D.new()
 			
-			# FIXED: 'no_depth_test = true' is the ultimate master override. 
-			# This cleanly forces the GPU to ignore the hardware 3D depth buffer 
-			# for this sprite, rendering 'DEPTH_DRAW_NEVER' completely unnecessary!
 			mat.no_depth_test = true 
 			
 			mat.shading_mode = StandardMaterial3D.SHADING_MODE_UNSHADED
 			mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 			
-			# Bind the clean, unshaded material override to your sprite node container
 			sprite_node.material_override = mat
 
 	update_visual_position()
@@ -61,7 +56,6 @@ func _process(delta):
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
-	# Input
 	var input_dir := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"): input_dir.x += 1
 	if Input.is_action_pressed("ui_left"): input_dir.x -= 1
@@ -69,27 +63,21 @@ func _process(delta):
 	if Input.is_action_pressed("ui_up"): input_dir.y -= 1
 	input_dir = input_dir.normalized()
 	
-	# === INTERIA STATE LOCK ===
 	if input_dir != Vector2.ZERO:
 		if not is_input_locked:
-			# First frame of movement: snapshot the CURRENT world orientation
 			locked_iso_rotation = IsoMath.rotation
 			locked_camera_angle = IsoMath.rotation * 90.0
 			is_input_locked = true
 	else:
-		# Player stopped moving: completely release lock and catch up to current camera view
 		is_input_locked = false
 		locked_iso_rotation = IsoMath.rotation
 		locked_camera_angle = IsoMath.rotation * 90.0
 
-	# === 1. PROCESS MOVEMENT FIRST ===
 	if input_dir != Vector2.ZERO:
-		# 1. Counteract the camera spin by calculating input relative to the locked perspective
 		var current_camera_angle = IsoMath.rotation * 90.0
 		var angle_delta = current_camera_angle - locked_camera_angle
 		var counter_rotated_input = input_dir.rotated(deg_to_rad(-angle_delta))
 		
-		# 2. Map to isometric axes using the locked rotation matrix snapshot
 		var angle = locked_iso_rotation * 90.0
 		var rotated = counter_rotated_input.rotated(deg_to_rad(angle))
 		if locked_iso_rotation % 2 != 0:
@@ -119,11 +107,8 @@ func _process(delta):
 		if current_state == State.RUNNING:
 			change_state(State.IDLE)
 
-	# === 2. FIXED SAMPLE LOCATION ===
-	# This must run AFTER movement updates to prevent height-mismatch state cancellations!
 	var current_ground = get_ground_height(roundi(voxel_position.x), roundi(voxel_position.y))
 
-	# === 3. STATE MACHINE EVALUATION ===
 	match current_state:
 		State.JUMPING:
 			vertical_velocity -= GRAVITY * delta
@@ -169,34 +154,21 @@ func can_move_to(new_x: float, new_y: float) -> bool:
 	return target_h <= current_h + max_step
 
 func update_visual_position():
-	# 1. Calculate the smooth, absolute screen positions for your player tracking
 	var screen_pos = IsoMath.voxel_to_screen(voxel_position.x, voxel_position.y, voxel_position.z)
 	
-	# 2. SET THE GLOBAL PHYSICAL POSITION FIRST
-	# We map X and Y flatly to screenspace pixels divided by 64.0.
-	# We lock the root Node3D container flatly onto the 0.0 plane.
 	global_position = Vector3(
 		screen_pos.x / 64.0, 
 		-screen_pos.y / 64.0,  
 		0.0 
 	)
 
-	# 3. === THE UNIFIED DEPTH MATRIX SYNCHRONIZER ===
-	# Instead of guessing the tile's screen row with roundi(), we read our active global_position.y vector!
-	# Because we inverted the screen scale earlier (-screen_pos.y / 64.0), we multiply by -64.0 to turn 
-	# it right-side up, and add voxel_position.z * 2.0 to perfectly replicate your chunk's depth_key math!
 	var true_screen_y = -global_position.y * 64.0
 	var matching_depth_key = int(true_screen_y + (voxel_position.z * 2.0))
 
-	# 4. ASSIGN THE EXPLICIT OVERLAY LAYER SORT
-	# We pass the calculated key straight to your child Sprite3D component.
-	# The +1.0 integer priority modifier ensures your character draws beautifully on top 
-	# of their active floor row, while staying safely behind foreground blocks lower down the screen!
 	if has_node("Sprite3D"):
 		var sprite_node = $Sprite3D
 		sprite_node.sorting_offset = float(matching_depth_key) + 1.0
 		
-		# Keep your running squash, stretch, and skew animations functional
 		sprite_node.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
 		sprite_node.rotation.z = current_skew
 

@@ -1,6 +1,4 @@
 extends SceneTree
-## Tolerant block pick: exact hits stay, near misses snap, out of range rejects.
-## The highlight draws one reused outline and a face marker.
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -46,7 +44,6 @@ func _run() -> void:
 		slab.x + (slab.y - slab.x) * 0.35,
 		ws.column_to_world(float(cell.y) + 0.5)
 	)
-	# Straight down through the top face. An exact hit must not be moved.
 	var above := Vector3(center.x + scale * 0.04, slab.y + 8.0, center.z - scale * 0.03)
 	var down: Dictionary = _ActionTargeting.pick_along_ray(
 		above, Vector3.DOWN, player, world, null, 8.0, true
@@ -56,7 +53,6 @@ func _run() -> void:
 	else:
 		_ok("exact ray keeps the cell and the top face")
 
-	# Same cell, closer to the +X neighbor. The ray still enters this slab first.
 	var from_edge := Vector3(
 		ws.column_to_world(float(cell.x) + 0.82),
 		slab.y + 6.0,
@@ -70,7 +66,6 @@ func _run() -> void:
 	else:
 		_ok("exact hit is not retargeted")
 
-	# Just above the slab, aimed away so the march stays in this column.
 	var skim_from := Vector3(center.x, slab.y + scale * 0.2, center.z)
 	var skim: Dictionary = _ActionTargeting.pick_along_ray(
 		skim_from, Vector3.UP, player, world, null, 8.0, true
@@ -82,7 +77,6 @@ func _run() -> void:
 	else:
 		_ok("vertical near-miss snaps to the cell under the ray")
 
-	# Sideways near-miss: drop the neighbor, then aim up so the ray never enters another column.
 	if not _TerrainEdits.dig(neighbor.x, neighbor.y, 4):
 		_fail("could not dig the neighbor for the side miss")
 	else:
@@ -104,7 +98,6 @@ func _run() -> void:
 			else:
 				_ok("side near-miss snaps to the expected face %s" % face)
 
-	# Same side ray, but the player is too far: reject.
 	player.voxel_position = Vector3(float(cell.x) + 24.5, surf, float(cell.y) + 0.5)
 	var far_from := Vector3(
 		ws.column_to_world(float(cell.x) + 0.5),

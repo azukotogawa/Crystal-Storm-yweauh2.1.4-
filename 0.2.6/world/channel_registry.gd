@@ -1,8 +1,6 @@
 class_name ChannelRegistry
 extends RefCounted
-## Compatibility façade over WorldState channel overlay storage.
 ## Water is the primary fluid (water_level / flow_dir — save-compatible).
-## Extra fluids (e.g. crystal test co-occupancy) live in entry.fluids[id].
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldState = preload("res://world/world_state.gd")
@@ -10,7 +8,6 @@ const _WorldState = preload("res://world/world_state.gd")
 const FLUID_WATER := &"water"
 const FLUID_CRYSTAL := &"crystal"
 
-## Player-dug water channels: per-cell water level and preferred flow direction.
 
 
 static func _ws():
@@ -90,7 +87,6 @@ static func unregister_channel(wx: int, wz: int) -> void:
 	unregister_fluid(wx, wz, FLUID_WATER)
 
 
-# --- Multi-fluid API (water primary; extras in entry.fluids) -----------------
 
 static func has_fluid(wx: int, wz: int, fluid_id: StringName) -> bool:
 	var entry: Dictionary = get_channel(wx, wz)
@@ -126,7 +122,6 @@ static func set_fluid_level(wx: int, wz: int, fluid_id: StringName, level: float
 		ws.bump(_WorldState.DOMAIN_CHANNEL)
 		return clamped
 	if not ws.channels.has(key):
-		# Extra fluids may co-occupy; home entry without water until water is registered.
 		ws.channels[key] = {
 			"flow_dir": Vector2i.ZERO,
 			"fluids": {},
@@ -187,7 +182,6 @@ static func unregister_fluid(wx: int, wz: int, fluid_id: StringName) -> void:
 		if fluids.is_empty():
 			ws.channels.erase(key)
 		else:
-			# Keep cell for co-occupying fluids; drop water presence.
 			entry.erase("water_level")
 			entry["flow_dir"] = Vector2i.ZERO
 			ws.channels[key] = entry
@@ -214,7 +208,6 @@ static func all_fluid_positions(fluid_id: StringName) -> Array:
 	return out
 
 
-## Load registry water into a VoxelFluidEngine depth map (subset leave to caller).
 static func sync_depth_from_engine(engine) -> void:
 	if engine == null:
 		return
@@ -341,7 +334,6 @@ static func to_dict() -> Dictionary:
 	for key_variant in ws.channels.keys():
 		var key: Vector2i = key_variant
 		var entry: Dictionary = ws.channels[key]
-		# Persist primary water only (runtime extras are re-derived / non-authoritative).
 		if not has_fluid(key.x, key.y, FLUID_WATER):
 			continue
 		var flow_dir: Vector2i = entry.get("flow_dir", Vector2i.ZERO)

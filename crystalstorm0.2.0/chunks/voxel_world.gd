@@ -9,7 +9,7 @@ var manager: ChunkManager
 
 func _ready():
 	manager = ChunkManager.new(world, chunk_scene)
-	add_child(manager)  # Important: Add to tree
+	add_child(manager)
 
 func _process(_dt):
 	var cx = floori(player.voxel_position.x / float(ChunkData.SIZE))

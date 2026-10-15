@@ -79,8 +79,6 @@ static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> b
 		return false
 	var size: int = int(job.size)
 	var image: Image = job.image
-	# finalize used to resize this image up to the widget. Shifting that
-	# display image with internal pixel indexes paints the wrong quadrant.
 	if size < 1 or image.get_width() != size or image.get_height() != size:
 		return false
 	var old_center: Vector2i = job.get("center", Vector2i.ZERO)
@@ -172,8 +170,6 @@ static func finalize_job(job: Dictionary) -> ImageTexture:
 		display_size = image.get_width()
 	if display_size == image.get_width() and display_size == image.get_height():
 		return ImageTexture.create_from_image(image)
-	# Resize a copy. The job image stays at internal resolution so the next
-	# scroll can shift it without sampling the upscaled texture.
 	var output := image.duplicate()
 	output.resize(display_size, display_size, Image.INTERPOLATE_NEAREST)
 	return ImageTexture.create_from_image(output)
@@ -253,9 +249,6 @@ static func _rect_contains(rect: Rect2i, px: int, py: int) -> bool:
 
 static func _dirty_rects_after_shift(size: int, dx_px: int, dz_px: int) -> Array:
 	var rects: Array = []
-	# Scroll copies (px + dx, py + dz) into (px, py). The strip that falls off
-	# the source is the side the player walked toward, and it still holds the
-	# placeholder color until process_job samples it.
 	if dx_px > 0:
 		rects.append(Rect2i(maxi(0, size - dx_px), 0, mini(dx_px, size), size))
 	elif dx_px < 0:
@@ -264,7 +257,6 @@ static func _dirty_rects_after_shift(size: int, dx_px: int, dz_px: int) -> Array
 		rects.append(Rect2i(0, maxi(0, size - dz_px), size, mini(dz_px, size)))
 	elif dz_px < 0:
 		rects.append(Rect2i(0, 0, size, mini(-dz_px, size)))
-	# Sub-stride center change: the pixel grid did not scroll, so resample all.
 	if rects.is_empty():
 		rects.append(Rect2i(0, 0, size, size))
 	return rects
@@ -391,7 +383,6 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 	elif bool(job.get("channel_overlay", false)) and _ChannelRegistry.is_channel(wx, wz):
 		color = color.lerp(cfg.color_channel, 0.8)
 
-	# Intentional map edge: ocean/mountain borders + rim at playable half.
 	color = _apply_border_map_style(color, wx, wz, tile, cfg)
 
 	cache[key] = color
@@ -399,7 +390,6 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 	return _apply_crystal_tint(color, job, key)
 
 
-## Ocean rim / mountain wall read as deliberate map edges (not infinite noise).
 static func _apply_border_map_style(
 	base: Color, wx: int, wz: int, tile: int, cfg: _TopographicalMapConfig
 ) -> Color:
@@ -419,7 +409,6 @@ static func _apply_border_map_style(
 			color = color.lerp(cfg.color_ocean, 0.35)
 		elif _WorldBorder.is_border_mountain_tile(tile):
 			color = color.lerp(cfg.color_mountain, 0.3)
-	# Crisp rim just inside/outside the playable rectangle.
 	var rim: float = _WorldBorder.map_edge_rim_strength(float(wx), float(wz), 8.0)
 	if rim > 0.001:
 		var rim_color := Color(0.04, 0.05, 0.08, 1.0)

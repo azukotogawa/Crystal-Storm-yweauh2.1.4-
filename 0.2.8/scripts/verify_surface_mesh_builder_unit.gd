@@ -39,7 +39,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "surface mesh builder unit FAILED sequential face keys")
 		return
 
-	# Replace: y changes → old key dropped, new key in patch only (no orphan growth).
 	var replaced_top: Dictionary = top_quad.duplicate()
 	replaced_top["y"] = 3.5
 	var patched_replace: Dictionary = _TerrainSurfaceCache.patch_region(
@@ -55,7 +54,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "surface mesh builder unit FAILED replace vertex parity")
 		return
 
-	# Remove: empty patch rect quads → face count drops.
 	var patched_remove: Dictionary = _TerrainSurfaceCache.patch_region(
 		full_cache, data, [], [side_quad]
 	)
@@ -67,7 +65,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "surface mesh builder unit FAILED remove expected 1 face")
 		return
 
-	# Append within patch: new key added, matches full rebuild.
 	var new_top: Dictionary = {
 		"x": 2, "y": 4.0, "z": 0,
 		"dim_x": 1.0, "dim_y": 1.0, "dim_z": 1.0,

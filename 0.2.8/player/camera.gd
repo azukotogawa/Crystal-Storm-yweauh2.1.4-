@@ -7,9 +7,7 @@ const _Cutaway = preload("res://helpers/camera_cutaway.gd")
 
 const ISO_PITCH_DEG := -35.264
 const ISO_YAW0_DEG := 45.0
-## Steep top-down, still short of straight down (picking and the rig stay stable).
 const PITCH_MIN_DEG := -78.0
-## Shallow look-down. Positive pitch would put the camera under the ground.
 const PITCH_MAX_DEG := -18.0
 
 @export var target: Node3D
@@ -18,7 +16,7 @@ const PITCH_MAX_DEG := -18.0
 var follow_target: Vector3
 
 @export var distance := 100.0
-@export var height_offset := 101.0   # Fine-tune this for best cube look
+@export var height_offset := 101.0
 
 ## Disabled: mouse at the screen edge must not pan or rotate the camera. Q/E yaw.
 @export var edge_scroll_enabled: bool = false
@@ -26,7 +24,6 @@ var follow_target: Vector3
 @export var edge_scroll_speed: float = 42.0
 @export var edge_scroll_max_lead: float = 48.0
 
-## Continuous yaw (Godot Y rotation, degrees). Default 45° is the classic iso view.
 @export var yaw_speed_deg: float = 90.0
 @export var yaw_smooth: float = 12.0
 var yaw_target_degrees: float = ISO_YAW0_DEG
@@ -38,7 +35,6 @@ var yaw_degrees: float = ISO_YAW0_DEG
 var pitch_target_degrees: float = ISO_PITCH_DEG
 var pitch_degrees: float = ISO_PITCH_DEG
 var _pitch_dragging: bool = false
-## Seconds after the last pitch input before the settings file is written.
 var pitch_save_delay: float = 0.4
 var _pitch_persist_wait: float = -1.0
 var _cutaway_globals_ready: bool = false
@@ -47,14 +43,12 @@ var _cutaway_enabled: float = -1.0
 var _cutaway_feet: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
 var _cutaway_cam: Vector3 = Vector3(1.0e9, 1.0e9, 1.0e9)
 
-## Compat: old 0–3 orbit index. Writing snaps yaw to that 90° stop.
 var orbit_rotation: int:
 	set(v):
 		snap_yaw_degrees(ISO_YAW0_DEG + float(posmod(int(v), 4)) * 90.0)
 	get:
 		return posmod(int(round((yaw_degrees - ISO_YAW0_DEG) / 90.0)), 4)
 
-## Alias used by existing melee/yaw harnesses.
 var orbit_yaw_deg: float:
 	set(v):
 		snap_yaw_degrees(float(v))
@@ -68,14 +62,12 @@ var _orbit_target_deg: float:
 		return yaw_target_degrees
 
 ## Ortho view height. 16 is about a third closer than the old 24 (30–40% band).
-## Wheel still clamps to 8..140 so a close-up and a wide maze view both remain.
 var zoom_level := 16.0
 const ZOOM_STEP := 2.0
 const MIN_ZOOM := 8.0
 const MAX_ZOOM := 140.0
 
 var player: Player
-## Soft lead offset from player (edge scroll / look-ahead).
 var _scroll_lead: Vector3 = Vector3.ZERO
 
 func _ready():
@@ -149,7 +141,6 @@ func _apply_pitch_keys(delta: float) -> void:
 	apply_pitch_input(dir * pitch_speed_deg * delta)
 
 
-## User pitch. Programmatic snap_pitch_degrees does not write the settings file.
 func apply_pitch_input(delta_deg: float) -> void:
 	var next := clampf(pitch_target_degrees + delta_deg, PITCH_MIN_DEG, PITCH_MAX_DEG)
 	if is_equal_approx(next, pitch_target_degrees):
@@ -254,10 +245,10 @@ func _apply_edge_scroll(delta: float) -> void:
 	var sx: float = 0.0
 	var sy: float = 0.0
 	if mouse.x <= rect.position.x + m:
-		sx = -1.0 + (mouse.x - rect.position.x) / m  # -1 at edge → 0 at margin
+		sx = -1.0 + (mouse.x - rect.position.x) / m
 		sx = clampf(sx, -1.0, 0.0)
 	elif mouse.x >= rect.end.x - m:
-		sx = (mouse.x - (rect.end.x - m)) / m  # 0 → 1
+		sx = (mouse.x - (rect.end.x - m)) / m
 		sx = clampf(sx, 0.0, 1.0)
 	if mouse.y <= rect.position.y + m:
 		sy = -1.0 + (mouse.y - rect.position.y) / m
@@ -266,13 +257,11 @@ func _apply_edge_scroll(delta: float) -> void:
 		sy = (mouse.y - (rect.end.y - m)) / m
 		sy = clampf(sy, 0.0, 1.0)
 	if is_zero_approx(sx) and is_zero_approx(sy):
-		# Ease lead back to player when not edge-scrolling.
 		_scroll_lead = _scroll_lead.lerp(Vector3.ZERO, clampf(delta * 3.5, 0.0, 1.0))
 		return
 	var yaw: float = deg_to_rad(yaw_degrees)
 	var right := Vector3(cos(yaw), 0.0, -sin(yaw)).normalized()
 	var forward := Vector3(sin(yaw), 0.0, cos(yaw)).normalized()
-	# Screen up is -forward in this iso framing; screen right is +right.
 	var move: Vector3 = right * sx + forward * (-sy)
 	if move.length_squared() > 0.0001:
 		move = move.normalized()
@@ -281,8 +270,6 @@ func _apply_edge_scroll(delta: float) -> void:
 		_scroll_lead = _scroll_lead.normalized() * edge_scroll_max_lead
 
 
-## Single isometric offset from displayed yaw. No even/odd branches.
-## Default pitch keeps the legacy height_offset exactly so yaw probes stay stable.
 func get_offset_from_rotation() -> Vector3:
 	var yaw_rad := deg_to_rad(yaw_degrees)
 	if absf(pitch_degrees - ISO_PITCH_DEG) < 0.02:
@@ -308,7 +295,6 @@ func _update_camera_transform():
 	update_cutaway_uniforms()
 
 
-## Player feet and camera, once per frame. Shaders read these globals; no per-chunk materials.
 func update_cutaway_uniforms() -> void:
 	_ensure_cutaway_globals()
 	var enabled := 1.0 if _PlayerSettings.camera_cutaway_enabled else 0.0
@@ -341,8 +327,6 @@ func update_cutaway_uniforms() -> void:
 	RenderingServer.global_shader_parameter_set("cutaway_past", _Cutaway.PAST_DISTANCE)
 
 
-## Project shader globals are not always registered on the headless server.
-## Add them once when missing so the first gameplay frame still has the uniforms.
 func _ensure_cutaway_globals() -> void:
 	if _cutaway_globals_ready:
 		return

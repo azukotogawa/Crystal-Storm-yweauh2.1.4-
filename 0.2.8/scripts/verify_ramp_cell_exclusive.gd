@@ -1,5 +1,4 @@
 extends SceneTree
-## Cardinal landing replaces only the lid; approach and isolated L keep floors.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -73,7 +72,6 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK approach cell floor tops=%d" % approach_top)
-	# Isolated two-pillar L on a flat shelf (no inner diagonal) is not a corner.
 	var data2 := _ChunkData.new(Vector2i(0, 0), world)
 	data2.capture_worker_snapshot()
 	_fill(data2, low_h)

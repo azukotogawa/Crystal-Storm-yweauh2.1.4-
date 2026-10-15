@@ -1,6 +1,4 @@
 extends SceneTree
-## Player spawn ring sits in the heart-corner river-free disk.
-## Usage: godot --headless -s scripts/verify_spawn_dry_disk.gd
 
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")

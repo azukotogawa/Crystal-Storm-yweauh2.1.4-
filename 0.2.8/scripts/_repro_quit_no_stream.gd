@@ -1,5 +1,4 @@
 extends SceneTree
-## Boot main but pause stream before first process; then quit.
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "safe")
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW", "0")
@@ -17,7 +16,6 @@ func _run() -> void:
 	var cm = get_first_node_in_group("chunk_manager")
 	if cm:
 		cm.stream_paused = true
-		# Explicit release children without SceneTree conflict
 		if cm.has_method("release_all_chunks_for_teardown"):
 			print("[REPRO] explicit release_all before quit, views=", cm.chunks.size())
 			cm.release_all_chunks_for_teardown()

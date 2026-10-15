@@ -1,10 +1,6 @@
 class_name WorldBorder
 extends RefCounted
 
-# Rectangular playable map centered on origin.
-# -X / +X edges = ocean borders
-# -Z / +Z edges = mountain borders
-# Corners blend both (diagonal transition)
 
 const PLAYABLE_HALF_X := 1024
 const PLAYABLE_HALF_Z := 1024
@@ -119,7 +115,6 @@ static func border_biome_name(wx: float, wz: float) -> String:
 		return "ocean"
 	if info.side == "mountain":
 		return "border_mountain"
-	# Diagonal corner — classify by dominant border
 	if float(info.ocean_weight) >= float(info.mountain_weight):
 		return "ocean"
 	return "border_mountain"

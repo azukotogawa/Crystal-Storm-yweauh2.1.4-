@@ -1,5 +1,4 @@
 extends SceneTree
-## Verifies jump landing uses walkable floor probe (world heightfield, no scene tree required).
 
 const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 

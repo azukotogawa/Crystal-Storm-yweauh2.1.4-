@@ -1,8 +1,4 @@
 extends SceneTree
-## Measure CrystalManager cost for first 300 frames after crystal init.
-## Usage:
-##   CRYSTALSTORM_CRYSTAL_STARTUP_MEASURE=1 CRYSTALSTORM_BAKE_RADIUS=2 \
-##     godot --headless -s scripts/profile_crystal_startup.gd
 
 const MAIN := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -42,7 +38,6 @@ func _run() -> void:
 			crystal = get_first_node_in_group("crystal_manager")
 		if crystal and bool(crystal.get("_initialized")):
 			saw_init = true
-		# Wait until measure report printed (300 frames after init)
 		if saw_init and crystal and int(crystal.get("_measure_frame_i")) >= 300:
 			report_done = true
 			break

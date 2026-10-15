@@ -1,10 +1,6 @@
 class_name WorldSettings
 extends Resource
 
-## ═══════════════════════════════════════════════════════════════════════════
-## CHANGE VOXEL SIZE HERE — single knob for world scale.
-## Assign this resource on ConfigService (or edit res://config/default_world_settings.tres).
-## ═══════════════════════════════════════════════════════════════════════════
 
 @export_group("Voxel Scale (change these first)")
 @export_range(0.25, 8.0, 0.25)
@@ -52,7 +48,6 @@ func _sync_derived() -> void:
 	max_height_world_units = float(max_world_height_voxels) * voxel_scale
 
 
-# --- Convenience accessors (use these instead of magic numbers) ---
 
 func layer_height() -> float:
 	return voxel_scale
@@ -114,7 +109,6 @@ func player_radius() -> float:
 	return PlayerBodyMesh.half_width_for_height(player_height())
 
 
-## Wildlife fallback body. Shorter than the player, about half a voxel.
 func small_creature_height() -> float:
 	return layer_height() * 0.55
 
@@ -133,7 +127,6 @@ func floor_snap_distance() -> float:
 
 
 func max_step_up_walk() -> float:
-	## Full voxel-layer step while walking (plus small epsilon for float error).
 	return layer_height() * 1.08
 
 

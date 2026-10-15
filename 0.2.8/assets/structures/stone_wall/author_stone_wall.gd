@@ -1,18 +1,9 @@
 extends SceneTree
-## Author the Crystal Storm stone_wall battlement mesh + albedo atlas.
-##
-## Mesh is in voxel-column units (width ≈ 1 column, Y up from ground).
 ## Runtime bind multiplies XZ by WorldSettings.voxel_scale and uses a short Y cap.
-##
-## Usage: godot --headless --path . -s assets/structures/stone_wall/author_stone_wall.gd
-##
-## This is a real authored asset (running-bond masonry, crenellations, collar),
-## not a runtime multi-box silhouette.
 
 const HERE := "res://assets/structures/stone_wall"
 const SRC := HERE + "/src"
 
-# Atlas UV regions in OpenGL space (v=0 bottom), matching wood_wall layout.
 const UV_FACE := Vector4(0.02, 0.02, 0.48, 0.98)
 const UV_CAP := Vector4(0.52, 0.52, 0.98, 0.98)
 const UV_MOSS := Vector4(0.52, 0.27, 0.98, 0.48)
@@ -72,7 +63,6 @@ func _build_albedo(path: String, size: int) -> void:
 	atlas.blit_rect(cap_q, Rect2i(0, 0, half, half), Vector2i(half, 0))
 	atlas.blit_rect(moss_q, Rect2i(0, 0, half, q), Vector2i(half, half))
 	atlas.blit_rect(dirt_q, Rect2i(0, 0, half, q), Vector2i(half, half + q))
-	# Lift the face slightly so mortar/stone contrast survives mipmaps at iso zoom.
 	_tint_rect(atlas, Rect2i(0, 0, half, size), Color(0.88, 0.90, 0.95), 0.10)
 	atlas.save_png(path)
 	print("wrote albedo %s %dx%d" % [path, atlas.get_width(), atlas.get_height()])
@@ -150,7 +140,6 @@ func _hash01(a: float, b: float) -> float:
 	return fposmod(sin(a * 12.9898 + b * 78.233) * 43758.5453, 1.0)
 
 
-## Beveled ashlar block. Size is full extents. Bevel insets the top face.
 func add_block(center: Vector3, size: Vector3, region: Vector4, uv_shift: Vector2, bevel: float = 0.012, top_region: Vector4 = Vector4.ZERO) -> void:
 	var hx := size.x * 0.5
 	var hy := size.y * 0.5
@@ -162,23 +151,19 @@ func add_block(center: Vector3, size: Vector3, region: Vector4, uv_shift: Vector
 	var x1 := center.x + hx
 	var z0 := center.z - hz
 	var z1 := center.z + hz
-	# Bottom rectangle
 	var b00 := Vector3(x0, y0, z0)
 	var b10 := Vector3(x1, y0, z0)
 	var b11 := Vector3(x1, y0, z1)
 	var b01 := Vector3(x0, y0, z1)
-	# Top rectangle inset
 	var t00 := Vector3(x0 + b, y1, z0 + b)
 	var t10 := Vector3(x1 - b, y1, z0 + b)
 	var t11 := Vector3(x1 - b, y1, z1 - b)
 	var t01 := Vector3(x0 + b, y1, z1 - b)
-	# Mid ring at near-top (for a lip)
 	var m00 := Vector3(x0, y1 - b, z0)
 	var m10 := Vector3(x1, y1 - b, z0)
 	var m11 := Vector3(x1, y1 - b, z1)
 	var m01 := Vector3(x0, y1 - b, z1)
 
-	# Large UV window so each face shows a few big stones, not a pebble field.
 	var su := clampf(size.x * 0.55, 0.22, 0.55)
 	var sv := clampf(size.y * 0.50, 0.18, 0.50)
 	var u0 := fposmod(uv_shift.x, 0.35)
@@ -186,22 +171,15 @@ func add_block(center: Vector3, size: Vector3, region: Vector4, uv_shift: Vector
 	var u1 := u0 + su
 	var v1 := v0 + sv
 
-	# -Z face (back)
 	_add_quad(b00, b10, m10, m00, _remap(u0, v0, region), _remap(u1, v0, region), _remap(u1, v1, region), _remap(u0, v1, region))
-	# +Z face (front — iso readable)
 	_add_quad(b11, b01, m01, m11, _remap(u0, v0, region), _remap(u1, v0, region), _remap(u1, v1, region), _remap(u0, v1, region))
-	# -X
 	_add_quad(b01, b00, m00, m01, _remap(u0, v0, region), _remap(u1, v0, region), _remap(u1, v1, region), _remap(u0, v1, region))
-	# +X
 	_add_quad(b10, b11, m11, m10, _remap(u0, v0, region), _remap(u1, v0, region), _remap(u1, v1, region), _remap(u0, v1, region))
-	# Bottom
 	_add_quad(b01, b11, b10, b00, _remap(0.15, 0.15, UV_DIRT), _remap(0.85, 0.15, UV_DIRT), _remap(0.85, 0.85, UV_DIRT), _remap(0.15, 0.85, UV_DIRT))
-	# Bevel ring to top
 	_add_quad(m00, m10, t10, t00, _remap(u0, v1, region), _remap(u1, v1, region), _remap(u1, 1.0, region), _remap(u0, 1.0, region))
 	_add_quad(m10, m11, t11, t10, _remap(u0, v1, region), _remap(u1, v1, region), _remap(u1, 1.0, region), _remap(u0, 1.0, region))
 	_add_quad(m11, m01, t01, t11, _remap(u0, v1, region), _remap(u1, v1, region), _remap(u1, 1.0, region), _remap(u0, 1.0, region))
 	_add_quad(m01, m00, t00, t01, _remap(u0, v1, region), _remap(u1, v1, region), _remap(u1, 1.0, region), _remap(u0, 1.0, region))
-	# Top
 	var top_r := top_region if top_region != Vector4.ZERO else UV_CAP
 	_add_quad(t00, t10, t11, t01, _remap(0.08 + uv_shift.x * 0.2, 0.08, top_r), _remap(0.92, 0.08, top_r), _remap(0.92, 0.92, top_r), _remap(0.08, 0.92, top_r))
 
@@ -257,7 +235,6 @@ func _course_blocks(y0: float, y1: float, count: int, offset: bool, z_half: floa
 	# Running bond: shift the first block so joints do not stack.
 	var shift := (base_w * 0.38) if offset else 0.0
 	var x := x_min + shift * 0.15
-	# If offset, first block is shorter so the last still fits.
 	for i in count:
 		var t := float(i)
 		var w_jit := 1.0 + (_hash01(course_i, t) - 0.5) * 0.18
@@ -270,7 +247,6 @@ func _course_blocks(y0: float, y1: float, count: int, offset: bool, z_half: floa
 			w = x_max - x
 		var h := (y1 - y0) + y_jit
 		var z_ext := z_half * z_jit
-		# Front-face push so the iso camera reads individual stones, not a slab.
 		var z_push := (_hash01(course_i + 7.0, t) - 0.35) * 0.018
 		var cx := x + w * 0.5
 		var cy := y0 + h * 0.5
@@ -292,7 +268,6 @@ func _build_mesh() -> void:
 	_vn.clear()
 	_f.clear()
 	add_earth_collar()
-	# Plinth — wider, heavier base (defensive footing).
 	add_block(
 		Vector3(-0.24, 0.075, 0.0),
 		Vector3(0.47, 0.15, 0.50),
@@ -309,11 +284,9 @@ func _build_mesh() -> void:
 		0.014,
 		UV_DIRT
 	)
-	# Three chunky courses (running bond). Big stones read at iso zoom.
 	_course_blocks(0.16, 0.54, 2, false, 0.215, 0)
 	_course_blocks(0.54, 0.92, 3, true, 0.200, 1)
 	_course_blocks(0.92, 1.22, 2, false, 0.190, 2)
-	# Wall-walk slab (flat top the merlons sit on).
 	add_block(
 		Vector3(0.0, 1.245, 0.0),
 		Vector3(0.96, 0.055, 0.42),
@@ -322,7 +295,6 @@ func _build_mesh() -> void:
 		0.008,
 		UV_CAP
 	)
-	# Two wide merlons + one center embrasure — reads as a battlement, not a comb.
 	var merlons := [
 		{"x": -0.27, "w": 0.38, "h": 0.64, "z": 0.44},
 		{"x": 0.27, "w": 0.38, "h": 0.56, "z": 0.43},
@@ -339,7 +311,6 @@ func _build_mesh() -> void:
 			0.013,
 			UV_CAP
 		)
-		# Capstone lid, slightly oversized — reads as dressed coping.
 		add_block(
 			Vector3(float(m.x), y0 + h + 0.028, 0.0),
 			Vector3(float(m.w) + 0.04, 0.055, float(m.z) + 0.04),

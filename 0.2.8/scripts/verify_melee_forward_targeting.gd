@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: melee targeting uses camera-forward raycast (not mouse-only / fixed north).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -25,7 +24,6 @@ func _run() -> void:
 		print("OK weapon melee uses resolve_action attack")
 
 	var targeting_src := (load("res://player/action_targeting.gd") as GDScript).source_code
-	# Off-screen mouse returns no column; target_column then walks _target_column_forward.
 	if "_target_column_forward" not in targeting_src or '&"attack", &"ranged"' not in targeting_src:
 		push_error("action_targeting must forward-fallback tool modes without mouse")
 		failed = true
@@ -147,7 +145,6 @@ func _run() -> void:
 	else:
 		print("OK attack resolves without mouse at cells=%s" % str(resolve_cells.keys()))
 
-	# Production melee must damage a spawned entity ahead along attack_forward (not co-located).
 	var entity_mgr = get_first_node_in_group("entity_manager")
 	if entity_mgr and entity_mgr.has_method("_spawn_world_entity"):
 		if cam:

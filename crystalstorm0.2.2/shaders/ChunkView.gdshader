@@ -1,6 +1,5 @@
 shader_type spatial;
 
-// FIXED RENDER MODES: Changed 'depth_draw_opaque' to 'depth_draw_never'.
 // Turning off depth tracking completely stops the invisible outer corners of your cards 
 // from leaving hidden punch-holes, passing all layer order over to your sorting_offsets!
 render_mode depth_draw_never, cull_disabled, unshaded;

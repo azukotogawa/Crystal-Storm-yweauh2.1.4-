@@ -8,7 +8,6 @@ const _EntityManager = preload("res://entities/entity_manager.gd")
 const _RuinManager = preload("res://world/ruin_manager.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 
-# Orchestrates town, vegetation, and animal placement before chunk visuals finalize.
 
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
@@ -18,14 +17,12 @@ var _composition_driven: bool = false
 
 func _ready() -> void:
 	add_to_group("world_features")
-	# CompositionRoot drives bootstrap when present; legacy deferred path otherwise.
 	call_deferred("_maybe_legacy_bootstrap")
 
 
 func _maybe_legacy_bootstrap() -> void:
 	if _composition_driven or bootstrap_complete:
 		return
-	# Give CompositionRoot a frame to claim ownership.
 	await get_tree().process_frame
 	if _composition_driven or bootstrap_complete:
 		return
@@ -39,8 +36,6 @@ func ensure_ready() -> void:
 		await get_tree().process_frame
 
 
-## Composition-root path: explicit service refs, no group polling.
-## `resolved` is EffectiveRuntimePolicy from RuntimeConfigResolver (may be empty early).
 func bootstrap_with_services(registry, resolved: Dictionary = {}) -> void:
 	_composition_driven = true
 	if bootstrap_complete:
@@ -53,7 +48,6 @@ func bootstrap_with_services(registry, resolved: Dictionary = {}) -> void:
 	if perf_svc and perf_svc.has_method("ensure_ready"):
 		await perf_svc.ensure_ready()
 	_StartupProfiler.end("fs/bootstrap_perf_ready")
-	# Honor resolved safe-mode / crystal policy for seeding decisions.
 	var policy: Dictionary = resolved.get("policy", {}) if not resolved.is_empty() else {}
 	var visual_registry = registry.resolve(&"game_visual_registry") if registry else null
 	_StartupProfiler.begin("fs/bootstrap_visual_textures")
@@ -68,7 +62,6 @@ func bootstrap_with_services(registry, resolved: Dictionary = {}) -> void:
 	world = registry.resolve(&"world") if registry else null
 	if world == null and registry == null:
 		world = get_tree().get_first_node_in_group("world")
-	# Apply effective caves policy when world already present (before chunks).
 	if world and world.has_method("set_caves_enabled") and policy.has("caves_enabled"):
 		world.set_caves_enabled(bool(policy.get("caves_enabled")))
 	_StartupProfiler.end("fs/world_resolve_and_policy")
@@ -116,7 +109,6 @@ func _seed_content(perf_svc) -> void:
 		safe_mode = perf_svc.is_safe_mode()
 	_crash_crumb("WorldFeatures._seed_content safe_mode=%s" % str(safe_mode))
 
-	# Biome Voronoi regions are built in InfiniteNoiseWorld._init (before this stage).
 	_StartupProfiler.mark("fs/biome_initialization", 0)
 
 	var town_mgr = get_node_or_null("TownManager")
@@ -137,7 +129,6 @@ func _seed_content(perf_svc) -> void:
 		_StartupProfiler.mark("fs/resource_field_generation", 0)
 
 	var veg_mgr = get_node_or_null("VegetationManager")
-	# Baked vegetation streams with .chk packages — never scatter inside bake bounds.
 	_crash_crumb("WorldFeatures._seed_content → _should_skip_runtime_vegetation_scatter ENTER")
 	var skip_veg: bool = _should_skip_runtime_vegetation_scatter()
 	_crash_crumb("WorldFeatures._seed_content → skip_runtime_vegetation=%s" % str(skip_veg))
@@ -182,13 +173,12 @@ func _seed_content(perf_svc) -> void:
 	else:
 		_StartupProfiler.mark("fs/spawn_region_generation", 0)
 
-	# Categories not present in this stage (explicit zero; town marks road/farmland itself).
 	_StartupProfiler.mark("fs/cave_feature_generation", 0)
 	_StartupProfiler.mark("fs/navigation_generation", 0)
 	_StartupProfiler.mark("fs/crystal_initialization", 0)
 	_StartupProfiler.mark("fs/serialization", 0)
-	_StartupProfiler.mark("fs/spatial_index_creation", 0)  # denial spatial is lazy on first query
-	_StartupProfiler.mark("fs/node_creation", 0)  # seed_spawns registers spawn points; no Node spawn here
+	_StartupProfiler.mark("fs/spatial_index_creation", 0)
+	_StartupProfiler.mark("fs/node_creation", 0)
 	_crash_crumb("WorldFeatures._seed_content EXIT ok")
 
 
@@ -205,7 +195,6 @@ static func _notify_loading_ui(mode: String, progress: float, message: String) -
 		bake._emit_status(mode, progress, message)
 
 
-## Durable breadcrumb for crash forensics (survives hard process death).
 static func _crash_crumb(msg: String) -> void:
 	var line := "[CRASH_CRUMB t=%d] %s" % [Time.get_ticks_msec(), msg]
 	print(line)
@@ -214,7 +203,6 @@ static func _crash_crumb(msg: String) -> void:
 	if f:
 		f.store_string(line + "\n")
 		f.close()
-	# Append-only trail
 	var trail := "user://startup_crumb_trail.log"
 	var fa := FileAccess.open(trail, FileAccess.READ_WRITE)
 	if fa == null:
@@ -232,20 +220,16 @@ func _should_skip_runtime_vegetation_scatter() -> bool:
 	var Bake = load("res://world/world_bake_service.gd")
 	if Bake == null:
 		return false
-	# World bake disabled → keep runtime scatter.
 	if Bake.has_method("bake_enabled_from_env") and not bool(Bake.bake_enabled_from_env()):
 		return false
 	var bake = Bake.get_active()
 	if bake == null and Bake.has_method("ensure_active"):
 		bake = Bake.ensure_active()
 	if bake == null:
-		# Bake service required for package path; if missing, scatter.
 		return false
 	if bool(bake.get("valid")) and bool(bake.get("vegetation_baked")):
 		return true
-	# Probe disk index (no package load). Feature seed is before ChunkManager bootstrap.
 	if world == null:
-		# Still skip if production will auto-bake packages with vegetation on chunk init.
 		if Bake.has_method("bake_on_new_from_env") and bool(Bake.bake_on_new_from_env()):
 			return true
 		return false
@@ -256,12 +240,9 @@ func _should_skip_runtime_vegetation_scatter() -> bool:
 	if bake.has_method("load_bake_for_seed") and bake.load_bake_for_seed(seed, want_full):
 		if bool(bake.get("vegetation_baked")):
 			return true
-		# Index loaded but no veg flag: if production will rebuild packages, skip scatter
-		# (bake_world embeds vegetation). Avoid double work + 24% loading freeze.
 		if Bake.has_method("bake_on_new_from_env") and bool(Bake.bake_on_new_from_env()):
 			return true
 		return false
-	# No index on disk: production auto-bake will create packages with vegetation.
 	if Bake.has_method("bake_on_new_from_env") and bool(Bake.bake_on_new_from_env()):
 		return true
 	return false
@@ -272,7 +253,6 @@ func on_chunk_manager_ready(cm: ChunkManager) -> void:
 		return
 	chunk_manager = cm
 
-	# Prefer composition root explicit handoff if available (already done by root).
 	var root = get_tree().get_first_node_in_group("composition_root")
 	if root and root.is_at_least(root.Stage.CHUNKS_CREATED if "Stage" in root else 4):
 		call_deferred("_post_bootstrap_visual_refresh")

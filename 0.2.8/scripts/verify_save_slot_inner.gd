@@ -47,7 +47,6 @@ func _exercise_slot_roundtrip() -> bool:
 	if save_svc.config:
 		save_svc.config.auto_save_enabled = false
 
-	# (3, 5) is river after the dry disk moved to the heart corner.
 	var col: Vector2i = _DryDigCells.find_cell(world, Vector2i(3, 5))
 	if not _DryDigCells.is_found(col):
 		push_error("no dry dig cell near (3, 5) or the heart disk")

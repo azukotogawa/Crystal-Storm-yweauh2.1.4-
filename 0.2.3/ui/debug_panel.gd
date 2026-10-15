@@ -23,7 +23,6 @@ func _process(_delta):
 	var camera = main.get_node_or_null("Player/Camera3D") if main else \
 		get_tree().get_first_node_in_group("camera")
 	
-	# Chunk count
 	var voxel_world = main.get_node_or_null("VoxelWorld") if main else null
 	if voxel_world and "world" in voxel_world:
 		seed_val = str(voxel_world.world.world_seed if "world_seed" in voxel_world.world else "0")

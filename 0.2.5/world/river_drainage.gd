@@ -1,5 +1,3 @@
-# river_drainage.gd
-# Macro hydrology: D8 flow accumulation patches, spine segments, hydraulic polylines.
 class_name RiverDrainage
 extends RefCounted
 

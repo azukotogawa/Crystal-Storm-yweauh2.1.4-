@@ -1,7 +1,5 @@
 class_name ItemAnim
 extends RefCounted
-## Data for held-item poses. Kind and timing come from the item def when set,
-## otherwise from the weapon category. Damage uses the same Playback clock.
 
 enum Kind { NONE = 0, SWING = 1, THRUST = 2, RAISE = 3, AIM = 4 }
 
@@ -86,8 +84,6 @@ static func _default_ratio(kind: int) -> float:
 			return 0.0
 
 
-## Clock shared by the held-item pose and the strike release.
-## advance() returns true on the single step that crosses the impact time.
 class Playback extends RefCounted:
 	var item_id: String = ""
 	var kind: int = 0
@@ -118,7 +114,6 @@ class Playback extends RefCounted:
 		return impact_fired and elapsed >= duration - 0.0001
 
 
-	## True only on the sample that reaches the impact. Earlier samples stay false.
 	func advance(dt: float) -> bool:
 		if duration <= 0.0:
 			return false

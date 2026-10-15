@@ -1,6 +1,5 @@
 class_name ChunkRebuildTelemetry
 extends RefCounted
-## Env-gated per-rebuild telemetry (CRYSTALSTORM_CHUNK_PROFILE=1). Investigation only.
 
 
 const FACE_TOP := 0

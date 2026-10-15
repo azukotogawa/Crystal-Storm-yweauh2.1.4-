@@ -12,10 +12,7 @@ var player: Player
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 
-## Extra range when previewing build via RMB (build_place) while another tool is selected.
-## Matches ActionTargeting.INTERACTION_RANGE (INPUT_CONTRACT: 8 voxels).
 const BUILD_PREVIEW_RANGE := 8.0
-## Hover pick distance (screen-follow); actions still clamp to tool/interaction range.
 const HOVER_PICK_RANGE := 14.0
 const DISPLAY_SNAP_SPEED := 64.0
 const HOVER_PULSE_HZ := 2.4
@@ -34,10 +31,8 @@ var _hover_t: float = 0.0
 var _last_mode: StringName = &"none"
 var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
-## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
 var _crystal = null
-## Skip the mouse-ray and both resolve passes while aim, cell, and edits are still.
 var _aim_cache_ok: bool = false
 var _aim_from_cache: bool = false
 var _aim_mouse: Vector2 = Vector2(99999.0, 99999.0)
@@ -53,7 +48,6 @@ var _aim_cell: Vector2i = Vector2i(999999, 999999)
 var _aim_hover: Vector3 = Vector3.ZERO
 var _aim_stable: Vector3 = Vector3.ZERO
 var _aim_info: Dictionary = {}
-## Reused footprint boxes. Hidden at radius 1 so the single-cell highlight is unchanged.
 const BRUSH_MARK_POOL := 12
 var _brush_marks: Array[MeshInstance3D] = []
 var _brush_key: Vector3i = Vector3i(999999, 999999, -1)
@@ -65,7 +59,6 @@ func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	_crystal = get_tree().get_first_node_in_group("crystal_manager")
-	# Run before WeaponController so dig/build read this frame's aim column.
 	process_priority = -20
 	_build_mesh()
 	_build_ghost()
@@ -176,7 +169,6 @@ func _build_face_marker() -> void:
 	apply_face_marker(0)
 
 
-## Reused face quad. Face codes match ActionTargeting.last_pick_face.
 func apply_face_marker(face: int) -> void:
 	if _face == null:
 		return
@@ -247,7 +239,6 @@ func _process(delta: float) -> void:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 
 	var range_v := _active_range()
-	# build_place extends reach unless the held item has a right-click use.
 	var build_held := _build_preview_held()
 	if build_held:
 		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
@@ -262,20 +253,17 @@ func _process(delta: float) -> void:
 		info = _aim_info
 	else:
 		_aim_from_cache = false
-		# Hover follows mouse beyond tool range (blocked tint when out of range).
 		hover_col = _ActionTargeting.pick_hover_column(
 			player, world, chunk_manager, maxf(range_v, HOVER_PICK_RANGE)
 		)
 		if hover_col == Vector3.ZERO:
 			hover_col = _ActionTargeting.target_column(player, range_v)
 
-		# Exact mouse follow: action cell is always the live hover column (no hysteresis).
 		var hover_cell := Vector2i(floori(hover_col.x), floori(hover_col.z)) if hover_col != Vector3.ZERO \
 			else Vector2i(999999, 999999)
 		_stable_cell = hover_cell
 		stable_col = Vector3(float(_stable_cell.x) + 0.5, player.voxel_position.y, float(_stable_cell.y) + 0.5) \
 			if _stable_cell.x < 900000 else Vector3.ZERO
-		# Always publish aim for dig/build — even when mode preview is blocked/out of range.
 		_action_column = stable_col
 
 		var resolve_t0 := Time.get_ticks_usec()
@@ -290,14 +278,12 @@ func _process(delta: float) -> void:
 		_remember_aim(range_v, build_held, hover_col, stable_col, info)
 
 	var mode: StringName = info.get("mode", &"none")
-	# Show dig/build/attack previews even when blocked so aim stays readable.
 	if mode not in [&"dig", &"build", &"attack", &"ranged"] or stable_col == Vector3.ZERO:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
 		_hide_brush_marks()
 		_display_ready = false
-		# Keep _action_column so hold-dig still hits the hovered cell under the mouse.
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -316,15 +302,12 @@ func _process(delta: float) -> void:
 	_mesh.scale = Vector3(scale * 1.06 * pulse_scale, box_h * (1.0 + 0.03 * pulse + 0.12 * place_boost), scale * 1.06 * pulse_scale)
 
 	var target_pos: Vector3 = info.get("world_pos", Vector3.ZERO)
-	# world_pos is the top face of the target layer; center the box in that layer.
 	target_pos.y -= layer * 0.5
 	var cell: Vector2i = info.get("cell", _stable_cell)
-	# Logical cell jumps: snap box instantly (cursor always under mouse).
 	if not _display_ready or mode != _last_mode or cell != _last_cell:
 		_display_pos = target_pos
 		_display_ready = true
 	else:
-		# Same cell: ease height when dig/build changes surface under the cursor.
 		var k: float = clampf(DISPLAY_SNAP_SPEED * delta, 0.0, 1.0)
 		_display_pos = _display_pos.lerp(target_pos, k)
 		if _display_pos.distance_to(target_pos) < 0.03:
@@ -342,7 +325,6 @@ func _process(delta: float) -> void:
 	else:
 		match mode:
 			&"dig":
-				# g kept <0.65 so dig-highlight verifies still read as orange.
 				_mat.albedo_color = Color(1.0, 0.52, 0.1, 0.28 + 0.16 * pulse)
 				_mat.emission = Color(1.0, 0.45, 0.05)
 				_mat.emission_energy_multiplier = 0.55 + 0.55 * pulse
@@ -373,12 +355,10 @@ func _process(delta: float) -> void:
 		profiler.end("target_highlight")
 
 
-## Satisfying placement pop when a wall/gate/bridge lands.
 func pulse_place_success() -> void:
 	_place_flash_t = 0.18
 
 
-## Column dig/build must use — matches the visible cursor (column-space).
 func get_action_column() -> Vector3:
 	return _action_column
 
@@ -464,7 +444,6 @@ func _remember_aim(range_v: float, build_held: bool, hover_col: Vector3, stable_
 		_aim_depth = float(_crystal.get_depth_at(_aim_cell.x, _aim_cell.y))
 
 
-## Cells the dig brush would edit. Radius 1 is just the aimed column.
 func get_brush_footprint() -> Array:
 	if _action_column == Vector3.ZERO or world == null:
 		return []
@@ -556,7 +535,6 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 		_ghost_mat.emission_energy_multiplier = 0.25 + 0.2 * pulse
 		return
 	var mode: StringName = info.get("mode", &"none")
-	# Predict next tile along aim for dig/build continuous reshape.
 	if mode not in [&"dig", &"build"] or not bool(info.get("valid", false)):
 		_ghost.visible = false
 		return
@@ -601,7 +579,6 @@ func _active_range() -> float:
 		return _ActionTargeting.INTERACTION_RANGE
 	var category := int(def.get("category", -1))
 	var kind := int(def.get("weapon_kind", -1))
-	# Combat weapons keep authored item range; dig/build/remove use interaction reach.
 	if category == _ItemTypes.Category.WEAPON \
 			and (kind == _ItemTypes.WeaponKind.MELEE or kind == _ItemTypes.WeaponKind.RANGED):
 		return float(def.get("range", 2.0))

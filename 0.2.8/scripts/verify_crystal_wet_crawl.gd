@@ -1,5 +1,4 @@
 extends SceneTree
-## Crystal on standing water is queryable and presentation marks wet cells.
 
 
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")

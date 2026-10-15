@@ -1,6 +1,4 @@
 extends SceneTree
-## Ruin Expedition loop: discover → crystal power + loot + relic + guardians + UI wiring.
-## Usage: godot --headless -s scripts/verify_ruin_expedition.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
@@ -23,7 +21,6 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	# Structural relics
 	_RelicRegistry.reset()
 	_RelicRegistry.ensure_builtins()
 	if _RelicRegistry.get_def(&"pathfinder_charm") == null or _RelicRegistry.get_def(&"ruin_seal") == null:
@@ -73,7 +70,6 @@ func _run() -> void:
 		await process_frame
 		pf += 1
 
-	# Spawner API
 	if spawner == null or not spawner.has_method("spawn_enemy_at_column"):
 		_fail("crystal_enemy_spawner.spawn_enemy_at_column missing")
 	else:
@@ -95,13 +91,11 @@ func _run() -> void:
 		return
 	print("expedition result=%s" % result)
 
-	# Crystal power up
 	if float(crystal.power) <= power_before:
 		_fail("ruin must still feed crystal power")
 	else:
 		print("OK crystal power %.1f→%.1f" % [power_before, float(crystal.power)])
 
-	# Loot
 	var loot: Dictionary = result.get("loot", {})
 	if int(loot.get("stone", 0)) < 1:
 		_fail("expected stone loot")
@@ -114,7 +108,6 @@ func _run() -> void:
 		else:
 			print("OK inventory stone %d→%d" % [stone_before, stone_after])
 
-	# Relic if slots free (player starts with crystal_ward — 2 free)
 	var relic_id: String = str(result.get("relic_id", ""))
 	if relic_id == "" and equipped_before < 3:
 		_fail("expected a ruin relic when slots free equipped_before=%d" % equipped_before)
@@ -125,7 +118,6 @@ func _run() -> void:
 		else:
 			print("OK relic equipped on manager")
 
-	# Guardians
 	await process_frame
 	await process_frame
 	var enemies_after := get_nodes_in_group("crystal_enemy").size()
@@ -135,7 +127,6 @@ func _run() -> void:
 	else:
 		print("OK guardians result=%d enemies %d→%d" % [gcount, enemies_before, enemies_after])
 
-	# HUD line
 	if lwd.has_method("get_ruins_hud_line"):
 		var line: String = str(lwd.get_ruins_hud_line())
 		if "Ruins" not in line:
@@ -143,7 +134,6 @@ func _run() -> void:
 		else:
 			print("OK ruins HUD '%s'" % line)
 
-	# Biome first visit
 	if lwd.has_method("_try_first_biome_visit"):
 		var herb_b: int = inv.count_item("herb") if inv else 0
 		lwd._visited_biomes.erase("steppe")
@@ -154,7 +144,6 @@ func _run() -> void:
 		else:
 			print("OK biome first visit herb %d→%d" % [herb_b, herb_a])
 
-	# Idempotent
 	var again: Dictionary = lwd.discover_ruin_at(result.get("center", Vector2i.ZERO))
 	if not again.is_empty():
 		_fail("second discover must be empty")

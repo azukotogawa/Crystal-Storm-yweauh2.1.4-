@@ -23,10 +23,8 @@ var _entities: Array[Node3D] = []
 var _spawned_cells: Dictionary = {}
 var _defenders_by_town: Dictionary = {}
 var physics_skip_frames: int = 0
-## Stream hitch isolation: spawn wildlife/townfolk off chunk_ready hot path.
 var _pending_stream_coords: Array = []
 var _pending_stream_set: Dictionary = {}
-## Stream wake counters (measurement).
 var _stream_ready_n: int = 0
 var _stream_ready_us: int = 0
 var _stream_ready_max_us: int = 0
@@ -130,14 +128,12 @@ func _bind_chunk_streaming() -> void:
 		_on_chunk_ready(coord, data)
 
 
-## Standing militia target per town at seed / stream re-entry (defense may request more).
 const STANDING_MILITIA_PER_TOWN: int = 2
 
 
 func spawn_town_defenders(town: Dictionary, count: int) -> void:
 	var center: Vector2i = town.get("center", Vector2i.ZERO)
 	var radius: int = int(town.get("radius", 12))
-	# Always reconcile with live agents — stream unload can wipe bodies while the map stayed stale.
 	_defenders_by_town[center] = _count_town_role(center, &"town_militia")
 	var current: int = int(_defenders_by_town.get(center, 0))
 	if current >= max_defenders_per_town:
@@ -179,7 +175,6 @@ func _seed_animal_spawns() -> void:
 			animal_kind
 		)
 		placed += 1
-	# Living World: standing militia + villagers at towns (agents present at run start).
 	_seed_town_population()
 
 
@@ -188,7 +183,6 @@ func _seed_town_population() -> void:
 		ensure_town_population(town)
 
 
-## Top up standing villagers + militia for a town (safe after stream unload/reload).
 func ensure_town_population(town: Dictionary) -> void:
 	if town.is_empty():
 		return
@@ -204,7 +198,6 @@ func ensure_town_population(town: Dictionary) -> void:
 		spawn_town_defenders(town, need_m)
 
 
-## Peaceful townsfolk — Living World “worth defending” agents.
 func spawn_town_villagers(town: Dictionary, count: int) -> void:
 	if count <= 0:
 		return
@@ -277,7 +270,6 @@ func _pick_animal_kind(wx: int, wz: int, rng: RandomNumberGenerator) -> int:
 		return _WorldFeatureTypes.AnimalKind.RABBIT
 	var biome: Dictionary = world.get_biome(float(wx), 0.0, float(wz))
 	var name: String = biome.get("name", "plains")
-	# Temperate forest family + steppe family (Living World Phase 1).
 	if name == "forest" or name == "dense forest" or name == "pine forest" or name == "jungle":
 		return _WorldFeatureTypes.AnimalKind.DEER if rng.randf() < 0.55 else _WorldFeatureTypes.AnimalKind.BOAR
 	if name == "steppe":
@@ -347,8 +339,6 @@ func get_stream_wake_trace() -> Dictionary:
 
 
 func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
-	# Queue for budgeted drain — spawning agents inside ChunkManager apply
-	# stacked multi-ms entity instantiate/tree work onto chunk_upload.
 	var t0 := Time.get_ticks_usec()
 	if _pending_stream_set.has(coord):
 		return
@@ -395,7 +385,6 @@ func _process(_delta: float) -> void:
 
 
 func _activate_chunk_entities(coord: Vector2i) -> void:
-	# Re-populate standing townfolk when a settlement chunk streams back in.
 	_ensure_town_population_for_chunk(coord)
 	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:
 		return
@@ -430,11 +419,9 @@ func _town_overlaps_chunk(town: Dictionary, coord: Vector2i) -> bool:
 	var chunk_cx := float(coord.x) * size + size * 0.5
 	var chunk_cz := float(coord.y) * size + size * 0.5
 	var dist := Vector2(float(center.x) - chunk_cx, float(center.y) - chunk_cz).length()
-	# Town disk vs chunk AABB (approx half-diagonal of chunk).
 	return dist <= radius + size * 0.75
 
 
-## Test/harness: count standing agents for a town after stream cycles.
 func count_town_agents(town_center: Vector2i) -> Dictionary:
 	return {
 		"villagers": _count_town_role(town_center, &"town_villager"),
@@ -535,7 +522,6 @@ func _spawn_from_save(data: Dictionary) -> void:
 	entity.setup(brain_cfg, cell, world, chunk_manager, crystal_manager, defend, tint)
 	if data.has("health"):
 		entity.health = float(data.health)
-	# Final save position after setup defaults; emit spawn so Spatial Query indexes correctly.
 	entity.global_position = Vector3(
 		float(data.get("x", float(cell.x) + 0.5)),
 		float(data.get("y", 1.0)),

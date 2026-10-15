@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed gameplay-camera validation of inspector, ramps, edits, buildings, loading, water.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _LiveWorldQuery = preload("res://helpers/live_world_query.gd")
@@ -222,7 +221,6 @@ func _run_edit_sequence(cells: Dictionary, cm) -> Dictionary:
 		["flat", "build"],
 		["raised", "build"],
 	]
-	# Adversarial: chunk seam (32) and chunk corner, plus a cell next to a stamped ramp.
 	cells["seam"] = Vector2i(32, 24)
 	cells["corner"] = Vector2i(32, 32)
 	cells["near_ramp"] = Vector2i(int(cells.ramp_east.x) + 1, int(cells.ramp_east.y))
@@ -277,7 +275,6 @@ func _eval_hitboxes(cells: Dictionary) -> Dictionary:
 	var gate: Vector2i = cells.get("gate", Vector2i.ZERO)
 	var wall_pos := Vector3(float(wall.x) + 0.5, player.voxel_position.y, float(wall.y) + 0.5)
 	var gate_pos := Vector3(float(gate.x) + 0.5, player.voxel_position.y, float(gate.y) + 0.5)
-	# Sample at walkable height of each cell.
 	var wsnap: Dictionary = _LiveWorldQuery.inspect_cell(self, wall.x, wall.y)
 	var gsnap: Dictionary = _LiveWorldQuery.inspect_cell(self, gate.x, gate.y)
 	wall_pos.y = float(wsnap.get("walkable_height", wall_pos.y)) + 0.2

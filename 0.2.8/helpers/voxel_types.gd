@@ -57,9 +57,6 @@ const FARMLAND := 48
 const TOWN_PATH := 49
 
 
-## Ground recolors and props written by vegetation scatter.
-## These stay off the heightfield mesh: the vegetation layer draws them, and
-## baked mesh plans must match the stored ground tile.
 static func is_plant_decoration_tile(tile_type: int) -> bool:
 	return tile_type == GRASS_TUFT \
 		or tile_type == BUSH \
@@ -68,7 +65,6 @@ static func is_plant_decoration_tile(tile_type: int) -> bool:
 		or tile_type == GRASSLAND3 \
 		or tile_type == HILLS2
 
-## Production chunk mesh atlas: assets/tiles/Cube.png (7 cols × 10 rows × 32 px).
 ## new_tile_set.tres / voxelsnew.png use a different 64 px strip layout — do not bind to ChunkView.
 const ATLAS_TEXTURE_PATH := "res://assets/tiles/Cube.png"
 const ATLAS_GRID_COLUMNS := 7
@@ -99,16 +95,12 @@ static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i
 	return get_atlas_coord(tile_type)
 
 
-## Green grass tops and dirt faces pick a cell from the family. The hash is the
-## column, so a remesh writes the same cell and a greedy run stops when it changes.
 const GRASS_TOP_VARIANTS: Array[Vector2i] = [
 	Vector2i(0, 2), Vector2i(1, 2), Vector2i(2, 2),
 ]
 const DIRT_VARIANTS: Array[Vector2i] = [
 	Vector2i(3, 2), Vector2i(0, 6), Vector2i(5, 6),
 ]
-## Stone, ore (crystal vein), and cave rock. Crystal, shard ground, and scar
-## stay one cell so corruption still reads as one material.
 const STONE_VARIANTS: Array[Vector2i] = [
 	Vector2i(0, 4), Vector2i(1, 4), Vector2i(2, 4),
 ]
@@ -151,7 +143,6 @@ const FARMLAND_VARIANTS: Array[Vector2i] = [
 const PATH_VARIANTS: Array[Vector2i] = [
 	Vector2i(5, 1), Vector2i(6, 8), Vector2i(6, 9),
 ]
-## Row 0 except the air cell. The water mesh only treats these as water.
 const OCEAN_VARIANTS: Array[Vector2i] = [
 	Vector2i(0, 0), Vector2i(2, 0), Vector2i(4, 0),
 ]
@@ -373,7 +364,7 @@ const ATLAS_COORDS = {
 	VoxelTypes.GRASSLAND: Vector2i(0,2),
 	VoxelTypes.GRASSLAND2: Vector2i(1,2),
 	VoxelTypes.GRASSLAND3: Vector2i(2,2),
-	VoxelTypes.GRASSLAND4: Vector2i(3,1),  # unshared from DIRT (3,2) — Batch 03
+	VoxelTypes.GRASSLAND4: Vector2i(3,1),
 	VoxelTypes.GRASSLAND5: Vector2i(4,2),
 
 	VoxelTypes.HILLS: Vector2i(0,3),
@@ -383,7 +374,7 @@ const ATLAS_COORDS = {
 
 	VoxelTypes.MOUNTAIN: Vector2i(0,4),
 	VoxelTypes.MOUNTAIN2: Vector2i(1,4),
-	VoxelTypes.MOUNTAIN3: Vector2i(3,5),  # unshared from STONE2 (2,4) — Batch 05
+	VoxelTypes.MOUNTAIN3: Vector2i(3,5),
 	VoxelTypes.MOUNTAIN4: Vector2i(3,4),
 	VoxelTypes.MOUNTAIN5: Vector2i(4,4),
 	VoxelTypes.MOUNTAIN6: Vector2i(5,4),
@@ -410,11 +401,11 @@ const ATLAS_COORDS = {
 	VoxelTypes.BASIN3: Vector2i(2,9),
 
 	VoxelTypes.RIVER: Vector2i(1,0),
-	VoxelTypes.WATER: Vector2i(1,0),     # reuse river visual for water for now (or ocean row)
-	VoxelTypes.STONE: Vector2i(0,4),     # mountain row start - good rocky
+	VoxelTypes.WATER: Vector2i(1,0),
+	VoxelTypes.STONE: Vector2i(0,4),
 	VoxelTypes.STONE2: Vector2i(2,4),
-	VoxelTypes.DIRT: Vector2i(3,2),      # grassland-ish / earth tone
-	VoxelTypes.DIRT2: Vector2i(0,6),     # valley row
+	VoxelTypes.DIRT: Vector2i(3,2),
+	VoxelTypes.DIRT2: Vector2i(0,6),
 	VoxelTypes.CAVE_STONE: Vector2i(4,4),
 
 	VoxelTypes.CRYSTAL: Vector2i(6,2),
@@ -425,6 +416,6 @@ const ATLAS_COORDS = {
 	VoxelTypes.GRASS_TUFT: Vector2i(4,2),
 	VoxelTypes.BUSH: Vector2i(4,3),
 	VoxelTypes.TREE_TRUNK: Vector2i(1,3),
-	VoxelTypes.FARMLAND: Vector2i(4,1),    # unshared from DIRT (3,2) — Batch 03
-	VoxelTypes.TOWN_PATH: Vector2i(5,1),   # unshared from GRASSLAND3 (2,2) — Batch 03
+	VoxelTypes.FARMLAND: Vector2i(4,1),
+	VoxelTypes.TOWN_PATH: Vector2i(5,1),
 }

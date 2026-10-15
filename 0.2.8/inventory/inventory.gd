@@ -12,7 +12,6 @@ const BAG_SIZE := 24
 const TOTAL_SLOTS := HOTBAR_SIZE + BAG_SIZE
 
 var _slots: Array = []
-## One worn armor id. Empty means unarmored. Saved with the inventory dict.
 var armor_id: String = ""
 
 

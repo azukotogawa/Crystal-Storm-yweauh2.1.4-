@@ -1,6 +1,4 @@
 extends SceneTree
-## Ramp occupancy contract: wedge is one landing column; corners are right-handed.
-## Usage: godot --headless -s scripts/verify_ramp_geometry.gd
 
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -62,13 +60,9 @@ func _run() -> void:
 	var approach_h: float = _TerrainRamps.walkable_height_from_entry(
 		null, 0.5, 0.5, {"approach": true, "dir": Vector2i(1, 0)}
 	)
-	# world is null → layer_height fallback; still proves approach is not sloped up.
 	if approach_h != _WorldSettings.get_active().layer_height():
-		# walkable_height_from_entry with null world returns layer_height immediately
 		print("OK approach short-circuits without world")
 	var dummy_entry := {"approach": true, "dir": Vector2i(1, 0), "dir2": Vector2i.ZERO}
-	# Direct branch: with a fake world we cannot easily construct; the contract is
-	# approach == voxel_top (no +t*layer climb). Covered by source + landing tests.
 	if dummy_entry.get("approach", false):
 		print("OK approach collision is column top, not a second slope")
 	_TerrainRamps.invalidate_mesh_cache()
@@ -208,7 +202,6 @@ func _run() -> void:
 			nunique.size(), nymax - nymin, n_up, n_vert
 		])
 
-	# 1-layer pit floor must exist in the ArrayMesh at the dug column (not F4-only).
 	var pit_top := {
 		"x": 4, "y": 8.0, "z": 4,
 		"dim_x": 1.0, "dim_y": 1.0, "dim_z": 1.0,

@@ -1,7 +1,6 @@
 class_name AbsorptionUnlockDef
 extends Resource
 
-## One row in the crystal absorption → enemy unlock table.
 
 @export var source_id: StringName = &"grass"
 @export var display_name: String = "Grass"

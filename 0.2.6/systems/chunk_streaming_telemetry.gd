@@ -1,6 +1,5 @@
 class_name ChunkStreamingTelemetry
 extends RefCounted
-## Env-gated chunk streaming lifecycle telemetry (CRYSTALSTORM_CHUNK_PROFILE=1). Investigation only.
 
 
 const STATE_UNLOADED := "UNLOADED"

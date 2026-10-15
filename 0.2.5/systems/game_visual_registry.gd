@@ -6,7 +6,6 @@ const _GeneratorScript = preload("res://systems/crystal_texture_generator.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 
-## Small lift above walkable surface to avoid z-fighting with voxel tops.
 const SURFACE_LIFT: float = 0.08
 
 signal visuals_ready
@@ -58,7 +57,6 @@ func refresh_all_visuals() -> void:
 	_refresh_scene_visuals()
 
 
-## Public alias used by debug tooling and legacy callers.
 func refresh_all() -> void:
 	refresh_all_visuals()
 
@@ -127,7 +125,6 @@ func get_spawn_texture(is_boss: bool) -> Texture2D:
 	return get_combat_texture(&"spawn_boss" if is_boss else &"spawn_miniboss")
 
 
-## Unified entity/enemy sprite lookup. Accepts "rabbit" or "entity_rabbit".
 func get_sprite_texture(sprite_id: String) -> Texture2D:
 	if not entity_sprites_enabled:
 		return null
@@ -139,8 +136,6 @@ func get_sprite_texture(sprite_id: String) -> Texture2D:
 	return get_entity_texture(StringName(id))
 
 
-## Unified vegetation/building billboard lookup.
-## Accepts "tree_s2", "tree" with stage, "building_town_hall", or "town_hall".
 func get_billboard_texture(billboard_id: String, stage: int = -1) -> Texture2D:
 	if not feature_billboards_enabled:
 		return null

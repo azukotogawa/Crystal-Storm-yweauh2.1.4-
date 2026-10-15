@@ -62,7 +62,7 @@ func request_chunk(coord: Vector2i):
 func _worker():                                                                 
 	print("Chunk generation thread started successfully.")                      
 	while not exit_thread:                                                      
-		semaphore.wait() # Blocks until semaphore.post() is called              
+		semaphore.wait()
 		
 		mutex.lock()                                                            
 		if exit_thread:                                                         
@@ -82,7 +82,6 @@ func _worker():
 		
 		var packed_mesh_arrays = _build_mesh_in_thread(data)                    
 
-		# Hand off data to the main loop safely                                 
 		call_deferred("_on_chunk_ready", data, packed_mesh_arrays)                                                                            
 
 func _build_mesh_in_thread(data: ChunkData) -> Dictionary:
@@ -123,10 +122,6 @@ func _build_mesh_in_thread(data: ChunkData) -> Dictionary:
 		if VoxelTypes.ATLAS_COORDS.has(q.type):
 			atlas = VoxelTypes.ATLAS_COORDS[q.type]
 		
-		# STABLE ARRAYS WAY: Map attributes cleanly to floating points
-		# Red = Column, Green = Row
-		# Blue = Encodes FACE type in whole number, encodes QUAD HEIGHT in decimals!
-		# Alpha = Encodes QUAD WIDTH directly
 		var encoded_face_and_height = float(FACE_TOP) + (float(q.h) / 100.0)
 
 		custom_colors[i] = Color(
@@ -274,7 +269,7 @@ func _on_chunk_ready(data: ChunkData, packed_mesh_arrays: Dictionary):
 		return                                                                  
 	var view: ChunkView = CHUNK_VIEW_SCENE.instantiate()                        
 	if view:                                                                    
-		view.setup(data, packed_mesh_arrays) # Setup before adding to tree      
+		view.setup(data, packed_mesh_arrays)
 		add_child(view)                                                         
 		chunks[data.position] = view                                                                                                       
 	else:                                                                       

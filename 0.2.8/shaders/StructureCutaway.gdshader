@@ -1,14 +1,8 @@
 shader_type spatial;
 
-// Authored structures (walls, gates, bridges, ruins, halls).
 // Same cone as helpers/camera_cutaway.gd and the terrain shaders: screen-door
 // rim, keep fragments at or below the feet. Globals are written once per frame
 // by player/camera.gd. Cast shadow stays off on the MeshInstance3D.
-//
-// Not render_mode unshaded. These meshes used a lit StandardMaterial3D
-// (albedo, vertex colour, roughness, metallic, emission, nearest alpha).
-// A flat unshaded fill would change that look outside the cone. This shader
-// keeps that lighting response and adds the discard. No new lights.
 render_mode diffuse_burley, specular_schlick_ggx, depth_draw_opaque;
 
 global uniform float cutaway_enabled;
@@ -25,9 +19,7 @@ uniform float roughness_amount = 0.9;
 uniform float metallic_amount = 0.0;
 uniform vec3 emission_color = vec3(0.0);
 uniform float emission_energy = 0.0;
-// StandardMaterial3D left vertex colour off unless vertex_color_use_as_albedo.
 uniform float vertex_color_as_albedo = 0.0;
-// 0 = opaque (ignore texel alpha, matching the old material). Above 0, scissor.
 uniform float alpha_scissor = 0.0;
 
 varying vec4 v_color;

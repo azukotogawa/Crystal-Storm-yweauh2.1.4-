@@ -15,13 +15,9 @@ var loading_queue: Array[Vector2i] = []
 var biome_data_cache: Dictionary = {}
 
 func update(grid_tile_pos: Vector2):
-	# 1. Directly locate the player's current unrotated chunk indices on the tile grid model
 	var player_chunk_x = int(floor(grid_tile_pos.x / CHUNK_SIZE_x))
 	var player_chunk_y = int(floor(grid_tile_pos.y / CHUNK_SIZE_y))
 
-	# 2. Scan a square visibility grid around the player.
-	# We use a symmetrical radius of 5 chunks so that no matter how the camera rotates on the GPU,
-	# the view space is always fully populated with chunks and never runs out of bounds.
 	for dy in range(-5, 6):
 		for dx in range(-5, 6):
 			var target_key = Vector2i(player_chunk_x + dx, player_chunk_y + dy)
@@ -29,19 +25,16 @@ func update(grid_tile_pos: Vector2):
 			if not chunks.has(target_key) and not loading_queue.has(target_key):
 				loading_queue.append(target_key)
 
-	# 3. Process the loading queue sequentially over consecutive frames
 	var chunks_processed_this_frame = 0
 	while loading_queue.size() > 0 and chunks_processed_this_frame < 3:
 		var next_chunk = loading_queue.pop_front()
 		_load_chunk(next_chunk.x, next_chunk.y)
 		chunks_processed_this_frame += 1
 
-	# 4. Clean up distant chunks outside the standard tracking margin
 	for key in chunks.keys():
 		var rel_cx = key.x - player_chunk_x
 		var rel_cy = key.y - player_chunk_y
 		
-		# Safely unload if chunks fall outside the extended loading visibility window
 		if abs(rel_cx) > 6 or abs(rel_cy) > 6:
 			_unload_chunk(key.x, key.y)
 
@@ -51,13 +44,11 @@ func _load_chunk(cx: int, cy: int):
 	if chunks.has(key):
 		return
 		
-	# Instantiates the chunk using true unrotated data coordinates
 	var chunk = Chunk.new(cx, cy, world) 
 	chunk.mask_viewport = get_node("/root/Main/WorldContainer/SubViewport")
 	chunk.current_angle_index = current_angle_index 
 	chunk.generate(tile_set) 
 	
-	# Project this chunk origin using the exact same isometric metrics as main.gd
 	var chunk_start_grid = Vector2i(cx * CHUNK_SIZE_x, cy * CHUNK_SIZE_y)
 	chunk.position = IsoMath.grid_to_screen(chunk_start_grid)
 		
@@ -113,12 +104,10 @@ func get_drift_at(grid_pos: Vector2i) -> Vector2i:
 	return Vector2i.ZERO
 
 func get_chunk_at(grid_pos: Vector2i) -> Chunk:
-	# 1. Calculate chunk coordinates based on your 16x16 size
 	var cx = int(floor(grid_pos.x / 16.0))
 	var cy = int(floor(grid_pos.y / 16.0))
 	var chunk_key = Vector2i(cx, cy)
 
-	# 2. Return the chunk if it exists in your dictionary
 	if chunks.has(chunk_key):
 		return chunks[chunk_key]
 

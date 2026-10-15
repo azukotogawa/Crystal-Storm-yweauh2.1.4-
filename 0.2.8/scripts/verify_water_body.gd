@@ -1,5 +1,4 @@
 extends SceneTree
-## Body-level water: sources stay sources; flooded cells are overlay-only; one surface Y.
 
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
@@ -48,7 +47,6 @@ func _run() -> void:
 	if bool(svc.call("is_persistent_source", 3, 2)):
 		_fail("dry land must not be a source")
 
-	# Same-height neighbor is not an indentation — do not stack water on ground.
 	svc.call("recompute_region_now", 2, 2, 2, 4)
 	if _ChannelRegistry.has_fluid(3, 2, _ChannelRegistry.FLUID_WATER):
 		_fail("undug same-height land must not get overlay water")
@@ -86,7 +84,6 @@ func _run() -> void:
 	else:
 		print("OK propagation same surface_y")
 
-	# Fill/remove the extension; river stays a source.
 	_TerrainEdits.build_wall(3, 2, _VoxelTypes.STONE)
 	_TerrainEdits.build_wall(4, 2, _VoxelTypes.STONE)
 	svc.call("recompute_region_now", 3, 2, 2, 6)
@@ -97,7 +94,6 @@ func _run() -> void:
 	else:
 		print("OK fill dries flood; river still source")
 
-	# Dry land: no source in halo → not wet.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	query.test_tiles[Vector2i(8, 6)] = _VoxelTypes.GRASSLAND
@@ -108,9 +104,6 @@ func _run() -> void:
 	else:
 		print("OK dry dig stays dry")
 
-	# Open the far cell first, then the block between it and the river.
-	# The link becomes a water tile; the earlier hole must still fill, and
-	# the wave must continue into the next connected empty cell.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	for x3 in 12:
@@ -146,7 +139,6 @@ func _run() -> void:
 		spread_ok = false
 	if spread_ok:
 		print("OK water spread through the opened link")
-	# Frontier only: river is outside this dirty set. Overlay must carry the wave.
 	svc.set("_dirty_cells", {Vector2i(7, 2): true, Vector2i(6, 2): true})
 	svc.call("_tick_water", 0.1)
 	if not bool(svc.call("is_wet_column", 7, 2)):
@@ -156,8 +148,6 @@ func _run() -> void:
 	else:
 		print("OK continued spread past the first empty cells")
 
-	# Longer gap than one local step. Later ticks must keep the wave going
-	# from the dirty set requeue left behind. No hand-seeded frontier.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	for x4 in 16:
@@ -189,11 +179,6 @@ func _run() -> void:
 	elif chain_wet == 9:
 		print("OK full gap filled across follow-up ticks cells=%d" % chain_wet)
 
-	# Open a basin and a side pocket, then do not break another block.
-	# The old check called requeue_neighbors_on_edit, which is only the
-	# neighbour-break path, so a far pocket never had to fill on its own.
-	# The last dig uses TerrainEditor._notify_water_reflow (mark dirty when
-	# the dig is not already beside water). Later ticks must reach both.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	for x5 in 16:
@@ -244,12 +229,6 @@ func _run() -> void:
 	if pocket_ok:
 		print("OK basin and side pocket filled with no further block edits")
 
-	# 5b. The basin check above only reads the pool after the dirty set drains,
-	# so one tick that wets every open cell still passes. Drive the same far
-	# dig through _process (one water step when the frame crosses the fluid
-	# rate) and require the water to gain a single cell per tick. A pool
-	# bigger than the old 96-cell fill must stay inside the medium frame
-	# budget (8000 us; a 60 Hz frame is 16600) while that creep runs.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	for sx in 24:
@@ -313,8 +292,6 @@ func _run() -> void:
 	else:
 		print("OK trench settled cell by cell frames=%d slowest=%d us" % [settle_ticks, slowest])
 
-	# 120 open cells. The old fill cap was 96, so this pool poured out in one
-	# tick. A dozen frames must each stay in budget and add at most one cell.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	for lx in 24:
@@ -370,7 +347,6 @@ func _run() -> void:
 		print("OK large pool settling frames=12 slowest=%d us wet=%d/%d budget=%d" % [large_slowest, large_wet, large_n, frame_budget_us])
 	editor.queue_free()
 
-	# Idle sleep / no world scan.
 	svc.set("_dirty_cells", {})
 	var t0 := Time.get_ticks_usec()
 	svc.call("_tick_water", 0.1)
@@ -385,7 +361,6 @@ func _run() -> void:
 	else:
 		print("OK idle sleep %d us" % idle_us)
 
-	# Lid sits on the dug bed so the pool is below surrounding ground (not flush).
 	var data_w := _ChunkData.new(Vector2i.ZERO, null)
 	data_w.capture_worker_snapshot()
 	data_w.surface_map.resize(_ChunkData.SIZE)
@@ -427,7 +402,6 @@ func _run() -> void:
 	else:
 		print("OK water lid on dug bed (below surrounding ground)")
 
-	# Wet columns are not ramps.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	var data := _ChunkData.new(Vector2i.ZERO, null)

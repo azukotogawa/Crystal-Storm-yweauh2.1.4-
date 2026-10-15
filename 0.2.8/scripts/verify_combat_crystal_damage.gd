@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: weapon crystal damage uses COLUMN cells (spawn.world_pos), not world-space floori.
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -17,9 +16,6 @@ func _init() -> void:
 
 func _run() -> void:
 	var failed := false
-	# Locked yaw 45 matches camera look and W: -X,-Z from the player at (8.5, 8.5).
-	# (10, 10) is behind that facing. The spawn sits two columns ahead, outside
-	# sword radius of the feet cell (8, 8) and inside radius of the column in front.
 	var spawn_cell := Vector2i(6, 6)
 	var spawn := _CrystalSpawnPoint.new(1, spawn_cell, _CrystalTypes.SpawnKind.RUIN, 80.0, false)
 	var ctrl := _SpawnPointController.new()
@@ -74,7 +70,6 @@ func _run() -> void:
 	prod_player.locked_rotation = 0
 	prod_player.world_ready = true
 	holder.add_child(weapon)
-	# _ready parents the controller to its Player; this harness is not, so restore the aim player.
 	weapon.player = prod_player
 	var cm: _CrystalManager = _CrystalManager.new()
 	cm.harness_setup_spawns([_CrystalSpawnPoint.new(2, spawn_cell, _CrystalTypes.SpawnKind.RUIN, 60.0, false)])

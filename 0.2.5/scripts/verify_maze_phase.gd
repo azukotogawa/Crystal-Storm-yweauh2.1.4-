@@ -1,5 +1,4 @@
 extends SceneTree
-## Ensures origin spawn stays in MAZE phase without crystal damage at tier 0.
 
 const _GameManager = preload("res://game/game_manager.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")

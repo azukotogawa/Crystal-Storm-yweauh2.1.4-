@@ -1,16 +1,5 @@
 class_name ChunkPipeline
 extends RefCounted
-## Explicit chunk pipeline stages. Worker jobs are stateless w.r.t. manager fields:
-## frozen overlay inputs live on ChunkData; mesh scratch is job-local on the data
-## instance or stack locals — never ChunkManager-shared visit/skip buffers.
-##
-## Stages:
-##   STREAM_REQUEST — main thread selects coords (ChunkManager + ChunkStreamScheduler)
-##   SNAPSHOT       — main thread freezes WorldState mesh inputs on ChunkData
-##   COLUMN         — worker: height/tile maps from frozen overlays (+ Terrain V2 micro)
-##   MESH           — worker: pure mesh plan/build from frozen column maps + job-local scratch
-##   BUFFER         — worker: optional MultiMesh payload packing
-##   APPLY          — main thread: token + WorldState mesh-stamp stale rejection, upload
 
 const STAGE_STREAM_REQUEST := "stream_request"
 const STAGE_SNAPSHOT := "snapshot"
@@ -29,10 +18,6 @@ const STAGES := [
 ]
 
 
-## Column stage: requires capture_worker_snapshot already done on main thread.
-## Prefers immutable baked base (WorldBakeService) on full rebuild when present;
-## otherwise procedural generate via host._generate_chunk. WorldState overlays
-## always come from the frozen worker snapshot on ChunkData.
 static func run_column_stage(
 	host,
 	data: ChunkData,
@@ -72,7 +57,6 @@ static func run_column_stage(
 		if used_bake:
 			column_source = "bake"
 			examined = ChunkData.SIZE * ChunkData.SIZE
-			# overlay apply timed inside WorldBakeService._apply_pack_to_data
 		else:
 			# Full-world bake: never procedural-generate static terrain in package bounds.
 			var block := false
@@ -119,8 +103,6 @@ static func _world_bake_active():
 	return null
 
 
-## Mesh stage: builds quads using host emit helpers; scratch is job-local on data.
-## Prefers MeshPlanCache on full rebuild when overlays are pristine (CPU plan only).
 static func run_mesh_stage(
 	host,
 	data: ChunkData,
@@ -130,7 +112,6 @@ static func run_mesh_stage(
 	var t0 := Time.get_ticks_usec()
 	if host == null or data == null:
 		return {"quads": [], "count": 0, "mesh_us": 0, "ok": false, "mesh_source": "none"}
-	# mesh_source values kept for existing verifies: "cache" | "generate" | "none"
 	var mesh_source := "generate"
 	var rebuild_reason := "other"
 	var quads: Array = []
@@ -146,7 +127,6 @@ static func run_mesh_stage(
 		var t_plan := Time.get_ticks_usec()
 		var plan_cache = _mesh_plan_cache_active()
 		if plan_cache != null and plan_cache.has_method("try_get_plan"):
-			# try_get_plan records decision + hit/miss (instrumentation inside).
 			var cached: Array = plan_cache.try_get_plan(data)
 			plan_decision = plan_cache.last_decision if plan_cache.last_decision is Dictionary else {}
 			if not cached.is_empty():
@@ -193,7 +173,6 @@ static func run_mesh_stage(
 	var _MPP = load("res://systems/mesh_phase_profiler.gd")
 	if _MPP and _MPP.is_enabled():
 		_MPP.record("mesh_plan", mesh_us)
-	# Explicit decision fields for telemetry consumers.
 	return {
 		"quads": quads,
 		"count": count,
@@ -217,7 +196,6 @@ static func _mesh_plan_cache_active():
 	return null
 
 
-## Buffer stage: optional prebuilt MultiMesh payload (pure on inputs).
 static func run_buffer_stage(
 	data: ChunkData,
 	merged_quads: Array,
@@ -258,7 +236,6 @@ static func run_buffer_stage(
 	var _MPP = load("res://systems/mesh_phase_profiler.gd")
 	if _MPP and _MPP.is_enabled():
 		_MPP.record("buffer_pack", buffer_us)
-		# Surface array packing (vertex/index CPU build) is inside buffer_pack for surface path.
 		if bool(terrain_surface_mesh):
 			_MPP.record("vertex_index_build", buffer_us)
 	var SPP = load("res://systems/stream_phase_profiler.gd")
@@ -303,8 +280,6 @@ static func run_worker_job(
 	var patch_quads: Array = mesh.get("quads", [])
 	var merged_quads: Array = keep_quads.duplicate(true)
 	merged_quads.append_array(patch_quads)
-	# Full rebuild already synced inside _build_mesh. Incremental and cache
-	# hits must sync the merged list, which is what the chunk will draw.
 	if host != null and host.has_method("sync_ramp_map_to_mesh") and not full_rebuild:
 		host.sync_ramp_map_to_mesh(data, merged_quads)
 	elif host != null and host.has_method("sync_ramp_map_to_mesh") and str(mesh.get("mesh_source", "")) == "cache":
@@ -355,7 +330,6 @@ static func run_worker_job(
 	}
 
 
-## Allocate a fresh greedy-visited grid for one plane pass (never reuse across jobs).
 static func alloc_greedy_visited(size: int = -1) -> Array:
 	if size < 0:
 		size = ChunkData.SIZE

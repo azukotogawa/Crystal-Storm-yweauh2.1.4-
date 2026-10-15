@@ -1,6 +1,4 @@
 extends SceneTree
-## Display (windowed) cold-boot of production main.tscn with deferred fill.
-## Confirms INITIAL_STREAM_READY before full bake, movement, and a far on-demand bake.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
@@ -9,7 +7,6 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 
 func _init() -> void:
-	# Production full world. Do not set BAKE_RADIUS.
 	OS.set_environment("CRYSTALSTORM_BAKE_DEFER_FILL", "1")
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
 		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
@@ -55,13 +52,11 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "DISPLAY DEFERRED BAKE FAIL no resident chunks")
 		return
 	if bake and bake.valid and int(fill.get("total", 0)) > 200 and ready_ms < 60000:
-		# Warm leftover index from a previous complete bake — still a valid display boot.
 		print("DISPLAY_DEFERRED note=warm_or_completed_index")
 	elif bake and int(fill.get("total", 16384)) >= 1000 and bake.valid:
 		_ProbeExit.finish_tree(self, 1, "DISPLAY DEFERRED BAKE FAIL index valid at playable on cold full map")
 		return
 
-	# Movement + one dig on the start cell.
 	if player:
 		var before: Vector3 = player.global_position
 		player.voxel_position.x += 0.4
@@ -74,7 +69,6 @@ func _run() -> void:
 		var dug: bool = editor.try_dig(Vector3(floor(col.x), 0, floor(col.z)))
 		print("DISPLAY_DEFERRED dig=%s" % str(dug))
 
-	# Far unbaked coord (if still filling).
 	if bake and bake.bake_in_progress:
 		var far := Vector2i(40, 40)
 		if bake.coord_in_package(far) and not bake.package_ready(far):

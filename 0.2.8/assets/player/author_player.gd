@@ -1,6 +1,4 @@
 extends SceneTree
-## Readable voxel scout, 32x48, nearest-filtered on the player box.
-## Run: godot --headless --path 0.2.8 -s res://assets/player/author_player.gd
 
 
 func _init() -> void:
@@ -18,7 +16,6 @@ func _run() -> void:
 	var belt := Color(0.42, 0.28, 0.14, 1)
 	var boot := Color(0.2, 0.14, 0.1, 1)
 	var eye := Color(0.08, 0.08, 0.1, 1)
-	# Blocky figure centered in the texture. Each call is one 4x4 voxel.
 	_vox(img, 12, 2, hair, outline)
 	_vox(img, 16, 2, hair, outline)
 	_vox(img, 12, 6, skin, outline)

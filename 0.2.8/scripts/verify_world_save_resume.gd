@@ -1,6 +1,4 @@
 extends SceneTree
-## Per-world save file + Leave/Play resume contract (overlays + player blob).
-## Usage: godot --headless -s scripts/verify_world_save_resume.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -154,7 +152,6 @@ func _run() -> void:
 		else:
 			print("OK world save/load overlays + player")
 
-	# Quit-while-alive writes the Continue file the main menu reads.
 	_assert_quit_hooks()
 	_assert_real_player_and_entity_blobs()
 	var entities := StubEntities.new()
@@ -239,7 +236,6 @@ func _run() -> void:
 
 	await _assert_menu_continue_loads(svc, player, entities, enemies)
 
-	# Quitting after death removes Continue. The run is over.
 	player.health = 0.0
 	svc.save_or_drop_continue()
 	if not _SaveGameService.peek_continue().is_empty():

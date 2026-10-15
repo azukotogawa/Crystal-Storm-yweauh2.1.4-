@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless checks for texture batch 1: sizes, palette, outline, resolver, settings, corruption.
 
 const _TextureSet = preload("res://helpers/texture_set.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")

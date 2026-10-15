@@ -1,6 +1,4 @@
 extends SceneTree
-## Transactional load under main scene: pause stream, apply WorldState, single rebuild.
-## Usage: godot --headless -s scripts/verify_save_transaction.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _WorldState = preload("res://world/world_state.gd")
@@ -59,8 +57,6 @@ func _run() -> void:
 	if save_svc.has_signal("load_transaction_stage"):
 		save_svc.load_transaction_stage.connect(func(s: String): _stages.append(s))
 
-	# Mutate world + overlay domains that must survive disk JSON load.
-	# (4, 6) is river after the dry disk moved to the heart corner.
 	var col: Vector2i = _DryDigCells.find_cell(world, Vector2i(4, 6))
 	if not _DryDigCells.is_found(col):
 		_fail("no dry dig cell near (4, 6) or the heart disk")
@@ -80,7 +76,6 @@ func _run() -> void:
 	if crystal and crystal.has_method("export_state"):
 		spawns_before = (crystal.export_state().get("spawns", []) as Array).size()
 	if spawns_before <= 0:
-		# Crystal may still be initializing; wait briefly
 		for _w in 180:
 			crystal = get_first_node_in_group("crystal_manager")
 			if crystal and crystal.has_method("export_state"):
@@ -96,13 +91,11 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Further mutate so load must restore
 	if _DryDigCells.is_found(col):
 		terrain.try_dig(Vector3(float(col.x) + 0.5, 0.0, float(col.y) + 0.5))
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
 
-	# Stream pause API present
 	if not chunk_manager.has_method("set_stream_paused"):
 		_fail("chunk_manager missing set_stream_paused")
 	else:
@@ -129,7 +122,6 @@ func _run() -> void:
 	else:
 		print("OK world_state dig restored layers=%d" % layers)
 
-	# Feature geometry types after real disk save/load
 	var feat: Dictionary = _FeatureRegistry.get_feature(14, 15)
 	if feat.is_empty():
 		_fail("feature cell missing after load_slot")
@@ -149,10 +141,8 @@ func _run() -> void:
 		_fail("entity_spawns.world_pos Vector2i missing after load_slot")
 	else:
 		print("OK entity_spawns.world_pos Vector2i after load_slot")
-	# Must not SCRIPT ERROR
 	var _chunk_spawns: Array = _FeatureRegistry.get_spawns_in_chunk(Vector2i(1, 1), 16)
 
-	# Crystal win targets survive transactional load
 	crystal = get_first_node_in_group("crystal_manager")
 	var spawns_after := 0
 	if crystal and crystal.has_method("export_state"):
@@ -164,10 +154,8 @@ func _run() -> void:
 	else:
 		print("OK crystal spawns survived load_slot count=%d" % spawns_after)
 
-	# Corruption rejection does not clobber session
 	var before_corrupt: Dictionary = _WorldState.get_active().capture_overlay_snapshot()
 	var bad_ok: bool = await save_svc.apply_snapshot_transactional({"version": 1, "checksum": "nope", "terrain_edits": {}})
-	# validate may fail before corrupt checksum on v1 without checksum - force checksum fail
 	var sealed: Dictionary = _SaveSchema.attach_integrity({
 		"schema_version": 2,
 		"version": 2,

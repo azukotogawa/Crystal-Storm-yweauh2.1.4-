@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Full headless verification suite — exit 0 when all suites pass.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

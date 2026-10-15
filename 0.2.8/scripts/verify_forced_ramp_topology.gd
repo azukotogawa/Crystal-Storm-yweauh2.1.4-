@@ -1,5 +1,4 @@
 extends SceneTree
-## Feature-backed ramps are render intent only; frozen terrain topology decides visibility/collision.
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -24,7 +23,7 @@ func _run() -> void:
 	_FeatureRegistry.reset()
 	_TerrainEdits.reset()
 	var old_chance: int = _TerrainRamps.placement_chance
-	_TerrainRamps.placement_chance = 0 # Proves this is a feature-backed, not procedural, corner.
+	_TerrainRamps.placement_chance = 0
 
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	var data := _ChunkData.new(Vector2i.ZERO, world)
@@ -43,24 +42,19 @@ func _run() -> void:
 		"dir2": db,
 	})
 
-	# Case A: all current supports exist, so the feature-backed corner is generated.
 	data.capture_worker_snapshot()
 	var case_a: Dictionary = cm._build_mesh(data)
 	_expect_corner(data, case_a.get("quads", []), low, true, "case A valid supports")
 
-	# Case B: the stored feature survives but its diagonal support does not.
 	data.surface_map[low.x + da.x + db.x][low.y + da.y + db.y] = 10.0
 	data.capture_worker_snapshot()
 	var case_b: Dictionary = cm._build_mesh(data)
 	_expect_corner(data, case_b.get("quads", []), low, false, "case B missing diagonal support")
 	if _FeatureRegistry.get_feature(low.x, low.y).get("build_id", "") != "corner_ramp":
 		_fail("case B must retain FeatureRegistry intent")
-	# VoxelFloorProbe only applies slope collision from ChunkManager.get_ramp_entry_at_world.
-	# An empty final ramp map at this cell therefore leaves no ramp-specific floor collision.
 	if not data.get_ramp_entry(low.x, low.y).is_empty():
 		_fail("case B must not expose a ramp entry to VoxelFloorProbe")
 
-	# Case C: restore the required snapshot support; the same feature becomes renderable again.
 	data.surface_map[low.x + da.x + db.x][low.y + da.y + db.y] = 10.0 + layer
 	data.capture_worker_snapshot()
 	var case_c: Dictionary = cm._build_mesh(data)

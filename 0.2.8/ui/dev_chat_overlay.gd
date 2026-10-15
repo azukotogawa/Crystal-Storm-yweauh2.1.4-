@@ -1,6 +1,5 @@
 extends Control
 class_name DevChatOverlay
-## Lightweight dev chat: T toggles bottom LineEdit; Enter sends to DeveloperAssistant.
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
@@ -95,7 +94,6 @@ func _build_ui() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("dev_chat_toggle"):
 		if _open:
-			# T is a normal typing key while chat is open — only Esc closes.
 			get_viewport().set_input_as_handled()
 			return
 		_open_chat()

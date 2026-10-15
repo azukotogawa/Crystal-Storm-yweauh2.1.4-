@@ -1,5 +1,4 @@
 extends SceneTree
-## Passive water levels change the body the chunk lid reads, and do not spawn a second water mesh.
 
 
 const _VoxelFluidService = preload("res://fluids/voxel_fluid_service.gd")
@@ -17,7 +16,6 @@ func _run() -> void:
 	var svc := _VoxelFluidService.new()
 	root.add_child(svc)
 	await process_frame
-	# The per-cell ChannelWaterVisual mesh is gone. Flood body + chunk lids are the only water.
 	if ResourceLoader.exists("res://fluids/channel_water_visual.gd"):
 		push_error("channel_water_visual.gd is a second water renderer and must stay deleted")
 		failed = true

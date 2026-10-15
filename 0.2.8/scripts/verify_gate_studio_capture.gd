@@ -1,7 +1,4 @@
 extends SceneTree
-## Isolated iso studio of the authored gate: isolated, beside wood, beside stone.
-## Usage: godot --path . -s scripts/verify_gate_studio_capture.gd
-## Do NOT pass --headless (screenshots go black).
 
 
 const OUT_DIR := "C:/users/cwith/weed/crystalstorm/.tmp_gate_capture"
@@ -45,12 +42,9 @@ func _run() -> void:
 	ground.position = Vector3(0, -0.04, 0)
 	world.add_child(ground)
 
-	# Isolated gate (left)
 	_spawn(world, GATE, GATE_ALBEDO, Vector3(-4.2, 0, 0), Vector3(2, 1.0, 2), Color(1.08, 0.95, 0.72))
-	# Beside wood (center)
 	_spawn(world, WOOD, WOOD_ALBEDO, Vector3(-0.9, 0, 0), Vector3(2, 0.55, 2), Color(1.0, 0.92, 0.8))
 	_spawn(world, GATE, GATE_ALBEDO, Vector3(1.1, 0, 0), Vector3(2, 1.0, 2), Color(1.08, 0.95, 0.72))
-	# Beside stone (right)
 	_spawn(world, STONE, STONE_ALBEDO, Vector3(3.5, 0, 0), Vector3(2, 0.68, 2), Color(0.95, 0.94, 0.92))
 	_spawn(world, GATE, GATE_ALBEDO, Vector3(5.5, 0, 0), Vector3(2, 1.0, 2), Color(1.08, 0.95, 0.72))
 

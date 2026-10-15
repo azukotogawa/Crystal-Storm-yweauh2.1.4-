@@ -18,12 +18,11 @@ signal militia_requested(town: Dictionary, count: int)
 @export var town_health_max: float = 100.0
 @export var health_damage_per_second: float = 8.0
 
-var _town_states: Dictionary = {}  # Vector2i center -> TownState
+var _town_states: Dictionary = {}
 var _town_health: Dictionary = {}
 var _crystal: CrystalManager
 var _entity_manager: EntityManager
-## Accumulated delta per town for budgeted ticks (frame-rate independent damage).
-var _town_delta_accum: Dictionary = {}  # Vector2i -> float
+var _town_delta_accum: Dictionary = {}
 var _town_tick_cursor: int = 0
 
 
@@ -53,7 +52,6 @@ func _process(delta: float) -> void:
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("TownDefenseManager::_process")
 	var towns: Array = _FeatureRegistry.get_towns()
-	# Accumulate dt for every town so damage is frame-rate independent when budgeted.
 	for town in towns:
 		var c: Vector2i = town.get("center", Vector2i.ZERO)
 		_town_delta_accum[c] = float(_town_delta_accum.get(c, 0.0)) + delta
@@ -120,7 +118,6 @@ func get_town_health(center: Vector2i) -> float:
 	return float(_town_health.get(center, town_health_max))
 
 
-## Player rally / content path: restore town morale health (not crystal depth).
 func restore_health(center: Vector2i, amount: float) -> float:
 	if amount <= 0.0:
 		return 0.0

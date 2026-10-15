@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: player movement triggers throttled proximity LOD refresh.
 
 
 func _init() -> void:

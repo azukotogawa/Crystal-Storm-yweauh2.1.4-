@@ -1,7 +1,5 @@
 class_name TerrainVertexAO
 extends RefCounted
-## Corner ambient occlusion for terrain top faces.
-## Baked into vertex COLOR.a at mesh time. Ramp geometry is not modified.
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
@@ -10,7 +8,6 @@ const AO_ENCLOSED := 0.50
 const HEIGHT_MISSING := -9000.0
 const _STEP := 0.16
 
-## When false, top faces keep alpha 1 and skip neighbor lookups (LOW / SAFE).
 static var bake_enabled: bool = true
 
 
@@ -41,7 +38,6 @@ static func sample_surface(data: ChunkData, lx: int, lz: int) -> float:
 	return data.get_surface_y(lx, lz)
 
 
-## Alpha for the four TOP vertices: min-x/min-z, max-x/min-z, max-x/max-z, min-x/max-z.
 static func top_corner_ao(
 	data: ChunkData,
 	col_x: int,

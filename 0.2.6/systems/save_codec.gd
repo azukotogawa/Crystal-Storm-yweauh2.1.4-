@@ -1,7 +1,6 @@
 class_name SaveCodec
 extends RefCounted
 
-## Shared JSON-safe encoding for save snapshots.
 
 
 static func vec2i_key(v: Vector2i) -> String:
@@ -27,7 +26,6 @@ static func decode_vec2i_dict(src: Dictionary) -> Dictionary:
 	var out := {}
 	for key in src.keys():
 		var v = src[key]
-		# JSON.parse turns ints into floats; keep ints for layer/tile maps when whole.
 		if v is float and is_equal_approx(float(v), roundf(float(v))):
 			out[vec2i_from_key(str(key))] = int(roundf(float(v)))
 		else:
@@ -55,7 +53,6 @@ static func _is_numeric_pair_component(v: Variant) -> bool:
 	return v is int or v is float
 
 
-## True when value is a 2-element numeric pair (JSON-safe Vector2i after parse).
 static func is_vec2i_pair(value: Variant) -> bool:
 	if value is Vector2i:
 		return true
@@ -95,7 +92,6 @@ static func sanitize_feature_value(value: Variant) -> Variant:
 
 
 static func restore_feature_value(value: Variant) -> Variant:
-	# JSON.parse yields floats for numbers — accept int|float pairs as Vector2i.
 	if is_vec2i_pair(value) and value is Array:
 		return to_vec2i(value)
 	if value is Dictionary:

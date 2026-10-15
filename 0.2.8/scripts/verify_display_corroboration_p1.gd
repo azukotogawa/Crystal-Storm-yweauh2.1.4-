@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 contract: display + smoke probes corroborate recent presentation fixes.
 
 
 const DISPLAY := "res://scripts/display_session_probe.gd"

@@ -1,8 +1,4 @@
 extends SceneTree
-## Walk/stream the baked world and report every mesh plan hit/miss reason.
-## Usage:
-##   CRYSTALSTORM_MESH_PLAN_TRACE=1 godot --headless -s scripts/profile_mesh_plan_hits.gd
-## Optional: CRYSTALSTORM_WALK_SEC=60 CRYSTALSTORM_SCRATCH=...
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -54,7 +50,6 @@ func _run() -> void:
 
 	var player = game.get_node_or_null("Player")
 	if player == null:
-		# Find player in tree
 		var nodes := game.find_children("*", "CharacterBody3D", true, false)
 		if nodes.is_empty():
 			nodes = game.find_children("*", "Node3D", true, false)
@@ -71,7 +66,6 @@ func _run() -> void:
 
 	var t0 := Time.get_ticks_msec()
 	var step := 0
-	# Simulated walk: move through chunk grid to force stream loads across bake bounds.
 	var path: Array = []
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	var min_cx := -2
@@ -83,8 +77,6 @@ func _run() -> void:
 		max_cx = int(bake.max_cx)
 		min_cz = int(bake.min_cz)
 		max_cz = int(bake.max_cz)
-	# Snake through package coords only (baked world walk). Outside-package
-	# rebuilds are expected and measured separately when path leaves bounds.
 	var include_outside := OS.get_environment("CRYSTALSTORM_WALK_OUTSIDE") == "1"
 	for cz in range(min_cz, max_cz + 1):
 		var xs: Array = range(min_cx, max_cx + 1)
@@ -92,7 +84,6 @@ func _run() -> void:
 			xs.reverse()
 		for cx in xs:
 			path.append(Vector2i(cx, cz))
-	# Repeat path to fill 60s inside bake.
 	var base_path: Array = path.duplicate()
 	while path.size() < 200:
 		path.append_array(base_path)
@@ -103,7 +94,6 @@ func _run() -> void:
 	var path_i := 0
 	var last_move_ms := t0
 	while Time.get_ticks_msec() - t0 < int(walk_sec * 1000.0):
-		# Advance target every ~0.35s so stream keeps loading.
 		if Time.get_ticks_msec() - last_move_ms >= 350 and path_i < path.size():
 			var target: Vector2i = path[path_i]
 			path_i += 1
@@ -140,7 +130,6 @@ func _run() -> void:
 			str(d.get("rebuild_reason", "")),
 			str(d.get("detail", "")),
 		])
-	# Reason histogram
 	print("REASON_HISTOGRAM")
 	var reasons: Dictionary = summary.get("reasons", {})
 	for k in reasons.keys():

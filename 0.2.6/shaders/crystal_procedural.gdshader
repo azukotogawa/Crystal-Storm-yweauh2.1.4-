@@ -1,7 +1,6 @@
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back;
 
-// Optional shader for swapping procedural crystal textures with iridescence in materials.
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap;
 uniform vec4 glow_color : source_color = vec4(0.72, 0.28, 1.0, 1.0);
 uniform float glow_strength : hint_range(0.0, 4.0) = 1.0;

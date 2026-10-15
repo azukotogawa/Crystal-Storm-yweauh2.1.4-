@@ -1,5 +1,4 @@
 extends SceneTree
-## Cutaway uniforms and the camera→player cone. Foot-level water stays.
 
 const _Cutaway = preload("res://helpers/camera_cutaway.gd")
 const _Settings = preload("res://systems/player_settings.gd")
@@ -37,7 +36,6 @@ func _run() -> void:
 	var ws = _WorldSettings.get_active()
 	var surf: float = world.get_surface_height(float(cell.x) + 0.5, float(cell.y) + 0.5)
 	var layer: float = ws.layer_height()
-	# Dug pocket: feet under the rendered slab, camera above it on the same column.
 	var wx: float = ws.column_to_world(float(cell.x) + 0.5)
 	var wz: float = ws.column_to_world(float(cell.y) + 0.5)
 	var feet := Vector3(wx, surf - 4.0, wz)
@@ -97,8 +95,6 @@ func _run() -> void:
 		_fail("a point far off the ray was cut away")
 	else:
 		_ok("cutaway ignores terrain off the camera ray")
-	# Off the vertical camera ray and beyond the player radius. Raising Y on the
-	# axis would still sit inside the cone.
 	var past := Vector3(wx + _Cutaway.PAST_DISTANCE + 12.0, feet.y + _Cutaway.FEET_CLEAR + 4.0, wz)
 	if _Cutaway.contains(past, feet, cam_pos):
 		_fail("terrain past the player was cut away")

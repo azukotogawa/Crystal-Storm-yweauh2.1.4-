@@ -1,7 +1,4 @@
 extends SceneTree
-## Prove stone_wall uses the on-disk authored mesh end-to-end (not multi-box procedural).
-## Also proves wood_wall authored bind is not regressed.
-## Usage: godot --headless -s scripts/verify_stone_wall_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -76,7 +73,6 @@ func _test_asset_files_exist() -> void:
 	if tex.get_width() != 256 or tex.get_height() != 256:
 		_fail("stone albedo expected 256x256, got %dx%d" % [tex.get_width(), tex.get_height()])
 	var aabb: AABB = (mesh_res as Mesh).get_aabb()
-	# Must not be a unit cube. Crenellated battlement is taller than wide and not cubic.
 	if aabb.size.y < 1.4:
 		_fail("stone mesh too short to be a battlement (h=%.3f)" % aabb.size.y)
 	if is_equal_approx(aabb.size.x, aabb.size.y) and is_equal_approx(aabb.size.y, aabb.size.z):
@@ -137,7 +133,6 @@ func _test_configure_binds_authored() -> void:
 		_fail("stone_wall must use nearest texture filter")
 	if mi.scale.y > 0.75:
 		_fail("stone_wall authored Y scale must be short cap (<=0.75), got %.3f" % mi.scale.y)
-	# Wood still binds its own mesh after stone configure.
 	var wi := MeshInstance3D.new()
 	reg.configure_building_mesh(wi, null, Vector3(1, 1.5, 1), Color.WHITE, "wood_wall")
 	if not bool(wi.get_meta("uses_authored_mesh", false)):
@@ -291,7 +286,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		print("OK remove leaves no stale visual node")
 
-	# Adjacent wood_wall still uses the wood authored mesh (not stone).
 	var wx := 12
 	var wz := 4
 	var wy: float = world.get_surface_height(float(wx), float(wz))

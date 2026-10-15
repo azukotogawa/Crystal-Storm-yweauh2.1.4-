@@ -1,7 +1,4 @@
 extends SceneTree
-## World Bake Pipeline: immutable base bake + prefer path + overlays + safe regenerate.
-## Usage: godot --headless -s scripts/verify_world_bake.gd
-## Env: CRYSTALSTORM_PROBE_ABRUPT_EXIT=1 for harness OK marker kill.
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -14,14 +11,13 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const SEED := 424242
-const RADIUS := 2  # 5x5 chunks — fast verify + measurable
+const RADIUS := 2
 
 var _failed: int = 0
 
 
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
-	# Prefer bake when present; smoke radius (not multi-minute full map) for this suite.
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "1")
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
@@ -45,7 +41,6 @@ func _run() -> void:
 	_WorldState.replace_active()
 	_WorldBakeService.clear_active()
 
-	# --- Structural API ---
 	var bake: _WorldBakeService = _WorldBakeService.new()
 	_WorldBakeService.set_active(bake)
 	if bake.BAKE_VERSION < 1:
@@ -58,7 +53,6 @@ func _run() -> void:
 	else:
 		_ok("WorldBakeService core APIs present")
 
-	# Prefer path wired in pipeline
 	var pipe_src := FileAccess.get_file_as_string("res://chunks/chunk_pipeline.gd")
 	if "try_apply_base_to_chunk_data" not in pipe_src and "world_bake" not in pipe_src.to_lower():
 		_fail("ChunkPipeline must prefer bake in column stage")
@@ -73,7 +67,6 @@ func _run() -> void:
 	var world = _InfiniteNoiseWorld.new(SEED)
 	bake.delete_bake(SEED, RADIUS)
 
-	# --- Bake once ---
 	var b1: Dictionary = bake.bake_world(world, RADIUS)
 	if not bool(b1.get("ok", false)):
 		_fail("bake_world failed: %s" % str(b1.get("error", "")))
@@ -96,7 +89,6 @@ func _run() -> void:
 	else:
 		_ok("save_bake bytes=%d path=%s" % [bake_bytes, str(s1.get("path", ""))])
 
-	# Snapshot reference columns from bake memory
 	var ref_samples: Array = []
 	for coord in [Vector2i(0, 0), Vector2i(1, -1), Vector2i(-RADIUS, RADIUS)]:
 		var sample: Dictionary = bake.sample_base(coord, 3, 5)
@@ -106,7 +98,6 @@ func _run() -> void:
 			ref_samples.append({"coord": coord, "surface": sample.surface, "tile": sample.tile})
 	_ok("reference samples n=%d" % ref_samples.size())
 
-	# --- Deterministic re-bake matches ---
 	var bake2: _WorldBakeService = _WorldBakeService.new()
 	var world2 = _InfiniteNoiseWorld.new(SEED)
 	var b2: Dictionary = bake2.bake_world(world2, RADIUS)
@@ -125,7 +116,6 @@ func _run() -> void:
 		else:
 			_ok("deterministic bake match across two bake_world calls")
 
-	# --- Load from disk matches generate path ---
 	var bake_load: _WorldBakeService = _WorldBakeService.new()
 	if not bake_load.load_bake(SEED, RADIUS):
 		_fail("load_bake failed: %s" % bake_load.last_error)
@@ -141,14 +131,12 @@ func _run() -> void:
 	var match_fail := 0
 	for s in ref_samples:
 		var coord: Vector2i = s.coord
-		# Live generate reference (no overlays)
 		_WorldState.replace_active()
 		var data_gen = _ChunkData.new(coord, gen_world)
 		data_gen.capture_worker_snapshot()
 		mgr._generate_chunk(data_gen)
 		var gen_h: float = float(data_gen.surface_map[3][5])
 		var gen_t: int = int(data_gen.tile_map[3][5])
-		# Baked apply reference
 		var data_bake = _ChunkData.new(coord, gen_world)
 		data_bake.capture_worker_snapshot()
 		if not bake_load.try_apply_base_to_chunk_data(data_bake):
@@ -164,7 +152,6 @@ func _run() -> void:
 	else:
 		_ok("baked base matches generate for sampled chunks")
 
-	# --- Prefer path: column_source=bake when bake present ---
 	bake_load.reset_stats()
 	_WorldState.replace_active()
 	var data_pref = _ChunkData.new(Vector2i(0, 0), gen_world)
@@ -179,7 +166,6 @@ func _run() -> void:
 	else:
 		_ok("bake hit stats=%d" % bake_load.stats_bake_hits)
 
-	# --- Generate fallback when bake disabled ---
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "0")
 	bake_load.reset_stats()
 	var data_gen_only = _ChunkData.new(Vector2i(0, 0), gen_world)
@@ -191,7 +177,6 @@ func _run() -> void:
 		_ok("generate fallback when bake disabled column_us=%d" % int(col_gen.get("column_us", 0)))
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "1")
 
-	# --- WorldState overlay on baked base (dig) ---
 	_WorldState.replace_active()
 	_TerrainEdits.dig(3, 5, 2)
 	var data_over = _ChunkData.new(Vector2i(0, 0), gen_world)
@@ -205,14 +190,12 @@ func _run() -> void:
 			_fail("dig overlay must change surface height base=%s after=%s" % [base_before_h, after_h])
 		else:
 			_ok("WorldState dig overlay applied on bake base %s→%s" % [base_before_h, after_h])
-		# Bake package itself not mutated
 		var still: float = float(bake_load.sample_base(Vector2i(0, 0), 3, 5).get("surface", -1.0))
 		if not is_equal_approx(still, base_before_h):
 			_fail("bake store must stay immutable after overlay apply")
 		else:
 			_ok("bake store immutable under overlay")
 
-	# Overlay parity: baked+dig vs generate+dig
 	_WorldState.replace_active()
 	_TerrainEdits.dig(4, 4, 1)
 	_TerrainEdits.build_wall(6, 6, _VoxelTypes.STONE)
@@ -234,7 +217,6 @@ func _run() -> void:
 	else:
 		_ok("overlay parity dig+build bake vs generate")
 
-	# --- Full worker job mesh still works on bake path ---
 	_WorldState.replace_active()
 	var d_job = _ChunkData.new(Vector2i(0, 0), gen_world)
 	d_job.capture_worker_snapshot()
@@ -253,7 +235,6 @@ func _run() -> void:
 			% [job.get("merged_quads", []).size(), int(job.get("column_us", 0)), int(job.get("build_mesh_us", 0))]
 		)
 
-	# --- Corrupted bake regenerates safely ---
 	if not bake_load.corrupt_bake_file(SEED, RADIUS):
 		_fail("corrupt_bake_file failed")
 	else:
@@ -262,7 +243,6 @@ func _run() -> void:
 			_fail("corrupt bake must fail load")
 		else:
 			_ok("corrupt bake rejected: %s" % bad.last_error)
-			# Safe regenerate
 			var rebake: Dictionary = bad.bake_world(gen_world, RADIUS)
 			if not bool(rebake.get("ok", false)):
 				_fail("regenerate after corrupt failed")
@@ -273,7 +253,6 @@ func _run() -> void:
 				else:
 					_ok("corrupt bake safe regenerate+save")
 
-	# --- Version mismatch regenerates safely ---
 	var stub_path: String = bake_load.write_version_mismatch_stub(SEED, RADIUS)
 	if stub_path.is_empty():
 		_fail("version mismatch stub write failed")
@@ -290,12 +269,9 @@ func _run() -> void:
 			else:
 				_ok("version mismatch safe regenerate")
 
-	# --- Measured perf: generate vs bake column stage (same chunks) ---
 	_WorldState.replace_active()
 	bake_load.reset_stats()
-	# Ensure valid bake loaded
 	if not bake_load.load_bake(SEED, RADIUS):
-		# rebaked above
 		bake_load.bake_world(gen_world, RADIUS)
 		bake_load.save_bake()
 		bake_load.load_bake(SEED, RADIUS)
@@ -306,7 +282,6 @@ func _run() -> void:
 		for cx in range(-RADIUS, RADIUS + 1):
 			coords.append(Vector2i(cx, cz))
 
-	# Before: force generate
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "0")
 	var gen_us_total := 0
 	var gen_n := 0
@@ -326,7 +301,6 @@ func _run() -> void:
 	var avg_gen_col := float(gen_us_total) / float(maxi(gen_n, 1))
 	var avg_mesh := float(mesh_us_total) / float(maxi(mesh_n, 1))
 
-	# After: bake prefer
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "1")
 	_WorldBakeService.set_active(bake_load)
 	bake_load.reset_stats()
@@ -353,25 +327,21 @@ func _run() -> void:
 		% [avg_gen_col, avg_bake_col, avg_mesh, bake_n, bake_load.last_bake_bytes, mem_after - mem_before]
 	)
 
-	# Streaming unchanged structural: pipeline stages list still intact
 	if _ChunkPipeline.STAGES.size() < 6:
 		_fail("streaming stages altered")
 	else:
 		_ok("streaming stages unchanged count=%d" % _ChunkPipeline.STAGES.size())
 
-	# Crystal / towns / ruins structural: bake service does not own them
 	var wb_src := FileAccess.get_file_as_string("res://world/world_bake_service.gd")
 	if "CrystalSimulation" in wb_src or "class_name CrystalManager" in wb_src:
 		_fail("bake must not absorb crystal sim")
 	if "WorldState.replace_active" in wb_src and "bake_world" in wb_src:
-		# OK if comments only — ensure bake_world doesn't write height_delta
 		pass
 	if "height_delta[" in wb_src or "build_tile[" in wb_src:
 		_fail("bake service must not mutate WorldState storage")
 	else:
 		_ok("bake does not mutate WorldState / crystal ownership")
 
-	# Write perf JSON for report
 	var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if scratch.is_empty():
 		scratch = "/tmp/grok-goal-05cc82161a8f/implementer"

@@ -1,7 +1,4 @@
 extends RefCounted
-## Poses the voxel boxes a creature draws.
-## Idle breathes the top box. Walk swings the legs. Attack lunges the body.
-## The juice bob only scales the parent, which leaves every box in place.
 
 const _LEG_L := "LegL"
 const _LEG_R := "LegR"

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: run smoke via wrapper; audit enhanced gameplay evidence file.
 
 const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"

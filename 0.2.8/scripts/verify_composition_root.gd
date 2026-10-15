@@ -1,6 +1,4 @@
 extends SceneTree
-## Composition root: registry DI, stages, config precedence, cycles, shutdown.
-## Usage: godot --headless -s scripts/verify_composition_root.gd
 
 const _ServiceRegistry = preload("res://systems/service_registry.gd")
 const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd")
@@ -89,9 +87,7 @@ func _test_config_precedence() -> void:
 	var quality = _PerformanceQualityConfig.apply_preset(_PerformanceQualityConfig.Preset.LOW)
 	quality.caves_enabled = false
 	quality.render_distance = 1
-	# Platform wants even lower upload budget
 	var platform := {"chunk_upload_budget_us": 1000}
-	# Debug overrides win for render_distance
 	var debug := {"render_distance": 9}
 
 	var resolved: Dictionary = _RuntimeConfigResolver.resolve(
@@ -102,13 +98,11 @@ func _test_config_precedence() -> void:
 		_fail("debug override must win render_distance (got %s)" % str(policy.get("render_distance")))
 	if int(policy.get("chunk_upload_budget_us", -1)) != 1000:
 		_fail("platform override must apply before debug (budget)")
-	# Fold into effective quality — consumers must see debug knobs
 	var eff = _RuntimeConfigResolver.fold_policy_into_quality(quality, policy)
 	if int(eff.render_distance) != 9:
 		_fail("fold_policy_into_quality must set render_distance=9 (got %d)" % int(eff.render_distance))
 	if int(eff.chunk_upload_budget_us) != 1000:
 		_fail("fold_policy_into_quality must set upload budget from platform")
-	# Consumer apply: real ChunkManager must receive folded knobs
 	var real_cm = load("res://chunks/chunk_manager.gd").new()
 	real_cm.apply_performance_config(eff)
 	if int(real_cm.RENDER_DISTANCE) != 9:
@@ -116,14 +110,12 @@ func _test_config_precedence() -> void:
 	if int(real_cm.chunk_upload_budget_us) != 1000:
 		_fail("ChunkManager must consume effective upload budget")
 	real_cm.free()
-	# Quality caves false AND authored true → effective false (and without debug)
 	var resolved2: Dictionary = _RuntimeConfigResolver.resolve(
 		defaults, project, quality, {}, {}
 	)
 	var policy2: Dictionary = resolved2.get("policy", {})
 	if bool(policy2.get("caves_enabled", true)):
 		_fail("quality caves_enabled=false must yield effective false when authored true")
-	# Authored world_gen must not be mutated by resolve
 	if project.world_gen and not bool(project.world_gen.caves_enabled):
 		_fail("resolver must not mutate authored world_gen.caves_enabled")
 	var prec: Array = resolved.get("precedence", [])
@@ -160,7 +152,6 @@ func _test_shutdown_order() -> void:
 
 
 func _test_stage_names() -> void:
-	# Stage enum progression is documented on CompositionRoot
 	if _CompositionRoot.Stage.CONFIGURED >= _CompositionRoot.Stage.QUALITY_APPLIED:
 		_fail("CONFIGURED must precede QUALITY_APPLIED")
 	if _CompositionRoot.Stage.FEATURES_SEEDED >= _CompositionRoot.Stage.CHUNKS_CREATED:

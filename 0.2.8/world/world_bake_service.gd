@@ -18,7 +18,6 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-## v4: chunk packages embed baked vegetation (static plants) next to terrain + mesh plan.
 const BAKE_VERSION: int = 4
 const MAGIC: String = "CSWB"
 const CHUNK_MAGIC: String = "CSCH"
@@ -31,16 +30,11 @@ const FLAG_STREAMED: int = 2
 const FLAG_VEGETATION: int = 4
 
 static var _active = null
-## When true, next bootstrap_for_world forces a full rebuild (loading UI "Rebuild World").
 static var force_rebuild_next: bool = false
 
-## mode: "idle"|"loading"|"generating"|"valid"|"error"
-## progress: 0.0..1.0 (or -1 if unknown)
-## message: human-readable status for loading UI
 signal status_changed(mode: String, progress: float, message: String)
 
 var world_seed: int = 0
-## Last UI-facing status (loading screen can poll if signal missed).
 var last_status_mode: String = "idle"
 var last_status_progress: float = 0.0
 var last_status_message: String = ""
@@ -60,13 +54,11 @@ var last_bake_bytes: int = 0
 var last_column_source: String = ""
 var last_static_meta_bytes: int = 0
 var package_dir: String = ""
-## True when loaded/baked packages include vegetation payloads (v4+).
 var vegetation_baked: bool = false
 var last_vegetation_entries: int = 0
 var last_vegetation_bake_ms: int = 0
 ## True while a deferred fill is running. `valid` stays false until world.index is written.
 var bake_in_progress: bool = false
-## Blocks WorldState.replace_active while a live fill/on-demand bake is happening.
 var forbid_session_replace: bool = false
 var _veg_by_chunk: Dictionary = {}
 var _fill_queue: Array = []
@@ -79,7 +71,6 @@ var _fill_started_ms: int = 0
 var _fill_done: int = 0
 var _fill_total: int = 0
 var _prime_count: int = 0
-## Measurement-only (gameplay profile). Does not change bake control flow.
 var last_one_coord: Vector2i = Vector2i.ZERO
 var last_one_sample_us: int = 0
 var last_one_mesh_us: int = 0
@@ -96,7 +87,6 @@ var bake_sample_history_us: PackedInt32Array = PackedInt32Array()
 var bake_mesh_history_us: PackedInt32Array = PackedInt32Array()
 var bake_write_history_us: PackedInt32Array = PackedInt32Array()
 const BAKE_COST_HISTORY := 512
-## Bounded worker fill (not 16,384 jobs at once).
 const PRI_STREAM := 0
 const PRI_NEARBY := 1
 const PRI_FILL := 2
@@ -115,12 +105,8 @@ var worker_util_samples: int = 0
 var worker_util_sum: float = 0.0
 const _WorldBakeWorkerJob = preload("res://world/world_bake_worker_job.gd")
 
-## Resident only: Vector2i -> { surface, tiles, plan, vegetation }
 var _resident: Dictionary = {}
-## Lightweight surface/tile cache for halo sampling (no plan, no vegetation).
-## Avoids synchronous full-package ensure_chunk_resident during capture_worker_snapshot.
 var _surface_resident: Dictionary = {}
-## Optional monolith fallback (legacy tests): full in-memory map
 var _chunks: Dictionary = {}
 
 var stats_bake_hits: int = 0
@@ -134,7 +120,6 @@ var stats_disk_reads: int = 0
 var stats_disk_read_us: int = 0
 var stats_releases: int = 0
 var stats_missing_package_errors: int = 0
-## Surface-only loads (halo path) vs full package loads (mesh/veg).
 var stats_surface_disk_reads: int = 0
 var stats_surface_disk_read_us: int = 0
 var stats_full_package_loads: int = 0
@@ -195,7 +180,6 @@ func runtime_gen_stats() -> Dictionary:
 	}
 
 
-## World column → chunk coord (SIZE cells per chunk side).
 static func world_to_chunk_coord(wx: int, wz: int) -> Vector2i:
 	return Vector2i(int(floor(float(wx) / float(CELLS))), int(floor(float(wz) / float(CELLS))))
 
@@ -212,7 +196,6 @@ func covers_world_cell(wx: int, wz: int) -> bool:
 	return coord_in_package(world_to_chunk_coord(wx, wz))
 
 
-## Sample immutable baked base for a world column. Loads package if needed (main thread).
 ## Returns {} if outside package or package unavailable (caller must not noise for covered cells).
 func sample_world_base(wx: int, wz: int) -> Dictionary:
 	if not valid:
@@ -231,7 +214,6 @@ static func compose_surface_height(base_h: float, height_delta: float) -> float:
 	return round(h / layer) * layer
 
 
-## True when a noise height sample for this world cell would violate bake isolation.
 func should_count_runtime_noise_height(wx: float, wz: float) -> bool:
 	if not valid or not bake_enabled_from_env():
 		return false
@@ -292,14 +274,11 @@ static func full_world_chunk_bounds() -> Dictionary:
 	}
 
 
-## Production playable map side length in chunks (e.g. 128 for PLAYABLE_HALF=1024, CELLS=16).
 static func production_chunk_side() -> int:
 	var b: Dictionary = full_world_chunk_bounds()
 	return int(b.get("span_x", 128))
 
 
-## Production default: full playable world. Optional test overrides only:
-##   CRYSTALSTORM_FULL_WORLD_BAKE=0 or CRYSTALSTORM_BAKE_RADIUS=<n> for smoke/CI.
 static func use_full_world_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_FULL_WORLD_BAKE").strip_edges().to_lower()
 	if raw == "0" or raw == "false" or raw == "off":
@@ -307,7 +286,6 @@ static func use_full_world_from_env() -> bool:
 	var rad := OS.get_environment("CRYSTALSTORM_BAKE_RADIUS").strip_edges()
 	if not rad.is_empty():
 		return false
-	# Empty / unset / on → production full world (no env required for players).
 	return true
 
 
@@ -325,7 +303,6 @@ static func default_radius_from_env() -> int:
 	return smoke_radius_from_env()
 
 
-## Always rebuild missing/invalid bakes for players. Tests may set CRYSTALSTORM_BAKE_ON_NEW=0.
 static func bake_on_new_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_BAKE_ON_NEW").strip_edges().to_lower()
 	if raw == "0" or raw == "false" or raw == "off":
@@ -333,8 +310,6 @@ static func bake_on_new_from_env() -> bool:
 	return true
 
 
-## Default ON: prime start ring then fill in the background.
-## Set CRYSTALSTORM_BAKE_DEFER_FILL=0 to restore await-full-bake before stream.
 static func defer_fill_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_BAKE_DEFER_FILL").strip_edges().to_lower()
 	if raw == "0" or raw == "false" or raw == "off":
@@ -342,8 +317,6 @@ static func defer_fill_from_env() -> bool:
 	return true
 
 
-## Default ON with defer-fill: package work runs on WorkerThreadPool.
-## CRYSTALSTORM_BAKE_FILL_SYNC=1 restores the old main-thread 1-chunk/frame fill (profile B).
 static func use_worker_fill_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FILL_SYNC").strip_edges().to_lower()
 	if raw == "1" or raw == "true" or raw == "on":
@@ -351,7 +324,6 @@ static func use_worker_fill_from_env() -> bool:
 	return true
 
 
-## World bake is always on for production. Tests may set CRYSTALSTORM_WORLD_BAKE=0.
 static func bake_enabled_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_WORLD_BAKE").strip_edges().to_lower()
 	if raw == "0" or raw == "false" or raw == "off":
@@ -367,7 +339,6 @@ static func is_chunk_outside_finite_world(coord: Vector2i) -> bool:
 	)
 
 
-## Interpret unsigned 32-bit FileAccess value as signed int32.
 static func _i32(u: int) -> int:
 	if u > 2147483647:
 		return u - 4294967296
@@ -516,7 +487,6 @@ static func inspect_disk_status(seed: int) -> Dictionary:
 
 
 func bake_file_path(seed: int, rad: int = -1, as_full: bool = false) -> String:
-	# Index path for streamed packages (replaces monolith world.bake).
 	return bake_dir_for(seed, rad, as_full).path_join("world.index")
 
 
@@ -525,7 +495,6 @@ func chunk_package_path(coord: Vector2i) -> String:
 
 
 func has_chunk(coord: Vector2i) -> bool:
-	## Index membership (not necessarily resident in RAM).
 	return valid and coord_in_package(coord)
 
 
@@ -542,7 +511,6 @@ func resident_count() -> int:
 
 
 func chunk_count() -> int:
-	## Covered by index (world size), not resident RAM count.
 	if valid:
 		return expected_chunk_count()
 	return _chunks.size()
@@ -562,7 +530,6 @@ func expected_chunk_count() -> int:
 	return (max_cx - min_cx + 1) * (max_cz - min_cz + 1)
 
 
-## Block procedural generate for any coord covered by a valid bake index.
 func should_block_procedural_generate(coord: Vector2i) -> bool:
 	if not bake_enabled_from_env():
 		return false
@@ -690,7 +657,6 @@ func startup_prime_coords(host) -> Array:
 	if host != null and "RENDER_DISTANCE" in host:
 		rd = maxi(int(host.RENDER_DISTANCE), 1)
 	_add_stream_ring(out, 0, 0, rd)
-	# Same spawn-ring columns as Player._resolve_spawn_column, plus their stream rings.
 	for dist in [56, 52, 60, 48, 64, 44]:
 		var cols: Array[Vector2i] = [
 			Vector2i(dist, 0), Vector2i(-dist, 0), Vector2i(0, dist), Vector2i(0, -dist),
@@ -1081,7 +1047,6 @@ func _try_commit_index() -> bool:
 		return true
 	var expected: int = expected_chunk_count()
 	if _packages_known.size() < expected:
-		# Recount from disk in case of resume.
 		_inventory_existing_packages()
 	if _packages_known.size() < expected:
 		return false
@@ -1152,8 +1117,6 @@ func _bootstrap_deferred_async(world, host, seed: int, want_full: bool) -> Dicti
 	}
 
 
-## Assess a loaded bake for production readiness. Does not rebuild.
-## Returns { ok, reasons: PackedStringArray, mesh_plans_ok, vegetation_ok, size_label, chunks, version }.
 func validate_loaded_bake(expected_seed: int, require_full: bool = true) -> Dictionary:
 	var reasons: PackedStringArray = PackedStringArray()
 	if not valid:
@@ -1161,9 +1124,7 @@ func validate_loaded_bake(expected_seed: int, require_full: bool = true) -> Dict
 		return _validation_result(false, reasons, false, false, 0)
 	if world_seed != expected_seed and expected_seed >= 0:
 		reasons.append("seed_mismatch got=%d want=%d" % [world_seed, expected_seed])
-	# Production requires current schema with vegetation.
 	if BAKE_VERSION >= 4:
-		# Index must be current major version (v4). v3 loads for migration but is invalid for production.
 		var index_path := package_dir.path_join("world.index")
 		var ver_on_disk := _read_index_version(package_dir)
 		if ver_on_disk > 0 and ver_on_disk != BAKE_VERSION:
@@ -1186,7 +1147,6 @@ func validate_loaded_bake(expected_seed: int, require_full: bool = true) -> Dict
 		reasons.append("missing_package_dir")
 	if not vegetation_baked:
 		reasons.append("vegetation_missing")
-	# Package integrity + mesh plans (sample corners + origin).
 	var plan_ok := true
 	var integrity_ok := true
 	var samples: Array = _validation_sample_coords()
@@ -1312,7 +1272,6 @@ func _emit_status(mode: String, progress: float, message: String) -> void:
 	status_changed.emit(mode, progress, message)
 
 
-## Public alias for loading UI / WorldFeatures (presentation only).
 func notify_ui_status(mode: String, progress: float, message: String) -> void:
 	_emit_status(mode, progress, message)
 
@@ -1337,10 +1296,8 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 	var validation: Dictionary = {}
 	if loaded:
 		validation = validate_loaded_bake(seed, want_full)
-		# Plans incomplete can be repaired without full rebuild.
 		if bool(validation.get("ok", false)):
 			var plan_info: Dictionary = ensure_mesh_plans(host, world)
-			# Re-validate mesh plan flag after optional one-shot repair.
 			if str(plan_info.get("mode", "")) == "repaired":
 				validation = validate_loaded_bake(seed, want_full)
 			if bool(validation.get("ok", false)):
@@ -1358,7 +1315,6 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 					"mesh_plan": plan_info,
 					"validation": validation,
 				}
-			# Repair failed integrity → fall through to rebuild.
 			var reasons2: PackedStringArray = validation.get("reasons", PackedStringArray())
 			log_invalid_bake(reasons2)
 			_emit_status(
@@ -1367,7 +1323,6 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 				"Generating World... This only happens the first time you play or after major world updates."
 			)
 		else:
-			# Only mesh-plan issues → try repair before full rebuild.
 			var reasons: PackedStringArray = validation.get("reasons", PackedStringArray())
 			var only_plans := _reasons_only_mesh_plan(reasons)
 			if only_plans and host != null:
@@ -1411,7 +1366,6 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 		)
 
 	if force_bake or bake_on_new_from_env():
-		# Production auto-bake: full world unless smoke radius override is set.
 		var rad: int = -1
 		if not want_full:
 			rad = smoke_radius_from_env()
@@ -1426,7 +1380,6 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 	return {"ok": true, "mode": "miss", "seed": seed}
 
 
-## Async production path: cooperative bake so loading UI stays responsive (128×128).
 func bootstrap_for_world_async(world, force_bake: bool = false, host = null) -> Dictionary:
 	var _STP = load("res://systems/startup_total_profiler.gd")
 	if _STP and _STP.is_enabled():
@@ -1597,7 +1550,6 @@ func _finish_bootstrap_after_bake(
 	var world_ref = null
 	if host != null and "world" in host:
 		world_ref = host.world
-	# One-shot plan refresh for live town/ruin stamps after offline bake, then persist meta.
 	var post_plans: Dictionary = ensure_mesh_plans(host, world_ref, false)
 	_write_plan_seed_meta()
 	var post: Dictionary = validate_loaded_bake(seed, want_full)
@@ -1638,10 +1590,7 @@ func _reasons_only_mesh_plan(reasons: PackedStringArray) -> bool:
 	return true
 
 
-## Ensure mesh plans exist on disk. Repair at most once; write packages + plan_seed_meta.
-## force_fill: repair even if sampling is ambiguous.
 func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
-	# Streamed packages already embed mesh plans per chunk — no monolith load.
 	if streamed and valid:
 		var need_fill: bool = force_fill
 		var need_plans := false
@@ -1672,7 +1621,6 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 					]
 				)
 		else:
-			# Valid plans already on disk — ensure meta stamp so we never re-enter repair.
 			if not FileAccess.file_exists(_plan_seed_meta_path()):
 				_write_plan_seed_meta()
 			mode = "valid"
@@ -1690,7 +1638,6 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 			plans.streamed_from_bake = true
 			mp_script.set_active(plans)
 		var stats: Dictionary = sample_package_plan_stats(mini(expected_chunk_count(), 8))
-		# Sampling may have loaded packages; drop them so startup resident count stays 0.
 		_resident.clear()
 		_surface_resident.clear()
 		return {
@@ -1700,7 +1647,6 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 			"bytes": last_bake_bytes,
 			"plan_stats": stats,
 		}
-	# Legacy monolith mesh plan path: load if present; rebuild automatically when missing.
 	var mp_script2 = load("res://world/mesh_plan_cache.gd")
 	if mp_script2 == null:
 		return {"ok": false, "mode": "unavailable"}
@@ -1741,7 +1687,6 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 	}
 
 
-## Resolve a mesh host that can _build_mesh (ChunkManager). Creates a temporary one if needed.
 func _resolve_mesh_host(host, world):
 	if host != null and host.has_method("_build_mesh"):
 		if world != null and "world" in host and host.world == null:
@@ -1756,7 +1701,6 @@ func _resolve_mesh_host(host, world):
 	return mgr
 
 
-## Sample package plan sizes (loads into RAM then may release).
 func sample_package_plan_stats(max_samples: int = 8) -> Dictionary:
 	if not valid:
 		return {"sampled": 0, "with_plan": 0, "empty_plan": 0, "avg_plan_qn": 0.0, "total_qn": 0}
@@ -1795,7 +1739,6 @@ func packages_need_mesh_plan_fill() -> bool:
 		return true
 	var empty: int = int(stats.get("empty_plan", 0))
 	var with_plan: int = int(stats.get("with_plan", 0))
-	# Repair only when plans are broadly missing (not a single sparse empty column).
 	if with_plan == 0:
 		return true
 	return empty * 2 >= sampled
@@ -1823,13 +1766,11 @@ func _current_seed_stamp_count() -> int:
 func seed_stamps_require_plan_refresh() -> bool:
 	if package_dir.is_empty():
 		return false
-	# Empty/incomplete plans always need a one-shot fill first.
 	if packages_need_mesh_plan_fill():
 		return true
 	var want: int = _current_seed_stamp_count()
 	var path := _plan_seed_meta_path()
 	if not FileAccess.file_exists(path):
-		# Valid plans already on disk — caller writes meta without refill.
 		return false
 	var txt := FileAccess.get_file_as_string(path)
 	var data = JSON.parse_string(txt)
@@ -1838,7 +1779,6 @@ func seed_stamps_require_plan_refresh() -> bool:
 	if int(data.get("world_seed", -1)) != world_seed:
 		return true
 	var have: int = int(data.get("seeded_tile_count", -1))
-	# Town/ruin stamp set changed → one-shot plan refresh, then meta rewrite.
 	return have >= 0 and have != want
 
 
@@ -1857,9 +1797,6 @@ func _write_plan_seed_meta() -> void:
 	f.close()
 
 
-## Rewrite every package with a complete mesh plan (terrain+veg already on disk).
-## Uses the LIVE WorldState session when available (post feature_seeding) so town/ruin
-## world-seed stamps are captured in plans and remain plan-compatible at runtime.
 func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 	if not valid:
 		return {"ok": false, "error": "bake not valid"}
@@ -1871,7 +1808,6 @@ func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 	var t0 := Time.get_ticks_msec()
 	var _ChunkData = load("res://chunks/chunk_data.gd")
 	var _FeatureRegistry = load("res://world/feature_registry.gd")
-	# Ensure package vegetation is resident in the live session (idempotent).
 	var coords: Array = covered_coords()
 	for c_variant in coords:
 		var c: Vector2i = c_variant
@@ -1895,7 +1831,6 @@ func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 		if surface.size() != CELLS2 or tiles.size() != CELLS2:
 			continue
 		var data = _ChunkData.new(coord, world)
-		# Live session snapshot (towns/ruins/veg already applied).
 		data.capture_worker_snapshot()
 		_apply_pack_to_data(data, surface, tiles)
 		if data.has_method("_bind_macro_surface_if_needed"):
@@ -1913,7 +1848,6 @@ func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 		pack2["plan"] = plan
 		_resident[coord] = pack2
 		filled += 1
-	# Drop RAM after fill (stream on demand).
 	_resident.clear()
 	_surface_resident.clear()
 	var avg_qn: float = float(total_qn) / float(maxi(filled, 1))
@@ -1927,7 +1861,6 @@ func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 	}
 
 
-## Bake all chunks in span; write each package immediately (streamed). Does not retain world in RAM.
 func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	if world == null:
 		last_error = "bake_world: null world"
@@ -1935,7 +1868,6 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 		return {"ok": false, "error": last_error}
 	var t0 := Time.get_ticks_msec()
 	world_seed = int(world.world_seed) if "world_seed" in world else 0
-	# Invalidate until bake completes so halo/column paths never sample half-written packages.
 	valid = false
 	vegetation_baked = false
 	_resident.clear()
@@ -1969,7 +1901,6 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	var chunks_dir := package_dir.path_join("chunks")
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(chunks_dir))
 
-	# Offline vegetation scatter (same rules as VegetationManager) → per-chunk packages.
 	var veg_t0 := Time.get_ticks_msec()
 	var veg_by_chunk: Dictionary = _bake_vegetation_by_chunk(world)
 	last_vegetation_bake_ms = Time.get_ticks_msec() - veg_t0
@@ -1981,7 +1912,6 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	var plan_count := 0
 	var plan_qn_total := 0
 	var bytes_written := 0
-	# Always emit mesh plans — resolve/create mesh host if caller omitted one.
 	var mesh_host = _resolve_mesh_host(host, world)
 	var co_mesh: bool = mesh_host != null and mesh_host.has_method("_build_mesh")
 	if not co_mesh:
@@ -2053,9 +1983,6 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	}
 
 
-## Cooperative bake for production boot / loading UI: yields to SceneTree so the
-## main loop can process frames (progress bar, avoid "frozen" window).
-## Same packages/determinism as bake_world; only scheduling differs.
 func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 	if world == null:
 		last_error = "bake_world: null world"
@@ -2135,7 +2062,6 @@ func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 
 	var total_chunks: int = maxi((max_cx - min_cx + 1) * (max_cz - min_cz + 1), 1)
 	var progress_emit_every: int = maxi(total_chunks / 40, 1)
-	# Yield often enough for UI; denser for huge full-world bakes.
 	var yield_every: int = 4 if total_chunks > 1000 else maxi(progress_emit_every, 1)
 	if prof_on:
 		_STP.set_gauge("chunks_total", total_chunks)
@@ -2231,7 +2157,6 @@ func _bake_vegetation_by_chunk(world) -> Dictionary:
 	var env_att := OS.get_environment("CRYSTALSTORM_VEG_BAKE_ATTEMPTS").strip_edges()
 	if not env_att.is_empty():
 		attempts = maxi(env_att.to_int(), 0)
-	# Scatter only inside this package's world rectangle (density-scaled attempts).
 	var bounds := {
 		"min_wx": min_cx * CELLS,
 		"max_wx": (max_cx + 1) * CELLS - 1,
@@ -2273,7 +2198,6 @@ func _write_chunk_package(
 		return 0
 	f.store_buffer(CHUNK_MAGIC.to_utf8_buffer())
 	f.store_32(BAKE_VERSION)
-	# store_64 for signed chunk coords (store_32 is unsigned-hostile for negatives).
 	f.store_64(coord.x)
 	f.store_64(coord.y)
 	var checksum: int = BAKE_VERSION ^ coord.x ^ coord.y
@@ -2287,7 +2211,6 @@ func _write_chunk_package(
 	f.store_32(plan.size())
 	checksum = checksum ^ plan.size()
 	f.store_var(plan, false)
-	# v4+: baked vegetation entries (local lx/lz + plant meta).
 	f.store_32(vegetation.size())
 	checksum = checksum ^ vegetation.size()
 	f.store_var(vegetation, false)
@@ -2300,7 +2223,6 @@ func _write_chunk_package(
 		DirAccess.remove_absolute(abs_final)
 	var renamed := DirAccess.rename_absolute(abs_tmp, abs_final)
 	if renamed != OK:
-		# Fallback: copy bytes if rename is blocked.
 		var bytes: PackedByteArray = FileAccess.get_file_as_bytes(tmp_path)
 		var out := FileAccess.open(path, FileAccess.WRITE)
 		if out:
@@ -2334,7 +2256,6 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 	if _res_measure:
 		_res_add("file_open", Time.get_ticks_usec() - t_leaf)
 		t_leaf = Time.get_ticks_usec()
-	# v3/v4 packages are uncompressed — decompression always 0.
 	if spp_on:
 		SPP.record("decompression", 0, coord)
 	var magic := f.get_buffer(4).get_string_from_utf8()
@@ -2344,7 +2265,6 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		stats_missing_package_errors += 1
 		return {}
 	var ver: int = int(f.get_32())
-	# Accept v3 (no veg) and v4+ (with veg).
 	if ver != BAKE_VERSION and ver != 3:
 		last_error = "chunk version mismatch %d" % ver
 		f.close()
@@ -2359,7 +2279,6 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		_res_add("header_parse", Time.get_ticks_usec() - t_leaf)
 		t_leaf = Time.get_ticks_usec()
 	var checksum: int = ver ^ cx ^ cz
-	# package_file_read: open + header + raw column floats/ints (no Variant decode).
 	var surface := PackedFloat32Array()
 	var tiles := PackedInt32Array()
 	surface.resize(CELLS2)
@@ -2379,7 +2298,6 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		leaf["column_loop_us"] = col_us
 		t_leaf = Time.get_ticks_usec()
 	var file_read_us: int = Time.get_ticks_usec() - t0
-	# deserialization: plan + vegetation Variant blobs + trailer.
 	var t_deser0 := Time.get_ticks_usec()
 	var plan = f.get_var(false)
 	if typeof(plan) != TYPE_ARRAY:
@@ -2439,8 +2357,6 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 	return {"surface": surface, "tiles": tiles, "plan": plan, "vegetation": vegetation}
 
 
-## Read only header + surface + tiles. Skips plan/vegetation Variant blobs.
-## Used for halo height sampling — full package not required.
 func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
 	var path := chunk_package_path(coord)
 	var t0 := Time.get_ticks_usec()
@@ -2477,7 +2393,6 @@ func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
 	for i in CELLS2:
 		surface[i] = f.get_float()
 		tiles[i] = int(f.get_32())
-	# Stop before plan get_var / vegetation — halo only needs columns.
 	f.close()
 	stats_surface_disk_reads += 1
 	stats_surface_disk_read_us += Time.get_ticks_usec() - t0
@@ -2486,7 +2401,6 @@ func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
 	return {"surface": surface, "tiles": tiles}
 
 
-## Ensure surface+tiles are in RAM for halo sampling (no plan, no veg install).
 func ensure_surface_data_resident(coord: Vector2i) -> bool:
 	_maybe_enable_res_measure_from_env()
 	var t_all := Time.get_ticks_usec() if _res_measure else 0
@@ -2516,9 +2430,6 @@ func _note_surface_from_full_pack(coord: Vector2i, pack: Dictionary) -> void:
 		_surface_resident[coord] = {"surface": surface, "tiles": tiles}
 
 
-## Load chunk package into RAM if needed. Returns false if missing/corrupt.
-## Vegetation stamps are installed once when the package first becomes resident
-## (not on every ensure hit — that re-walked FeatureRegistry on every stream start).
 func ensure_chunk_resident(coord: Vector2i) -> bool:
 	_maybe_enable_res_measure_from_env()
 	var t_all := Time.get_ticks_usec() if _res_measure else 0
@@ -2532,7 +2443,6 @@ func ensure_chunk_resident(coord: Vector2i) -> bool:
 		if _res_measure:
 			_res_add("ensure_chunk_resident.cache_hit", Time.get_ticks_usec() - t_all)
 		return true
-	# Streamed packages (and any package_dir with chunks/) load on demand.
 	if not package_dir.is_empty():
 		var t_read := Time.get_ticks_usec() if _res_measure else 0
 		var pack: Dictionary = _read_chunk_package(coord)
@@ -2557,9 +2467,6 @@ func ensure_chunk_resident(coord: Vector2i) -> bool:
 	return _chunks.has(coord)
 
 
-## Ensure package bytes/surfaces are in RAM for mesh-halo sampling without reinstalling vegetation.
-## Use for neighbor ring prefetch around a stream start; full ensure_chunk_resident for the target.
-## Measurement (CRYSTALSTORM_BAKE_RESIDENT_MEASURE=1).
 var _res_measure: bool = false
 var _res_env_checked: bool = false
 var _res_n: int = 0
@@ -2569,7 +2476,7 @@ var _res_total_us: int = 0
 var _res_max_us: int = 0
 var _res_read_us: int = 0
 var _res_read_max_us: int = 0
-var _res_phase: Dictionary = {}  # leaf -> {n, total_us, max_us}
+var _res_phase: Dictionary = {}
 var _res_worst: Dictionary = {}
 
 
@@ -2601,7 +2508,6 @@ func reset_resident_measure() -> void:
 	_res_worst.clear()
 
 
-## Measure-only: drop RAM package cache so next ensure reloads from disk (cold path).
 func drop_resident_packages_for_measure() -> int:
 	var n: int = _resident.size() + _surface_resident.size()
 	_resident.clear()
@@ -2680,8 +2586,6 @@ func _res_add(phase: String, us: int) -> void:
 
 
 func ensure_package_data_resident(coord: Vector2i) -> bool:
-	## Halo-neighbor prefetch: surface+tiles only (no plan get_var, no vegetation).
-	## Full package load remains ensure_chunk_resident for mesh apply / plan / veg.
 	_maybe_enable_res_measure_from_env()
 	var t_all := Time.get_ticks_usec() if _res_measure else 0
 	if _res_measure:
@@ -2724,7 +2628,6 @@ func release_chunk(coord: Vector2i) -> void:
 		stats_releases += 1
 	if _surface_resident.has(coord):
 		_surface_resident.erase(coord)
-	# Monolith _chunks intentionally retained only for legacy non-streamed mode.
 
 
 func get_mesh_plan(coord: Vector2i) -> Array:
@@ -2780,7 +2683,6 @@ func save_bake(path: String = "") -> Dictionary:
 		mf.close()
 		last_static_meta_bytes = int(FileAccess.get_file_as_bytes(meta_path).size())
 
-	# Sum package sizes on disk.
 	var t_sum := Time.get_ticks_usec()
 	var total := 0
 	if FileAccess.file_exists(index_path):
@@ -2827,7 +2729,6 @@ func load_bake_for_seed(seed: int, prefer_full: bool = true) -> bool:
 	var r := smoke_radius_from_env()
 	if load_index(bake_dir_for(seed, r, false), seed):
 		return true
-	# Legacy v2 monolith (optional fall-through for old packages).
 	return _try_load_legacy_monolith(seed, r)
 
 
@@ -2873,7 +2774,6 @@ func load_index(dir: String, expected_seed: int = -1) -> bool:
 		valid = false
 		f.close()
 		return false
-	# v3+ uses store_64 for signed bounds; legacy used store_32.
 	if ver >= 3:
 		min_cx = int(f.get_64())
 		max_cx = int(f.get_64())
@@ -2908,7 +2808,6 @@ func load_index(dir: String, expected_seed: int = -1) -> bool:
 	last_load_time_ms = Time.get_ticks_msec() - t0
 	last_bake_bytes = 0
 	last_error = ""
-	# Startup: index only — no chunk packages loaded.
 	return true
 
 
@@ -2928,7 +2827,6 @@ func _try_load_legacy_monolith(seed: int, rad: int) -> bool:
 
 
 func _try_load_legacy_file(file_path: String, expected_seed: int) -> bool:
-	# Load entire monolith into _chunks (legacy compatibility; not used for v3).
 	var t0 := Time.get_ticks_msec()
 	var f := FileAccess.open(file_path, FileAccess.READ)
 	if f == null:
@@ -3035,7 +2933,6 @@ func _apply_pack_to_data(data, surface: PackedFloat32Array, tiles: PackedInt32Ar
 	var t0 := Time.get_ticks_usec()
 	if data.has_method("_ensure_surface_map_storage"):
 		data._ensure_surface_map_storage()
-	# Keep immutable baked base on ChunkData so dirty rebuilds never re-noise.
 	if data.has_method("store_baked_base"):
 		data.store_baked_base(surface, tiles)
 	var layer: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
@@ -3132,7 +3029,6 @@ func avg_column_us_generate() -> float:
 
 
 func sample_base(coord: Vector2i, lx: int, lz: int) -> Dictionary:
-	## Halo / base height sample: surface+tiles only — never force full package + veg.
 	stats_sample_base_calls += 1
 	if not has_chunk(coord):
 		return {}
@@ -3162,7 +3058,6 @@ func sample_base(coord: Vector2i, lx: int, lz: int) -> Dictionary:
 
 
 func corrupt_bake_file(seed: int, rad: int = -1) -> bool:
-	# Corrupt one chunk package or the index.
 	var dir := bake_dir_for(seed, rad if rad >= 0 else radius, false)
 	var idx := dir.path_join("world.index")
 	if FileAccess.file_exists(idx):

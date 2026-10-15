@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: scenario presets apply on production main.tscn (teleport + kit grants).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

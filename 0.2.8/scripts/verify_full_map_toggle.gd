@@ -1,7 +1,4 @@
 extends SceneTree
-## Headless: M opens and closes the fullscreen map. Digging and movement stop
-## while it is open. Pause, chat, and loading close it. The full job covers
-## more columns than the minimap and keeps the existing sample size.
 
 
 const _MapScript = preload("res://ui/topographical_map.gd")

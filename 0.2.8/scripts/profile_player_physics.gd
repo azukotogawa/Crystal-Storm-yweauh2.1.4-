@@ -1,9 +1,4 @@
 extends SceneTree
-## Exclusive breakdown of Player::_physics_process (measure only).
-##
-## Usage:
-##   CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1 CRYSTALSTORM_BAKE_RADIUS=2 \
-##   godot --headless -s scripts/profile_player_physics.gd
 
 const SAMPLE_FRAMES := 300
 
@@ -49,17 +44,14 @@ func _run() -> void:
 		player.set_physics_measure_enabled(true)
 		player.reset_physics_measure()
 
-	# Continuous movement to exercise move/collision path.
 	var dirs: Array[String] = ["ui_right", "ui_up", "ui_left", "ui_down"]
 	var dir_i := 0
 	for i in SAMPLE_FRAMES:
-		# Hold one direction for 20 frames then rotate
 		if i % 20 == 0:
 			for d in dirs:
 				Input.action_release(d)
 			Input.action_press(dirs[dir_i % dirs.size()])
 			dir_i += 1
-		# Occasional jump
 		if i % 45 == 10:
 			Input.action_press("jump")
 		elif i % 45 == 11:
@@ -148,7 +140,6 @@ func _print_report(r: Dictionary) -> void:
 		pr.get("crystal_walkable_height", 0),
 	])
 
-	# Dominant identification
 	var top_phase := ""
 	var top_us := 0
 	for ph in r.get("phases", []):
@@ -170,10 +161,8 @@ func _print_report(r: Dictionary) -> void:
 
 
 func _write_flamegraph(r: Dictionary) -> void:
-	# Folded stacks for speedscope / flamegraph.pl
 	var lines: PackedStringArray = PackedStringArray()
 	var frames: int = maxi(int(r.get("frames", 1)), 1)
-	# Represent total us as sample counts (1 sample = 1 us)
 	for ph in r.get("phases", []):
 		var name: String = str(ph.get("phase", "?"))
 		var us: int = int(ph.get("total_us", 0))
@@ -187,13 +176,11 @@ func _write_flamegraph(r: Dictionary) -> void:
 		"slope_speed": ["walkable_height_at"],
 		"jump_check": ["is_grounded_at", "walkable_height_at"],
 	}
-	# Nested exclusive-ish leaves under walkable
 	var wh: int = int(pr.get("walkable_height_us", 0))
 	if wh > 0:
 		lines.append("Player::_physics_process;horizontal_move;can_step_to;sample_walkable_feet;walkable_height_at %d" % maxi(wh / 2, 1))
 		lines.append("Player::_physics_process;vertical_state;is_grounded_at;sample_walkable_feet;walkable_height_at %d" % maxi(wh / 2, 1))
 	var sh: int = int(pr.get("world_get_surface_height", 0))
-	# use counts as samples for query intensity
 	if sh > 0:
 		lines.append("Player::_physics_process;terrain_queries;world.get_surface_height %d" % sh)
 	var tt: int = int(pr.get("world_get_tile_type", 0))

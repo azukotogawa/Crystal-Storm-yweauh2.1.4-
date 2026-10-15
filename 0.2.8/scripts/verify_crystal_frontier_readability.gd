@@ -1,6 +1,4 @@
 extends SceneTree
-## Presentation-only: frontier cells flagged for taller mesh; no sim rule changes.
-## Usage: godot --headless -s scripts/verify_crystal_frontier_readability.gd
 
 
 const _CrystalCell = preload("res://crystal/crystal_cell.gd")
@@ -18,7 +16,6 @@ func _init() -> void:
 func _run() -> void:
 	var failed := false
 
-	# Cell flag exists and is visual-only field
 	var c := _CrystalCell.new(Vector2i(1, 1), 0.0, 1.0)
 	if not ("is_frontier" in c):
 		push_error("CrystalCell missing is_frontier")
@@ -45,14 +42,12 @@ func _run() -> void:
 
 	var edge = pres._make_render_cell(Vector2i(5, 5), 1.0, -1)
 	var tip = pres._make_render_cell(Vector2i(6, 5), 1.0, -1)
-	# 5,5 has neighbor 6,5 only among crystal — still has empty cardinals → frontier
 	if not edge.is_frontier:
 		push_error("edge cell should be frontier")
 		failed = true
 	if not tip.is_frontier:
 		push_error("tip cell should be frontier")
 		failed = true
-	# Fill all neighbors of 5,5 to make interior
 	for d in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
 		fluid.set_depth(Vector2i(5, 5) + d, 1.0, -1, false)
 	var interior = pres._make_render_cell(Vector2i(5, 5), 1.0, -1)
@@ -89,7 +84,6 @@ func _run() -> void:
 	else:
 		print("OK ASSAULT transition toast")
 
-	# Guard: sim flow rates not edited by this presentation work (spot-check config defaults)
 	if not is_equal_approx(cfg.pressure_flow_rate, 1.1) and cfg.pressure_flow_rate <= 0.0:
 		push_error("unexpected sim config mutation")
 		failed = true

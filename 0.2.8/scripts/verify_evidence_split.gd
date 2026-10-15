@@ -1,5 +1,4 @@
 extends SceneTree
-## Ensures automated probes do not write manual_verification.md.
 
 const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const DISPLAY_PROBE := "res://scripts/display_session_probe.gd"

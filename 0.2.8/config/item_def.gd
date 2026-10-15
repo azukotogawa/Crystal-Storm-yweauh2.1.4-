@@ -1,6 +1,5 @@
 class_name ItemDef
 extends Resource
-## Authored item. ItemTypes is the lookup façade (dict API for hotbar/weapons).
 
 enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
@@ -10,7 +9,6 @@ const MAX_STACK := 99
 @export var id: String = "stone"
 @export var display_name: String = "Stone"
 @export var category: Category = Category.MATERIAL
-## HUD / held-item visual key. Empty means `id`.
 @export var visual_id: StringName = &""
 
 @export_group("Stack")
@@ -25,31 +23,23 @@ const MAX_STACK := 99
 @export var cooldown: float = 0.0
 @export var crystal_damage: float = 0.0
 @export var description: String = ""
-## Targets a thrust can pass through. 1 is a normal swing.
 @export var pierce: int = 1
 ## Horizontal shove in voxels. World distance is this times voxel_scale.
 @export var knockback: float = 0.8
-## Chebyshev splash on crystal cells. 1 is a 3×3. 0 is a single cell.
 @export var splash: int = 0
 @export var thrust: bool = false
 @export var projectile_speed: float = 0.0
 @export var projectile_gravity: float = 0.0
-## Stack spent per shot. Empty means the shot is free.
 @export var ammo_id: String = ""
-## Column radius for a thrown blast. 0 means not a bomb.
 @export var blast_radius: float = 0.0
 ## Dig-tool footprint in columns. 1 is the single-column dig. 0 means not a dig tool.
 @export var dig_radius: int = 0
 @export var throwable: bool = false
-## ItemAnim.Kind. -1 derives a pose from the category.
 @export var anim_kind: int = -1
-## Seconds. 0 uses the action cooldown.
 @export var anim_duration: float = 0.0
-## 0–1 through the pose when the hit lands. -1 uses the kind default.
 @export var impact_ratio: float = -1.0
 
 @export_group("Armor")
-## Fraction removed from incoming damage, before the defense stat.
 @export var damage_reduction: float = 0.0
 @export var move_speed_mult: float = 1.0
 
@@ -133,7 +123,6 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.dig_radius = int(data.get("dig_radius", 1 if d.weapon_kind == WeaponKind.DIG else 0))
 	d.damage_reduction = float(data.get("damage_reduction", 0.0))
 	d.move_speed_mult = float(data.get("move_speed_mult", 1.0))
-	# Authored pose clock. Defaults stay -1 / 0 so ItemAnim can still derive them.
 	d.anim_kind = int(data.get("anim_kind", -1))
 	d.anim_duration = float(data.get("anim_duration", 0.0))
 	d.impact_ratio = float(data.get("impact_ratio", -1.0))

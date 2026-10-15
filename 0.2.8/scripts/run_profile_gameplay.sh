@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Capture gameplay frame-time profile report to scratch.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

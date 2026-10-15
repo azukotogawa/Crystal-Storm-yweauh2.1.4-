@@ -1,6 +1,4 @@
 extends SceneTree
-## Wood/stone walls are WorldObjects: they block entry, enemies, and knockback,
-## they do not trap or lift a body standing beside them, and they save and remove.
 
 
 const _BuildingRegistry = preload("res://building/building_registry.gd")
@@ -93,8 +91,6 @@ func _register_wall(x: int, z: int, build_id: String, passage: bool = false) -> 
 
 
 func _test_entry_escape_and_graze(probe: VoxelFloorProbe, ws, layer: float) -> void:
-	# Tall stacked column that is also a wall. A body in the next column must
-	# still walk parallel, and its feet must stay on its own ground.
 	for _i in 4:
 		_TerrainEdits.build_wall(30, 30, _VoxelTypes.DIRT)
 	_register_wall(30, 30, "stone_wall")
@@ -112,7 +108,6 @@ func _test_entry_escape_and_graze(probe: VoxelFloorProbe, ws, layer: float) -> v
 	else:
 		print("OK wall blocks entry and does not lift the neighbor")
 
-	# WorldObject wall with no height. The body can leave and shuffle inside.
 	_register_wall(52, 52, "wood_wall")
 	var y := probe.walkable_height_at(52.5, 52.5)
 	if not _step(probe, ws, Vector3(52.5, y, 52.5), Vector3(53.5, y, 52.5)):

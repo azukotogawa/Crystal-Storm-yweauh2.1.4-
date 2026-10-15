@@ -1,6 +1,4 @@
 extends SceneTree
-## Prove wood_wall uses the on-disk authored mesh end-to-end (not multi-box procedural).
-## Usage: godot --headless -s scripts/verify_wood_wall_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -23,7 +21,6 @@ var _failed: int = 0
 
 
 func _init() -> void:
-	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")
@@ -90,7 +87,6 @@ func _test_registry_loads_authored() -> void:
 		_fail("get_authored_building_mesh(wood_wall) null")
 		reg.free()
 		return
-	# Must not be the multi-box procedural path (those set structure_part_count > 0 via configure).
 	var albedo: Texture2D = reg.get_authored_building_albedo("wood_wall")
 	if albedo == null:
 		_fail("authored albedo null")
@@ -111,17 +107,13 @@ func _test_configure_binds_authored() -> void:
 		_fail("mesh meta authored_resource_path=%s" % apath)
 	if mi.mesh == null:
 		_fail("wood_wall mesh not assigned")
-	# Authored mesh must differ from procedural multi-box for same id sizes.
 	var procedural: ArrayMesh = reg.build_structure_array_mesh(reg.structure_mesh_parts("wood_wall"))
 	if procedural != null and mi.mesh.get_aabb().is_equal_approx(procedural.get_aabb()):
-		# Same AABB is possible; require surface count or resource path meta.
 		pass
 	if mi.mesh is ArrayMesh and str(mi.get_meta("authored_resource_path", "")).is_empty():
 		_fail("procedural ArrayMesh used without authored path")
-	# Resource path on mesh meta or registry cache
 	var authored_ref: Mesh = reg.get_authored_building_mesh("wood_wall")
 	if mi.mesh != authored_ref:
-		# Duplicate load OK if same path meta
 		if str(mi.get_meta("authored_resource_path", "")) != WOOD_MESH_PATH:
 			_fail("bound mesh is not the authored resource")
 	if not _StructureMat.is_cutaway(mi.material_override) or not _StructureMat.binds_albedo(mi.material_override):
@@ -136,7 +128,6 @@ func _test_configure_binds_authored() -> void:
 func _test_other_ids_not_regressed() -> void:
 	var layer = _FeatureVisualLayer.new()
 	var reg := _GameVisualRegistry.new()
-	# Resolve identities still distinct.
 	var gate_id: String = layer._resolve_player_build_visual_id({
 		"build_id": "gate", "is_passage": true
 	}, 0, 0)
@@ -150,12 +141,10 @@ func _test_other_ids_not_regressed() -> void:
 		_fail("identity regression gate=%s bridge=%s wood=%s" % [gate_id, bridge_id, wood_id])
 	if gate_id == wood_id or bridge_id == wood_id:
 		_fail("gate/bridge collapsed to wood_wall")
-	# Silhouette part lists stay documented even when meshes are authored.
 	var gparts: Array = reg.structure_mesh_parts("gate")
 	var bparts: Array = reg.structure_mesh_parts("bridge")
 	if gparts.size() < 3 or bparts.size() < 2:
 		_fail("gate/bridge silhouette parts regressed")
-	# Ruin / town ids still resolve via kind path (source check).
 	var src: String = (load("res://world/feature_visual_layer.gd") as GDScript).source_code
 	if "ruin_pillar" not in src or "town_hall" not in src:
 		_fail("ruin/town visual ids missing from feature_visual_layer")
@@ -195,7 +184,6 @@ func _test_place_multi_refresh_stream() -> void:
 	cm.set_process(false)
 	cm.set_physics_process(false)
 	root3d.add_child(cm)
-	# Two adjacent chunks so we can place across boundary (SIZE=16).
 	for coord in [Vector2i(0, 0), Vector2i(1, 0)]:
 		var view := ChunkView.new()
 		view.chunk_data = ChunkData.new(coord, world)
@@ -212,10 +200,9 @@ func _test_place_multi_refresh_stream() -> void:
 	var inv := _Inventory.new()
 	inv.add_item("wood", 40)
 
-	# Place a line of walls spanning chunk boundary (wx 14,15 on chunk0; 16,17 on chunk1).
 	var cells: Array[Vector2i] = [
 		Vector2i(14, 4), Vector2i(15, 4), Vector2i(16, 4), Vector2i(17, 4),
-		Vector2i(14, 5),  # corner / staggered
+		Vector2i(14, 5),
 	]
 	for cell in cells:
 		var y: float = world.get_surface_height(float(cell.x), float(cell.y))
@@ -240,7 +227,6 @@ func _test_place_multi_refresh_stream() -> void:
 			_fail("wall at %s wrong resource path" % str(cell))
 	print("OK multi-wall place uses authored mesh (%d cells incl. chunk boundary)" % cells.size())
 
-	# Refresh path: remove + rebuild
 	var mid: Vector2i = cells[1]
 	feat_layer.refresh_cell(mid.x, mid.y)
 	await process_frame
@@ -254,7 +240,6 @@ func _test_place_multi_refresh_stream() -> void:
 		else:
 			print("OK refresh_cell keeps authored wood_wall")
 
-	# Stream-style re-populate of chunk 0 should rebind authored mesh.
 	feat_layer._populate_chunk(Vector2i(0, 0))
 	await process_frame
 	var c0: Vector2i = cells[0]
@@ -268,7 +253,6 @@ func _test_place_multi_refresh_stream() -> void:
 		else:
 			print("OK chunk repopulate keeps authored wood_wall")
 
-	# Dig/replace: clear feature and ensure no stale node after refresh
 	_FeatureRegistry.clear_feature(mid.x, mid.y)
 	feat_layer.refresh_cell(mid.x, mid.y)
 	await process_frame
@@ -277,7 +261,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		print("OK remove leaves no stale visual node")
 
-	# Gate still not wood_wall when placed nearby
 	inv.add_item("wood", 4)
 	var gx := 12
 	var gz := 4

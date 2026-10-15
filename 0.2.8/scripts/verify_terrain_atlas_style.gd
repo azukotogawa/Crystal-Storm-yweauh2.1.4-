@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: Cube.png atlas has biome-distinct river, marsh, and grass tiles.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

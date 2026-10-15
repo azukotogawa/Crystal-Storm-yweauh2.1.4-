@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed: main scene start-region gate + Live World Inspector snapshot.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _LiveWorldQuery = preload("res://helpers/live_world_query.gd")

@@ -15,7 +15,6 @@ const NEIGHBOR_DIRS := [
 	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 ]
 
-# Creeper World-style fluid tunables
 const MIN_DEPTH := 0.04
 const MAX_DEPTH := 12.0
 const MIN_FLOW_DIFF := 0.08

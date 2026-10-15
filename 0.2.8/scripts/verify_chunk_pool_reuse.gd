@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless: stream unload must return ChunkData to pool (pool_reuse > 0 after churn).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -47,7 +46,6 @@ func _run() -> void:
 	var start_chunk := chunk_manager.get_player_chunk_coord()
 	_ChunkDataPool.reset_stats()
 
-	# Walk east long enough to cross several chunk columns (unload + reload).
 	Input.action_press("ui_right")
 	var end_ms := Time.get_ticks_msec() + 12000
 	while Time.get_ticks_msec() < end_ms:

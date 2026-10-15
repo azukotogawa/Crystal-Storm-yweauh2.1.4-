@@ -86,8 +86,6 @@ static func _ensure_mesh_scale() -> void:
 	_corner_step_mesh_rev = CORNER_STEP_MESH_REV
 
 
-## Step wedge: half-block diagonal cut, cell-centered.
-## Local y is in layer units from surface_y: 0 = column base, 1 = low walkable, 2 = high walkable toward +X.
 static func get_wedge_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _wedge_mesh != null:
@@ -95,7 +93,6 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Landing-anchored wedge spanning landing + approach columns (2 cells along slope axis).
 	# Only sloped walkable face + underside — no vertical box walls.
 	_add_quad_uv(st,
 		Vector3(-1.0, -1, -0.5) * s, Vector3(0.5, 0, -0.5) * s, Vector3(0.5, 0, 0.5) * s, Vector3(-1.0, -1, 0.5) * s,
@@ -111,8 +108,6 @@ static func get_wedge_mesh() -> ArrayMesh:
 	return _wedge_mesh
 
 
-## Concave L-corner filler: right angle at origin, legs along +X/+Z into the gap.
-## Two leg faces flush against the exposed sides of the L's voxels; hypotenuse faces the void.
 static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _concave_mesh != null:
@@ -136,7 +131,6 @@ static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	return _concave_mesh
 
 
-## Step-corner ramp at the low cell when two perpendicular +1 steps meet.
 static func get_corner_step_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _corner_step_mesh != null:
@@ -217,7 +211,6 @@ static func voxel_top_y(surface_y: float) -> float:
 static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
 	var layer: float = _ws().layer_height()
 	var t: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
-	# Landing cell slopes down toward the low neighbor as t increases along dir.
 	return voxel_top_y(base_h) - t * layer
 
 
@@ -298,7 +291,6 @@ static func concave_corner_prism_transform(
 	return _corner_prism_transform(world_x, world_z, surface_y, leg_x, leg_z)
 
 
-## Step-corner ramp: triangular prism in the low cell when two perpendicular steps meet.
 static func corner_ramp_legs(dir_a: Vector2i, dir_b: Vector2i) -> Vector2i:
 	var leg_x: int = dir_a.x if dir_a.x != 0 else dir_b.x
 	var leg_z: int = dir_b.y if dir_b.y != 0 else dir_a.y

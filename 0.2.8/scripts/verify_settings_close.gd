@@ -1,5 +1,4 @@
 extends SceneTree
-## Closing Settings from any tab hides every panel, cancels rebind, and returns input.
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
@@ -63,7 +62,6 @@ func _run() -> void:
 				_ok("Close button hid tab %s" % tabs.get_tab_title(i))
 		_assert_closed(pause, menu, "tab %s" % tabs.get_tab_title(i))
 
-	# First Esc during a rebind cancels the capture and leaves Settings open.
 	_open_settings(pause, menu, tabs, titles.find("Controls"))
 	menu._begin_listen("jump")
 	if not menu.is_rebind_listening():
@@ -78,7 +76,6 @@ func _run() -> void:
 	_press_esc(pause, menu)
 	_assert_closed(pause, menu, "second Esc")
 
-	# Resume is another close path.
 	_open_settings(pause, menu, tabs, 0)
 	var resume := pause.find_child("Resume", true, false) as Button
 	if resume == null:

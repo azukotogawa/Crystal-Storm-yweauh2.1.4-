@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: dig highlight anchors on column top (not buried in terrain).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

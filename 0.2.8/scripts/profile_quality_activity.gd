@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed/headless quality sample during live activity (crystal front + melee).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")

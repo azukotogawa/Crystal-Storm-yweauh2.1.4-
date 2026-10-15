@@ -1,5 +1,4 @@
 extends SceneTree
-## Measure rapid dig/build + water reflow costs (shipped TerrainEditor path).
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -49,7 +48,6 @@ func _run() -> void:
 	lines.append("# Terrain + water performance sample")
 	lines.append("")
 
-	# Dig trench 24 cells
 	var t0 := Time.get_ticks_usec()
 	for i in 24:
 		editor.try_dig(Vector3(float(i) + 0.5, 0, 2.5))
@@ -57,7 +55,6 @@ func _run() -> void:
 	lines.append("- dig_24_cells_us=%d (%.2f ms/edit)" % [dig_us, dig_us / 1000.0 / 24.0])
 	print("dig_24 us=%d avg_ms=%.3f" % [dig_us, dig_us / 1000.0 / 24.0])
 
-	# Build wall 24 cells
 	t0 = Time.get_ticks_usec()
 	for i in 24:
 		editor.try_build(Vector3(float(i) + 0.5, 0, 4.5), inv, &"wood_wall")
@@ -65,7 +62,6 @@ func _run() -> void:
 	lines.append("- build_24_cells_us=%d (%.2f ms/edit)" % [build_us, build_us / 1000.0 / 24.0])
 	print("build_24 us=%d avg_ms=%.3f" % [build_us, build_us / 1000.0 / 24.0])
 
-	# Alternate dig/build
 	t0 = Time.get_ticks_usec()
 	for i in 12:
 		editor.try_dig(Vector3(float(i) + 0.5, 0, 6.5))
@@ -74,7 +70,6 @@ func _run() -> void:
 	lines.append("- alt_dig_build_12_us=%d (%.2f ms/pair)" % [alt_us, alt_us / 1000.0 / 12.0])
 	print("alt_12 us=%d avg_ms=%.3f" % [alt_us, alt_us / 1000.0 / 12.0])
 
-	# Channel dig (water) along trench
 	t0 = Time.get_ticks_usec()
 	for i in 8:
 		if editor.has_method("_channel_dig"):
@@ -85,7 +80,6 @@ func _run() -> void:
 	lines.append("- channel_or_dig_8_us=%d (%.2f ms/edit)" % [ch_us, ch_us / 1000.0 / 8.0])
 	print("channel_8 us=%d avg_ms=%.3f" % [ch_us, ch_us / 1000.0 / 8.0])
 
-	# Note water reflow steps (source contract)
 	var te_src: String = (load("res://world/terrain_editor.gd") as GDScript).source_code
 	if "recompute_region_now(wx, wz, 2, 3)" in te_src:
 		lines.append("- water_immediate_steps=3 (amortized; was 8)")

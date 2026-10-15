@@ -1,13 +1,4 @@
 extends SceneTree
-## Creatures must idle, walk, and attack from the physics step, on the boxes
-## the window draws. _apply_walk_bob only scales the visual parent, and only
-## when Juice.creature_bob_allowed is true, so a child-box read stays a statue.
-## Attack also misses a player who is actually beside them: the branch runs
-## column_pos on a voxel_position that is already in columns, then compares
-## the creature's world position to those column numbers.
-## This check stands a rabbit and a mite on that real player position and
-## ticks _physics_process. It does not call a pose setter.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_creature_locomotion.gd
 
 const _Registry = preload("res://systems/game_visual_registry.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
@@ -103,7 +94,6 @@ func _run() -> void:
 		else:
 			print("OK walk %.2f m box %.3f pose %s" % [walked, walk_shift, walk_pose])
 
-	# A herbivore beside the player must not play an attack.
 	player.voxel_position = Vector3(float(home.x) + 0.5, rabbit.global_position.y, float(home.y) + 0.5)
 	player.global_position = Vector3(
 		ws.column_to_world(player.voxel_position.x),

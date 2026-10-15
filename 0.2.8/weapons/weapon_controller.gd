@@ -39,11 +39,8 @@ var _active_hotbar_index: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
 var _combat_def: _CombatDef
-## Rate-limit fail toasts so hold-to-dig doesn't spam.
 var _fail_toast_cd: float = 0.0
 var _last_fail_toast: String = ""
-## Hold-to-repeat: first press is one edit; continuous reshape only after a short hold.
-## Prevents a single click (often >30ms) from stacking two layers without lengthening place delay.
 var _dig_hold_sec: float = 0.0
 var _audio: Node
 var _build_hold_sec: float = 0.0
@@ -61,7 +58,6 @@ var _vfx: Node
 var _shown_item: String = ""
 var _clock_damage_elapsed: float = -1.0
 var _present_bound: bool = false
-## Visual only. Resets when a layer breaks so the overlay refills without changing dig cadence.
 var _crack_fill: float = 0.0
 
 
@@ -72,7 +68,6 @@ func _ready() -> void:
 	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 	world = get_tree().get_first_node_in_group("world")
 	_combat_def = _resolve_combat_def()
-	# After TargetHighlight so shared aim column is current this frame.
 	process_priority = 10
 	_bind_terrain_editor()
 	call_deferred("_bind_presentation")
@@ -265,7 +260,6 @@ func _try_dig_tool() -> void:
 	_do_dig_attack(item_id, def)
 
 
-## Existing consumable hook: herb restores health (no new survival meters).
 func _try_use_consumable() -> bool:
 	if player == null or inventory == null:
 		return false
@@ -350,7 +344,6 @@ func _try_attack() -> void:
 		return
 
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
-	# Dig uses its own snappy delay — never the 0.55s weapon cooldown.
 	if kind == ItemTypes.WeaponKind.DIG:
 		_do_dig_attack(item_id, def)
 		return
@@ -372,7 +365,6 @@ func _attack_forward() -> Vector3:
 	return _ActionTargeting.attack_forward(player)
 
 
-## Cursor column, same aim the pick highlight publishes. Camera forward is the fallback.
 func _aim_forward(range_v: float) -> Vector3:
 	return _ActionTargeting.cursor_aim(player, range_v)
 
@@ -409,7 +401,6 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.0))
 	var origin := _attack_origin(0.5)
 	var chunk_manager: ChunkManager = get_tree().get_first_node_in_group("chunk_manager") as ChunkManager if is_inside_tree() else null
-	# Same column the attack highlight uses (forward fallback when the mouse is off-screen).
 	var aim: Dictionary = _ActionTargeting.resolve_action(
 		player, world, chunk_manager, range_v, false, &"attack"
 	)
@@ -463,8 +454,6 @@ func _query_melee_facing(origin: Vector3, forward: Vector3, range_w: float) -> A
 		_combat_def,
 		melee_arc_degrees
 	)
-	# Adjacent hostiles: if the 70° arc missed, retry a half-circle
-	# at the same range so a mite on-camera next to the player is hittable.
 	if targets.is_empty():
 		targets = _CombatHitResolver.query_melee(
 			self,
@@ -481,7 +470,6 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
 	var range_v: float = float(def.get("range", 12.0))
 	var forward := _aim_forward(range_v)
-	# Aim point stays in world space (column range × voxel scale) for the swing marker.
 	var hit_pos := origin + forward * _range_world(range_v)
 	if not _fire_projectile(item_id, def, origin, forward, false):
 		_cooldown_timer = 0.25
@@ -491,7 +479,6 @@ func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	attacked.emit(item_id, hit_pos)
 
 
-## Line thrust. Hits the first `pierce` bodies on the aim line and can miss the side.
 func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 3.0))
 	var origin := _attack_origin(0.5)
@@ -531,7 +518,6 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.45)
 	_sfx("swing_hammer", origin)
 	var forward := _aim_forward(range_v)
-	# Same cursor column as the pick, clamped to the hammer's hit range.
 	var cell := _ActionTargeting.cell_column(_ActionTargeting.column_toward_cursor(player, range_v))
 	var splash := int(def.get("splash", 1))
 	var cells := _WeaponStrike.splash_cells(cell, splash)
@@ -598,7 +584,6 @@ func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward
 		kind = "bomb"
 	var vs: float = _WorldSettings.get_active().voxel_scale
 	var chunk_manager = get_tree().get_first_node_in_group("chunk_manager") if is_inside_tree() else null
-	# Leave the hand so the shot is in the air, not inside the body.
 	var muzzle := origin + forward * (vs * 0.65)
 	var ok := _Projectile.launch(self, {
 		"origin": muzzle,
@@ -695,7 +680,6 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
 		return
-	# LMB subtracts: player-built first, then terrain. RMB places.
 	if _terrain_editor.has_method("can_remove") and _terrain_editor.can_remove(target):
 		var removed: bool = _terrain_editor.try_remove(target, inventory)
 		if removed:
@@ -709,16 +693,13 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		return
 	dig_attempted.emit(target)
 	if _terrain_editor.has_method("try_dig_brush") and _terrain_editor.try_dig_brush(target, dig_brush_radius(), player):
-		# Snappy dig cadence only — ignore weapon table cooldown.
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
 		_notify_block_break(target)
 	else:
 		_notify_terrain_fail()
-		# Brief retry so hold-dig recovers quickly after a miss.
 		_cooldown_timer = 0.04
 
-	# Light combat on dig is intentional, but only on a fresh press (not every hold tick).
 	if Input.is_action_just_pressed("attack"):
 		var origin := _attack_origin(0.45)
 		var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
@@ -744,7 +725,6 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	attacked.emit(item_id, target)
 
 
-## Pick footprint. Combat weapons never reach this. Default tool radius is 1.
 func dig_brush_radius() -> int:
 	if not _is_active_dig_tool():
 		return _LivingForce.BRUSH_RADIUS_DEFAULT
@@ -831,7 +811,6 @@ func _try_build_wall() -> void:
 	_try_place_selected()
 
 
-## Dig/build ALWAYS use the highlighted cursor cell — never a facing fallback mismatch.
 func _resolve_terrain_target(range_v: float) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
@@ -841,18 +820,15 @@ func _resolve_terrain_target(range_v: float) -> Vector3:
 		if shared != Vector3.ZERO:
 			var sx := floori(shared.x)
 			var sz := floori(shared.z)
-			# Only act on the highlighted cell; out-of-range is a failed action (toast), not a different dig.
 			if not _ActionTargeting._column_in_range(player, sx, sz, range_v):
 				if _terrain_editor:
 					_terrain_editor.last_fail_reason = "Out of range"
 				return Vector3.ZERO
 			return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
-	# No highlight (headless / boot): mouse then facing.
 	return _ActionTargeting.target_column(player, range_v)
 
 
 func _resolve_buildable_id() -> StringName:
-	# SHIFT = gate (walk-through baffle), CTRL = bridge (span digs), else wall.
 	if Input.is_key_pressed(KEY_SHIFT):
 		return &"gate"
 	if Input.is_key_pressed(KEY_CTRL):
@@ -875,7 +851,6 @@ func _flash_dig_feedback(target: Vector3) -> void:
 	var highlight = player.get_node_or_null("TargetHighlight") if player else null
 	if highlight and highlight.has_method("pulse_place_success"):
 		highlight.pulse_place_success()
-	# Lightweight temporary visual — reuses place flash tinted as dig dust.
 	var vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if vfx and vfx.has_method("show_place_flash"):
 		vfx.show_place_flash(target, &"dig")
@@ -883,7 +858,6 @@ func _flash_dig_feedback(target: Vector3) -> void:
 
 
 func _player_damage_mult(stat_id: StringName) -> float:
-	# A player whose stat sheet is not ready yet has no multipliers. Item damage stands.
 	if player == null or player.get("stat_component") == null:
 		return 1.0
 	if player.has_method("get_stat"):
@@ -901,7 +875,6 @@ func _crystal_hit_damage(def: Dictionary, weapon_stat: StringName = _StatIds.MEL
 	return base * _player_damage_mult(weapon_stat) * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)
 
 
-## Depth removed from the crystal mass. Pick is strong; sword and bow are weak.
 func _crystal_mass_damage(def: Dictionary) -> float:
 	var base := float(def.get("crystal_damage", 0.2))
 	return base * _player_damage_mult(_StatIds.CRYSTAL_DAMAGE)

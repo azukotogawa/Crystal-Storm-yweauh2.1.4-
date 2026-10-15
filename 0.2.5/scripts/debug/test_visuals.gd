@@ -1,6 +1,5 @@
 extends Node
 
-## Optional debug harness — attach to Game root to verify visual node hierarchy.
 
 
 func _ready() -> void:

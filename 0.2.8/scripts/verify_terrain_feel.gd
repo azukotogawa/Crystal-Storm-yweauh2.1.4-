@@ -1,7 +1,4 @@
 extends SceneTree
-## Terrain interaction production feel: shared cursor aim, rapid dig/build delays,
-## mouse pick accepts in-range columns (no solid discard).
-## Usage: godot --headless -s scripts/verify_terrain_feel.gd
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -64,10 +61,8 @@ func _test_shared_aim_api() -> void:
 		_fail("dig/build path must use shared aim column")
 	if "_resolve_terrain_target" not in w_src:
 		_fail("weapon must resolve terrain target via shared cursor")
-	# Mouse pick must not require solid for in-range lock
 	if "Always lock the column under the mouse" not in at_src \
 			and "try_dig/try_build validate later" not in at_src:
-		# softer: ensure we don't still require solid-only for best=
 		if "if solid or not require_in_range" in at_src:
 			_fail("mouse pick still discards non-solid in-range columns")
 	else:
@@ -101,7 +96,6 @@ func _test_rapid_dig_build_loop() -> void:
 	var inv := _Inventory.new()
 	inv.add_item("stone", 20)
 
-	# The old row (4+i, 4) is river now that the dry disk sits on the heart.
 	var run: Array[Vector2i] = _DryDigCells.find_run(world, 8, Vector2i(4, 4))
 	if run.size() < 8:
 		_fail("no dry 8-cell dig run near (4, 4) or the heart disk")

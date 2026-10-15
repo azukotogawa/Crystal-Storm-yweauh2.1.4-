@@ -1,5 +1,4 @@
 extends SceneTree
-## Ensures automated probes do not write manual_verification.md.
 
 const MANUAL := "/tmp/grok-goal-e8916ce4c6d5/implementer/manual_verification.md"
 const DISPLAY_PROBE := "res://scripts/display_session_probe.gd"

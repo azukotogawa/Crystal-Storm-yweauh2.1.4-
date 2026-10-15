@@ -1,6 +1,5 @@
 class_name ItemTypes
 extends RefCounted
-## Compatibility façade over ItemDef. Dict lookups stay stable for weapons/HUD.
 
 const _ItemDef = preload("res://config/item_def.gd")
 
@@ -255,7 +254,6 @@ static func is_tool(item_id: String) -> bool:
 	return not def.is_empty() and int(def.get("category", -1)) == Category.TOOL
 
 
-## Stone and wood, plus any def that sets placeable_block. Not weapons or tools.
 const PLACEABLE_BLOCK_IDS: PackedStringArray = ["stone", "wood"]
 
 
@@ -313,7 +311,6 @@ static func is_armor(item_id: String) -> bool:
 	return not def.is_empty() and int(def.get("category", -1)) == Category.ARMOR
 
 
-## Icon key. New gear reuses an existing item texture through visual_id.
 static func visual_key(item_id: String) -> String:
 	var vis := str(get_def(item_id).get("visual_id", ""))
 	if vis == "":

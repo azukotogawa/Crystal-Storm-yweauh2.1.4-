@@ -18,15 +18,11 @@ enum Category { TERRAIN_WALL, STRUCTURE, TRAP, CRYSTAL_BAFFLE, PASSAGE, BRIDGE }
 @export var height_delta: int = 1
 @export var tile_id: int = _VoxelTypes.STONE
 @export var max_stack_height: int = 8
-## When false (gates), only feature/baffle is placed — no stacked height.
 @export var raises_terrain: bool = true
-## Player/entities can walk through (gates).
 @export var is_passage: bool = false
-## Walkable span over digs / low ground (bridges).
 @export var is_bridge: bool = false
 
 @export_group("Crystal")
-## 0 = transparent to flow, 1 = nearly blocks lateral spread.
 @export var flow_resistance: float = 0.85
 @export var redirects_flow: bool = false
 

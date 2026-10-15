@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: crystal enemies and fauna use dedicated voxel props (not generic fallback).
 
 
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")

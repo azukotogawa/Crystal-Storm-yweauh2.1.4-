@@ -1,7 +1,4 @@
 extends SceneTree
-## Live main scene: place bridges over digs; assert authored mesh bind.
-## Also places wood/stone/gate to prove no authored-path regression.
-## Usage: godot --path . -s scripts/verify_bridge_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

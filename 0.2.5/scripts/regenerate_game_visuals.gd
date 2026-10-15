@@ -1,7 +1,4 @@
 extends SceneTree
-## Headless exporter for procedural game visuals.
-## Usage: godot --headless -s scripts/regenerate_game_visuals.gd
-## Optional env: CRYSTALSTORM_VIS_EXPORT_DIR=user://generated_textures/game_visuals
 
 func _init() -> void:
 	var gen = load("res://systems/crystal_texture_generator.gd").new()

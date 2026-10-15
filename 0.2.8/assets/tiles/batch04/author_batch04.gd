@@ -1,6 +1,4 @@
 extends SceneTree
-## Author Batch 04 unique-cell placeholders. Usage:
-##   godot --headless --path . -s assets/tiles/batch04/author_batch04.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
@@ -16,15 +14,12 @@ const SLOTS := {
 	"snow2": Vector2i(1, 5),
 }
 
-# Cooler/bluer than Batch 01 STONE (0.50, 0.52, 0.56) — mountain, not cobble.
 const MTN := Color(0.42, 0.48, 0.54)
 const MTN_D := Color(0.28, 0.34, 0.40)
 const MTN_L := Color(0.54, 0.60, 0.66)
-# Khaki cracked mud — yellower than DIRT (0.58, 0.42, 0.26).
 const BASIN := Color(0.52, 0.44, 0.24)
 const BASIN_D := Color(0.38, 0.30, 0.14)
 const BASIN_L := Color(0.62, 0.52, 0.32)
-# High-value snow with blue shadow; not pure white.
 const SNOW := Color(0.84, 0.88, 0.92)
 const SNOW_D := Color(0.68, 0.76, 0.86)
 const SNOW_L := Color(0.94, 0.96, 0.98)

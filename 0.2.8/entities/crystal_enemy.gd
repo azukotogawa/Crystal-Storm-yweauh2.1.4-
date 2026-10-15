@@ -54,7 +54,6 @@ var _last_damage_source: StringName = &""
 var _hit_flash_timer: float = 0.0
 var _base_tint: Color = Color(0.72, 0.2, 0.95)
 var _mesh_radius: float = 0.22
-## Short lock so one swing cannot land twice on the same body.
 var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
 var _knock_dir := Vector3.ZERO
@@ -63,7 +62,6 @@ var _special: _BossBrain
 var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
 var boss_phase: int = 1
-## Columns from the heart. Aggro opens at the inner radius and drops at the outer one.
 const GUARDIAN_AGGRO_COLUMNS := 14.0
 const GUARDIAN_LEASH_COLUMNS := 22.0
 var _guardian_aggro: bool = false
@@ -76,8 +74,6 @@ func _ready() -> void:
 	_bind_scene()
 	_hook_visual_registry()
 	_ContactShadow.attach(self, 0.06, 1.1)
-	# Spatial registration is deferred to setup()/sync_spatial_index() so the
-	# spawner can set global_position before the index samples it.
 
 
 func setup(
@@ -116,7 +112,6 @@ func setup(
 
 	health = max_health
 	_bind_special(id)
-	# Caller (spawner/import) must set global_position before setup; index now.
 	sync_spatial_index()
 
 
@@ -331,8 +326,6 @@ func get_combat_radius() -> float:
 	return maxf(voxels, 0.2) * WorldSettings.get_active().voxel_scale
 
 
-## Register or refresh spatial index at the current world position.
-## Call after global_position is final (spawner/import order: add_child → pos → setup).
 func _spatial_service() -> Node:
 	if _spatial != null and is_instance_valid(_spatial):
 		return _spatial
@@ -374,7 +367,6 @@ func _target_column_pos() -> Vector3:
 	return _target.global_position
 
 
-## Player.get_voxel_position() is column X/Z. Boss aim and the leash need that, not world_to_column of it.
 func _player_column() -> Vector2i:
 	if _target != null and is_instance_valid(_target) and _target.has_method("get_voxel_position"):
 		var v: Vector3 = _target.get_voxel_position()
@@ -462,8 +454,6 @@ func _physics_process(delta: float) -> void:
 	var guardian := _is_guardian()
 	if guardian:
 		_refresh_guardian_aggro()
-	# Specials aim at a world position. They stay off while the guardian is leashed home,
-	# so a charge cannot walk the warden across the map.
 	if _special and (not guardian or _guardian_aggro):
 		_tick_special(delta)
 	elif guardian:
@@ -528,9 +518,6 @@ func _physics_process(delta: float) -> void:
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
-	# Same column/world split as wildlife. Guardians already aimed with
-	# _player_column. A mite used column_pos on that column vector, so the
-	# hit compared a world position to column numbers and never landed.
 	var did_attack := false
 	var aim_cell := _player_column()
 	var aim_pos := _player_world_pos()
@@ -597,8 +584,6 @@ func _on_killed() -> void:
 	queue_free()
 
 
-## Pass the attacker's world position so the player shoves away from it.
-## A one-arg take_damage stub still receives a single argument.
 func _damage_player(amount: float, source: StringName, origin: Vector3) -> void:
 	if _target == null or not is_instance_valid(_target) or not _target.has_method("take_damage"):
 		return

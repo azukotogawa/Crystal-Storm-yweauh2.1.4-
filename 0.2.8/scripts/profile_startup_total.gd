@@ -1,16 +1,9 @@
 extends SceneTree
-## Production-path startup wall-clock profile.
-## Does NOT shrink the world, change quality, or disable full-world bake.
-##
-## Usage:
-##   CRYSTALSTORM_STARTUP_TOTAL_PROFILE=1 CRYSTALSTORM_STARTUP_RUN=cold \
-##     CRYSTALSTORM_SCRATCH=<dir> godot --headless --path . -s scripts/profile_startup_total.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _STP = preload("res://systems/startup_total_profiler.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
-## 25 minutes: production full-world bake is expected to be long.
 const MAX_WAIT_FRAMES := 90000
 
 
@@ -18,7 +11,6 @@ func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_STARTUP_TOTAL_PROFILE", "1")
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
 		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
-	# Intentionally do NOT set BAKE_RADIUS / FULL_WORLD_BAKE / PERF_PRESET / BAKE_ON_NEW.
 	call_deferred("_run")
 
 
@@ -69,7 +61,6 @@ func _run() -> void:
 		await process_frame
 		frames += 1
 
-	# A few frames after RUNNING so first stream apply / crystal init settle.
 	for _i in 45:
 		await process_frame
 
@@ -86,7 +77,6 @@ func _run() -> void:
 	var scratch := _scratch_dir()
 	var path := scratch.path_join("startup_phase_timings_%s.json" % run_label)
 	_STP.write_report(path)
-	# Also write the latest combined snapshot name the report expects.
 	_STP.write_report(scratch.path_join("startup_phase_timings.json"))
 	print("STARTUP_TOTAL_PROFILE_OK run=%s wall_s=%.2f playable_ms=%.1f file=%s" % [
 		run_label,

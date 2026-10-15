@@ -1,7 +1,4 @@
 extends SceneTree
-## Boot main.tscn, stamp a ruin landmark beside walls/gate, capture gameplay shots.
-## Usage: godot --path . -s scripts/verify_ruin_pillar_visual_capture.gd
-## Do NOT pass --headless.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

@@ -1,6 +1,5 @@
 class_name RunSummaryPanel
 extends VBoxContainer
-## End-of-run stats. The dictionary comes from GameManager.run_summary().
 
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 

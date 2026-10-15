@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: player can walk down a cardinal ramp without head-block false positives.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

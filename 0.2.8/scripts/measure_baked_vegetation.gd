@@ -1,6 +1,4 @@
 extends SceneTree
-## Measure startup / bake size / mem after baked-vegetation change.
-## Forces a fresh v4 bake then profiles startup.
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
@@ -24,21 +22,18 @@ func _run() -> void:
 		scratch = "/tmp/grok-goal-3c89103bbbb9/implementer"
 	DirAccess.make_dir_recursive_absolute(scratch)
 
-	# --- Force rebake with vegetation ---
 	var world_script = load("res://world/InfiniteNoiseWorld.gd")
 	var world = world_script.new()
 	if "world_seed" in world:
 		world.world_seed = 12349
 	var bake = load("res://world/world_bake_service.gd").new()
 	var cm_script = load("res://chunks/chunk_manager.gd")
-	# Host for mesh plans: use a temporary ChunkManager if possible
 	var host = cm_script.new()
 	host.world = world
 	var t_bake0 := Time.get_ticks_msec()
 	var baked: Dictionary = bake.bake_world(world, 2, host)
 	var bake_ms := Time.get_ticks_msec() - t_bake0
 	if not bool(baked.get("ok", false)):
-		# Retry without mesh host
 		baked = bake.bake_world(world, 2, null)
 		bake_ms = Time.get_ticks_msec() - t_bake0
 	bake.save_bake()
@@ -50,18 +45,15 @@ func _run() -> void:
 		% [str(baked.get("ok")), bake_ms, veg_ms, veg_n, bytes]
 	)
 
-	# Size of package dir
 	var dir: String = bake.package_dir
 	var total_bytes := _dir_bytes(dir)
 	print("BAKE_DIR %s total_bytes=%d" % [dir, total_bytes])
 
 	host.free()
-	# Clear active so boot reloads cleanly
 	load("res://world/world_bake_service.gd").clear_active()
 	for _i in 3:
 		await process_frame
 
-	# --- Startup profile ---
 	_StartupProfiler.begin_session()
 	var game = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	root.add_child(game)

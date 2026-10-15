@@ -1,8 +1,4 @@
 extends RefCounted
-## Cells where TerrainEditor.try_dig lowers the column.
-## A river tile refuses the dig. A dry cell beside water is replaced with a
-## water tile and the height does not change. Towns, ruins, and builds are skipped.
-## Search starts at `near`, then the heart-corner river-free disk.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -40,8 +36,6 @@ static func find_run(world, count: int, near: Vector2i, radius: int = 64) -> Arr
 	return _search_run(world, disk_anchor(world, count), count, disk_r, true)
 
 
-## A column inside the heart disk, inset so a short run and its 1-cell halo
-## stay inside the clearance and the playable rect.
 static func disk_anchor(world, count: int) -> Vector2i:
 	var seed_value := 12349
 	if world != null and "world_seed" in world:

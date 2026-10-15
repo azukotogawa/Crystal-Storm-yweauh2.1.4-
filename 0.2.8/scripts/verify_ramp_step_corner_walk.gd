@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: VoxelFloorProbe can step up L-shaped step corners (two perpendicular landings).
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -37,7 +36,6 @@ func _run() -> void:
 	var high_h := low_h + layer
 	data.surface_map[cx][cz] = low_h
 	data.tile_map[cx][cz] = _VoxelTypes.GRASSLAND
-	# Model A corner needs the inner plateau (both landings and the diagonal).
 	for d in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
 		data.surface_map[cx + d.x][cz + d.y] = high_h
 		data.tile_map[cx + d.x][cz + d.y] = _VoxelTypes.GRASSLAND
@@ -53,7 +51,6 @@ func _run() -> void:
 
 	var probe := _VoxelFloorProbe.new()
 	probe.configure(world, cm, null)
-	# Hint at the surface so a default of 0 does not sample the cave floor instead of the prism.
 	probe.feet_height_hint = world.get_surface_height(float(cx) + 0.5, float(cz) + 0.5) + layer
 
 	if not data.is_ramp_corner(cx, cz):
@@ -62,7 +59,6 @@ func _run() -> void:
 	else:
 		print("OK L-step corner ramp on low cell")
 
-	# The prism owns the low cell. Landings that only step into that prism are not a second wedge.
 	var outer := Vector3(float(cx) + 0.28, 0.0, float(cz) + 0.28)
 	outer.y = probe.walkable_height_at(outer.x, outer.z)
 	var inner := Vector3(float(cx) + 0.72, 0.0, float(cz) + 0.72)

@@ -1,7 +1,4 @@
 extends SceneTree
-## Living World Phase 1: steppe + forest biomes, towns/ruins/wildlife, militia/villagers,
-## consequential ruin discovery, player-facing biome legibility.
-## Usage: godot --headless -s scripts/verify_living_world.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
@@ -51,7 +48,6 @@ func _run() -> void:
 		await _test_agents(em)
 		_test_consequential(lwd, crystal, player)
 
-	# Structural: overlay shows biome
 	var overlay_src := (load("res://ui/game_overlay.gd") as GDScript).source_code
 	if "Biome:" not in overlay_src and "_current_biome" not in overlay_src:
 		_fail("game overlay must surface biome")
@@ -77,7 +73,6 @@ func _test_biomes(world) -> void:
 	var forest_cell: Vector2 = Vector2.ZERO
 	var found_steppe := false
 	var found_forest := false
-	# Scan playable interior for both Living World focus biomes.
 	for x in range(-400, 401, 16):
 		for z in range(-400, 401, 16):
 			var b: Dictionary = world.get_biome(float(x), 0.0, float(z))
@@ -127,11 +122,9 @@ func _test_agents(em) -> void:
 	if em == null:
 		_fail("entity_manager missing")
 		return
-	# Town population seeds at bootstrap; allow a few frames for spawn.
 	for _i in 30:
 		await process_frame
 	var count: int = em.get_active_entity_count() if em.has_method("get_active_entity_count") else 0
-	# Villagers/militia spawn at seed even before chunks; if zero, force militia on first town.
 	if count < 1:
 		var towns: Array = _FeatureRegistry.get_towns()
 		if towns.size() > 0 and em.has_method("ensure_town_population"):
@@ -141,7 +134,6 @@ func _test_agents(em) -> void:
 		_fail("expected living town agents (villagers/militia), got %d" % count)
 	else:
 		print("OK living agents count=%d" % count)
-	# Brain registry has villager
 	var brains = load("res://entities/entity_brain_registry.gd")
 	if brains.get_def(&"town_villager") == null:
 		_fail("town_villager brain missing")
@@ -178,8 +170,6 @@ func _test_town_stream_reseed(em) -> void:
 		_fail("chunk_manager required for stream reseed test")
 		return
 	var coord: Vector2i = cm.world_to_chunk_coord(center.x, center.y)
-	# Corner crystal start streams the heart, not every town. The reseed contract
-	# is "chunk_ready while the chunk is resident" — load this town chunk first.
 	if cm.has_method("update_stream"):
 		cm.update_stream(coord.x, coord.y)
 	if cm.has_method("request_chunk"):
@@ -188,10 +178,8 @@ func _test_town_stream_reseed(em) -> void:
 		await process_frame
 		if cm.chunks.has(coord):
 			break
-	# Simulate stream unload wipe of town chunk bodies.
 	if em.has_method("_despawn_entities_in_chunk"):
 		em._despawn_entities_in_chunk(coord)
-	# Nearby chunks may hold plaza agents — wipe all overlapping town chunks.
 	for ox in range(-1, 2):
 		for oz in range(-1, 2):
 			if ox == 0 and oz == 0:
@@ -206,7 +194,6 @@ func _test_town_stream_reseed(em) -> void:
 		_fail("defenders_by_town stale after unload live=%d accounted=%d" % [m_mid, acc_mid])
 	else:
 		print("OK defenders account matches live after unload live=%d" % m_mid)
-	# Stream ready re-seeds standing population (production path).
 	if em.has_method("_on_chunk_ready"):
 		em._on_chunk_ready(coord, null)
 		for ox in range(-1, 2):
@@ -234,7 +221,6 @@ func _test_consequential(lwd, crystal, player) -> void:
 	if lwd == null or crystal == null:
 		_fail("living world director or crystal missing for interaction")
 		return
-	# Shared production APIs must exist (no harness-only reimplementation).
 	if not lwd.has_method("discover_ruin_at") or not lwd.has_method("try_discover_at_player_column"):
 		_fail("LivingWorldDirector must expose discover_ruin_at + try_discover_at_player_column")
 		return
@@ -245,7 +231,6 @@ func _test_consequential(lwd, crystal, player) -> void:
 	if result.is_empty():
 		_fail("ruin discovery via player proximity returned empty (no ruins / player not placed?)")
 		return
-	# Player must be near the discovered ruin (harness warps then uses try_discover_at_player_column).
 	var center: Vector2i = result.get("center", Vector2i.ZERO)
 	if player != null and player.has_method("get_voxel_position"):
 		var pv: Vector3 = player.get_voxel_position()
@@ -261,7 +246,6 @@ func _test_consequential(lwd, crystal, player) -> void:
 		print("OK ruin discovery power %.1f → %.1f at %s" % [
 			power_before, power_after, str(result.get("center"))
 		])
-	# Idempotent: same center again must not double-grant.
 	var power_mid: float = float(crystal.power)
 	var again: Dictionary = lwd.discover_ruin_at(center)
 	if not again.is_empty() or float(crystal.power) != power_mid:
@@ -272,7 +256,6 @@ func _test_consequential(lwd, crystal, player) -> void:
 		_fail("discovered ruin count not tracked")
 	else:
 		print("OK discovered ruins=%d" % lwd.get_discovered_ruin_count())
-	# Town defense militia path
 	var tdm = get_first_node_in_group("town_defense_manager")
 	if tdm and tdm.has_method("_request_militia"):
 		var towns: Array = _FeatureRegistry.get_towns()

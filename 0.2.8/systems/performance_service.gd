@@ -9,7 +9,6 @@ const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd
 const _TerrainLighting = preload("res://helpers/terrain_lighting.gd")
 
 var quality: _PerformanceQualityConfig = _PerformanceQualityConfig.create_default()
-## Last effective quality after folding platform/debug policy (composition path).
 var effective_quality: _PerformanceQualityConfig = null
 var _safe_mode: bool = false
 var _applied: bool = false
@@ -75,8 +74,6 @@ func _effective_for(resolved: Dictionary = {}):
 	return quality
 
 
-## Composition-root path: apply *resolved* policy via registry peers (no group search).
-## `resolved` is EffectiveRuntimePolicy from RuntimeConfigResolver — debug/platform knobs win.
 func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 	if registry == null or quality == null:
 		return
@@ -212,7 +209,6 @@ func _apply_to_scene() -> void:
 		if world.has_method("set_caves_enabled"):
 			world.set_caves_enabled(quality.caves_enabled)
 		# Authored WorldGenConfig is not mutated by quality (composition policy).
-		# Runtime cave enablement is applied only via world.set_caves_enabled / EffectiveRuntimePolicy.
 
 	var crystal = get_tree().get_first_node_in_group("crystal_manager")
 	if crystal:

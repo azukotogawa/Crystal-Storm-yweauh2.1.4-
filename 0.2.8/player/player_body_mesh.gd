@@ -1,16 +1,9 @@
 class_name PlayerBodyMesh
 extends RefCounted
-## Closed scout extruded from res://assets/player/player.png.
-## That texture is a front view on a transparent field. There is no side or
-## back art, so those faces reuse the front texel, darkened. One mesh, built
-## once when the player is ready. Winding matches BoxMesh so CULL_BACK shows
-## the outside.
 
 const ALBEDO := "res://assets/player/player.png"
 const DEPTH_STEPS := 8
 const ALPHA_CUTOFF := 0.5
-## Opaque span of the scout in player.png (arms through boots). The 32×48
-## canvas has empty columns beside the body and empty rows under the boots.
 const CONTENT_W := 16
 const CONTENT_H := 34
 
@@ -82,8 +75,6 @@ class _Buf:
 		return mesh
 
 
-## Half the body width when the scout is `body_height` tall. Width scales with
-## height using the opaque pixel span, so the capsule matches the mesh.
 static func half_width_for_height(body_height: float) -> float:
 	return body_height * float(CONTENT_W) / float(CONTENT_H) * 0.5
 
@@ -93,7 +84,6 @@ static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float
 	mesh_instance.mesh = built["mesh"]
 	mesh_instance.material_override = built["material"]
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Capsule center. Opaque boots are placed on local y=-height/2, so world feet are 0.
 	mesh_instance.position.y = height * 0.5
 
 
@@ -137,8 +127,6 @@ static func build(width: float, height: float) -> Dictionary:
 static func _ensure_wind() -> void:
 	if _wind_sign != 0.0:
 		return
-	# BoxMesh stays visible from the outside with the default backface cull.
-	# Match its winding/normal relationship.
 	var box := BoxMesh.new()
 	box.size = Vector3.ONE
 	var arrays: Array = box.surface_get_arrays(0)
@@ -216,8 +204,6 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 				max_my = my
 			for iz in d:
 				buf.occupy(ix, my, iz)
-	# Square texels. Height is the master so width follows the art; the
-	# capsule diameter is a hard cap. Boots sit on the bottom of the height.
 	var span_x := 1
 	var span_y := 1
 	if opaque > 0:

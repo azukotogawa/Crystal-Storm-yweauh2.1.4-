@@ -1,5 +1,4 @@
 extends SceneTree
-## Integration: crystal fluid spread on the shipped world seed (12349) with real terrain tiles.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
@@ -37,8 +36,6 @@ func _run() -> void:
 
 
 func _test_origin_relocated_off_river() -> bool:
-	# Rivers are ribbons, not a lake on (0,0). The heart still has to sit on dry
-	# land, and a water corner has to walk inward until it finds that land.
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	world.world_seed = 12349
 	var cm := _CrystalManager.new()
@@ -147,7 +144,6 @@ func _test_main_scene_spread() -> bool:
 		return false
 
 	if player.has_method("get_voxel_position"):
-		# Early-survival spawns ~28–40 columns from origin; warp for proximity observation only.
 		var observe := Vector3(float(origin_pos.x) + 4.5, 8.0, float(origin_pos.y) - 3.5)
 		if "voxel_position" in player:
 			player.set("voxel_position", observe)

@@ -8,12 +8,10 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
-## Small lift above walkable surface to avoid z-fighting with voxel tops.
 const SURFACE_LIFT: float = 0.12
 ## World units per texture pixel (= voxel_scale * factor in 0.025–0.04 band).
 const SPRITE_PIXEL_SCALE: float = 0.026
 
-## On-disk authored structure meshes (visual id → Mesh resource).
 const AUTHORED_BUILDING_MESH_PATHS: Dictionary = {
 	"wood_wall": "res://assets/structures/wood_wall/wood_wall.obj",
 	"stone_wall": "res://assets/structures/stone_wall/stone_wall.obj",
@@ -22,7 +20,6 @@ const AUTHORED_BUILDING_MESH_PATHS: Dictionary = {
 	"ruin_pillar": "res://assets/structures/ruin_pillar/ruin_pillar.obj",
 	"town_hall": "res://assets/structures/town_hall/town_hall.obj",
 }
-## Optional albedo overrides (nearest-filter authored textures).
 const AUTHORED_BUILDING_ALBEDO_PATHS: Dictionary = {
 	"wood_wall": "res://assets/structures/wood_wall/wood_wall_albedo.png",
 	"stone_wall": "res://assets/structures/stone_wall/stone_wall_albedo.png",
@@ -49,17 +46,12 @@ var _gen: Node
 var _initialized: bool = false
 var _visuals_committed: bool = false
 var _post_bootstrap_done: bool = false
-## Procedural textures are generated once and reused for the session.
 var _bundle_ready: bool = false
-## Session cache of loaded authored building meshes (id → Mesh).
 var _authored_building_meshes: Dictionary = {}
-## Session cache of authored albedo textures (id → Texture2D).
 var _authored_building_albedos: Dictionary = {}
-## Hitch counters (measurement / verify).
 var _bundle_gen_count: int = 0
 var _refresh_all_count: int = 0
 var _refresh_scene_count: int = 0
-## Single-tick / teleport visual trace.
 var _trace_refresh_enabled: bool = false
 var _trace_refresh_all: int = 0
 var _trace_refresh_scene: int = 0
@@ -141,13 +133,11 @@ func _initialize() -> void:
 		apply_performance_config(perf.quality)
 	preload_game_bundle()
 	_initialized = true
-	# Textures only here — ChunkManager is created after world_features bootstrap (VoxelWorld).
 	var existing_cm: ChunkManager = get_tree().get_first_node_in_group("chunk_manager")
 	if existing_cm:
 		on_chunk_manager_ready(existing_cm)
 
 
-## Wait for procedural texture bundle only (safe during world_features bootstrap).
 func ensure_textures_ready() -> void:
 	while not _initialized:
 		await get_tree().process_frame
@@ -198,12 +188,10 @@ func refresh_all_visuals(caller: String = "unknown") -> void:
 	_refresh_scene_visuals()
 
 
-## Public alias used by debug tooling and legacy callers.
 func refresh_all(caller: String = "unknown") -> void:
 	refresh_all_visuals(caller)
 
 
-## One-time refresh after ChunkManager + WorldVisuals exist and initial chunks are loaded.
 func post_bootstrap_refresh() -> void:
 	if _post_bootstrap_done:
 		return
@@ -224,7 +212,6 @@ func post_bootstrap_refresh() -> void:
 	if not _visuals_committed:
 		_commit_visual_refresh()
 	else:
-		# Scene binding only — textures already in cache from first preload.
 		refresh_all("post_bootstrap_refresh")
 	_post_bootstrap_done = true
 	post_bootstrap_refreshed.emit()
@@ -268,7 +255,6 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		max_feature_billboards_per_chunk = maxi(int(cfg.max_feature_billboards_per_chunk), 0)
 
 
-## Drop cached sprites and rebuild them for the active texture set.
 func reload_texture_set() -> void:
 	clear_cache("texture_set")
 	generate_game_visual_bundle()
@@ -282,8 +268,6 @@ func clear_cache(caller: String = "unknown") -> void:
 	_bundle_ready = false
 
 
-## Generate procedural combat/entity/veg/item textures once per session.
-## Subsequent calls are no-ops unless force=true or cache was cleared.
 func preload_game_bundle(force: bool = false, caller: String = "unknown") -> void:
 	if _trace_refresh_enabled:
 		_trace_preload_calls += 1
@@ -341,7 +325,6 @@ func get_spawn_texture(is_boss: bool) -> Texture2D:
 	return get_combat_texture(&"spawn_boss" if is_boss else &"spawn_miniboss")
 
 
-## Unified entity/enemy sprite lookup. Accepts "rabbit" or "entity_rabbit".
 func get_sprite_texture(sprite_id: String) -> Texture2D:
 	if not entity_sprites_enabled:
 		return null
@@ -353,8 +336,6 @@ func get_sprite_texture(sprite_id: String) -> Texture2D:
 	return get_entity_texture(StringName(id))
 
 
-## Unified vegetation/building billboard lookup.
-## Accepts "tree_s2", "tree" with stage, "building_town_hall", or "town_hall".
 func get_billboard_texture(billboard_id: String, stage: int = -1) -> Texture2D:
 	if not feature_billboards_enabled:
 		return null
@@ -418,17 +399,14 @@ func apply_to_sprite3d(sprite: Sprite3D, tex: Texture2D, tint: Color = Color.WHI
 	configure_sprite3d(sprite, tex, tint, pixel_size)
 
 
-## True when visual id has an on-disk mesh under AUTHORED_BUILDING_MESH_PATHS.
 func has_authored_building_mesh(building_id: String) -> bool:
 	return AUTHORED_BUILDING_MESH_PATHS.has(str(building_id))
 
 
-## Resource path for authored mesh (empty if none).
 func authored_building_mesh_path(building_id: String) -> String:
 	return str(AUTHORED_BUILDING_MESH_PATHS.get(str(building_id), ""))
 
 
-## Load (and cache) authored Mesh for a building visual id. Returns null if missing.
 func get_authored_building_mesh(building_id: String) -> Mesh:
 	var id := str(building_id)
 	if _authored_building_meshes.has(id):
@@ -440,7 +418,6 @@ func get_authored_building_mesh(building_id: String) -> Mesh:
 	var mesh: Mesh = _extract_mesh_from_resource(res)
 	if mesh == null:
 		return null
-	# Stamp identity so verifies can prove the bind path without re-loading.
 	if mesh is Resource:
 		(mesh as Resource).set_meta("authored_resource_path", path)
 		(mesh as Resource).set_meta("building_visual_id", id)
@@ -448,7 +425,6 @@ func get_authored_building_mesh(building_id: String) -> Mesh:
 	return mesh
 
 
-## Authored albedo for a building id (falls back to null → caller uses procedural).
 func get_authored_building_albedo(building_id: String) -> Texture2D:
 	var id := str(building_id)
 	if _authored_building_albedos.has(id):
@@ -486,9 +462,6 @@ func _find_mesh_in_node(node: Node) -> Mesh:
 	return null
 
 
-## Bind structure presentation mesh. Prefers on-disk authored mesh for ids that have one
-## (wood_wall, stone_wall, gate, bridge, ruin_pillar, town_hall). Other ids use multi-box temporary silhouettes.
-## Textures: authored albedo when present, else procedural `tex`.
 func configure_building_mesh(
 	mesh_inst: MeshInstance3D,
 	tex: Texture2D,
@@ -511,7 +484,6 @@ func configure_building_mesh(
 		mesh_inst.mesh = authored
 		mesh_inst.set_meta("uses_authored_mesh", true)
 		mesh_inst.set_meta("authored_resource_path", authored_building_mesh_path(id))
-		# Authored plank wall has real construction silhouette (not multi-box part count).
 		mesh_inst.set_meta("structure_part_count", -1)
 		# Authored walls are in column units (width ≈ 1). XZ fill the column;
 		# Y is a SHORT cap on raised terrain — full Y*voxel_scale would double the wall.
@@ -522,30 +494,24 @@ func configure_building_mesh(
 			mesh_inst.set_meta("wall_cap_scale_y", 0.55)
 		elif id == "stone_wall":
 			var vs: float = _WorldSettings.get_active().voxel_scale
-			# Taller masonry + merlons (mesh height ~1.95 * 0.68), still a cap on raised dirt.
 			mesh_inst.scale = Vector3(vs, 0.68, vs)
 			mesh_inst.set_meta("wall_cap_scale_y", 0.68)
 		elif id == "gate":
 			var vs: float = _WorldSettings.get_active().voxel_scale
-			# Full-height arch on unraised ground (gate does not raise terrain).
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
 		elif id == "bridge":
 			var vs: float = _WorldSettings.get_active().voxel_scale
-			# Low deck+rails on raised-over-dig fill (mesh height ~0.41).
 			mesh_inst.scale = Vector3(vs, 1.15, vs)
 		elif id == "ruin_pillar":
 			var vs: float = _WorldSettings.get_active().voxel_scale
-			# Tall broken landmark on unraised ground (mesh height ~2.39).
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
 		elif id == "town_hall":
 			var vs: float = _WorldSettings.get_active().voxel_scale
-			# Wide pitched hall on unraised ground (mesh height ~2.42, width ~1.50).
 			mesh_inst.scale = Vector3(vs, 1.0, vs)
 		else:
 			mesh_inst.scale = Vector3.ONE
 	else:
 		var parts: Array = structure_mesh_parts(id, size)
-		# Wall props: short cap on raised terrain (avoids double-voxel look).
 		if id == "wood_wall" or id == "stone_wall":
 			var cap_parts: Array = []
 			for p in parts:
@@ -569,8 +535,6 @@ func configure_building_mesh(
 		mesh_inst.material_override = null
 		mesh_inst.visible = false
 		return
-	# Cached cutaway material. Same albedo, tint, roughness, metallic, and
-	# emission as the old StandardMaterial3D. Built once per look, not per frame.
 	var tint_color := structure_material_tint(id, tint)
 	var emission := Color(0, 0, 0, 1)
 	var emission_energy := 0.0
@@ -594,44 +558,37 @@ func configure_building_mesh(
 	mesh_inst.visible = true
 
 
-## Public silhouette parts for verifies (center + size boxes in local ground space).
 func structure_mesh_parts(building_id: String, fallback_size: Vector3 = Vector3(1, 1.5, 1)) -> Array:
 	match building_id:
 		"gate":
-			# Open passage: two posts + lintel (clear middle).
 			return [
 				{"center": Vector3(-0.42, 1.0, 0.0), "size": Vector3(0.26, 2.05, 0.42)},
 				{"center": Vector3(0.42, 1.0, 0.0), "size": Vector3(0.26, 2.05, 0.42)},
 				{"center": Vector3(0.0, 1.95, 0.0), "size": Vector3(1.12, 0.32, 0.48)},
 			]
 		"bridge":
-			# Flat crossing deck + side rails (low profile).
 			return [
 				{"center": Vector3(0.0, 0.22, 0.0), "size": Vector3(1.35, 0.28, 1.35)},
 				{"center": Vector3(-0.58, 0.48, 0.0), "size": Vector3(0.14, 0.42, 1.2)},
 				{"center": Vector3(0.58, 0.48, 0.0), "size": Vector3(0.14, 0.42, 1.2)},
 			]
 		"wood_wall":
-			# Solid obstacle face (slightly thinner timber look).
 			return [
 				{"center": Vector3(0.0, 0.85, 0.0), "size": Vector3(0.92, 1.55, 0.92)},
 				{"center": Vector3(0.0, 1.68, 0.0), "size": Vector3(1.0, 0.18, 1.0)},
 			]
 		"stone_wall":
-			# Heavier stone block + cap.
 			return [
 				{"center": Vector3(0.0, 0.95, 0.0), "size": Vector3(1.05, 1.75, 1.05)},
 				{"center": Vector3(0.0, 1.88, 0.0), "size": Vector3(1.12, 0.22, 1.12)},
 			]
 		"ruin_pillar":
-			# Environmental: tall broken pillar + rubble base (not a wall slab).
 			return [
 				{"center": Vector3(0.0, 0.18, 0.0), "size": Vector3(1.05, 0.35, 1.05)},
 				{"center": Vector3(-0.08, 1.35, 0.06), "size": Vector3(0.48, 2.35, 0.48)},
 				{"center": Vector3(0.22, 2.35, -0.12), "size": Vector3(0.28, 0.45, 0.28)},
 			]
 		"town_hall":
-			# Settlement landmark: wide hall + pitched roof mass.
 			return [
 				{"center": Vector3(0.0, 1.1, 0.0), "size": Vector3(2.35, 2.15, 2.15)},
 				{"center": Vector3(0.0, 2.55, 0.0), "size": Vector3(2.55, 0.95, 2.35)},
@@ -684,7 +641,6 @@ func structure_metallic(building_id: String) -> float:
 			return 0.0
 
 
-## Merge axis-aligned boxes into one ArrayMesh (temporary distinct silhouettes).
 func build_structure_array_mesh(parts: Array) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -711,14 +667,13 @@ func _st_add_box(st: SurfaceTool, center: Vector3, size: Vector3) -> void:
 		center + Vector3(hx, hy, hz),
 		center + Vector3(-hx, hy, hz),
 	]
-	# Face quads as two triangles each (CCW outward).
 	var faces: Array = [
-		[0, 1, 2, 3], # -Z
-		[5, 4, 7, 6], # +Z
-		[4, 0, 3, 7], # -X
-		[1, 5, 6, 2], # +X
-		[3, 2, 6, 7], # +Y
-		[4, 5, 1, 0], # -Y
+		[0, 1, 2, 3],
+		[5, 4, 7, 6],
+		[4, 0, 3, 7],
+		[1, 5, 6, 2],
+		[3, 2, 6, 7],
+		[4, 5, 1, 0],
 	]
 	var uvs: Array = [
 		Vector2(0, 1), Vector2(1, 1), Vector2(1, 0), Vector2(0, 0)
@@ -926,9 +881,6 @@ func _await_initial_chunks(max_frames: int = 900) -> void:
 
 
 func _bind_chunk_streaming() -> void:
-	# Intentionally no chunk_ready → full scene refresh.
-	# Per-chunk billboards/entities are owned by FeatureVisualLayer + EntityManager
-	# (budgeted). Reconnecting a global refresh here regenerates work every load.
 	if chunk_manager == null:
 		return
 	if chunk_manager.has_signal("chunk_ready") \
@@ -936,7 +888,6 @@ func _bind_chunk_streaming() -> void:
 		chunk_manager.chunk_ready.disconnect(_on_chunk_ready_refresh)
 
 
-## Legacy no-op: kept so old connects cannot reintroduce full-world refresh.
 func _on_chunk_ready_refresh(_coord: Vector2i, _data: ChunkData) -> void:
 	pass
 

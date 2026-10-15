@@ -1,4 +1,3 @@
-# chunk_view.gd
 class_name ChunkView
 extends Node2D
 
@@ -13,12 +12,12 @@ var lock := Mutex.new()
 var quads := []
 
 const FACES = [
-	Vector3i(0, 1, 0),   # top
-	Vector3i(1, 0, 0),   # right
-	Vector3i(-1, 0, 0),  # left
-	Vector3i(0, -1, 0),  # bottom (optional)
-	Vector3i(0, 0, 1),   # front (3D extension)
-	Vector3i(0, 0, -1)   # back
+	Vector3i(0, 1, 0),
+	Vector3i(1, 0, 0),
+	Vector3i(-1, 0, 0),
+	Vector3i(0, -1, 0),
+	Vector3i(0, 0, 1),
+	Vector3i(0, 0, -1)
 ]
 
 func setup(data: ChunkData, tex: Texture):
@@ -123,7 +122,6 @@ func emit_quads():
 		t.origin = pos
 
 		mm.set_instance_transform_2d(i, t)
-		# encode size in custom data (for shader or scaling)
 		var voxel_type = q.type
 		if voxel_type == VoxelTypes.AIR:
 			continue
@@ -159,7 +157,6 @@ func build_top_surface():
 				continue
 			var voxel_type = top_type_map[x][y]
 
-			# ---- EXPAND X ----
 			var w = 1
 			while x + w < ChunkData.SIZE:
 				if used[x + w][y]:
@@ -170,7 +167,6 @@ func build_top_surface():
 					break
 				w += 1
 
-			# ---- EXPAND Y ----
 			var d = 1
 			var done = false
 
@@ -190,7 +186,6 @@ func build_top_surface():
 				if not done:
 					d += 1
 
-			# mark used
 			for dx in range(w):
 				for dy in range(d):
 					used[x + dx][y + dy] = true

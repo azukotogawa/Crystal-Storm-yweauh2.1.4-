@@ -12,7 +12,6 @@ func _go():
 	while compose and not bool(compose.get("_boot_done")) and f < 3600:
 		await process_frame
 		f+=1
-	# free crystal before quit
 	var crystal = get_first_node_in_group("crystal_manager")
 	if crystal:
 		print("[REPRO] free crystal manager")

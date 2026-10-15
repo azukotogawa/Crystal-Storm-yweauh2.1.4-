@@ -217,7 +217,6 @@ static func combat_vfx_active(combat_vfx: Node) -> Dictionary:
 	return {"damage_labels": damage_labels, "burst_sprites": burst_sprites, "ok": ok}
 
 
-## Live floor probe: a 1-layer build can be stepped; a 2-layer stack blocks.
 static func check_built_wall_collision(
 	floor_probe,
 	wx: int,
@@ -265,7 +264,6 @@ static func check_built_wall_collision(
 	return {"ok": ok, "reason": reason, "raise": raise, "can_step": can_step}
 
 
-## Production melee swing at an entity already standing on the aimed column.
 static func try_forward_arc_melee_damage(
 	player: Node,
 	_world,
@@ -309,7 +307,6 @@ static func try_forward_arc_melee_damage(
 	}
 
 
-## Production floor probe: an L of one-layer landings is a corner prism you can step up.
 static func audit_ramp_step_corner_walk(floor_probe) -> Dictionary:
 	var result := {
 		"ok": false,

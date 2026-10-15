@@ -1,8 +1,5 @@
 class_name SaveGameService
 extends Node
-## Transactional persistence layer. WorldState is the sole overlay authority.
-## Load stages: validate → checkpoint → pause → apply world_state → runtime →
-## single rebuild → resume. Failure rolls back to checkpoint (no partial commit).
 
 const _SaveCodec = preload("res://systems/save_codec.gd")
 const _SaveSchema = preload("res://systems/save_schema.gd")
@@ -18,7 +15,6 @@ signal load_completed(slot: int)
 signal save_failed(slot: int, reason: String)
 signal load_transaction_stage(stage: String)
 
-## Alias kept for external readers; schema version is authoritative.
 const SAVE_VERSION := 2
 
 const STAGE_IDLE := "idle"
@@ -33,7 +29,6 @@ const STAGE_COMMIT := "commit"
 const STAGE_ROLLBACK := "rollback"
 
 static var pending_load_slot: int = -1
-## Main-menu Continue loads this file after the next main-scene boot.
 static var pending_continue: bool = false
 
 const CONTINUE_FILE_NAME := "continue.json"
@@ -94,9 +89,6 @@ func _process(delta: float) -> void:
 
 func _post_boot() -> void:
 	var WM = load("res://systems/world_manager.gd")
-	# The player spawn writes a fresh position, full health, and the starter
-	# hotbar after chunks exist. Apply the alive snapshot only after that
-	# finishes, or Continue lands on the crystal heart with a new kit.
 	if pending_continue and FileAccess.file_exists(continue_save_path()):
 		await _wait_for_continue_boot()
 		pending_continue = false
@@ -121,8 +113,6 @@ func _post_boot() -> void:
 		await load_slot(slot)
 
 
-## Stage 5 is the first streamed region. world_ready means spawn already
-## published its defaults, so the snapshot can replace them.
 func _wait_for_continue_boot() -> void:
 	var frames := 0
 	while frames < 3600 and is_inside_tree():
@@ -175,7 +165,6 @@ static func continue_save_path() -> String:
 	return "user://saves/".path_join(CONTINUE_FILE_NAME)
 
 
-## Header for the main menu. Empty when missing, corrupt, or not an alive quit.
 static func peek_continue() -> Dictionary:
 	var path := continue_save_path()
 	if not FileAccess.file_exists(path):
@@ -209,7 +198,6 @@ static func peek_continue() -> Dictionary:
 	}
 
 
-## Saved column while a menu Continue is armed. Null when there is nothing to resume.
 static func pending_continue_position() -> Variant:
 	if not pending_continue:
 		return null
@@ -253,7 +241,6 @@ func get_transaction_stage() -> String:
 	return _transaction_stage
 
 
-## True while the run is still in progress and the player has health remaining.
 func is_session_alive() -> bool:
 	var tree := get_tree()
 	if tree == null:
@@ -269,8 +256,6 @@ func is_session_alive() -> bool:
 	return true
 
 
-## Quit / leave-world hook. An in-progress living player becomes the Continue file.
-## A dead or finished run drops Continue and still updates the per-world file.
 func save_or_drop_continue() -> void:
 	if is_session_alive():
 		save_alive_session(true)
@@ -419,7 +404,6 @@ func load_slot(slot: int = -1) -> bool:
 	return ok
 
 
-## In-process apply for tests/headless without a file.
 func apply_snapshot(data: Dictionary) -> void:
 	await apply_snapshot_transactional(data)
 
@@ -444,7 +428,6 @@ func apply_snapshot_transactional(raw) -> bool:
 	_pause_world_for_load()
 
 	var success := false
-	# Apply under pause; any failure rolls back to checkpoint.
 	success = await _transaction_apply_body(data)
 
 	if not success:
@@ -532,7 +515,6 @@ func _apply_runtime_state(data: Dictionary) -> void:
 	if crystal:
 		if crystal.has_method("ensure_ready"):
 			await crystal.ensure_ready()
-		# Never import empty missing crystal blob — that used to wipe spawn points.
 		if crystal.has_method("import_state") and data.has("crystal") and data.crystal is Dictionary:
 			var cdata: Dictionary = data.crystal
 			if not cdata.is_empty():
@@ -560,7 +542,6 @@ func _apply_runtime_state(data: Dictionary) -> void:
 	if enemy_spawner and enemy_spawner.has_method("import_enemies") and data.has("crystal_enemies"):
 		enemy_spawner.import_enemies(data.crystal_enemies)
 
-	# Spatial index rebuild after entities/spawns restored (discovery only).
 	var spatial = get_tree().get_first_node_in_group("spatial_query_service")
 	if spatial and spatial.has_method("rebuild_from_runtime"):
 		spatial.rebuild_from_runtime()
@@ -678,7 +659,6 @@ func collect_snapshot() -> Dictionary:
 			"metadata": {},
 		},
 		"world_state": world_state_bundle,
-		# Flat aliases for v1 compatibility / tooling.
 		"terrain_edits": overlay_export.get("terrain_edits", {}),
 		"channels": overlay_export.get("channels", {}),
 		"features": overlay_export.get("features", {}),
@@ -701,7 +681,6 @@ func collect_snapshot() -> Dictionary:
 		snapshot["entities"] = entity_mgr.export_entities()
 	if enemy_spawner and enemy_spawner.has_method("export_enemies"):
 		snapshot["crystal_enemies"] = enemy_spawner.export_enemies()
-	# Authored config snapshot is optional; performance quality is runtime and not sim authority.
 	if cfg_svc and cfg_svc.game_config:
 		snapshot["config"] = _ConfigJsonIO._serialize_game_config(cfg_svc.game_config)
 
@@ -724,12 +703,10 @@ func _write_text_atomic(path: String, text: String) -> Error:
 		return FileAccess.get_open_error()
 	file.store_string(text)
 	file.close()
-	# Replace destination.
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 	var err := DirAccess.rename_absolute(tmp_path, path)
 	if err != OK:
-		# Fallback: rewrite directly.
 		return _write_text(path, text)
 	return OK
 

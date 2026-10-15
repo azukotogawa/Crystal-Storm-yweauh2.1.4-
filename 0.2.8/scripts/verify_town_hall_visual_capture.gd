@@ -1,7 +1,4 @@
 extends SceneTree
-## Boot main.tscn, stamp a town hall beside completed structures, capture gameplay shots.
-## Usage: godot --path . -s scripts/verify_town_hall_visual_capture.gd
-## Do NOT pass --headless.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

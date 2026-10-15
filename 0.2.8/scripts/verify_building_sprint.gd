@@ -1,6 +1,4 @@
 extends SceneTree
-## Building sprint: instant walls, gates (walk-through + crystal baffle), bridges.
-## Usage: godot --headless -s scripts/verify_building_sprint.gd
 
 
 const _BuildingRegistry = preload("res://building/building_registry.gd")
@@ -90,7 +88,6 @@ func _test_instant_wall() -> void:
 
 	var inv := _Inventory.new()
 	inv.add_item("stone", 6)
-	# (10, 12) is a river tile, and try_build then pays an immediate water reflow.
 	var cell: Vector2i = _DryDigCells.find_cell(world, Vector2i(10, 12))
 	if not _DryDigCells.is_found(cell):
 		_fail("no dry cell for instant wall")
@@ -99,7 +96,6 @@ func _test_instant_wall() -> void:
 	print("instant wall cell %s" % cell)
 	var natural: float = world.get_surface_height(float(cell.x), float(cell.y))
 	var target := Vector3(float(cell.x) + 0.5, natural, float(cell.y) + 0.5)
-	# try_build load()s this on the first place. Parse it outside the budget.
 	load("res://helpers/structure_orientation.gd")
 	var t0 := Time.get_ticks_usec()
 	if not editor.try_build_wall(target, inv, true):
@@ -155,7 +151,6 @@ func _test_gate() -> void:
 		else:
 			print("OK gate walk-through baffle resist=%.2f" % float(feat.flow_resistance))
 
-	# Cannot place gate on stacked wall
 	_TerrainEdits.build_wall(7, 7, _VoxelTypes.STONE)
 	if editor.try_build_gate(Vector3(7.5, 0.0, 7.5), inv):
 		_fail("gate on wall should fail")
@@ -180,7 +175,6 @@ func _test_bridge() -> void:
 
 	var inv := _Inventory.new()
 	inv.add_item("wood", 4)
-	# Dig then bridge spans the depression
 	_TerrainEdits.dig(8, 8, 1)
 	var dug_delta: float = _TerrainEdits.get_height_delta(8, 8)
 	if not editor.try_build_bridge(Vector3(8.5, 0.0, 8.5), inv):
@@ -221,7 +215,6 @@ func _test_crystal_baffle() -> void:
 	_TerrainEdits.set_build_tile_only(2, 2, _VoxelTypes.DIRT)
 	terrain.begin_sim_tick(1)
 	var gate_f: float = terrain.get_flow_factor_at(Vector2i(2, 2), _VoxelTypes.GRASS_TUFT)
-	# open grass ~0.55, gate factor = 1 - 0.72 = 0.28
 	if gate_f >= open_f - 0.15:
 		_fail("gate should slow crystal open=%.3f gate=%.3f" % [open_f, gate_f])
 	else:

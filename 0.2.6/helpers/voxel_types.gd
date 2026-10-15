@@ -53,7 +53,6 @@ const TREE_TRUNK := 47
 const FARMLAND := 48
 const TOWN_PATH := 49
 
-## Production chunk mesh atlas: assets/tiles/Cube.png (7 cols × 10 rows × 32 px).
 ## new_tile_set.tres / voxelsnew.png use a different 64 px strip layout — do not bind to ChunkView.
 const ATLAS_TEXTURE_PATH := "res://assets/tiles/Cube.png"
 const ATLAS_GRID_COLUMNS := 7
@@ -230,11 +229,11 @@ const ATLAS_COORDS = {
 	VoxelTypes.BASIN3: Vector2i(2,9),
 
 	VoxelTypes.RIVER: Vector2i(1,0),
-	VoxelTypes.WATER: Vector2i(1,0),     # reuse river visual for water for now (or ocean row)
-	VoxelTypes.STONE: Vector2i(0,4),     # mountain row start - good rocky
+	VoxelTypes.WATER: Vector2i(1,0),
+	VoxelTypes.STONE: Vector2i(0,4),
 	VoxelTypes.STONE2: Vector2i(2,4),
-	VoxelTypes.DIRT: Vector2i(3,2),      # grassland-ish / earth tone
-	VoxelTypes.DIRT2: Vector2i(0,6),     # valley row
+	VoxelTypes.DIRT: Vector2i(3,2),
+	VoxelTypes.DIRT2: Vector2i(0,6),
 	VoxelTypes.CAVE_STONE: Vector2i(4,4),
 
 	VoxelTypes.CRYSTAL: Vector2i(6,2),

@@ -1,6 +1,5 @@
 class_name ChunkStreamLifecycle
 extends RefCounted
-## Explicit chunk streaming lifecycle states (stream path only).
 
 
 const UNLOADED := "UNLOADED"

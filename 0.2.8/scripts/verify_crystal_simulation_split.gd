@@ -1,6 +1,4 @@
 extends SceneTree
-## Crystal simulation split: parity, pause, deterministic replay, event budget, presentation isolation.
-## Usage: godot --headless -s scripts/verify_crystal_simulation_split.gd
 
 const _CrystalSimulation = preload("res://crystal/crystal_simulation.gd")
 const _CrystalPresentation = preload("res://crystal/crystal_presentation.gd")
@@ -83,17 +81,14 @@ func _test_spread_parity_vs_direct_fluid() -> void:
 	var sim := _CrystalSimulation.new(cfg, terrain_b)
 	direct.set_depth(Vector2i(5, 5), 2.0, 0, false)
 	sim.set_depth(Vector2i(5, 5), 2.0, 0, false)
-	# Pure fluid path
 	for _i in 12:
 		terrain_a.begin_sim_tick(_i + 1)
 		direct.tick_flow(0.2)
-	# Simulation path with empty emitters
 	for i in 12:
 		var snap = _make_snapshot(0.2, terrain_b)
 		snap.tick_id = i + 1
-		snap.flow_substeps = 1  # match single tick_flow
+		snap.flow_substeps = 1
 		sim.tick(snap)
-	# Compare depth maps
 	var mismatch := 0
 	var keys: Dictionary = {}
 	for k in direct.depth.keys():
@@ -138,7 +133,6 @@ func _test_deterministic_replay() -> void:
 
 
 func _test_pause_resume_via_expansion_flag() -> void:
-	# Expansion pause is façade-owned: when no ticks, depth must freeze.
 	var cfg := _CrystalSimConfig.create_default()
 	var terrain := _flat_terrain()
 	var sim := _CrystalSimulation.new(cfg, terrain)
@@ -148,13 +142,11 @@ func _test_pause_resume_via_expansion_flag() -> void:
 	sim.tick(snap)
 	var mid: float = sim.get_depth_at(2, 2)
 	var cells_mid: int = sim.fluid.cell_count()
-	# "Paused": do not call tick
 	var after_pause: float = sim.get_depth_at(2, 2)
 	if after_pause != mid or sim.fluid.cell_count() != cells_mid:
 		_fail("pause must freeze depth without ticks")
 	else:
 		print("OK pause freezes state without ticks")
-	# Resume
 	sim.tick(snap)
 	print("OK resume advances after pause (cells=%d)" % sim.fluid.cell_count())
 
@@ -226,7 +218,6 @@ func _test_chunk_stream_presentation() -> void:
 	var cfg := _CrystalSimConfig.create_default()
 	var terrain := _flat_terrain()
 	var sim := _CrystalSimulation.new(cfg, terrain)
-	# Cell in chunk (0,0) for size 16
 	sim.set_depth(Vector2i(2, 2), 1.0, 0, false)
 	var pres := _CrystalPresentation.new()
 	pres.fluid = sim.fluid
@@ -238,11 +229,9 @@ func _test_chunk_stream_presentation() -> void:
 		_fail("stream: mark_all_indexed_dirty should dirty chunk")
 	var coord := Vector2i(0, 0)
 	pres.on_chunk_unloaded(coord)
-	# After unload dirty for that chunk cleared
 	if pres._dirty_chunks.has(coord):
 		_fail("stream: unload must clear dirty for coord")
 	pres.on_chunk_loaded(coord)
-	# reload: if cells remain, becomes dirty again when has cells
 	if sim.fluid.depth.has(Vector2i(2, 2)):
 		pres.rebuild_cell_index()
 		pres.on_chunk_loaded(coord)

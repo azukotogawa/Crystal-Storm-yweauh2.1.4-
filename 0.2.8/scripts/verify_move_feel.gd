@@ -1,7 +1,4 @@
 extends SceneTree
-## Headless: sprint is faster than the walk, water ignores it, and the feel
-## numbers stop, steer, and jump the way the player step uses them.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_move_feel.gd
 
 const _InputBindings = preload("res://systems/input_bindings.gd")
 const _MoveFeel = preload("res://player/move_feel.gd")

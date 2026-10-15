@@ -1,7 +1,5 @@
 class_name CrystalSimulation
 extends RefCounted
-## Pure crystal state update. No scene-tree access.
-## Consumes CrystalSimSnapshot; emits typed CrystalSimEvents dictionaries only.
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")
@@ -14,7 +12,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 var config: _CrystalSimConfig
 var fluid: _CrystalFluidSim
-var absorption: Dictionary = {}  # Vector2i -> progress
+var absorption: Dictionary = {}
 var ruin_absorption: Dictionary = {}
 var absorbed_ruin_centers: Dictionary = {}
 var last_events: Array = []
@@ -22,13 +20,9 @@ var last_new_cells: int = 0
 var last_mesh_dirty_count: int = 0
 var event_count: int = 0
 var tick_count: int = 0
-## False when flow is mid-budget resume; façade should call tick again next frame.
 var last_tick_complete: bool = true
-## Soft wall for fluid.tick_flow cell processing (0 = unlimited).
 var flow_budget_us: int = 0
-## Last tick breakdown (us) when CRYSTALSTORM_CRYSTAL_STARTUP_MEASURE is on.
 var last_tick_breakdown: Dictionary = {}
-## Snapshot held while a budgeted flow job is in progress.
 var _pending_snapshot = null
 var _pending_sub_delta: float = 0.0
 var _pending_substep_i: int = 0
@@ -108,16 +102,12 @@ func set_depth(pos: Vector2i, depth: float, spawn_id: int = -1, emit: bool = tru
 	return events
 
 
-## Primary tick entry: snapshot in → events out. No get_tree / Node access.
-## When flow_budget_us > 0, may return [] with last_tick_complete=false until the
-## logical tick finishes (same final state as a single unbounded tick).
 func tick(snapshot) -> Array:
 	last_events.clear()
 	last_tick_breakdown = {}
 	last_tick_complete = true
 	if fluid == null:
 		return last_events
-	# Resume path: snapshot may be null; use pending.
 	var resuming := has_pending_tick()
 	if resuming:
 		snapshot = _pending_snapshot
@@ -143,7 +133,6 @@ func tick(snapshot) -> Array:
 		_pending_all_mesh.clear()
 		_pending_emitters_done = false
 
-	# Emitters once at start of logical tick.
 	var t0 := Time.get_ticks_usec() if measure else 0
 	if not _pending_emitters_done:
 		_tick_emitters_from_snapshot(snapshot)
@@ -192,7 +181,6 @@ func tick(snapshot) -> Array:
 	if not all_changed.is_empty():
 		last_events.append(_CrystalSimEvents.flow_batch(all_changed, all_mesh, last_new_cells))
 
-	# Absorption progress (side-effect-free); completion as events for façade.
 	t0 = Time.get_ticks_usec() if measure else 0
 	_tick_absorption_progress(snapshot)
 	if measure:
@@ -235,11 +223,9 @@ func consume_last_tick_breakdown() -> Dictionary:
 
 func _tick_emitters_from_snapshot(snapshot) -> void:
 	var mult: float = maxf(snapshot.emit_weaken_mult, 0.05)
-	# Mirror fluid.tick_emitters but from plain dict rows.
 	var rows: Array = snapshot.spawn_emitters
 	if rows.is_empty():
 		return
-	# Prefer fluid path when rows look like spawn objects.
 	var as_objects: Array = []
 	var use_objects := true
 	for row in rows:

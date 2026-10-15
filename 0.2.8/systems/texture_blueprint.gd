@@ -1,6 +1,4 @@
 extends Node
-## Debug view: swap live textures for same-size labelled placeholders.
-## Off by default. F6 (texture_blueprint_toggle) and the Graphics checkbox.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 
@@ -118,7 +116,6 @@ func _rebind_chunk_materials(tree: SceneTree) -> void:
 		script.rebind_live_materials(tree)
 
 
-## Chunk atlas rebinds must pass the real Cube.png, never a placeholder.
 func remember_shader_texture(mat: ShaderMaterial, param: String, source: Texture2D) -> void:
 	if not enabled or mat == null or source == null:
 		return
@@ -377,9 +374,6 @@ func _assign_shader_texture(mat: ShaderMaterial, param: String, tex: Texture2D) 
 	if mat == null or tex == null:
 		return
 	mat.set_shader_parameter(param, tex)
-	# Flush the sampler RID. set_shader_parameter updates the cache; a material
-	# that already drew with another atlas can keep the old GPU texture until
-	# the RenderingServer param is written as well.
 	RenderingServer.material_set_param(mat.get_rid(), param, tex.get_rid())
 
 
@@ -595,7 +589,6 @@ func _placeholder(
 
 
 func _put(img: Image, x: int, y: int, color: Color) -> void:
-	# (3, 3) stays the category fill so probes can sample it.
 	if x == 3 and y == 3:
 		return
 	if x < 0 or y < 0 or x >= img.get_width() or y >= img.get_height():

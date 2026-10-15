@@ -1,4 +1,3 @@
-# Inside ChunkView.gd
 extends Node3D
 class_name ChunkView
 

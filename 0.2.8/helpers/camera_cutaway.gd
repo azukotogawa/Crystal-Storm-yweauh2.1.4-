@@ -1,8 +1,5 @@
 class_name CameraCutaway
 extends RefCounted
-## Cone/cylinder cutaway between the camera and the player.
-## Shaders read the same thresholds from global uniforms set once per frame.
-## Keep the literals in ChunkView / ChunkSurfaceMesh / ChunkRamp / StructureCutaway in sync with these.
 
 const RADIUS_AT_PLAYER := 6.0
 const RADIUS_AT_CAMERA := 1.25
@@ -10,7 +7,6 @@ const FEET_CLEAR := 2.6
 const PAST_DISTANCE := 6.0
 const T_MIN := 0.05
 
-## Last values handed to RenderingServer. The headless server does not echo them back.
 static var submitted_enabled: float = 1.0
 static var submitted_player: Vector3 = Vector3.ZERO
 static var submitted_camera: Vector3 = Vector3.ZERO
@@ -21,7 +17,6 @@ static var submitted_past: float = PAST_DISTANCE
 static var submit_count: int = 0
 
 
-## True when a world-space fragment should be discarded (occluder above the body).
 static func contains(
 	world_pos: Vector3,
 	player_pos: Vector3,

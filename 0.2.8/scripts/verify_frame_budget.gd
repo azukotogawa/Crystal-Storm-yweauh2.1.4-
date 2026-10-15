@@ -1,6 +1,4 @@
 extends SceneTree
-## Frame Budget Scheduler: registration, unit caps, crystal dispatch queue drain.
-## Usage: godot --headless -s scripts/verify_frame_budget.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -29,7 +27,6 @@ func _run() -> void:
 		return
 	print("OK FrameBudgetScheduler present")
 
-	# Structural budget table
 	for id in [&"crystal_dispatch", &"living_world", &"town_defense", &"chunk_apply"]:
 		var st: Dictionary = sched.get_system_stats(id)
 		if int(st.get("budget_us", 0)) <= 0 or int(st.get("max_units", 0)) <= 0:
@@ -37,7 +34,6 @@ func _run() -> void:
 		else:
 			print("OK budget %s us=%d units=%d" % [str(id), int(st.budget_us), int(st.max_units)])
 
-	# Unit cap: spend max then can_continue false
 	var units := {"n": 0}
 	sched.run_budgeted(&"crystal_dispatch", func(token):
 		while token.can_continue():
@@ -71,7 +67,6 @@ func _run() -> void:
 	elif not crystal.has_method("get_dispatch_queue_depth"):
 		_fail("crystal missing get_dispatch_queue_depth")
 	else:
-		# Flood deferred events and ensure one frame does not drain all if > max_units.
 		var flood: Array = []
 		for i in 200:
 			flood.append(_CrystalSimEvents.depth_changed(Vector2i(i, 0)))
@@ -81,26 +76,22 @@ func _run() -> void:
 		print("queue after flood=%d" % q0)
 		if q0 < 100:
 			_fail("expected deferred depth events queued (>=100) got %d" % q0)
-		# Single process wave (crystal drains once per its _process).
 		await process_frame
 		var q1: int = int(crystal.get_dispatch_queue_depth())
 		var drained: int = q0 - q1
 		print("drained_one_wave=%d remaining=%d max_u=%d" % [drained, q1, max_u])
-		# Allow +min_units slack only; hard unit cap is max_units.
 		if drained > max_u:
 			_fail("dispatch drained too many in one wave %d > max %d" % [drained, max_u])
 		elif drained < 1 and q0 > 0:
 			_fail("dispatch drained nothing with pending work")
 		else:
 			print("OK budgeted drain drained=%d remaining=%d" % [drained, q1])
-		# Critical events still immediate
 		var power_before: float = float(crystal.power)
 		crystal._dispatch_sim_events([_CrystalSimEvents.power_delta(3.0)])
 		if float(crystal.power) <= power_before:
 			_fail("critical POWER_DELTA must apply immediately")
 		else:
 			print("OK critical power immediate %.1f→%.1f" % [power_before, float(crystal.power)])
-		# Flush drains rest
 		if crystal.has_method("flush_dispatch_queue"):
 			crystal.flush_dispatch_queue()
 		if int(crystal.get_dispatch_queue_depth()) != 0:
@@ -108,12 +99,10 @@ func _run() -> void:
 		else:
 			print("OK emergency flush emptied queue")
 
-	# Profiler surfaces budget report
 	var profiler = root.get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("format_runtime_report"):
 		var text: String = profiler.format_runtime_report()
 		if "FRAME BUDGETS" not in text and "crystal_dispatch" not in text:
-			# format includes budget only if scheduler present during format
 			var br: String = sched.format_budget_report()
 			if "crystal_dispatch" not in br:
 				_fail("budget report missing crystal_dispatch")

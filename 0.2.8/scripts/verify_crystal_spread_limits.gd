@@ -22,7 +22,6 @@ func _init() -> void:
 	sim.spread_damping_full_cells = 50
 	sim.spread_damping_min_mult = 0.4
 
-	# Seed a line of crystal — flow should not instantly flood thousands of cells.
 	for i in 10:
 		sim.set_depth(Vector2i(i, 0), 1.5, 0, false)
 
@@ -77,7 +76,6 @@ func _init() -> void:
 	else:
 		print("OK incremental mesh_dirty=%d changed=%d" % [sim.last_mesh_dirty_cells, sim.last_changed_cells])
 
-	# Incremental mesh patch lives on CrystalPresentation (sim split); fluid still exposes mesh dirty.
 	var pres_src := (load("res://crystal/crystal_presentation.gd") as GDScript).source_code
 	var fluid_src := (load("res://crystal/crystal_fluid_sim.gd") as GDScript).source_code
 	if "_patch_chunk_layer" not in pres_src or "get_last_mesh_dirty" not in fluid_src:

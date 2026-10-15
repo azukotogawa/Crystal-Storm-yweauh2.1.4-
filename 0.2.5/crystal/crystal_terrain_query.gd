@@ -13,7 +13,6 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
-## Single-sample cached height (faster than smooth bilinear for flow sim).
 var use_fast_terrain_height: bool = true
 
 var _cache_tick: int = -1

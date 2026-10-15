@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: side cell with low on one axis and high on the opposite must not get a buried cardinal ramp.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

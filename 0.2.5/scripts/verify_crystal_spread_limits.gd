@@ -21,7 +21,6 @@ func _init() -> void:
 	sim.spread_damping_full_cells = 50
 	sim.spread_damping_min_mult = 0.4
 
-	# Seed a line of crystal — flow should not instantly flood thousands of cells.
 	for i in 10:
 		sim.set_depth(Vector2i(i, 0), 1.5, 0, false)
 

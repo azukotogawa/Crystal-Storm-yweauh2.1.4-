@@ -8,20 +8,16 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var min_depth: float = 0.04
 @export var max_depth: float = 12.0
 @export var min_flow_diff: float = 0.05
-## Pressure equalization rate — higher feels more fluid/pool-like.
 @export var pressure_flow_rate: float = 1.1
 @export var max_flow_per_cell: float = 1.6
 @export var max_outflow_ratio: float = 0.42
 @export var cliff_height: float = 1.05
 @export var flow_substeps: int = 2
 @export var lateral_spread_bias: float = 0.08
-## Multiplier when crystal/fluid tries to climb (1 = free, lower = harder).
 @export var uphill_flow_penalty: float = 0.35
-## Extra pressure gain for downhill drops.
 @export var downhill_flow_bonus: float = 0.55
 
 @export_group("Water & Rivers")
-## Crystal can build OVER water but spreads into/out of rivers very slowly.
 @export var river_flow_factor: float = 0.06
 @export var water_build_over_rate: float = 0.35
 
@@ -73,14 +69,10 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var farmland_absorb_power: float = 6.5
 
 @export_group("Corruption")
-## Spread pace. Plains and steppe run ahead; highland and mountain crawl.
-## Keys are canonical biome names. Empty entries fall back to DEFAULT_BIOME_*.
 @export var biome_spread: Dictionary = {}
 @export var biome_reserve: Dictionary = {}
 @export var biome_mob: Dictionary = {}
-## Seconds a broken crystal cell stays scarred before the biome tile returns.
 @export var scar_heal_seconds: float = 18.0
-## Seconds a passive animal must stand in crystal before it converts.
 @export var animal_convert_seconds: float = 3.5
 
 const DEFAULT_BIOME_SPREAD := {

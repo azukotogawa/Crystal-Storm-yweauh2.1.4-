@@ -8,10 +8,8 @@ enum Preset { LOW, MEDIUM, HIGH, SAFE, CUSTOM }
 @export var preset: Preset = Preset.MEDIUM
 
 @export_group("Frame Budget (main thread)")
-## Target max time spent uploading chunks per frame (microseconds).
 @export_range(500, 12000, 100)
 var chunk_upload_budget_us: int = 3500
-## Soft cap for tracked main-thread work per frame (microseconds).
 @export_range(2000, 20000, 500)
 var main_thread_budget_us: int = 8000
 
@@ -35,38 +33,27 @@ var crystal_sim_hz: float = 20.0
 @export var use_fast_terrain_for_crystal: bool = true
 @export_range(1, 6, 1)
 var flow_substeps: int = 1
-## Skip N frames between crystal sim ticks (2 = run every 3rd frame).
 @export_range(0, 6, 1)
 var crystal_sim_skip_frames: int = 1
 @export_range(1, 8, 1)
 var max_crystal_chunk_rebuilds_per_frame: int = 2
-## Cap crystal flow cells processed per substep (0 = unlimited).
 @export_range(0, 2000, 50)
 var max_crystal_flow_cells: int = 0
-## Rotating scan cap for plant/animal absorption per frame.
 @export_range(8, 512, 8)
 var max_absorption_cells_per_tick: int = 64
-## Hard cap on brand-new crystal cells created per sim tick (frontier flood control).
 @export_range(0, 256, 1)
 var max_crystal_new_cells_per_tick: int = 24
-## Max depth inflow into an empty cell per tick (gradual spread).
 @export_range(0.02, 0.5, 0.01)
 var crystal_empty_cell_inflow_cap: float = 0.10
-## Cell count where spread pressure begins to dampen.
 @export_range(100, 8000, 50)
 var crystal_spread_damping_start: int = 600
-## Cell count where spread pressure reaches minimum multiplier.
 @export_range(200, 12000, 50)
 var crystal_spread_damping_full: int = 3000
-## Flow multiplier at/above damping_full cell count.
 @export_range(0.05, 1.0, 0.05)
 var crystal_spread_damping_min: float = 0.35
-## Reduce crystal mesh rebuilds when cell count exceeds damping_start.
 @export_range(1, 4, 1)
 var crystal_mesh_rebuilds_when_large: int = 1
-## Crystal sim + mesh only run in ChunkManager-loaded chunks (render_distance bubble).
 @export var crystal_sim_loaded_chunks_only: bool = true
-## Min depth delta before crystal mesh instance updates (ignores equilibrium jitter).
 @export_range(0.05, 0.6, 0.01)
 var crystal_mesh_depth_epsilon: float = 0.20
 
@@ -79,26 +66,20 @@ var map_rebuild_interval_sec: float = 3.0
 var minimap_pixel_size: int = 128
 @export_range(1, 8, 1)
 var map_sample_stride: int = 2
-## Internal map resolution divisor (2 = half pixels sampled, upscaled on display).
 @export_range(1, 4, 1)
 var map_internal_divisor: int = 2
-## Max map pixels processed per frame (terrain rebuild).
 @export_range(32, 2048, 32)
 var map_pixels_per_frame: int = 256
-## Max microseconds spent on map work per frame.
 @export_range(500, 12000, 100)
 var map_time_budget_us: int = 2500
-## Legacy row budget; derived from pixels/size when map UI starts a job.
 @export_range(1, 64, 1)
 var map_rows_per_frame: int = 8
-## How often to refresh crystal tint on an otherwise idle minimap.
 @export_range(0.25, 8.0, 0.25)
 var map_crystal_overlay_interval_sec: float = 1.0
 @export var debug_panel_enabled: bool = true
 @export_range(4, 64, 2)
 var debug_update_every: int = 24
 @export var debug_expensive_queries: bool = false
-## Tile-based map coloring (skips per-pixel get_biome).
 @export var fast_map_sampling: bool = true
 
 @export_group("Entities & Vegetation")
@@ -109,7 +90,6 @@ var max_entities: int = 128
 var animals_per_biome_chunk: int = 2
 @export_range(0, 6, 1)
 var entity_physics_skip_frames: int = 0
-## Single-sample entity height (much faster than 8-probe floor sampling).
 @export var use_lightweight_entity_nav: bool = true
 @export_range(0.0, 1.0, 0.05)
 var vegetation_scatter_multiplier: float = 1.0

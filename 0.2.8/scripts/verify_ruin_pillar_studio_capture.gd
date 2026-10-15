@@ -1,6 +1,4 @@
 extends SceneTree
-## Iso studio: ruin_pillar vs stone_wall vs gate.
-## Usage: godot --path . -s scripts/verify_ruin_pillar_studio_capture.gd
 
 
 const OUT := "C:/users/cwith/weed/crystalstorm/.tmp_ruin_pillar_capture/studio_ruin.png"

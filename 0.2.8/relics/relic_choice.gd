@@ -1,6 +1,5 @@
 class_name RelicChoice
 extends RefCounted
-## Three distinct relics. Headless runs equip the first. A live overlay opens the modal.
 
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
@@ -30,7 +29,6 @@ static func roll(seed: int) -> Array[StringName]:
 	return out
 
 
-## Returns the equipped id when no modal can open. Returns empty while the player is choosing.
 static func present(tree: SceneTree, relic_mgr, seed: int, title: String) -> StringName:
 	var ids := roll(seed)
 	if ids.is_empty():

@@ -79,7 +79,6 @@ func _build_ui() -> void:
 func _on_slot_pressed(index: int) -> void:
 	if _player == null or _player.inventory == null:
 		return
-	# Simple click: move item to first empty hotbar slot
 	var slot = _player.inventory.get_slot(index)
 	if slot == null:
 		return

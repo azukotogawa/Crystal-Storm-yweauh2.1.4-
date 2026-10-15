@@ -1,6 +1,5 @@
 class_name AudioManifest
 extends RefCounted
-## Id -> res:// path. Files are not shipped. AudioManager skips a missing file.
 
 const _SFX := "res://assets/audio/sfx/"
 const _UI := "res://assets/audio/ui/"

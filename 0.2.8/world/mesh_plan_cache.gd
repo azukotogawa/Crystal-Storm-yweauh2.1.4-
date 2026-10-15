@@ -1,8 +1,5 @@
 class_name MeshPlanCache
 extends RefCounted
-## Serializable mesh-plan cache (quads only — never GPU resources).
-## Preferred on full column rebuild when WorldState mesh overlays are pristine
-## for the chunk. Dig/build/feature/crystal terrain overlays force regenerate.
 
 const PLAN_VERSION: int = 3
 const MAGIC: String = "CSMP"
@@ -20,9 +17,7 @@ var max_cx: int = 0
 var min_cz: int = 0
 var max_cz: int = 0
 var full_world: bool = false
-## When true, mesh plans live inside streamed WorldBake chunk packages (not _plans).
 var streamed_from_bake: bool = false
-## Vector2i -> Array of quad Dictionaries (CPU plan only) — monolith / non-streamed only.
 var _plans: Dictionary = {}
 var valid: bool = false
 var last_error: String = ""
@@ -33,11 +28,8 @@ var stats_hits: int = 0
 var stats_misses: int = 0
 var stats_hit_us: int = 0
 var stats_miss_gen_us: int = 0
-## Last try_get_plan decision (instrumentation only; does not change path).
 var last_decision: Dictionary = {}
-## Per-miss-reason counters.
 var stats_reason: Dictionary = {}
-## Full decision log when tracing (CRYSTALSTORM_MESH_PLAN_TRACE=1 or begin_trace).
 var decision_log: Array = []
 var _trace: bool = false
 var rebuild_times_us: PackedInt64Array = PackedInt64Array()
@@ -75,7 +67,6 @@ static func ensure_active():
 
 static func enabled_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_MESH_PLAN_CACHE").strip_edges().to_lower()
-	# Default ON. Set 0/false/off to force generate.
 	if raw == "0" or raw == "false" or raw == "off":
 		return false
 	return true
@@ -118,7 +109,6 @@ func clear_memory() -> void:
 
 
 func plan_dir_for(seed: int, rad: int, as_full: bool = false) -> String:
-	# Use only as_full arg (not instance full_world) so load paths stay deterministic.
 	if as_full:
 		return "user://world_bakes/v2_s%d_full" % seed
 	return "user://world_bakes/v2_s%d_r%d" % [seed, rad]
@@ -140,29 +130,22 @@ func plan_count() -> int:
 	return _plans.size()
 
 
-## True when frozen worker overlays have no mesh-input mutations for this chunk.
 static func chunk_overlays_pristine(data) -> bool:
 	return classify_overlay_dirt(data).is_empty()
 
 
-## Returns first dirt reason string, or "" if pristine.
-## Categories: height_delta_dirty | overlay_dirty | crystal_terrain_dirty
-## Baked static vegetation feature tiles are pristine (part of world bake).
 static func classify_overlay_dirt(data) -> String:
 	return str(overlay_dirt_detail(data).get("reason", ""))
 
 
-## True when a feature tile should invalidate the baked mesh plan (runtime-only).
 static func _feature_tile_is_runtime_dirt(data, lx: int, lz: int, ft: int) -> bool:
 	if ft < 0:
 		return false
-	# Baked vegetation installed from package remains pristine.
 	if data.has_method("get_worker_feature_is_baked") and bool(data.get_worker_feature_is_baked(lx, lz)):
 		return false
 	return true
 
 
-## Detailed overlay breakdown for instrumentation reports.
 static func overlay_dirt_detail(data) -> Dictionary:
 	var height_n := 0
 	var build_n := 0
@@ -210,7 +193,6 @@ static func overlay_dirt_detail(data) -> Dictionary:
 	}
 
 
-## Build plans by running the real mesh stage host for each chunk (pristine WorldState).
 func bake_plans(host, world, rad: int, seed: int = -1) -> Dictionary:
 	return bake_plans_bounds(host, world, -rad, rad, -rad, rad, seed, false)
 
@@ -332,7 +314,6 @@ func save_plans(path: String = "") -> Dictionary:
 func load_plans(seed: int, rad: int, path: String = "") -> bool:
 	if not path.is_empty():
 		return _load_plans_file(path, seed)
-	# Try full package then radius.
 	if load_plans_for_bounds(seed, -rad, rad, -rad, rad, false):
 		return true
 	var legacy := "user://world_bakes/v1_s%d_r%d/mesh_plans.v1" % [seed, rad]
@@ -455,7 +436,6 @@ func _load_plans_file(file_path: String, seed: int) -> bool:
 
 func _plan_checksum(plan: Array) -> int:
 	var cs: int = plan.size()
-	# Sample endpoints + mid for speed; full XOR of face codes + positions.
 	for i in plan.size():
 		var q: Dictionary = plan[i]
 		cs = cs ^ int(q.get("x", 0)) ^ int(q.get("z", 0)) ^ int(q.get("face_code", 0)) \
@@ -463,8 +443,6 @@ func _plan_checksum(plan: Array) -> int:
 	return cs
 
 
-## Try to return cached plan quads. Empty array = miss (caller generates).
-## Side effect: fills last_decision + optional decision_log (trace).
 func try_get_plan(data) -> Array:
 	var decision: Dictionary = evaluate_plan_decision(data, true)
 	last_decision = decision
@@ -473,8 +451,6 @@ func try_get_plan(data) -> Array:
 	return []
 
 
-## Full decision diagnosis. When apply_stats=true, updates hit/miss counters (for real path).
-## Order matches original try_get_plan: enabled → valid → overlays → plan fetch.
 func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 	var coord := Vector2i.ZERO
 	if data != null and "position" in data:
@@ -518,7 +494,6 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 		_finish_decision(dec, apply_stats, false, 0)
 		return dec
 
-	# Same gate as production: any frozen mesh-input overlay rejects the baked plan.
 	var dirt: Dictionary = overlay_dirt_detail(data)
 	dec["overlay_detail"] = dirt
 	var dirt_reason: String = str(dirt.get("reason", ""))
@@ -529,7 +504,6 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 			int(dirt.get("build_n", 0)),
 			int(dirt.get("height_n", 0)),
 		]
-		# Plan may still exist — report presence without using it.
 		_fill_plan_presence(dec, bake, coord)
 		_finish_decision(dec, apply_stats, false, 0)
 		return dec
@@ -599,7 +573,6 @@ func _fill_plan_presence(dec: Dictionary, bake, coord: Vector2i) -> void:
 		return
 	if bake.has_method("coord_in_package") and not bake.coord_in_package(coord):
 		return
-	# Idempotent if already resident from stream prefetch.
 	var plan: Array = bake.get_mesh_plan(coord)
 	dec["mesh_plan_exists_in_package"] = not plan.is_empty()
 	dec["mesh_plan_loaded"] = not plan.is_empty()
@@ -631,7 +604,6 @@ func record_rebuild_time(us: int) -> void:
 
 
 func record_miss_generate_us(us: int) -> void:
-	# Kept for callers; prefer record_rebuild_time after decision already counted miss.
 	stats_miss_gen_us += us
 
 
@@ -717,9 +689,6 @@ func write_version_mismatch_stub(seed: int, rad: int) -> String:
 	return file_path
 
 
-## Bootstrap: load plans if present; if column bake is valid for same seed/radius and host
-## is available, auto-bake+save plans (production default — no special env required).
-## WorldBakeService.bootstrap_for_world(host=…) is the preferred entry (co-emits with columns).
 func bootstrap_for_world(host, world, rad: int = -1, force_bake: bool = false) -> Dictionary:
 	if world == null:
 		return {"ok": false, "error": "no world"}
@@ -733,7 +702,6 @@ func bootstrap_for_world(host, world, rad: int = -1, force_bake: bool = false) -
 		r = wb.default_radius_from_env() if wb else 6
 	if not force_bake and load_plans(seed, r):
 		return {"ok": true, "mode": "loaded", "chunks": plan_count(), "bytes": last_bytes}
-	# Prefer WorldBakeService.ensure_mesh_plans when column bake is already active.
 	var wb_script = load("res://world/world_bake_service.gd")
 	var bake = wb_script.get_active() if wb_script else null
 	if bake != null and bool(bake.valid) and int(bake.world_seed) == seed \
@@ -745,7 +713,6 @@ func bootstrap_for_world(host, world, rad: int = -1, force_bake: bool = false) -
 	var raw := OS.get_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW").strip_edges().to_lower()
 	if raw == "1" or raw == "true" or raw == "on":
 		bake_new = true
-	# Default: bake plans whenever host is available and column bake path is enabled.
 	if not bake_new and host != null and raw.is_empty():
 		bake_new = true
 	if raw == "0" or raw == "false" or raw == "off":

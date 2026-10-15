@@ -1,9 +1,4 @@
 extends SceneTree
-## Dependency graph + timings: chunk_ready → frame-end subsystem activation.
-## Measure only.
-##
-## Usage:
-##   CRYSTALSTORM_BAKE_RADIUS=2 godot --headless -s scripts/profile_stream_wake_graph.gd
 
 
 func _initialize() -> void:
@@ -61,7 +56,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Reset traces
 	if crystal.has_method("set_stream_wake_trace"):
 		crystal.set_stream_wake_trace(true)
 	if em and em.has_method("reset_stream_wake_trace"):
@@ -83,15 +77,13 @@ func _run() -> void:
 		print("[Wake] height path: InfiniteNoiseWorld.get_surface_height (NOT ChunkData.surface_map)")
 		print("[Wake] tile path: InfiniteNoiseWorld.get_tile_type (NOT ChunkData.tile_map)")
 
-	# Frame-level aggregation around streaming
 	var last_chunks := int(cm.chunks.size()) if "chunks" in cm else 0
-	var ready_hook: Array = [0]  # boxed for lambda mutation
+	var ready_hook: Array = [0]
 	if cm.has_signal("chunk_ready"):
 		cm.chunk_ready.connect(func(_c, _d):
 			ready_hook[0] = int(ready_hook[0]) + 1
 		)
 
-	# Teleport to force stream
 	_teleport(player, world, cm, Vector2(160, 160))
 	var window_frames := 120
 	var sum_crystal_proc := 0

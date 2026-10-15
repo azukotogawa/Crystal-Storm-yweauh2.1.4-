@@ -24,7 +24,6 @@ func _go() -> void:
 	await process_frame
 	print("[REPRO] TREE BEFORE STRIP:")
 	_dump(game)
-	# free all children of game
 	while game.get_child_count() > 0:
 		var c = game.get_child(0)
 		print("[REPRO] free child ", c.name)
@@ -35,7 +34,6 @@ func _go() -> void:
 	print("[REPRO] root children:")
 	for c in root.get_children():
 		print("  ", c.name, " ", c.get_class())
-	# free game itself
 	if game.get_parent():
 		game.get_parent().remove_child(game)
 	game.free()

@@ -13,9 +13,7 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
-## Headless tests: base height per cell when world is null.
 var test_base_heights: Dictionary = {}
-## Single-sample cached height (faster than smooth bilinear for flow sim).
 var use_fast_terrain_height: bool = true
 
 var _cache_tick: int = -1
@@ -24,7 +22,6 @@ var _tile_cache: Dictionary = {}
 var _flow_cache: Dictionary = {}
 var _channel_mult_cache: Dictionary = {}
 
-## Optional query measurement (CRYSTALSTORM_TERRAIN_QUERY_MEASURE=1).
 var _measure_enabled: bool = false
 var _height_hits: int = 0
 var _height_misses: int = 0
@@ -34,8 +31,8 @@ var _flow_hits: int = 0
 var _flow_misses: int = 0
 var _channel_hits: int = 0
 var _channel_misses: int = 0
-var _ops: Dictionary = {}  # name -> {n, total_us, max_us}
-var _callers: Dictionary = {}  # op -> {caller -> count}
+var _ops: Dictionary = {}
+var _callers: Dictionary = {}
 
 
 func begin_sim_tick(tick_id: int) -> void:
@@ -48,7 +45,6 @@ func begin_sim_tick(tick_id: int) -> void:
 	_channel_mult_cache.clear()
 
 
-## Call after player dig/build so crystal flow uses live height immediately.
 func invalidate_terrain_caches() -> void:
 	_cache_tick = -1
 	_height_cache.clear()
@@ -60,7 +56,6 @@ func invalidate_terrain_caches() -> void:
 func set_query_measure_enabled(enabled: bool) -> void:
 	_measure_enabled = enabled
 	if enabled and OS.get_environment("CRYSTALSTORM_TERRAIN_QUERY_MEASURE") != "1":
-		# Allow explicit enable from profiler scripts without env.
 		pass
 
 
@@ -214,7 +209,6 @@ func get_channel_water_level(pos: Vector2i) -> float:
 	return _ChannelRegistry.get_water_level(pos.x, pos.y)
 
 
-## Effective standing water for crystal interaction (channels + natural water tiles).
 func get_standing_water_level(pos: Vector2i) -> float:
 	if _ChannelRegistry.is_channel(pos.x, pos.y):
 		return _ChannelRegistry.get_water_level(pos.x, pos.y)
@@ -224,22 +218,18 @@ func get_standing_water_level(pos: Vector2i) -> float:
 
 
 func _base_flow_factor(pos: Vector2i, tile_id: int) -> float:
-	# Water resists crystal: wetter cells conduct less (crystal cannot freely cross water).
 	var water_level: float = get_standing_water_level(pos)
 	if water_level >= 0.05:
 		if _ChannelRegistry.is_channel(pos.x, pos.y):
 			var wet: float = clampf(water_level, 0.05, 1.0)
-			# channel_base_flow_factor ~0.1; higher water → closer to minimum crawl.
 			return clampf(
 				sim_config.channel_base_flow_factor * lerpf(1.25, 0.35, wet),
 				0.02,
 				0.35
 			)
-		# Natural river / ocean tiles.
 		return clampf(sim_config.river_flow_factor, 0.02, 0.15)
 
 	var feat: Dictionary = _FeatureRegistry.get_feature(pos.x, pos.y)
-	# Player builds (wall / gate / bridge) — gates baffle crystal without stacking height.
 	if feat.get("player_built", false) and feat.has("flow_resistance"):
 		return 1.0 - clampf(float(feat.flow_resistance), 0.02, 0.98)
 

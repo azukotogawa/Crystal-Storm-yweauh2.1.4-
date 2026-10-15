@@ -1,6 +1,4 @@
 extends SceneTree
-## Live main scene: place ~10 wood walls in mixed arrangements; assert authored mesh bind.
-## Usage: godot --path . -s scripts/verify_wood_wall_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -73,24 +71,17 @@ func _run() -> void:
 	var inv := _Inventory.new()
 	inv.add_item("wood", 50)
 
-	# Arrangements: line, corner, staggered, near terrain dig, near gate, near bridge.
 	var placements: Array[Dictionary] = []
-	# Straight line of 4
 	for i in 4:
 		placements.append({"id": "wood_wall", "cell": Vector2i(px + 2 + i, pz)})
-	# Corner
 	placements.append({"id": "wood_wall", "cell": Vector2i(px + 2, pz + 1)})
 	placements.append({"id": "wood_wall", "cell": Vector2i(px + 2, pz + 2)})
-	# Staggered
 	placements.append({"id": "wood_wall", "cell": Vector2i(px + 4, pz + 1)})
 	placements.append({"id": "wood_wall", "cell": Vector2i(px + 5, pz + 2)})
-	# Near terrain (after dig adjacent)
 	var dig_cell := Vector2i(px + 7, pz)
 	_TerrainEdits.dig(dig_cell.x, dig_cell.y, 1)
 	placements.append({"id": "wood_wall", "cell": Vector2i(px + 8, pz)})
-	# Near gate
 	var gate_cell := Vector2i(px + 3, pz + 4)
-	# Near bridge
 	var bridge_cell := Vector2i(px + 6, pz + 4)
 	_TerrainEdits.dig(bridge_cell.x, bridge_cell.y, 1)
 
@@ -103,7 +94,6 @@ func _run() -> void:
 		else:
 			feat_layer.refresh_cell(c.x, c.y)
 
-	# Gate + bridge
 	var gy: float = world.get_surface_height(float(gate_cell.x), float(gate_cell.y))
 	if not editor.try_build_gate(Vector3(float(gate_cell.x) + 0.5, gy, float(gate_cell.y) + 0.5), inv):
 		_fail("gate: %s" % editor.last_fail_reason)
@@ -114,7 +104,6 @@ func _run() -> void:
 	else:
 		feat_layer.refresh_cell(bridge_cell.x, bridge_cell.y)
 
-	# Wall next to gate and bridge
 	var near_gate := Vector2i(gate_cell.x + 1, gate_cell.y)
 	var near_bridge := Vector2i(bridge_cell.x + 1, bridge_cell.y)
 	for c in [near_gate, near_bridge]:
@@ -153,7 +142,6 @@ func _run() -> void:
 	if wall_count < 10:
 		_fail("expected at least 10 authored wood walls, got %d" % wall_count)
 
-	# Gate/bridge not authored wood
 	var ga: Node3D = feat_layer._nodes_by_cell.get(gate_cell)
 	var ba: Node3D = feat_layer._nodes_by_cell.get(bridge_cell)
 	if ga and str(ga.get_meta("building_visual_id", "")) == "gate":
@@ -165,7 +153,6 @@ func _run() -> void:
 	else:
 		_fail("bridge visual broken")
 
-	# Registry still reports authored
 	var reg = get_first_node_in_group("game_visual_registry")
 	if reg and reg.has_method("has_authored_building_mesh") and reg.has_authored_building_mesh("wood_wall"):
 		_ok("registry has_authored_building_mesh(wood_wall)")

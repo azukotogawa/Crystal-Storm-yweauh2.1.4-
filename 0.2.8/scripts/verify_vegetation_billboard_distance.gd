@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: near-player vegetation uses voxels; distant plants fall back to billboards.
 
 
 const _FeatureVisualLayer = preload("res://world/feature_visual_layer.gd")

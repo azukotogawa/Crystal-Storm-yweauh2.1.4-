@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: DeveloperAssistant local commands + response file bridge.
 
 
 const _DeveloperAssistant = preload("res://systems/developer_assistant.gd")

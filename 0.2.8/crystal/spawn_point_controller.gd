@@ -10,7 +10,6 @@ signal boss_gate_blocked(spawn: CrystalSpawnPoint)
 
 var emit_weaken_mult: float = 1.0
 var last_destroyed_label: String = ""
-## True while the origin warden entity is alive. Tests leave this false.
 var origin_warden_alive: bool = false
 
 var _spawns: Array[CrystalSpawnPoint] = []

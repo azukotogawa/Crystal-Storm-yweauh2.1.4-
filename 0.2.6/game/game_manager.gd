@@ -11,20 +11,16 @@ enum RunState { PLAYING, WON, LOST }
 signal phase_changed(new_phase: Phase)
 signal run_state_changed(new_state: RunState)
 
-## Enter ASSAULT when within this distance of crystal fluid (or origin boss if no fluid yet).
 @export var assault_distance: float = 48.0
-## Leave ASSAULT / stay in MAZE when farther than this (hysteresis so phase does not flicker).
 @export var maze_min_distance: float = 72.0
 @export var max_crystal_coverage: float = 0.72
 @export var crystal_damage_per_second: float = 28.0
 
 var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
-## Last terminal loss reason for UI / verifies (empty while playing or after win).
 var last_loss_reason: String = ""
 
 var _player: Node3D
-## Duck-typed crystal façade (CrystalManager in production; stubs in verifies).
 var _crystal
 var _world: InfiniteNoiseWorld
 
@@ -78,13 +74,10 @@ func _process(delta: float) -> void:
 func _update_phase() -> void:
 	if _player == null or phase == Phase.VICTORY:
 		return
-	# MAZE = prepare with terrain; ASSAULT = close enough to fight the crystal mass.
-	# Tier 0 always MAZE so early dig/build has breathing room before pressure fights back.
 	var next: Phase = Phase.MAZE
 	if _crystal != null and int(_crystal.strength_tier) >= 1:
 		var dist: float = _distance_to_crystal_pressure()
 		if phase == Phase.ASSAULT:
-			# Hysteresis: stay in fight until you pull back past maze_min_distance.
 			if dist <= maze_min_distance:
 				next = Phase.ASSAULT
 		elif dist <= assault_distance:
@@ -94,7 +87,6 @@ func _update_phase() -> void:
 		phase_changed.emit(phase)
 
 
-## Distance to nearest crystal fluid; falls back to origin boss / map origin doorstep.
 func _distance_to_crystal_pressure() -> float:
 	if _player == null:
 		return INF
@@ -104,7 +96,6 @@ func _distance_to_crystal_pressure() -> float:
 		var d: float = float(_crystal.get_nearest_crystal_distance(from))
 		if d < INF * 0.5:
 			return d
-	# No fluid yet: distance to origin boss doorstep (map center / relocated origin).
 	if _crystal != null and _crystal.has_method("get_active_spawns"):
 		for spawn in _crystal.get_active_spawns():
 			if spawn != null and bool(spawn.get("is_boss")):

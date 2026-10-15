@@ -1,8 +1,4 @@
 extends SceneTree
-## Regression: ramp face ownership + cross-border sealing in _side_wall_spec().
-## - Parallel cardinal landings must not emit interior seam faces.
-## - Same-height full voxels beside a landing keep their exposed fill face.
-## - A same-height cut across a chunk border still exposes the full voxel's face.
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
@@ -241,8 +237,6 @@ func _stamp_halo(data: ChunkData, heights: Dictionary) -> void:
 				float(heights[k_v])
 
 
-## Cross-border ownership via deterministic far-landing evaluation:
-## anti-parallel far slope seals the crossing gap; parallel stays unfilled.
 func _test_cross_border_ownership(cm: ChunkManager) -> void:
 	var data_x := _mk_data()
 	_fill(data_x, 10.0)
@@ -250,7 +244,6 @@ func _test_cross_border_ownership(cm: ChunkManager) -> void:
 		data_x.surface_map[15][z] = 12.0
 	data_x.set_ramp_cardinal(15, 5, Vector2i(0, 1))
 	data_x.capture_worker_snapshot()
-	# Far cardinal slopes north (anti-parallel): step-down (16,4), back (16,6).
 	_stamp_halo(data_x, {Vector2i(16, 5): 12.0, Vector2i(16, 6): 12.0})
 	var spec_x: Dictionary = cm._side_wall_spec(data_x, 15, 5, 16, 5, Vector2i(1, 0))
 	if spec_x.is_empty():
@@ -264,7 +257,6 @@ func _test_cross_border_ownership(cm: ChunkManager) -> void:
 		data_p.surface_map[15][z] = 12.0
 	data_p.set_ramp_cardinal(15, 5, Vector2i(0, 1))
 	data_p.capture_worker_snapshot()
-	# Far cardinal slopes south (parallel): step-down (16,6), back (16,4).
 	_stamp_halo(data_p, {Vector2i(16, 5): 12.0, Vector2i(16, 4): 12.0})
 	var spec_p: Dictionary = cm._side_wall_spec(data_p, 15, 5, 16, 5, Vector2i(1, 0))
 	if not spec_p.is_empty():

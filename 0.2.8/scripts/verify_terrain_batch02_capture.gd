@@ -1,6 +1,4 @@
 extends SceneTree
-## Boot main.tscn, stamp a streamed Batch 02 yard, capture each named ID.
-## Usage: godot --path . -s scripts/verify_terrain_batch02_capture.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

@@ -8,7 +8,6 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var min_depth: float = 0.04
 @export var max_depth: float = 12.0
 @export var min_flow_diff: float = 0.05
-## Pressure equalization rate — higher feels more fluid/pool-like.
 @export var pressure_flow_rate: float = 4.8
 @export var max_flow_per_cell: float = 2.5
 @export var max_outflow_ratio: float = 0.55
@@ -17,7 +16,6 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 @export var lateral_spread_bias: float = 0.12
 
 @export_group("Water & Rivers")
-## Crystal can build OVER water but spreads into/out of rivers very slowly.
 @export var river_flow_factor: float = 0.06
 @export var water_build_over_rate: float = 0.35
 

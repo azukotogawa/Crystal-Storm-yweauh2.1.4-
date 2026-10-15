@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: spawned world_entity global_position matches registry column_sprite_position for home_cell.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

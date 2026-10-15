@@ -1,5 +1,4 @@
 extends SceneTree
-## Crack stages, pooled break chips, place pop, and no node growth over 50 cycles.
 
 
 const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
@@ -137,7 +136,6 @@ func _check_crack_toggle(fx) -> void:
 		if not overlay.visible:
 			_fail("crack overlay stayed hidden after the toggle")
 		elif not fx.notify_break(Vector3(0, 1, 0), Color(0.4, 0.3, 0.2)):
-			# The pool may already be full and still emitting, so a false return is not a leak.
 			print("OK crack toggle (pool saturated)")
 		else:
 			print("OK crack toggle")

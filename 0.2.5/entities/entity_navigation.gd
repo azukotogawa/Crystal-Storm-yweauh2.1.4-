@@ -6,7 +6,6 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 
-## When true, entities use single-sample height (no 8-probe floor sampling).
 static var use_lightweight_nav: bool = true
 
 static var _shared_probe: _VoxelFloorProbe

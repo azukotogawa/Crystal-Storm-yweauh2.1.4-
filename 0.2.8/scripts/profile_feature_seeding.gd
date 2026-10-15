@@ -1,14 +1,10 @@
 extends SceneTree
-## Multi-run feature_seeding phase breakdown (measure only).
-## Usage:
-##   CRYSTALSTORM_SCRATCH=/tmp/... CRYSTALSTORM_FS_RUNS=5 \
 ##   godot --headless -s scripts/profile_feature_seeding.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 
-## Canonical report rows (order fixed; do not merge).
 const REPORT_PHASES: PackedStringArray = [
 	"fs/biome_initialization",
 	"fs/bootstrap_perf_ready",
@@ -55,7 +51,6 @@ func _run() -> void:
 		scratch = "/tmp/grok-goal-3c89103bbbb9/implementer"
 	DirAccess.make_dir_recursive_absolute(scratch)
 
-	# phase -> PackedInt64Array of per-run wall µs
 	var series: Dictionary = {}
 	for p in REPORT_PHASES:
 		series[p] = PackedInt64Array()
@@ -88,7 +83,6 @@ func _run() -> void:
 		parent_series.append(parent_us)
 
 		var accounted: int = 0
-		# Top-level exclusive phases (do not double-count town subphases / spawn subphases).
 		var exclusive: PackedStringArray = [
 			"fs/biome_initialization",
 			"fs/bootstrap_perf_ready",
@@ -128,7 +122,6 @@ func _run() -> void:
 			% [r + 1, runs, float(parent_us) / 1000.0, float(residual) / 1000.0]
 		)
 
-		# Tear down for next run
 		if game.get_parent():
 			game.get_parent().remove_child(game)
 		game.free()

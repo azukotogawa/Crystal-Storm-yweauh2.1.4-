@@ -1,6 +1,5 @@
 class_name MicroTerrainPerfGate
 extends RefCounted
-## Frozen perf contract for micro-on vs macro-only localized edit comparison.
 
 
 const MEASUREMENT_NOISE_MS := 0.15

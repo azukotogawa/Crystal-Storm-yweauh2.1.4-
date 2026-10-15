@@ -1,5 +1,4 @@
 extends SceneTree
-## Verifies late ChunkManager binding for terrain editing and entity streaming.
 
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")

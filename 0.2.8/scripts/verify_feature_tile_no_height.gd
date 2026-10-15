@@ -1,5 +1,4 @@
 extends SceneTree
-## Feature tile overrides must retile even when height_delta is 0 (water-replace beside river).
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
@@ -29,7 +28,6 @@ func _init() -> void:
 	var data := _ChunkData.new(Vector2i.ZERO, world)
 	data.capture_worker_snapshot()
 	data.ensure_column_maps()
-	# Force zero height delta + water feature override on a known cell.
 	var lx := 4
 	var lz := 4
 	data._worker_height_delta[lx][lz] = 0.0
@@ -44,13 +42,11 @@ func _init() -> void:
 	else:
 		print("OK zero-hdelta retile tile=%d" % got)
 
-	# Build tile without height still must NOT retile (WorldObject floor).
 	data.tile_map[5][5] = _VoxelTypes.GRASSLAND
 	data._worker_feature_tile[5][5] = -1
 	data._worker_build_tile[5][5] = _VoxelTypes.STONE
 	data._worker_height_delta[5][5] = 0.0
 	data._has_baked_base = true
-	# Provide minimal baked base so the baked branch is exercised.
 	data._baked_base_surface.resize(_ChunkData.SIZE)
 	data._baked_base_tile.resize(_ChunkData.SIZE)
 	for x in _ChunkData.SIZE:
@@ -68,7 +64,6 @@ func _init() -> void:
 	else:
 		print("OK build_tile without raise keeps floor tile=%d" % int(data.tile_map[5][5]))
 
-	# Baked path: feature override with zero hdelta must retile.
 	data._worker_build_tile[6][6] = -1
 	data._worker_height_delta[6][6] = 0.0
 	data._worker_feature_tile[6][6] = _VoxelTypes.WATER

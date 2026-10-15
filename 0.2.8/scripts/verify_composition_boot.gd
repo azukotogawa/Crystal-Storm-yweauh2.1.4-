@@ -1,6 +1,4 @@
 extends SceneTree
-## Main-scene composition boot: stages, registry, diagnostics.
-## Usage: godot --headless -s scripts/verify_composition_boot.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _CompositionRoot = preload("res://systems/composition_root.gd")
@@ -32,7 +30,6 @@ func _run() -> void:
 		_fail("CompositionRoot node missing from main.tscn")
 		quit(1)
 		return
-	# BEFORE add_child: main._ready will call boot_async with these overrides.
 	if compose.has_method("set_debug_overrides"):
 		compose.set_debug_overrides({"render_distance": 7, "caves_enabled": false})
 	if compose.has_signal("stage_changed"):
@@ -40,7 +37,6 @@ func _run() -> void:
 
 	root.add_child(game)
 
-	# Wait for boot
 	var frames := 0
 	while not bool(compose.get("_boot_done")) and int(compose.stage) != _CompositionRoot.Stage.FAILED and frames < 2400:
 		await process_frame
@@ -53,7 +49,6 @@ func _run() -> void:
 	else:
 		print("OK composition boot completed stage=%s" % compose.get_stage_name())
 
-	# Registry has critical services
 	var reg = compose.registry
 	if reg == null:
 		_fail("registry null")
@@ -68,7 +63,6 @@ func _run() -> void:
 		else:
 			print("OK DI chunk_manager registered")
 
-	# Stages monotonic
 	var expected := [
 		"CONFIGURED", "QUALITY_APPLIED", "FEATURES_SEEDED",
 		"CHUNKS_CREATED", "INITIAL_STREAM_READY", "VISUALS_COMMITTED", "RUNNING",
@@ -77,7 +71,6 @@ func _run() -> void:
 	for s in expected:
 		var idx: int = _stages_seen.find(s)
 		if idx < 0:
-			# May have missed if signal late; check final stage times
 			var times: Dictionary = compose.get("_stage_times_ms") if "_stage_times_ms" in compose else {}
 			if not times.has(s) and compose.get_stage_name() != "RUNNING":
 				_fail("stage %s not observed" % s)
@@ -87,7 +80,6 @@ func _run() -> void:
 			last_idx = idx
 	print("OK stages seen: %s" % str(_stages_seen))
 
-	# Diagnostics API
 	var diag: Dictionary = compose.get_diagnostics()
 	if not diag.has("registry") or not diag.has("stage_times_ms"):
 		_fail("diagnostics incomplete")
@@ -99,7 +91,6 @@ func _run() -> void:
 	else:
 		print("OK service health report")
 
-	# Resolved config present
 	if compose.resolved_config.is_empty():
 		_fail("resolved_config empty after boot")
 	elif not compose.resolved_config.has("policy"):
@@ -107,7 +98,6 @@ func _run() -> void:
 	else:
 		print("OK resolved runtime config")
 
-	# Consumer must observe debug policy knobs (not raw quality alone)
 	var policy: Dictionary = compose.resolved_config.get("policy", {})
 	if int(policy.get("render_distance", -1)) != 7:
 		_fail("resolved policy render_distance should be debug=7 (got %s)" % str(policy.get("render_distance")))
@@ -122,10 +112,8 @@ func _run() -> void:
 	if world_live and "caves_enabled" in world_live:
 		if bool(world_live.caves_enabled) != false and world_live.has_method("get"):
 			pass
-	# caves_enabled may be stored differently; policy false is what matters on set_caves_enabled
 	print("OK policy consumer checks complete")
 
-	# Shutdown ordering: release chunks/workers before freeing scene.
 	var shut_before: Array = reg.shutdown_order().duplicate()
 	compose.shutdown()
 	if int(compose.stage) != _CompositionRoot.Stage.SHUTTING_DOWN:
@@ -133,7 +121,6 @@ func _run() -> void:
 	else:
 		print("OK shutdown stage + order size=%d" % shut_before.size())
 
-	# Chunks already released in compose.shutdown(). Let SceneTree own a single free path.
 	# (Manual free() + quit previously raced ObjectDB and printed double-free on exit.)
 	await process_frame
 	if _failed == 0:

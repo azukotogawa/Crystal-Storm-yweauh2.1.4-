@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: TargetHighlight shows red attack box via camera-forward resolve (no mouse).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

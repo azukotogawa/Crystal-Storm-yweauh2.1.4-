@@ -1,5 +1,4 @@
 extends Control
-## Player-facing shell: MAIN MENU → WORLD SELECT → NEW WORLD → GAME, plus SETTINGS.
 
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _SaveGame = preload("res://systems/save_game_service.gd")
@@ -267,7 +266,6 @@ func _on_select_world(world_id: String) -> void:
 	_refresh_world_list()
 
 
-## Arms the next main-scene boot to load continue.json. Does not change scene.
 func arm_continue_launch() -> bool:
 	var meta: Dictionary = _SaveGame.peek_continue()
 	if meta.is_empty():

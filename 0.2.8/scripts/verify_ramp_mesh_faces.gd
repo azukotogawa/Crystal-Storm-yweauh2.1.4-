@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: all cardinal/corner ramps derive from west/WN reference face layouts.
 
 
 const _VoxelPrimitiveMeshes = preload("res://helpers/voxel_primitive_meshes.gd")

@@ -22,11 +22,8 @@ var _vegetation_root: Node3D
 var _buildings_root: Node3D
 var _nodes_by_chunk: Dictionary = {}
 var _nodes_by_cell: Dictionary = {}
-## Stream hitch isolation: populate billboards off the chunk_ready hot path.
-## FIFO of Vector2i; _pending_set de-dupes and supports unload cancel.
 var _pending_populate: Array = []
 var _pending_set: Dictionary = {}
-## Stream wake counters (measurement).
 var _stream_ready_n: int = 0
 var _stream_ready_us: int = 0
 var _stream_ready_max_us: int = 0
@@ -53,7 +50,6 @@ func _bind() -> void:
 	_bind_terrain_placement_refresh()
 
 
-## Player place must show gate/bridge props immediately (not wait for chunk_ready).
 func _bind_terrain_placement_refresh() -> void:
 	var editor = get_tree().get_first_node_in_group("terrain_editor")
 	if editor == null:
@@ -72,7 +68,6 @@ func _on_structure_placed_visual(wx: int, wz: int, _build_id: StringName, _world
 
 
 func _on_terrain_edited_visual(wx: int, wz: int, kind: StringName) -> void:
-	# Dig/build near structures — refresh cell when a player-built feature is present.
 	var k := str(kind)
 	if k in ["gate", "bridge", "stone_wall", "wood_wall", "dig"]:
 		refresh_cell(wx, wz)
@@ -81,14 +76,12 @@ func _on_terrain_edited_visual(wx: int, wz: int, kind: StringName) -> void:
 
 
 func _refresh_wood_wall_neighbors(wx: int, wz: int) -> void:
-	# Neighbor yaw depends on this cell; rebind so a line/corner orients together.
 	refresh_cell(wx - 1, wz)
 	refresh_cell(wx + 1, wz)
 	refresh_cell(wx, wz - 1)
 	refresh_cell(wx, wz + 1)
 
 
-## Immediate single-cell feature visual rebuild (placement / edit).
 func refresh_cell(wx: int, wz: int) -> void:
 	_bind_layer_roots()
 	_resolve_registry()
@@ -108,7 +101,6 @@ func refresh_cell(wx: int, wz: int) -> void:
 	var parent := _parent_for_feature(feat)
 	parent.add_child(anchor)
 	_nodes_by_cell[key] = anchor
-	# Keep chunk index in sync if this cell's chunk is tracked.
 	var coord := Vector2i(
 		floori(float(wx) / float(ChunkData.SIZE)),
 		floori(float(wz) / float(ChunkData.SIZE))
@@ -242,7 +234,6 @@ func _on_chunk_ready(coord: Vector2i, _data: ChunkData) -> void:
 func _on_chunk_unloaded(coord: Vector2i) -> void:
 	if _pending_set.has(coord):
 		_pending_set.erase(coord)
-		# Leave stale entries in FIFO; drain skips if not in set / not resident.
 	_clear_chunk(coord)
 
 
@@ -273,10 +264,8 @@ func _process(_delta: float) -> void:
 			if token != null:
 				token.spend_unit()
 			else:
-				break  # legacy: one chunk per frame
+				break
 	if fbs and fbs.has_method("run_budgeted"):
-		# Dedicated budget (not entity_spawn) so one dense veg chunk cannot stack
-		# with animal spawn in the same frame under a shared unit pool.
 		fbs.run_budgeted(&"feature_visual", drain)
 		if fbs.has_method("report_queue_depth"):
 			fbs.report_queue_depth(&"feature_visual", _pending_populate.size(), 0)
@@ -319,8 +308,6 @@ func _populate_chunk(coord: Vector2i) -> void:
 	var min_z := coord.y * ChunkData.SIZE
 	var chunk_nodes: Array = []
 
-	# Persistent player builds must always come back with the chunk. Billboard
-	# budget is only for vegetation / landmarks.
 	for x in ChunkData.SIZE:
 		for z in ChunkData.SIZE:
 			var wx := min_x + x
@@ -399,17 +386,14 @@ func _make_feature_anchor(wx: int, wz: int, feat: Dictionary) -> Node3D:
 	var kind: int = int(feat.get("kind", _WorldFeatureTypes.FeatureKind.NONE))
 	match kind:
 		_WorldFeatureTypes.FeatureKind.RUIN:
-			# One landmark prop at the ruin center (not a field of wall-like pillars).
 			if not _is_ruin_visual_cell(wx, wz, feat):
 				return null
 			return _make_building_anchor(wx, wz, col_x, col_z, "ruin_pillar", Vector3(1.2, 2.4, 1.2), 0.0)
 		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING:
 			return _make_building_anchor(wx, wz, col_x, col_z, "town_hall", Vector3(2.4, 3.0, 2.4), 0.0)
 		_WorldFeatureTypes.FeatureKind.TOWN:
-			# Settlement disk has no per-cell prop; hall is stamped as TOWN_BUILDING at center.
 			return null
 		_:
-			# Player builds: prefer explicit build_id / flags — never map gate/bridge via DIRT→wood_wall.
 			var visual_id: String = _resolve_player_build_visual_id(feat, wx, wz)
 			if visual_id.is_empty():
 				return null
@@ -422,7 +406,6 @@ func _make_feature_anchor(wx: int, wz: int, feat: Dictionary) -> Node3D:
 			)
 
 
-## Ruin cells fill a radius disk for discovery gameplay; only the center gets a landmark mesh.
 func _is_ruin_visual_cell(wx: int, wz: int, feat: Dictionary) -> bool:
 	var center_v = feat.get("center", Vector2i(wx, wz))
 	var center: Vector2i
@@ -435,7 +418,6 @@ func _is_ruin_visual_cell(wx: int, wz: int, feat: Dictionary) -> bool:
 	return wx == center.x and wz == center.y
 
 
-## Gate/bridge/wood_wall/stone_wall identity from feature metadata (gameplay DIRT tile unchanged).
 func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> String:
 	var explicit := str(feat.get("visual_id", "")).strip_edges()
 	if explicit != "":
@@ -454,8 +436,6 @@ func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> Stri
 		return "wood_wall"
 	if build_id == "stone_wall":
 		return "stone_wall"
-	# Explicit ids win above. A bare DIRT/STONE override is the legacy wall
-	# stamp (no build_id). Gate and bridge never reach this: they return above.
 	var tile_override: int = _FeatureRegistry.get_tile_override(wx, wz)
 	if tile_override == VoxelTypes.STONE:
 		return "stone_wall"
@@ -464,7 +444,6 @@ func _resolve_player_build_visual_id(feat: Dictionary, wx: int, wz: int) -> Stri
 	return ""
 
 
-## Align the authored palisade along the longer neighbor run (X default).
 func _wood_wall_yaw(wx: int, wz: int) -> float:
 	return _StructureOrientation.yaw_for(wx, wz, "wood_wall")
 
@@ -477,7 +456,6 @@ func _structure_connects(wx: int, wz: int) -> bool:
 	return id in ["wood_wall", "stone_wall", "gate"]
 
 
-## Align a bridge deck along a neighboring bridge run (X default).
 func _bridge_yaw(wx: int, wz: int) -> float:
 	return _StructureOrientation.yaw_for(wx, wz, "bridge")
 
@@ -494,7 +472,6 @@ func get_anchor_at(wx: int, wz: int) -> Node3D:
 
 
 func _visual_size_for_build(visual_id: String) -> Dictionary:
-	# height_offset 0: multi-part meshes are ground-based (y grows upward from feet).
 	match visual_id:
 		"gate":
 			return {"size": Vector3(1.15, 2.05, 0.55), "height_offset": 0.0}
@@ -584,7 +561,6 @@ func _apply_plant_texture(
 	_apply_sprite(sprite, tex, -1.0)
 
 
-## Batch 1 shows the corrupted sprite on a crystal-infected cell. Original keeps the crystal-plant swap.
 func _plant_texture(
 	plant_id: StringName,
 	stage: int,
@@ -622,7 +598,6 @@ func _corrupted_texture(wx: int, wz: int, plant_id: StringName, stage: int) -> T
 	return null
 
 
-## Rebuild plant anchors so a texture-set change swaps billboards immediately.
 func refresh_texture_set() -> void:
 	var keys: Array = _nodes_by_cell.keys()
 	for key in keys:

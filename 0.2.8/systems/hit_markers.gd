@@ -1,6 +1,5 @@
 class_name HitMarkers
 extends Node3D
-## Fixed pool of world-space hit, miss, and blocked markers. No per-hit nodes.
 
 enum Result { HIT = 0, MISS = 1, BLOCKED = 2 }
 

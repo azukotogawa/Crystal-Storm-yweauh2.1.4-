@@ -5,19 +5,14 @@ const _StatIds = preload("res://stats/stat_ids.gd")
 
 enum Op { FLAT, ADDITIVE_PERCENT, MULTIPLICATIVE }
 
-## Which stat this modifier affects.
 @export var stat_id: StringName = &"move_speed"
 
-## FLAT: added after base. ADDITIVE_PERCENT: summed then applied as (1 + sum).
-## MULTIPLICATIVE: multiplied together after additive step.
 @export var op: Op = Op.FLAT
 
 @export var value: float = 0.0
 
-## Unique source (relic id, buff id). Replacing same source removes old mods first.
 @export var source_id: StringName = &""
 
-## Lower priority applies first (mostly relevant for future ordered effects).
 @export var priority: int = 0
 
 

@@ -1,14 +1,4 @@
 extends SceneTree
-## Attribute ≥95% of main-thread frame wall to named leaf systems (measurement only).
-## Writes:
-##   {SCRATCH}/main_thread_attribution.json
-##   {SCRATCH}/main_thread_attribution.md
-##
-## Gate: named_leaves / full_wall ≥ 95%, Unknown / full_wall ≤ 5%.
-## full_wall = frame work window (physics+process+deferred MQ), not inter-frame gap.
-##
-## Usage:
-##   CRYSTALSTORM_ATTR_SEC=45 godot --headless -s scripts/profile_main_thread_attribution.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -256,7 +246,6 @@ func _format_md(r: Dictionary) -> String:
 	var gate_by_name: Dictionary = {}
 	for row0 in r.get("avg_rank", []):
 		pass
-	# Gate labels from worst frame timeline if available
 	for rowt in r.get("worst_frame", {}).get("timeline", []):
 		gate_by_name[str(rowt.name)] = str(rowt.get("gate", ""))
 	for row in r.get("avg_rank", []):

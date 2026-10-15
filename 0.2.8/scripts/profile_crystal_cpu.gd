@@ -1,9 +1,4 @@
 extends SceneTree
-## Profile CrystalManager / CrystalSimulation / tick_flow CPU.
-## Forces expansion after RUNNING and samples worst/avg process + breakdown.
-## Usage:
-##   CRYSTALSTORM_BAKE_RADIUS=2 CRYSTALSTORM_PERF_PRESET=medium \
-##   godot --headless -s scripts/profile_crystal_cpu.gd
 
 const SAMPLE_FRAMES := 300
 const WARMUP_FRAMES := 30
@@ -47,7 +42,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Steady expansion for measurement (not stream-paused).
 	crystal.expansion_enabled = true
 	if "_stream_pause_frames" in crystal:
 		crystal._stream_pause_frames = 0
@@ -57,13 +51,10 @@ func _run() -> void:
 		crystal._perf_crystal_skip_frames = 0
 	if "_perf_sim_hz" in crystal:
 		crystal._perf_sim_hz = 30.0
-	# Disable stream-pressure gate for measurement so ticks actually run.
 	if crystal.has_method("_stream_pressure_active"):
-		# Replace with always-false via flag if present
 		pass
 	if "_STREAM_PENDING_PAUSE_THRESHOLD" in crystal:
 		pass
-	# Grow a large crystal blob so tick_flow cost is visible (deterministic seed pattern).
 	var target_cells := 800
 	var csim = crystal.get("_simulation") if "_simulation" in crystal else null
 	var fluid = null
@@ -111,7 +102,6 @@ func _run() -> void:
 	var max_cells := 0
 	var worst_breakdown := {}
 
-	# Reset process counters if present
 	if "_process_max_us" in crystal:
 		crystal._process_max_us = 0
 		crystal._process_sum_us = 0
@@ -132,7 +122,6 @@ func _run() -> void:
 		var cells := int(crystal.covered_cells) if "covered_cells" in crystal else 0
 		max_cells = maxi(max_cells, cells)
 
-		# Pull last tick breakdown from simulation if available
 		var sim = crystal.get("_simulation") if "_simulation" in crystal else null
 		if sim and sim.has_method("consume_last_tick_breakdown"):
 			var bd: Dictionary = sim.consume_last_tick_breakdown()
@@ -142,7 +131,6 @@ func _run() -> void:
 				if fus >= max_flow:
 					max_flow = fus
 					worst_breakdown = bd.duplicate()
-		# Manager-side gauges via last process path already includes power/dispatch
 
 	var report := {
 		"sample_frames": n_frames,

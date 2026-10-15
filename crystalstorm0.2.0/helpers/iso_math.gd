@@ -13,18 +13,18 @@ static func voxel_to_screen(x:int, y:int, z:int) -> Vector2:
 	var ry := y
 
 	match rotation:
-		0: # NE
+		0:
 			pass
 
-		1: # NW
+		1:
 			rx = -y
 			ry = x
 
-		2: # SW
+		2:
 			rx = -x
 			ry = -y
 
-		3: # SE
+		3:
 			rx = y
 			ry = -x
 

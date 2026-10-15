@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless proof: generic voxel fluid engine + multi-fluid channel registry.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _CrystalSimConfig = preload("res://config/crystal_sim_config.gd")

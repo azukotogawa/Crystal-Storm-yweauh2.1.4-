@@ -1,6 +1,5 @@
 class_name WeaponStrike
 extends RefCounted
-## Pure hit shapes for spear, hammer, and crystal bomb. No terrain edits.
 
 
 static func thrust_targets(
@@ -27,7 +26,6 @@ static func thrust_targets(
 		if along < -radius or along > range_w + radius:
 			continue
 		var lateral := (to - fwd * along).length()
-		# A thrust is a line, with a little body width so a near miss still clips.
 		if lateral > radius + 0.28:
 			continue
 		if absf(center.y - origin.y) > 3.6:
@@ -45,7 +43,6 @@ static func thrust_targets(
 	return out
 
 
-## Chebyshev neighborhood. radius 1 is the aimed cell plus its 8 neighbors (3×3).
 static func splash_cells(center: Vector2i, chebyshev: int) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	var r := maxi(chebyshev, 0)
@@ -55,7 +52,6 @@ static func splash_cells(center: Vector2i, chebyshev: int) -> Array[Vector2i]:
 	return out
 
 
-## Cells whose column center is within radius. Does not read or write height.
 static func blast_cells(center: Vector2i, radius: float) -> Array[Vector2i]:
 	var out: Array[Vector2i] = []
 	var r := maxi(int(ceil(radius)), 0)
@@ -67,7 +63,6 @@ static func blast_cells(center: Vector2i, radius: float) -> Array[Vector2i]:
 	return out
 
 
-## Calls damage_crystal_at only. Returns how many cells reported a hit.
 static func apply_crystal_cells(crystal, cells: Array, amount: float) -> int:
 	if crystal == null or amount <= 0.0 or not crystal.has_method("damage_crystal_at"):
 		return 0

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: visuals must not commit before ChunkManager late-bind.
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")

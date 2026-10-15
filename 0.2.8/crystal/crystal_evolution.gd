@@ -7,7 +7,7 @@ signal absorption_recorded(source_id: StringName, total: int)
 const _AbsorptionUnlockDef = preload("res://config/absorption_unlock_def.gd")
 
 var unlock_table: Array = []
-var absorbed_counts: Dictionary = {}  # StringName -> int
+var absorbed_counts: Dictionary = {}
 var unlocked_enemies: Array[StringName] = []
 
 

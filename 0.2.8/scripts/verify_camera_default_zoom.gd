@@ -1,6 +1,5 @@
 extends SceneTree
 ## Default ortho zoom is closer than the old 24. Wheel limits, the rig, and iso pitch stay.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_camera_default_zoom.gd
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 

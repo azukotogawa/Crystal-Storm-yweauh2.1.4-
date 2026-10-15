@@ -1,6 +1,4 @@
 extends SceneTree
-## Headless: ChunkView pool reuses the same instance across put/get (shipped ChunkManager path).
-## Does not free+recreate when pool is non-empty.
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const CHUNK_VIEW_SCENE = preload("res://scenes/ChunkView.tscn")
@@ -23,7 +21,6 @@ func _run() -> void:
 		return
 	root.add_child(cm)
 
-	# Acquire fresh view (empty pool → instantiate path).
 	if not cm.has_method("_acquire_chunk_view") or not cm.has_method("_try_pool_chunk_view"):
 		push_error("ChunkManager missing pool methods")
 		_ProbeExit.finish_tree(self, 1, "chunk view pool FAILED")
@@ -36,7 +33,6 @@ func _run() -> void:
 		return
 	var id1: int = v1.get_instance_id()
 
-	# Detach-style put (view not in tree).
 	var put_ok: bool = bool(cm.call("_try_pool_chunk_view", v1))
 	if not put_ok:
 		push_error("pool put failed")
@@ -48,7 +44,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "chunk view pool FAILED")
 		return
 
-	# Acquire again must return same instance (reuse).
 	var v2: Node = cm.call("_acquire_chunk_view")
 	if v2 == null or not is_instance_valid(v2):
 		push_error("second acquire null")
@@ -65,7 +60,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "chunk view pool FAILED")
 		return
 
-	# Put back and clear on teardown path.
 	cm.call("_try_pool_chunk_view", v2)
 	if cm.has_method("_clear_view_pool"):
 		cm.call("_clear_view_pool")

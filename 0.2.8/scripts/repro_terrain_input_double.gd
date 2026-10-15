@@ -1,6 +1,4 @@
 extends SceneTree
-## Reproduce: one build press must not apply two height layers.
-## Drives WeaponController + TerrainEditor with simulated input pulses.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -44,7 +42,6 @@ func _run() -> void:
 	editor.world = world
 	editor.bind_chunk_manager(cm)
 
-	# Direct API: one try_build → exactly +1 layer.
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var before: float = _TerrainEdits.get_height_delta(5, 5)
 	var inv := _Inventory.new()
@@ -63,7 +60,6 @@ func _run() -> void:
 		return
 	print("OK single API build = 1 layer")
 
-	# Count how many times try_build would fire if called twice same frame (bug pattern).
 	var b2: float = _TerrainEdits.get_height_delta(6, 6)
 	editor.try_build(Vector3(6.5, y, 6.5), inv, &"wood_wall")
 	editor.try_build(Vector3(6.5, y, 6.5), inv, &"wood_wall")

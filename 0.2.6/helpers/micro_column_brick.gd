@@ -1,6 +1,5 @@
 class_name MicroColumnBrick
 extends RefCounted
-## Sparse per-column micro refinement payload (localized overlay on macro authority).
 
 
 const REASON_NONE := 0

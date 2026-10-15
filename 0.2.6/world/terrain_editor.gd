@@ -26,9 +26,7 @@ var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 
 var _channel_tick_accum: float = 0.0
 var _growth_manager: Node
-## Last dig/build/plant/channel failure for UI toast (empty on success).
 var last_fail_reason: String = ""
-## Last successful build id (for UI / feedback).
 var last_build_id: StringName = &""
 
 
@@ -79,7 +77,6 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("terrain_editor")
-	# VoxelFluidService owns gravity water when present; equilibrium is fallback only.
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
 	if fluid_svc == null:
 		_channel_tick_accum += delta
@@ -97,7 +94,6 @@ func get_dig_delay(world_pos: Vector3) -> float:
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
 	var dug_depth := maxf(0.0, -_TerrainEdits.get_height_delta(wx, wz))
-	# Sustained rapid dig: ~12–16/s shallow, still responsive deep (terrain as strategy tool).
 	var base_delay := 0.055 + dug_depth * 0.016 + dug_depth * dug_depth * 0.008
 	var dig_speed := 1.0
 	if is_inside_tree():
@@ -115,7 +111,6 @@ func get_channel_delay(world_pos: Vector3) -> float:
 	return get_dig_delay(world_pos) / channel_speed
 
 
-## Walls / gates / bridges place instantly — hold-repeat stays snappy, never weapon-slow.
 func get_build_delay(_world_pos: Vector3 = Vector3.ZERO) -> float:
 	return 0.03
 
@@ -155,7 +150,6 @@ func try_dig(world_pos: Vector3) -> bool:
 		inv = player.inventory
 	_grant_dig_loot(wx, wz, inv)
 	_invalidate_and_rebuild(wx, wz)
-	# Immediate water response so trenches redirect/fill without waiting a tick.
 	_notify_water_reflow(wx, wz, true)
 	terrain_edited.emit(wx, wz, &"dig")
 	return true
@@ -222,7 +216,6 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 		last_fail_reason = "Outside playable area"
 		return false
 
-	# Gates need open ground (no stacked wall) so the player can walk through.
 	if def.is_passage:
 		var layers: int = int(round(_TerrainEdits.get_height_delta(wx, wz) / maxf(_WorldSettings.get_active().layer_height(), 0.001)))
 		if layers > 0 and _TerrainEdits.get_build_tile(wx, wz) >= 0:
@@ -255,7 +248,6 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 			last_fail_reason = "Stack full" if not def.is_bridge else "Bridge stack full"
 			return false
 	else:
-		# Passage: mark build tile for crystal/query without raising surface.
 		if not _TerrainEdits.set_build_tile_only(wx, wz, def.tile_id):
 			inventory.add_item(paid_with, paid_count)
 			last_fail_reason = "Can't place gate here"
@@ -478,7 +470,6 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
 
 
-## Dig/channel/build reshape water — mark fluid dirty; channels force immediate steps.
 func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
 	if fluid_svc == null:

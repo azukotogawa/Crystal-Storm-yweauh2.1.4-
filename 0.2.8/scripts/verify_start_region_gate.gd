@@ -1,5 +1,4 @@
 extends SceneTree
-## Start-region playable gate: status API + loading UI uses live occupancy.
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")

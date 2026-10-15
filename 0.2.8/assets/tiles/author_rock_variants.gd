@@ -1,14 +1,9 @@
 extends SceneTree
-## Repaint stone, ore, and cave-rock cells of Cube.png.
-## Cracks and grains inside the tile. No 4px band and no dark grid line.
-##   godot --headless --path . -s res://assets/tiles/author_rock_variants.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
 const TILE := 32
 
-## base, dark, light, grain. Accents stay near the base so one row is not
-## 20% darker than its neighbor. The grain is the mineral, not a black line.
 const STONE := {
 	Vector2i(0, 4): [Color8(92, 88, 82), Color8(84, 80, 75), Color8(100, 96, 90), Color8(78, 82, 74), 7],
 	Vector2i(1, 4): [Color8(108, 102, 94), Color8(99, 94, 87), Color8(118, 112, 104), Color8(90, 86, 78), 17],

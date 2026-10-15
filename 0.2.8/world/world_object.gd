@@ -1,7 +1,5 @@
 class_name WorldObject
 extends Node3D
-## Authored structure instance. Explicit layers:
-##   gameplay (cell, build_id, yaw) → visual mesh → debug collision AABB → this Node.
 ## Terrain voxels stay MultiMesh; do not instance this per voxel.
 
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
@@ -103,8 +101,6 @@ func _bind_gameplay_bounds() -> void:
 	var vs: float = _WorldSettings.get_active().voxel_scale
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var box := BoxShape3D.new()
-	# Bounds are in this node's local space (origin at walkable surface).
-	# Walls/bridges occupy the raised column; gates are a passage (thin marker only).
 	match visual_id:
 		"gate":
 			box.size = Vector3(vs, layer * 0.08, vs * 0.2)

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: cardinal step ramps emit on landing (high) column, not the lower approach cell.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -94,8 +93,6 @@ func _run() -> void:
 		for x2 in _ChunkData.SIZE:
 			for z2 in _ChunkData.SIZE:
 				fresh.surface_map[x2][z2] = 10.0
-		# Half-chunk terrace so the approach has only one high neighbor (cardinal,
-		# not an inner corner of leftover plateau, and not a 10-8-10 V).
 		for x2 in _ChunkData.SIZE:
 			for z2 in _ChunkData.SIZE:
 				var along: int = (x2 - land.x) * want.x + (z2 - land.y) * want.y
@@ -119,7 +116,6 @@ func _run() -> void:
 		else:
 			print("OK FACE_RAMP landing %s dir %s" % [str(land), str(want)])
 
-	# Stale in-chunk halo must not hide a stamped step (live remesh leftover).
 	var stale := _ChunkData.new(Vector2i(0, 0), world)
 	stale.capture_worker_snapshot()
 	_init_maps(stale)
@@ -153,9 +149,6 @@ func _run() -> void:
 	else:
 		print("OK FACE_RAMP despite stale in-chunk halo")
 
-	# Live south failure: landing is also one layer below a perpendicular ridge.
-	# Side-entry corner pick + approach-block used to consume the landing
-	# (ramp_map.approach=true, faces=[]). Cardinal FACE_RAMP must still emit.
 	var terrace := _ChunkData.new(Vector2i(0, 0), world)
 	terrace.capture_worker_snapshot()
 	_init_maps(terrace)
@@ -193,8 +186,6 @@ func _run() -> void:
 	else:
 		print("OK terrace landing FACE_RAMP not stolen as approach")
 
-	# Approach column is in the +X neighbor. A capture halo still holding the
-	# pre-stamp border height hides the step; resident remesh must copy it.
 	var border := _ChunkData.new(Vector2i(0, 0), world)
 	border.capture_worker_snapshot()
 	_init_maps(border)
@@ -210,9 +201,6 @@ func _run() -> void:
 			neighbor.tile_map[bx][bz] = _VoxelTypes.GRASSLAND
 	var edge_lx := _ChunkData.SIZE - 1
 	var edge_lz := 8
-	# A one-cell notch is an inner corner (high flanks), so model A draws no
-	# cardinal. The neighbor terrace stays low across the border strip; the
-	# pre-stamp halo below still hides that step until refresh.
 	for nx in range(0, 8):
 		for nz in _ChunkData.SIZE:
 			neighbor.surface_map[nx][nz] = border_h - layer
@@ -251,13 +239,9 @@ func _run() -> void:
 	border_view.free()
 	neighbor_view.free()
 
-	# East yard failure: approach already a two-layer cliff, sides still high.
-	# Subtracting another layer never becomes one cardinal step. The stamp
-	# must write landing_h - layer and drop the approach sides.
 	var cliff := _ChunkData.new(Vector2i(0, 0), world)
 	cliff.capture_worker_snapshot()
 	_init_maps(cliff)
-	# Landing sits far enough inside the chunk that an 8-cell terrace stays on this map.
 	var land_c := Vector2i(4, 8)
 	var approach_c := Vector2i(5, 8)
 	for x3 in _ChunkData.SIZE:
@@ -302,7 +286,6 @@ func _run() -> void:
 		print("OK isolated yard step emits FACE_RAMP")
 	cliff_view.free()
 
-	# 10-8-10 valley: two landings must not point into the same pit (no V).
 	var valley := _ChunkData.new(Vector2i(0, 0), world)
 	valley.capture_worker_snapshot()
 	_init_maps(valley)
@@ -330,7 +313,6 @@ func _run() -> void:
 	else:
 		print("OK no opposing V-ramps into 10-8-10 valley (left=%d right=%d)" % [v_left, v_right])
 
-	# Two-cell-wide valley 10-8-8-10: ramps facing across the pit must not both exist.
 	var wide := _ChunkData.new(Vector2i(0, 0), world)
 	wide.capture_worker_snapshot()
 	_init_maps(wide)

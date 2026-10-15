@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: run smoke via wrapper 3x; audit WeaponController + entity markers.
 
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"
 const RUNS := 3

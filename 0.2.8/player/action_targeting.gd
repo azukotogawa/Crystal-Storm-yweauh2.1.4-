@@ -8,12 +8,10 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-## Dig/build/remove/place reach in columns (INPUT_CONTRACT). Combat weapons keep item ranges.
 const INTERACTION_RANGE := 8.0
 ## Slack as a fraction of voxel_scale. Just under half a column, so a ray through
 ## a cell center is not stolen by a neighbor.
 const PICK_TOLERANCE_SCALE := 0.45
-## 0 top +Y, 1 bottom -Y, 2 +X, 3 -X, 4 +Z, 5 -Z. The face the last pick will affect.
 static var last_pick_face: int = 0
 static var last_pick_exact: bool = false
 static var _aabb_t: float = 0.0
@@ -35,7 +33,6 @@ static func _camera_yaw_degrees(player: Node3D) -> float:
 	return 45.0
 
 
-## Match player movement: screen-up (W / ui_up) maps to world forward via camera yaw.
 static func _rotate_input_to_world(input: Vector2, yaw_degrees: float) -> Vector2:
 	var rad := deg_to_rad(yaw_degrees)
 	var ca := cos(rad)
@@ -267,8 +264,6 @@ static func _target_column_forward(
 	var forward := attack_forward(player)
 	if forward.length_squared() < 0.0001:
 		forward = Vector3(1.0, 0.0, 0.0)
-	# The column under the player is solid, so a march from distance 0 always
-	# returns the feet cell and never reaches a crystal or dig target ahead.
 	var stand := Vector2i(floori(player.voxel_position.x), floori(player.voxel_position.z))
 	var dist := 0.0
 	var last_in_range := Vector3.ZERO
@@ -284,15 +279,12 @@ static func _target_column_forward(
 			if _is_solid_column(world, chunk_manager, wx, wz):
 				return last_in_range
 		dist += 0.35
-	# Prefer a facing column even while streaming/solid checks are cold so dig never no-ops.
 	if last_in_range != Vector3.ZERO:
 		return last_in_range
 	var fallback: Vector3 = player.voxel_position + forward * minf(range_v, 1.25)
 	return Vector3(float(floori(fallback.x)) + 0.5, player.voxel_position.y, float(floori(fallback.z)) + 0.5)
 
 
-## Stable ortho pick: iterative plane intersect refined by walkable surface height.
-## When require_in_range is false, follows the mouse even outside dig/build range (cursor fidelity).
 static func _pick_column_from_mouse(
 	player: Node3D,
 	range_v: float,
@@ -309,7 +301,6 @@ static func _pick_column_from_mouse(
 	var ws = _WorldSettings.get_active()
 	var mouse := vp.get_mouse_position()
 	var rect := vp.get_visible_rect()
-	# Off-screen mouse (probes / warp away): fall back to facing. Skip when viewport has no size (headless).
 	if rect.size.x > 4.0 and rect.size.y > 4.0:
 		if mouse.x < rect.position.x - 2.0 or mouse.y < rect.position.y - 2.0 \
 				or mouse.x > rect.end.x + 2.0 or mouse.y > rect.end.y + 2.0:
@@ -322,7 +313,6 @@ static func _pick_column_from_mouse(
 	if absf(dir.y) < 0.00001:
 		return Vector3.ZERO
 
-	# Iterative plane pick (stable, no step-ray jitter between neighboring columns).
 	var plane_y: float = player.global_position.y
 	var best := Vector3.ZERO
 	var max_abs_t: float = 400.0
@@ -337,7 +327,6 @@ static func _pick_column_from_mouse(
 		var col_z: float = float(wz) + 0.5
 		var in_range: bool = _column_in_range(player, wx, wz, range_v)
 		if require_in_range and not in_range:
-			# Still refine height from nearest guess so cursor settles smoothly when re-entering range.
 			if world != null:
 				plane_y = _walkable_top(world, chunk_manager, col_x, col_z)
 			continue
@@ -360,7 +349,6 @@ static func _pick_column_from_mouse(
 	if bool(ray_pick.get("hit", false)):
 		return ray_pick.get("column", Vector3.ZERO)
 
-	# Fallback: denser ray march within range (entities / odd slabs).
 	if world != null:
 		var step: float = ws.voxel_scale * 0.15
 		var max_dist: float = minf((range_v + 3.0) * ws.voxel_scale * 3.5, 120.0)
@@ -385,9 +373,6 @@ static func _pick_column_from_mouse(
 	return best
 
 
-## Ray pick used by probes and as the mouse fallback. Column space (x/z = cell + 0.5).
-## Exact slab hits are returned as-is. A miss within PICK_TOLERANCE_SCALE snaps to the
-## nearest in-range cell. An exact hit outside range is rejected when require_in_range.
 static func pick_along_ray(
 	origin: Vector3,
 	dir: Vector3,
@@ -537,7 +522,6 @@ static func _finish_pick(wx: int, wz: int, face: int, exact: bool, _player: Node
 	return {"column": col, "face": face, "hit": true, "exact": exact, "reject": false}
 
 
-## Keep an exact hit on the plane cell. Otherwise snap to a slab the ray barely misses.
 static func _snap_near_miss(
 	origin: Vector3,
 	dir: Vector3,
@@ -687,7 +671,6 @@ static func _nearest_face(origin: Vector3, dir: Vector3, bmin: Vector3, bmax: Ve
 	return 4 if delta.z >= 0.0 else 5
 
 
-## Mouse hover column for cursor UI (ignores dig range so the box follows the pointer).
 static func pick_hover_column(
 	player: Node3D,
 	world: InfiniteNoiseWorld,
@@ -697,7 +680,6 @@ static func pick_hover_column(
 	return _pick_column_from_mouse(player, range_v, world, chunk_manager, false)
 
 
-## Predicted next column past hover along the camera ray (for dig/build trail feel).
 static func predict_next_column(
 	player: Node3D,
 	from_col: Vector3,
@@ -718,7 +700,6 @@ static func predict_next_column(
 	if dir.length_squared() < 0.00001:
 		return Vector3.ZERO
 	dir = dir.normalized()
-	# Horizontal ray direction in column space.
 	var flat := Vector3(dir.x, 0.0, dir.z)
 	if flat.length_squared() < 0.00001:
 		flat = attack_forward(player)
@@ -739,7 +720,6 @@ static func predict_next_column(
 	return Vector3(float(wx) + 0.5, from_col.y, float(wz) + 0.5)
 
 
-## Screen position for a column center (probes / warp_mouse).
 static func screen_pos_for_column(
 	player: Node3D,
 	world: InfiniteNoiseWorld,
@@ -777,10 +757,6 @@ static func warp_mouse_to_column(
 		vp.warp_mouse(screen)
 
 
-## Flat XZ aim shared by the pick highlight, the bow, melee, and the hammer.
-## The column is the cursor cell, then the mouse ray, then camera forward.
-## A short weapon still aims at the cursor the pick can reach. Callers apply
-## their own hit range on top of this direction.
 static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
@@ -789,7 +765,6 @@ static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Ve
 		var origin_x := float(player.voxel_position.x)
 		var origin_z := float(player.voxel_position.z)
 		var offset := Vector3(col.x - origin_x, 0.0, col.z - origin_z)
-		# Ignore a cell under the feet so a centered cursor keeps the camera aim.
 		if offset.length_squared() > 0.04:
 			return offset.normalized()
 	return attack_forward(player)
@@ -815,14 +790,10 @@ static func _cursor_column(player: Node3D, range_v: float) -> Vector3:
 	return Vector3.ZERO
 
 
-## Flat XZ direction from player toward mouse/forward target column (melee swing facing).
 static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 	return cursor_aim(player, range_v)
 
 
-## Splash / strike column toward the cursor, clamped to hit_range.
-## target_column() returns ZERO when the highlight is past the hit range, which
-## dropped the hammer on the camera. This keeps the slam on the cursor ray.
 static func column_toward_cursor(player: Node3D, hit_range: float) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
@@ -846,7 +817,6 @@ static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 		return Vector3.ZERO
 	var world := _player_world(player)
 	var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") if player.is_inside_tree() else null
-	# Prefer the same column the highlight is showing (zero missed digs vs cursor).
 	if player.is_inside_tree():
 		var hl = player.get_node_or_null("TargetHighlight")
 		if hl != null and hl.has_method("get_action_column"):
@@ -854,11 +824,9 @@ static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 			if shared != Vector3.ZERO:
 				var sx := floori(shared.x)
 				var sz := floori(shared.z)
-				# Return highlighted cell only when in range; out-of-range is ZERO so callers fail clear.
 				if _column_in_range(player, sx, sz, range_v):
 					return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
 				return Vector3.ZERO
-	# Actions only accept in-range picks (require_in_range=true).
 	var mouse_col := _pick_column_from_mouse(player, range_v, world, chunk_manager, true)
 	if mouse_col != Vector3.ZERO:
 		return mouse_col
@@ -883,8 +851,6 @@ static func target_cell(player: Node3D, range_v: float = 2.0) -> Vector2i:
 	return cell_column(target_column(player, range_v))
 
 
-## Hotbar mode. RMB previews build when the bag has stone or wood.
-## A right-click ability (herb, bomb, armor) never switches into build.
 static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) -> StringName:
 	if player == null:
 		return &"none"
@@ -909,7 +875,6 @@ static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) 
 					mode = &"attack" if kind == _ItemTypes.WeaponKind.MELEE else &"ranged"
 				elif _ItemTypes.is_placeable_block(held_id) and int(slot.get("count", 0)) > 0:
 					mode = &"build"
-	# Right-click use wins over placement, even when the bag holds stone.
 	if _ItemTypes.has_right_click_ability(held_id):
 		return mode
 	if force_build and has_build_mat:
@@ -948,7 +913,6 @@ static func resolve_action(
 	col = Vector3(float(wx) + 0.5, col.y, float(wz) + 0.5)
 	var surf: float = world.get_surface_height(col.x, col.z) if world else col.y
 	var ws = _WorldSettings.get_active()
-	# walk_top = feet / top face of the column (dig highlight anchors here).
 	var walk_top: float = surf + ws.layer_height()
 	if world:
 		walk_top = _walkable_top(world, chunk_manager, col.x, col.z)
@@ -964,13 +928,10 @@ static func resolve_action(
 	var valid := mode != &"none" and in_range \
 		and _is_action_valid(world, chunk_manager, wx, wz, mode, player, range_v)
 	var blocked := mode != &"none" and not valid
-	# Keep mode when blocked so the player still sees a red/orange preview (not a blank cursor).
-	# Dig: box sits on walk_top (column top face) — not buried mid-slab.
 	var highlight_y: float = walk_top
 	if mode == &"dig":
 		highlight_y = walk_top
 	elif mode == &"build":
-		# Placement top face of the next stacked layer.
 		highlight_y = walk_top + layer_h * float(built_layers + 1)
 	elif mode in [&"attack", &"ranged"] and not _is_solid_column(world, chunk_manager, wx, wz):
 		highlight_y = walk_top + layer_h * 0.35

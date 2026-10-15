@@ -1,6 +1,4 @@
 extends SceneTree
-## Saved player_settings.json must not replace CRYSTALSTORM_PERF_PRESET
-## or stamp a leftover render_distance onto a different preset.
 
 const _PS = preload("res://systems/player_settings.gd")
 const _PQC = preload("res://config/performance_quality_config.gd")

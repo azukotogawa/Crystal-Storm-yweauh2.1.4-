@@ -1,5 +1,4 @@
 extends SceneTree
-## Scripted fluid playtest: dig/channel/build on production main scene with observed levels.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")

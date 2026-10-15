@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: LOW/MEDIUM/HIGH perf presets apply without invalid config.
 
 
 const _Perf = preload("res://config/performance_quality_config.gd")

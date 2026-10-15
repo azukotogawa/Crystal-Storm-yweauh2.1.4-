@@ -112,7 +112,6 @@ func _load_textures() -> void:
 		await registry.ensure_ready()
 	await _await_chunk_manager()
 	if registry:
-		# Bundle is generated once at registry init; preload is a no-op when ready.
 		if registry.has_method("preload_game_bundle"):
 			registry.preload_game_bundle(false, "CombatVisualFeedback._load_textures")
 		_textures = {
@@ -273,7 +272,6 @@ func _process(delta: float) -> void:
 		profiler.end("combat_vfx")
 
 
-## Brief placement flash for walls / gates / bridges (satisfying build feedback).
 func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") -> void:
 	if build_id == &"dig":
 		_burst_dig_dust(col_pos)
@@ -295,7 +293,6 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 			color = Color(0.85, 0.55, 0.28)
 			label = ""
 		&"crystal_front":
-			# Sparse pulse on the nearest open crystal edge (readability only).
 			color = Color(0.85, 0.35, 1.0)
 			label = ""
 		_:
@@ -358,7 +355,6 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 		_spawn_break_shards(anchor.global_position, color, 3)
 
 
-## Short ring at a world-space impact. Radius matches the combat hitbox when known.
 func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), radius: float = 0.45) -> void:
 	if not enabled or not _PlayerSettings.hit_markers_enabled:
 		return
@@ -573,7 +569,6 @@ func _on_crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool) -> vo
 	if not enabled:
 		return
 	var tint := Color(0.78, 0.35, 1.0)
-	# Depth chips are fractions of a layer. Integer damage numbers would read as 0.
 	var text := "BREAK" if broken else "-%.1f" % amount
 	_show_text_at(world_pos + Vector3(0.0, _vox(0.35), 0.0), text, tint)
 	show_hit_marker(world_pos, tint, _vox(0.28))

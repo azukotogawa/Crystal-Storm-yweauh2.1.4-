@@ -1,6 +1,5 @@
 class_name StructureOrientation
 extends RefCounted
-## Shared yaw for authored structures. Gameplay stores it; visuals and collision read it.
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 

@@ -1,6 +1,5 @@
 class_name TerrainEdits
 extends RefCounted
-## Compatibility façade over WorldState terrain overlay storage.
 
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -57,7 +56,6 @@ static func build_wall(wx: int, wz: int, tile_id: int) -> bool:
 	return true
 
 
-## Gate / marker: set build tile without raising column height (walkable passage).
 static func set_build_tile_only(wx: int, wz: int, tile_id: int) -> bool:
 	if not can_edit(wx, wz):
 		return false
@@ -68,7 +66,6 @@ static func set_build_tile_only(wx: int, wz: int, tile_id: int) -> bool:
 	return true
 
 
-## Reverse one `build_wall` layer. Last layer also clears build_tile.
 static func unstack_build(wx: int, wz: int) -> bool:
 	if not can_edit(wx, wz):
 		return false

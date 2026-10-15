@@ -1,5 +1,4 @@
 extends SceneTree
-## Macro-on vs macro-off — same-shell paired samples, frozen gate in MacroTerrainPerfGate.
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
@@ -293,7 +292,6 @@ func _apply_macro_env(macro_on: bool) -> void:
 	_ChunkData.set_micro_enabled_for_benchmark(false)
 
 
-## Allocate macro view + extended columns once per shell (outside all timers).
 func _prewarm_shell_layout(data: ChunkData) -> void:
 	_apply_macro_env(true)
 	data.sync_macro_mode_from_env()

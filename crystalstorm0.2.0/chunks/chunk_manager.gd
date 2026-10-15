@@ -22,15 +22,13 @@ func _init(p_world: InfiniteNoiseWorld, p_scene: PackedScene):
 func _ready():
 	add_to_group("chunk_manager")
 	thread.start(_worker)
-	# Find Player (from VoxelWorld -> Game -> Player)
 	player = get_node_or_null("../../Player")
 	if player == null:
-		player = get_node_or_null("../Player")  # fallback
+		player = get_node_or_null("../Player")
 	
 	if player == null:
 		push_error("ChunkManager: Could not find Player node!")
 	
-	# World is passed in _init, but fallback just in case
 	if world == null:
 		world = get_node_or_null("../../World") as InfiniteNoiseWorld
 
@@ -48,7 +46,6 @@ func update_stream(cx:int, cy:int):
 
 	var needed := {}
 
-	# build desired set
 	for y in range(cy - RENDER_DISTANCE, cy + RENDER_DISTANCE + 1):
 		for x in range(cx - RENDER_DISTANCE, cx + RENDER_DISTANCE + 1):
 			var key = Vector2i(x, y)
@@ -57,7 +54,6 @@ func update_stream(cx:int, cy:int):
 			if not chunks.has(key):
 				request_chunk(key)
 
-	# unload old chunks
 	for key in chunks.keys():
 		if not needed.has(key):
 			chunks[key].queue_free()
@@ -109,8 +105,6 @@ func _generate_chunk(data: ChunkData):
 
 			var h = biome["render_height"]
 
-			# IMPORTANT: clamp into real voxel range
-			#var terrain_height = clamp(h + 20, 1, ChunkData.HEIGHT - 1)
 
 			var voxel_id = VoxelTypes.biome_to_voxel_id.get(
 				biome["name"],

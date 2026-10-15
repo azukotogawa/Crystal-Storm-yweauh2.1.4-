@@ -1,5 +1,4 @@
 extends SceneTree
-## Runs smoke wrapper and proves manual_verification.md is untouched.
 
 const MANUAL := "/tmp/grok-goal-e8916ce4c6d5/implementer/manual_verification.md"
 const SMOKE_EVIDENCE := "/tmp/grok-goal-e8916ce4c6d5/implementer/scripted_smoke_evidence.md"

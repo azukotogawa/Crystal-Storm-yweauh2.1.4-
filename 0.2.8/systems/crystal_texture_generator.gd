@@ -1,15 +1,5 @@
 extends Node
-## Procedural texture & sprite generator for Crystal Storm.
-##
-## Usage:
-##   CrystalTextureGenerator.generate_texture(Category.CRYSTAL, &"amethyst")
-##   CrystalTextureGenerator.generate_crystal_sprite_frames(&"void_shard")
-##   CrystalTextureGenerator.export_sprite_sheet(&"amethyst", 4)
-##
-## Tune via CrystalTextureGenConfig (.tres) or JSON palettes (TexturePaletteJsonIO).
 
-## Autoload singleton — access globally as CrystalTextureGenerator.
-## Intentionally no class_name (would collide with autoload registration).
 
 const _GenConfig = preload("res://config/crystal_texture_gen_config.gd")
 const _Palette = preload("res://config/crystal_texture_palette.gd")
@@ -32,8 +22,7 @@ signal sprite_sheet_exported(path: String, metadata: Dictionary)
 
 var config: _GenConfig = _GenConfig.create_default()
 
-var _noise_cache: Dictionary = {}  # String -> FastNoiseLite
-## Set by the last authored load so generate_texture can stamp the resolved path.
+var _noise_cache: Dictionary = {}
 var _last_authored_path: String = ""
 
 
@@ -53,11 +42,7 @@ func get_config() -> _GenConfig:
 	return config
 
 
-# ---------------------------------------------------------------------------
-# Public API — textures
-# ---------------------------------------------------------------------------
 
-## Measurement counters (teleport/visual regen investigation).
 var _trace_generate_image_count: int = 0
 var _trace_generate_texture_count: int = 0
 var _trace_generate_image_by_category: Dictionary = {}
@@ -273,7 +258,6 @@ func _authored_folder(category: Category) -> String:
 			return ""
 
 
-## On-disk art wins over the procedural fill. The texture set resolver picks Batch 1 when it exists.
 func _load_authored_image(folder: String, variant_id: String, size: int) -> Image:
 	_last_authored_path = ""
 	if folder.is_empty() or variant_id.is_empty():
@@ -286,8 +270,6 @@ func _load_authored_image(folder: String, variant_id: String, size: int) -> Imag
 	if image == null or image.is_empty():
 		return null
 	_last_authored_path = str(tex.get_meta("cs_art_path", path))
-	# A smaller file is the low-res icon. Stretching it up still looks soft
-	# in the slot, so the caller falls through to the native-size paint.
 	if size > 0 and (image.get_width() < size or image.get_height() < size):
 		return null
 	if size > 0 and (image.get_width() != size or image.get_height() != size):
@@ -296,7 +278,6 @@ func _load_authored_image(folder: String, variant_id: String, size: int) -> Imag
 	return image
 
 
-## 32-grid rect, scaled onto `size`, with a 1px dark edge so it is not a blown-up block.
 func _paint_icon_rect(img: Image, x0: int, y0: int, x1: int, y1: int, color: Color, size: int) -> void:
 	var s := float(size) / 32.0
 	var a := int(round(float(x0) * s))
@@ -366,9 +347,6 @@ func generate_crystal_variants(count: int = 4, palette_id: StringName = &"") -> 
 	return out
 
 
-# ---------------------------------------------------------------------------
-# Public API — animation / sprite sheets
-# ---------------------------------------------------------------------------
 
 func generate_crystal_sprite_frames(
 	variant_id: StringName = &"amethyst",
@@ -503,9 +481,6 @@ func import_palettes_json(path: String) -> bool:
 	return true
 
 
-# ---------------------------------------------------------------------------
-# Material helpers — swap procedural textures into existing materials later
-# ---------------------------------------------------------------------------
 
 func apply_to_standard_material(
 	tex: Texture2D,
@@ -523,9 +498,6 @@ func apply_to_standard_material(
 		material.metallic = palette.metallic_hint
 
 
-# ---------------------------------------------------------------------------
-# Generation kernels
-# ---------------------------------------------------------------------------
 
 func _fill_crystal(image: Image, palette: _Palette, seed_val: int, phase: float) -> void:
 	var dim := image.get_width()
@@ -550,11 +522,9 @@ func _fill_crystal(image: Image, palette: _Palette, seed_val: int, phase: float)
 			var color := palette.primary.lerp(palette.secondary, facet)
 			color = color.lerp(palette.accent, ridge * 0.35)
 
-			# Iridescence — hue shift from noise + radial view fake
 			var irid := palette.iridescence_strength * sin((nx + ny + facet) * TAU + phase * TAU)
 			color = color.lerp(_shift_hue(palette.accent, irid * palette.iridescence_hue_shift), absf(irid))
 
-			# Inner glow peaks
 			var glow_mask := smoothstep(0.55, 0.95, facet) * palette.glow_strength
 			glow_mask *= 0.65 + 0.35 * pulse
 			color = color.lerp(palette.glow_color, glow_mask)
@@ -714,7 +684,6 @@ func _fill_entity_sprite(image: Image, palette: _Palette, seed_val: int, variant
 			c.a = 1.0 - smoothstep(0.82, 1.0, body)
 			image.set_pixel(x, y, c)
 
-	# Ears / horns / crest
 	if id_str in ["rabbit", "deer", "boar"]:
 		for y in dim:
 			for x in dim:
@@ -809,30 +778,26 @@ func _fill_building_sprite(image: Image, palette: _Palette, seed_val: int, varia
 				continue
 			var c := palette.secondary.lerp(palette.primary, v)
 			if is_wood:
-				# Vertical timber grain.
 				c = c.lerp(palette.accent, absf(sin(v * 22.0)) * 0.18)
 				if absf(u - 0.5) < 0.04:
 					c = c.lerp(palette.shadow, 0.25)
 			if is_stone:
-				# Blocky mortar joints.
 				if int(u * 6.0) % 2 == 0 and absf(sin(v * 18.0)) > 0.85:
 					c = c.lerp(palette.shadow, 0.4)
 				c = c.lerp(palette.accent, absf(sin(u * 9.0 + v * 7.0)) * 0.12)
 			if is_ruin:
 				c = c.lerp(palette.shadow, absf(sin(u * 31.0 + float(seed_val))) * 0.45)
 				if v > 0.7 and absf(u - 0.5) > 0.22:
-					continue  # broken top silhouette in texture
+					continue
 			if is_hall:
-				# Warm walls + brighter roof band.
 				if v < 0.40:
 					c = palette.accent.lerp(palette.primary, 0.35)
 				elif absf(u - 0.5) < 0.12 and v > 0.55 and v < 0.78:
-					c = palette.secondary.darkened(0.2)  # door
+					c = palette.secondary.darkened(0.2)
 			c.a = 0.95
 			image.set_pixel(x, y, c)
 
 
-## Temporary distinct gate: upright posts + open arch (not a solid wood wall).
 func _fill_gate_sprite(image: Image, palette: _Palette) -> void:
 	var dim := image.get_width()
 	for y in dim:
@@ -854,7 +819,6 @@ func _fill_gate_sprite(image: Image, palette: _Palette) -> void:
 			image.set_pixel(x, y, c)
 
 
-## Temporary distinct bridge: horizontal deck + side rails (not a vertical wall).
 func _fill_bridge_sprite(image: Image, palette: _Palette) -> void:
 	var dim := image.get_width()
 	for y in dim:
@@ -897,9 +861,6 @@ func _fill_particle(image: Image, palette: _Palette, seed_val: int, phase: float
 			image.set_pixel(x, y, color)
 
 
-# ---------------------------------------------------------------------------
-# Internals
-# ---------------------------------------------------------------------------
 
 func _resolve_palette(category: Category, variant_id: StringName) -> _Palette:
 	if category == Category.ENTITY:
@@ -997,12 +958,10 @@ func _building_palette(variant_id: StringName) -> _Palette:
 			p.secondary = Color(0.38, 0.26, 0.15)
 			p.accent = Color(0.72, 0.52, 0.32)
 		"gate":
-			# Amber posts — clearly not wood_wall brown.
 			p.primary = Color(0.78, 0.62, 0.22)
 			p.secondary = Color(0.48, 0.36, 0.12)
 			p.accent = Color(0.98, 0.88, 0.42)
 		"bridge":
-			# Cool blue-slate deck — clearly not wood_wall or gate.
 			p.primary = Color(0.32, 0.48, 0.62)
 			p.secondary = Color(0.22, 0.34, 0.46)
 			p.accent = Color(0.55, 0.72, 0.88)

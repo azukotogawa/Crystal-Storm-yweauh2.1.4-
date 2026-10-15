@@ -1,7 +1,5 @@
 class_name Projectile
 extends Node3D
-## Pooled arrow / stone / bomb. Gravity, a segment test, then stick, fade, or blast.
-## No physics body. Never edits terrain height.
 
 const MAX_LIVE := 32
 const STICK_TIME := 1.15
@@ -41,9 +39,7 @@ var _crystal = null
 var _world = null
 var _chunk_manager = null
 var _mesh: MeshInstance3D
-## One fade material per node, created with the node. Impacts reuse it.
 var _fade_mat: StandardMaterial3D
-## Set while remove_child is parking this node in the pool, so _exit_tree does not drop it.
 var _pool_detach: bool = false
 
 
@@ -132,8 +128,6 @@ func _activate(spec: Dictionary) -> void:
 	stuck = false
 	stick_left = 0.0
 	visible = true
-	# The weapon node is not spatial. Stay in world space so a later
-	# Node3D parent cannot drag the shot off the arc the player is watching.
 	top_level = true
 	kind = StringName(str(spec.get("kind", "arrow")))
 	global_position = spec.get("origin", Vector3.ZERO)
@@ -160,7 +154,6 @@ func _process(delta: float) -> void:
 	integrate(delta, _nodes_for_frame())
 
 
-## Semi-implicit step. Probe calls this directly. Returns "fly", "entity", "crystal", "terrain", or "blast".
 func integrate(delta: float, nodes: Array = []) -> String:
 	if not active:
 		return "idle"
@@ -396,7 +389,6 @@ func _recycle() -> void:
 
 
 func _recycle_keep_count() -> void:
-	# Reuse a live slot. The node stays tracked; _activate does not add it twice.
 	active = false
 	stuck = false
 	_crystal = null
@@ -409,7 +401,6 @@ func _recycle_keep_count() -> void:
 func _exit_tree() -> void:
 	if _pool_detach:
 		return
-	# Parent scene freed this shot. Drop it before the next run pops a dead node.
 	active = false
 	_forget_tracked()
 	var pool_i := _pool.find(self)
@@ -502,9 +493,6 @@ static func _shared_arrow_mesh() -> Mesh:
 	return _arrow_mesh
 
 
-## Solid shaft, head, and fletching. -Z is the tip (the node aims -Z along velocity).
-## The iso camera looks along the shot, so a flat cross is edge-on and disappears.
-## Each part is a box or a pyramid with a face the camera can see.
 static func _build_arrow_mesh(vs: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -554,7 +542,6 @@ static func _arrow_box(st: SurfaceTool, center: Vector3, size: Vector3, color: C
 	_arrow_quad(st, p[3], p[7], p[6], p[2], color)
 
 
-## Square base at z_base, point at z_tip. The tip is the -Z end of the arrow.
 static func _arrow_pyramid(st: SurfaceTool, z_base: float, z_tip: float, half: float, color: Color) -> void:
 	var apex := Vector3(0, 0, z_tip)
 	var b0 := Vector3(-half, -half, z_base)

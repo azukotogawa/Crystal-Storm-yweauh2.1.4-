@@ -42,8 +42,6 @@ func _ready() -> void:
 	add_to_group("crystal_enemy")
 	_bind_scene()
 	_hook_visual_registry()
-	# Spatial registration is deferred to setup()/sync_spatial_index() so the
-	# spawner can set global_position before the index samples it.
 
 
 func setup(
@@ -81,7 +79,6 @@ func setup(
 		_setup_visual(Color(0.72, 0.2, 0.95))
 
 	health = max_health
-	# Caller (spawner/import) must set global_position before setup; index now.
 	sync_spatial_index()
 
 
@@ -217,8 +214,6 @@ func get_combat_radius() -> float:
 	return maxf(_mesh_radius * 1.2, 0.35)
 
 
-## Register or refresh spatial index at the current world position.
-## Call after global_position is final (spawner/import order: add_child → pos → setup).
 func sync_spatial_index() -> void:
 	if not is_inside_tree():
 		return

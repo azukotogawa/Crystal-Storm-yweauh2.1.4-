@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless streaming lifecycle investigation — lifecycle telemetry + stall timeline (no optimizations).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

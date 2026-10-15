@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: crystal fluid voxels align with terrain column_to_world scale.
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")

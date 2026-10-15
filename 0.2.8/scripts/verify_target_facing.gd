@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: attack targeting must follow camera orbit, not a fixed south bias.
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")

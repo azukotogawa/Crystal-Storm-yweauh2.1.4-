@@ -1,6 +1,4 @@
 extends SceneTree
-## One gameplay unit: a voxel column is layer_height() world units.
-## People, creatures, and crystal cells are sized in that unit.
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")

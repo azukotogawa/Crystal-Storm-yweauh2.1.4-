@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed: naturally generated ramps + real TerrainEdits.dig. Camera is truth.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _LiveWorldQuery = preload("res://helpers/live_world_query.gd")
@@ -200,7 +199,6 @@ func _run() -> void:
 					_fail("wall feature still present after remove")
 				else:
 					print("OK wall place/remove no terrain voxel")
-		# Gate + remove
 		if editor.try_build_gate(pos, inv):
 			if cm.has_method("await_rebuild_idle"):
 				await cm.await_rebuild_idle(80)
@@ -244,7 +242,6 @@ func _run() -> void:
 				else:
 					print("OK fill raised %.2f→%.2f" % [fh0, fh1])
 
-	# Dig immediately beside a generated cardinal ramp (exposed side lips).
 	if cardinal.x != -99999:
 		var rsnap: Dictionary = _LiveWorldQuery.inspect_cell(self, cardinal.x, cardinal.y)
 		var rdir: Vector2i = (rsnap.get("ramp", {}) as Dictionary).get("dir", Vector2i(1, 0))
@@ -263,7 +260,6 @@ func _run() -> void:
 		if int(bgeom.get("tri_count", 0)) <= 0:
 			_fail("cardinal landing lost slope triangles after beside-dig")
 
-	# Opposing-ramp prevention: 1-layer pit in a flat run must not grow a V.
 	var pit := _pick_interior_solid(cm, world)
 	if pit.x != -99999:
 		await _dig_and_check(cm, world, editor, insp, pit, "valley_pit")
@@ -283,7 +279,6 @@ func _run() -> void:
 		else:
 			print("OK no V-ramps into pit %s (L=%s R=%s)" % [str(pit), str(ld), str(rd)])
 
-	# Two-layer dig: leftover mid-height tops must not remain.
 	var deep := _pick_interior_solid(cm, world)
 	if deep.x == -99999:
 		_fail("no deep-dig cell")
@@ -314,14 +309,12 @@ func _run() -> void:
 				if not bool(dsnap.get("column_mesh_covered", false)):
 					_fail("deep dug cell uncovered")
 
-	# Interior dig
 	var interior := _pick_interior_solid(cm, world)
 	if interior.x == -99999:
 		_fail("no interior dig cell")
 	else:
 		await _dig_and_check(cm, world, editor, insp, interior, "interior")
 
-	# Chunk-boundary dig (local x or z == 0 or SIZE-1 of a resident chunk)
 	var edge := _pick_edge_solid(cm, world)
 	if edge.x == -99999:
 		_fail("no edge dig cell")

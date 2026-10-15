@@ -1,7 +1,4 @@
 extends SceneTree
-## Prove bridge uses the on-disk authored mesh end-to-end (not multi-box procedural).
-## Also proves wood/stone/gate authored binds are not regressed.
-## Usage: godot --headless -s scripts/verify_bridge_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -75,7 +72,6 @@ func _test_asset_files_exist() -> void:
 	if tex.get_width() != 256 or tex.get_height() != 256:
 		_fail("bridge albedo expected 256x256, got %dx%d" % [tex.get_width(), tex.get_height()])
 	var aabb: AABB = (mesh_res as Mesh).get_aabb()
-	# Low square deck, not a wall/gate/cube.
 	if aabb.size.y > 0.7:
 		_fail("bridge mesh too tall to be a deck (h=%.3f)" % aabb.size.y)
 	if aabb.size.x < 0.9 or aabb.size.z < 0.9:
@@ -84,7 +80,6 @@ func _test_asset_files_exist() -> void:
 		_fail("bridge not a low crossing (size=%s)" % str(aabb.size))
 	if is_equal_approx(aabb.size.x, aabb.size.y) and is_equal_approx(aabb.size.y, aabb.size.z):
 		_fail("bridge mesh looks like a cube %s" % str(aabb.size))
-	# Deck + two side rails: not a flat floor tile.
 	var deck_n := 0
 	var left_rail := 0
 	var right_rail := 0
@@ -285,7 +280,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		print("OK remove leaves no stale visual node")
 
-	# Adjacent gate still gate mesh.
 	var gx := 12
 	var gz := 4
 	var gy: float = world.get_surface_height(float(gx), float(gz))
@@ -302,7 +296,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		_fail("gate place failed: %s" % editor.last_fail_reason)
 
-	# Adjacent wood still wood.
 	var wx := 12
 	var wz := 5
 	var wy: float = world.get_surface_height(float(wx), float(wz))

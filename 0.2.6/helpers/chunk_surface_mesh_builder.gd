@@ -1,6 +1,5 @@
 class_name ChunkSurfaceMeshBuilder
 extends RefCounted
-## Consolidated face-only terrain mesh from greedy quads (replaces per-quad box MultiMesh).
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

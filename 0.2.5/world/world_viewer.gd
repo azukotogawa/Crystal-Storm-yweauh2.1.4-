@@ -1,22 +1,3 @@
-# world_viewer.gd
-# Fast, high-performance world DESIGN viewer for quick iteration on InfiniteNoiseWorld.
-# Texture-driven (ImageTexture) instead of slow per-cell TileMap — excellent perf even when zoomed out.
-# Multiple view modes focused on validating the current world design (biomes, rivers, valleys, height, carving).
-# Especially useful after river system changes to confirm thin connected channels in proper valleys (not lakes).
-#
-# Controls (designed for fast design validation loops):
-#   Drag (LMB/MMB) or WASD/Arrows (+Shift faster) : pan
-#   Mouse wheel : zoom (in/out for detail vs macro)
-#   R / + / - / Numpad+/- : change seed (instant regen of current view)
-#   Space : random new seed
-#   1-4 or M / Tab : cycle view modes (Composite is the main "does the world look good?" design view)
-#   S : print detailed design snapshot + river quality hints to console
-#   Mouse move : live inspector (biome, height, river strength, carve, etc.)
-#
-# The goal: easily see macro layout, biome balance, river placement/width/connectedness,
-# valley carving, and height variety at a glance with snappy feedback.
-#
-# Note: This is a design/dev tool. The real game uses the 3D chunk system.
 extends Node2D
 
 @export var seed_value: int = 12349
@@ -199,7 +180,6 @@ func _force_quality_render():
 	var old_res = internal_res
 	internal_res = quality_res
 	
-	# Force full recreation of image + texture
 	map_image = null
 	map_texture = null
 	
@@ -209,14 +189,13 @@ func _force_quality_render():
 
 func _regenerate(force_full := false):
 	if force_full:
-		_clear_caches()  # force fresh heights + rivers
+		_clear_caches()
 	if not map_view:
 		return
-		# Safety: ensure image matches current resolution
 	var res = clamp(internal_res, 96, 512)
 	if map_image == null or map_image.get_width() != res or map_image.get_height() != res:
 		map_image = Image.create(res, res, false, Image.FORMAT_RGBA8)
-		map_texture = null  # force new texture
+		map_texture = null
 
 	var now = Time.get_ticks_msec()
 	if not force_full and is_panning and (now - last_regen_time_ms) < REGEN_THROTTLE_MS:
@@ -241,7 +220,6 @@ func _regenerate(force_full := false):
 		var sy = roundi(dy)
 		if abs(sx) < img_w * 0.92 and abs(sy) < img_h * 0.92:
 			_scroll_and_fill_strips(map_image, sx, sy, left, top, units_per_pixel, img_w, img_h)
-			# continue with texture update below
 
 	var sample_step = 1
 	if internal_res <= 128 or units_per_pixel > 8.0:
@@ -264,7 +242,6 @@ func _regenerate(force_full := false):
 		prev_units_per_pixel = units_per_pixel
 		return
 
-	# Update texture
 	if map_texture == null:
 		map_texture = ImageTexture.create_from_image(map_image)
 	else:
@@ -392,14 +369,13 @@ func _composite_design_color(bname: String, h: float, wx: float, wz: float) -> C
 	var t: float = clamp((h + 6.0) / 125.0, 0.0, 1.0)
 	base = base.lerp(base.darkened(0.35).lightened(0.15), t * 0.65)
 	
-	# River check for Composite mode (new mask)
 	var is_river = false
 	if world.has_method("get_river_mask"):
 		var rmask = world.get_river_mask(wx, wz)
 		is_river = rmask.get("active", false)
 	
 	if is_river:
-		base = base.lerp(Color(0.08, 0.88, 0.98), 0.92)  # bright cyan river
+		base = base.lerp(Color(0.08, 0.88, 0.98), 0.92)
 		base = base.darkened(0.1)
 	
 	return base
@@ -433,11 +409,9 @@ func _thread_rivers_color(sw: InfiniteNoiseWorld, wx: float, wz: float, h: float
 	var corr: float = rinfo.get("corridor_factor", 0.0)
 	var bs: Color = _thread_height_color(sw, wx, wz, h)
 	if isr:
-		# Strong, uniform bright cyan for the clean thick line (less variation to avoid noise look)
 		bs = bs.lerp(Color(0.05, 0.90, 1.0), 0.95)
 		if cv > 3.0: bs = bs.darkened(0.15)
 	elif corr > 0.2:
-		# Stronger, cleaner corridor tint for the valley around the line
 		var v : float = clamp((corr - 0.1) / 0.75, 0.0, 0.9)
 		bs = bs.lerp(Color(0.15, 0.45, 0.55), v * 0.65)
 		if cv > 2.5:
@@ -474,12 +448,9 @@ func _thread_composite_color(bnm: String, h: float, rinfo: Dictionary, sw: Infin
 		bs = bs.lerp(Color(0.92, 0.95, 0.98), clamp((h-95)/45.0, 0.0, 0.6))
 	return bs
 
-# Efficiently shift existing pixel data and only sample the newly exposed strips.
-# This turns a full 160x160 regen (~25k world samples) into a few thousand during normal panning.
 func _scroll_and_fill_strips(img: Image, sx: int, sy: int, new_left: float, new_top: float, upp: float, w: int, h: int):
 	var temp: Image = Image.create(w, h, false, Image.FORMAT_RGBA8)
 
-	# Copy the still-valid region from old positions to new positions
 	var src_x: int = max(0, sx)
 	var src_y: int = max(0, sy)
 	var dst_x: int = max(0, -sx)
@@ -492,25 +463,20 @@ func _scroll_and_fill_strips(img: Image, sx: int, sy: int, new_left: float, new_
 			for i in cw:
 				temp.set_pixel(dst_x + i, dst_y + j, img.get_pixel(src_x + i, src_y + j))
 
-	# Write the kept region back (we could also do img.blit_rect but per-pixel is predictable)
 	for j in h:
 		for i in w:
 			if i >= dst_x and i < dst_x + cw and j >= dst_y and j < dst_y + ch:
 				img.set_pixel(i, j, temp.get_pixel(i, j))
 			else:
-				# Mark as needing fill (we'll overwrite the strips below)
 				pass
 
-	# Fill the exposed vertical strips (left or right)
 	if sx > 0:
-		# New content on the left
 		for yy in h:
 			for xx in sx:
 				var wx: float = new_left + (xx + 0.5) * upp
 				var wz: float = new_top  + (yy + 0.5) * upp
 				img.set_pixel(xx, yy, _sample_design_color(wx, wz))
 	elif sx < 0:
-		# New content on the right
 		var startx: int = w + sx
 		for yy in h:
 			for xx in range(startx, w):
@@ -518,9 +484,7 @@ func _scroll_and_fill_strips(img: Image, sx: int, sy: int, new_left: float, new_
 				var wz: float = new_top  + (yy + 0.5) * upp
 				img.set_pixel(xx, yy, _sample_design_color(wx, wz))
 
-	# Fill the exposed horizontal strips (top or bottom), avoiding double-work on corners
 	if sy > 0:
-		# New on top
 		for yy in sy:
 			for xx in w:
 				if not ( (sx > 0 and xx < sx) or (sx < 0 and xx >= w + sx) ):
@@ -528,7 +492,6 @@ func _scroll_and_fill_strips(img: Image, sx: int, sy: int, new_left: float, new_
 					var wz: float = new_top  + (yy + 0.5) * upp
 					img.set_pixel(xx, yy, _sample_design_color(wx, wz))
 	elif sy < 0:
-		# New on bottom
 		var starty: int = h + sy
 		for yy in range(starty, h):
 			for xx in w:
@@ -577,7 +540,6 @@ func _update_inspector():
 		river_strength = rmask.get("strength", 0.0)
 		is_river_active = rmask.get("active", false)
 	
-	# Global tile coordinates
 	var global_tile_x: int = int(floor(wx))
 	var global_tile_z: int = int(floor(wz))
 	
@@ -587,8 +549,6 @@ h:%.0f   tile:%d   biome:%s   river:%.2f (active:%s)""" % [
 	]
 
 func _print_world_stats():
-	# Rich design-oriented snapshot. Great for judging the new river system (thin channels vs wide lakes,
-	# connected long rivers, good biome distribution, interesting carving/height variety).
 	var cx = view_center.x
 	var cy = view_center.y
 	var step: float = 11.0
@@ -600,7 +560,7 @@ func _print_world_stats():
 	var height_sum: float = 0.0
 	var hcount: int = 0
 	var carve_sum: float = 0.0
-	var river_neighbor_hits: int = 0   # for linearity check
+	var river_neighbor_hits: int = 0
 	
 	var river_positions: Array[Vector2] = []
 	
@@ -622,7 +582,6 @@ func _print_world_stats():
 			if is_riv:
 				river_hits += 1
 				river_positions.append(Vector2(wx, wz))
-				# Cheap linearity probe (4 directions)
 				for d in [Vector2(step, 0), Vector2(-step, 0), Vector2(0, step), Vector2(0, -step)]:
 					var nb_info: Dictionary = world._compute_river_carve(wx + d.x, wz + d.y, world._compute_raw_elevation(wx + d.x, wz + d.y)) if world.has_method("_compute_river_carve") else {}
 					if nb_info.get("is_river", false):
@@ -653,7 +612,6 @@ func _print_world_stats():
 	if river_hits > 0:
 		continuity = float(river_neighbor_hits) / float(river_hits * 4)
 	
-	# --- Improved diagnostics for "continuous winding" (addresses optimistic prior metrics) ---
 	# 1. Connected components via proximity (real fragmentation + longest connected feature span in world units)
 	var comps: Array = []
 	for pos in river_positions:
@@ -678,14 +636,13 @@ func _print_world_stats():
 			for jj in range(ii + 1, c.size()):
 				max_comp_span = max(max_comp_span, c[ii].distance_to(c[jj]))
 	
-	# 2. Flow-traced unbroken run length (walk along plausible river direction from samples)
 	var max_flow_run: float = 0.0
 	var flow_step: float = step * 0.9
 	for pos in river_positions:
 		var cur := pos
 		var run_len: float = 0.0
 		var prev_dir: Vector2 = Vector2.ZERO
-		for _i in range(18):  # up to ~ 18*10u ~180+ units of unbroken
+		for _i in range(18):
 			var best_next: Vector2 = Vector2.ZERO
 			var best_score: float = -1.0
 			for d in [Vector2(flow_step, 0), Vector2(-flow_step, 0), Vector2(0, flow_step), Vector2(0, -flow_step),
@@ -696,7 +653,7 @@ func _print_world_stats():
 				if nb_info.get("is_river", false):
 					var score := 1.0
 					if prev_dir != Vector2.ZERO:
-						score += d.normalized().dot(prev_dir) * 0.8   # prefer continuing direction
+						score += d.normalized().dot(prev_dir) * 0.8
 					if score > best_score:
 						best_score = score
 						best_next = np
@@ -708,7 +665,6 @@ func _print_world_stats():
 		if run_len > max_flow_run:
 			max_flow_run = run_len
 	
-	# 3. Water level flatness on the river samples themselves (low stddev = good "flat surface")
 	var wl_mean := 0.0
 	var wl_var := 0.0
 	var n_wl := 0
@@ -735,15 +691,11 @@ func _print_world_stats():
 	print("========================================================\n")
 
 func get_tile_x_from_name(tile_name: String) -> int:
-	# Reference (kept for any future tile-based debugging). Not used by the fast texture viewer.
 	match tile_name.to_lower():
 		"river": return 37
 		"basin": return 36
 		_: return 6
 
-# -------------------------------------------------------------------
-# Design color sampling (the heart of the fast viewer)
-# -------------------------------------------------------------------
 
 func _sample_design_color(wx: float, wz: float) -> Color:
 	match current_mode:
@@ -761,7 +713,6 @@ func _sample_design_color(wx: float, wz: float) -> Color:
 			var h: float = world.get_surface_height_uncached(wx, wz)
 			var b: Dictionary = world.get_biome_uncached(wx, 0.0, wz)
 			
-			# Exact match to game logic
 			var river_mask_dict: Dictionary = world.get_river_mask(wx, wz) if world.has_method("get_river_mask") else {"active": false}
 			var river = world._compute_river_carve(wx, wz, h) if world.has_method("_compute_river_carve") else {"carve": 0.0}
 			
@@ -777,7 +728,7 @@ func _rivers_valleys_color(wx: float, wz: float, h: float, rinfo: Dictionary) ->
 	var rfac: float = rinfo.get("river_factor", 0.0)
 	var crv: float = rinfo.get("carve", 0.0)
 	
-	var base: Color = _height_shaded_color(world, wx, wz, h)  # ← Fixed
+	var base: Color = _height_shaded_color(world, wx, wz, h)
 	
 	if is_riv:
 		var river_col: Color = Color(0.15, 0.82, 0.95)
@@ -790,5 +741,3 @@ func _rivers_valleys_color(wx: float, wz: float, h: float, rinfo: Dictionary) ->
 		base = base.lerp(valley_tint, clamp((crv - 2.0) / 11.0, 0.0, 0.55))
 	
 	return base
-
-# End of remade fast design viewer. Enjoy iterating on biomes + the natural river system!

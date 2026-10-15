@@ -96,7 +96,6 @@ func _ready() -> void:
 	call_deferred("_bind_enemy_spawner")
 	call_deferred("_bind_build_feedback")
 	call_deferred("_bind_terrain_crystal_feedback")
-	# Opening toast waits until LoadingScreen fades (or shows after short delay if no loader).
 	call_deferred("_schedule_opening_toast")
 	_update_map_temp_label()
 	if _phase_label:
@@ -204,7 +203,6 @@ func _bind_terrain_crystal_feedback() -> void:
 		editor.terrain_edited.connect(_on_terrain_edited_near_crystal)
 
 
-## When dig/build happens beside crystal, spell out that terrain is buying time / routing.
 func _on_terrain_edited_near_crystal(wx: int, wz: int, kind: StringName) -> void:
 	if _terrain_crystal_toast_cd > 0.0:
 		return
@@ -240,7 +238,6 @@ func _on_terrain_edited_near_crystal(wx: int, wz: int, kind: StringName) -> void
 
 
 func _on_structure_built(build_id: StringName, _world_pos: Vector3) -> void:
-	# Rate-limit: only toast gates/bridges; walls stay silent for hold-to-stack feel.
 	if build_id == &"gate":
 		_show_toast("Gate placed — walk through · slows crystal")
 	elif build_id == &"bridge":
@@ -248,12 +245,11 @@ func _on_structure_built(build_id: StringName, _world_pos: Vector3) -> void:
 
 
 func _schedule_opening_toast() -> void:
-	# If a loading overlay is still covering the view, wait for notify_loading_finished.
 	var ls = get_node_or_null("../../LoadingLayer/LoadingScreen")
 	if ls == null:
 		ls = get_tree().root.find_child("LoadingScreen", true, false)
 	if ls != null and ls.visible and float(ls.modulate.a) > 0.05:
-		return  # loading_screen will call notify_loading_finished
+		return
 	_show_opening_toast()
 
 
@@ -265,7 +261,6 @@ func _show_opening_toast() -> void:
 	if _opening_toast_shown:
 		return
 	_opening_toast_shown = true
-	# Point at the purple mass, not only the HUD.
 	_show_toast("Watch the purple front — dig trenches & walls where it advances")
 
 
@@ -343,7 +338,6 @@ func _on_biome_changed(biome_name: String) -> void:
 
 
 func _on_ruin_discovered(ruin_name: String, _center: Vector2i, power_bonus: float) -> void:
-	# Base stir toast; full expedition toast may follow from ruin_expedition_completed.
 	_show_toast("Discovered %s — the crystal stirs (+%.0f power)" % [ruin_name, power_bonus])
 
 
@@ -376,7 +370,6 @@ func _on_militia_toast(town_name: String, count: int) -> void:
 
 
 func _on_town_rallied(town_name: String, _center: Vector2i, militia: int, health_restored: float) -> void:
-	# Surprise: player arrival can save a settlement mid-siege.
 	_show_toast("You rallied %s! +%.0f HP · +%d militia" % [town_name, health_restored, militia])
 
 
@@ -587,7 +580,6 @@ func _hud_should_skip() -> bool:
 		_hk_place = place
 		_hk_biome = biome_h
 		_hk_relics = relics
-	# Town HP and wet crawl still move while the player stands on one cell.
 	_hud_skip = (not changed) and (posmod(frame, 20) != 0)
 	return _hud_skip
 
@@ -701,7 +693,6 @@ func _victory_phase_text(suffix: String) -> String:
 	return "Phase: Victory — all spawns destroyed%s" % suffix
 
 
-## Cached by the warden. The bar is hidden until the player is close or the boss has been hit.
 func track_boss(boss: Node) -> void:
 	if boss == null:
 		return
@@ -786,7 +777,6 @@ func _update_boss_bar() -> void:
 		_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
 
 
-## Sits just above the hotbar (hotbar top is -76). Reads player health directly.
 func _ensure_player_health_bar() -> void:
 	if _hp_panel != null:
 		return
@@ -1160,7 +1150,6 @@ func _crystal_bearing_bit() -> String:
 	var dist := Vector2(dx, dz).length()
 	if dist < 4.0:
 		return "front"
-	# N = −Z, E = +X (column space).
 	var deg := rad_to_deg(atan2(dx, -dz))
 	if deg < 0.0:
 		deg += 360.0

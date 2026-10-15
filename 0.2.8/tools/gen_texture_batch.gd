@@ -1,12 +1,4 @@
 extends SceneTree
-## Deterministic 32px-density pixel art for the texture manifest.
-##
-##   godot --headless --path . -s res://tools/gen_texture_batch.gd
-##   godot --headless --path . -s res://tools/gen_texture_batch.gd -- --contact /path/contact_sheet.png
-##
-## Sizes come from docs/texture_manifest.json. Batch files land in assets/art_batch1/.
-## The three missing crystal icons are written to assets/art/crystal/. Nothing else under
-## assets/art/ is touched.
 
 const CRYSTAL_IDS: PackedStringArray = ["amethyst", "void_shard", "solar_crystal"]
 const BATCH_CATS: PackedStringArray = ["items", "vegetation", "mobs"]
@@ -446,7 +438,6 @@ func _size_of(path: String) -> Vector2i:
 func _parse(path: String) -> Dictionary:
 	var file := path.get_file().get_basename()
 	var folder := path.get_base_dir().get_file()
-	# Vegetation variants are named corrupted_<plant>. The mob corrupted_beast keeps its name.
 	if folder == "vegetation" and file.begins_with("corrupted_"):
 		file = file.substr("corrupted_".length())
 	var stage := 0

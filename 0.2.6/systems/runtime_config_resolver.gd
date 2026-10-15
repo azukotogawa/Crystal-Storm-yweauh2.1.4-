@@ -8,13 +8,6 @@ const _GameConfig = preload("res://config/game_config.gd")
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 
 
-## Resolve layered configuration into a read-mostly policy dictionary.
-## Inputs (any may be null/empty):
-##   defaults: GameConfig or null (built-in defaults)
-##   project: authored GameConfig (project scene export)
-##   quality: PerformanceQualityConfig (preset)
-##   platform: Dictionary of platform overrides
-##   debug: Dictionary of runtime debug overrides
 static func resolve(
 	defaults = null,
 	project = null,
@@ -32,7 +25,6 @@ static func resolve(
 	if q == null:
 		q = _PerformanceQualityConfig.create_default()
 
-	# Start from quality fields as runtime policy knobs.
 	var policy := {
 		"render_distance": int(q.render_distance) if "render_distance" in q else 3,
 		"max_chunks_per_frame": int(q.max_chunks_per_frame) if "max_chunks_per_frame" in q else 2,
@@ -48,9 +40,7 @@ static func resolve(
 		"preset": int(q.preset) if "preset" in q else 1,
 	}
 
-	# Platform overrides (e.g. mobile lower distance).
 	_apply_dict_overrides(policy, platform)
-	# Runtime debug overrides win.
 	_apply_dict_overrides(policy, debug)
 
 	# Authored sim config is referenced, not mutated by quality.
@@ -63,7 +53,6 @@ static func resolve(
 	var authored_caves := true
 	if world_gen != null and "caves_enabled" in world_gen:
 		authored_caves = bool(world_gen.caves_enabled)
-	# Effective caves = authored AND quality policy (unless debug forced).
 	if not debug.has("caves_enabled"):
 		policy["caves_enabled"] = bool(policy.get("caves_enabled", false)) and authored_caves
 
@@ -91,7 +80,6 @@ static func _apply_dict_overrides(policy: Dictionary, overrides: Dictionary) -> 
 		policy[k] = overrides[k]
 
 
-## Read a policy knob with fallback.
 static func policy_get(resolved: Dictionary, key: String, fallback = null):
 	var p: Dictionary = resolved.get("policy", {})
 	if p.has(key):
@@ -99,9 +87,6 @@ static func policy_get(resolved: Dictionary, key: String, fallback = null):
 	return fallback
 
 
-## Fold resolved policy knobs onto a duplicate PerformanceQualityConfig.
-## Consumers (ChunkManager, crystal, …) receive this effective object — never
-## raw quality alone when platform/debug overrides are present.
 static func fold_policy_into_quality(quality, policy: Dictionary = {}):
 	var base = quality
 	if base == null:

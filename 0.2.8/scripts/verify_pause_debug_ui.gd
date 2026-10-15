@@ -1,5 +1,4 @@
 extends SceneTree
-## Structural: ESC pause menu, F3 compact debug, F4 inspector, F11 bug report.
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")

@@ -1,8 +1,4 @@
 extends SceneTree
-## Baseline / after profile for CrystalManager + GameVisualRegistry hitches.
-## Measures: bundle regenerations, full visual refreshes, crystal process cost
-## during boot + synthetic chunk storm + teleport-like stream pressure.
-## Usage: godot --headless -s scripts/profile_hitch_sources.gd
 
 const FRAMES_POST_READY := 180
 const CHUNK_STORM_FRAMES := 90
@@ -43,9 +39,8 @@ func _run() -> void:
 		composition = root.get_tree().get_first_node_in_group("composition_root")
 		var running := false
 		if composition and "stage" in composition:
-			running = int(composition.stage) >= 7  # RUNNING
+			running = int(composition.stage) >= 7
 		if running and crystal and bool(crystal.get("_initialized")):
-			# Let a few frames settle after RUNNING.
 			for _i in 5:
 				await process_frame
 				frames += 1
@@ -54,7 +49,6 @@ func _run() -> void:
 	var boot_ms := Time.get_ticks_msec() - t0
 	print("[HitchProfile] boot_to_stream_ms=%d frames=%d" % [boot_ms, frames])
 
-	# Install counters if not present (reflection-friendly via scripts)
 	var counters := {
 		"bundle_gens": 0,
 		"refresh_all": 0,
@@ -69,7 +63,6 @@ func _run() -> void:
 		"flow_max_us": 0,
 	}
 
-	# Read built-in counters if instrumentation present
 	if reg and reg.has_method("get_hitch_counters"):
 		var c: Dictionary = reg.get_hitch_counters()
 		for k in c.keys():
@@ -82,16 +75,13 @@ func _run() -> void:
 	var snap_boot := _snap_counters(reg, crystal)
 	print("[HitchProfile] counters_at_stream_ready: %s" % JSON.stringify(snap_boot))
 
-	# Sample crystal for N frames at steady stream-ready
 	var sample := await _sample_crystal(crystal, FRAMES_POST_READY)
 	print("[HitchProfile] post_ready crystal sample: %s" % JSON.stringify(sample))
 
-	# Chunk-load storm: force refresh path by re-emitting / waiting stream
 	var player = root.get_tree().get_first_node_in_group("player") if root else null
 	if player and cm and player.has_method("get_voxel_position"):
 		var before_tp := _snap_counters(reg, crystal)
 		var pos: Vector3 = player.get_voxel_position()
-		# Teleport-like jump ~8 chunks away to force stream
 		if "voxel_position" in player:
 			player.voxel_position = Vector3(pos.x + 128.0, pos.y + 40.0, pos.z + 128.0)
 		elif player.has_method("set_voxel_position"):
@@ -135,7 +125,6 @@ func _snap_counters(reg, crystal) -> Dictionary:
 		d.merge(reg.get_hitch_counters(), true)
 	if crystal and crystal.has_method("get_hitch_counters"):
 		d.merge(crystal.get_hitch_counters(), true)
-	# Fallback: cache size / initialized flags
 	if reg:
 		if "cache_size" not in d and "_cache" in reg:
 			d["cache_size"] = int(reg._cache.size()) if reg._cache is Dictionary else -1
@@ -178,7 +167,6 @@ func _sample_crystal(crystal, n: int) -> Dictionary:
 		await process_frame
 		if crystal == null:
 			continue
-		# Prefer profiler gauges if present
 		var profiler = root.get_node_or_null("/root/PerfProfiler") if root else null
 		if profiler and profiler.has_method("get_last_section_us"):
 			var u := int(profiler.get_last_section_us("crystal_manager"))

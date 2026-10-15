@@ -1,5 +1,4 @@
 extends SceneTree
-## Player kills convert into maze materials.
 
 
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")

@@ -1,7 +1,5 @@
 class_name VoxelFluidService
 extends Node
-## Runtime water simulation: gravity channel flow over dug trenches + natural rivers.
-## Persists water into ChannelRegistry; crystal uses CrystalFluidSim separately.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
@@ -22,7 +20,6 @@ var _terrain_query: _CrystalTerrainQuery
 var _dirty_cells: Dictionary = {}
 var _tick_accum: float = 0.0
 var _sim_tick_id: int = 0
-## Natural river/water tiles injected as sources this tick (not force-persisted as channels).
 var _river_source_cells: Dictionary = {}
 
 
@@ -97,7 +94,6 @@ func _process(delta: float) -> void:
 		return
 	_tick_accum += delta
 	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz, 1.0)
-	# Cap steps so a hitch doesn't cascade fluid work.
 	var steps := 0
 	while _tick_accum >= step_dt and steps < 3:
 		var t0 := Time.get_ticks_usec()
@@ -144,7 +140,6 @@ func _load_water_subset() -> void:
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			cells[key + dir] = true
 
-	# Rivers flow: inject natural water/river tiles near active cells as gravity sources.
 	var seed_keys: Array = cells.keys()
 	for key_variant in seed_keys:
 		var key: Vector2i = key_variant

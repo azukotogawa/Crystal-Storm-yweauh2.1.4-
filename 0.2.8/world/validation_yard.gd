@@ -1,6 +1,5 @@
 class_name ValidationYard
 extends RefCounted
-## Deterministic yard of ramps, structures, water, crystal, and edits for camera validation.
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
@@ -24,7 +23,6 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	var cells := {
 		"flat": Vector2i(ox, oz),
 		"raised": Vector2i(ox + 2, oz),
-		# Ramps are filled in below from the chunk that contains the yard.
 		"wood_wall": Vector2i(ox, oz + 3),
 		"stone_wall": Vector2i(ox + 2, oz + 3),
 		"gate": Vector2i(ox + 4, oz + 3),
@@ -42,9 +40,7 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	var ramps := cardinal_ramp_cells(Vector2i(ox, oz))
 	for ramp_key in ramps.keys():
 		cells[ramp_key] = ramps[ramp_key]
-	# Raised column (player-built wall, not a ramp).
 	_TerrainEdits.build_wall(cells.raised.x, cells.raised.y, _VoxelTypes.STONE)
-	# Structures via gameplay editor when available.
 	var inv = player.inventory if player and "inventory" in player else null
 	if editor and editor.has_method("try_build"):
 		_place(editor, cells.wood_wall, inv, &"wood_wall")
@@ -72,13 +68,11 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 	else:
 		_TerrainEdits.dig(cells.water.x, cells.water.y, 1)
 	_seed_crystal(tree, cells.crystal)
-	# Edit sequence cells (applied later by the display probe so coverage can be compared).
 	if editor:
 		for key in ["flat", "raised", "wood_wall", "stone_wall", "gate", "bridge", "water", "crystal", "dig_one"]:
 			var c: Vector2i = cells[key]
 			if editor.has_method("_invalidate_and_rebuild"):
 				editor._invalidate_and_rebuild(c.x, c.y)
-	# Generated ramps are applied after structure rebuilds idle — see apply_generated_ramps.
 	if player and player.has_method("_sync_global_from_voxel"):
 		player.voxel_position.x = float(ox) + 0.5
 		player.voxel_position.z = float(oz) - 2.5
@@ -155,10 +149,6 @@ static func _stamp_generated_step_maps(
 	var landing_h := _resident_surface(cm, landing)
 	if landing_h < -9000.0:
 		return
-	# Model A draws a cardinal on a terrace: plateau behind the landing, and
-	# eight cells downhill that stay one layer lower (a one-cell ditch is a V
-	# or an inner corner and emits nothing). The strip is three cells wide so
-	# the approach has a single high neighbor.
 	var low_h := landing_h - layer
 	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		if dir == toward_low:
@@ -198,18 +188,13 @@ static func _write_resident_surface(cm, cell: Vector2i, height: float, remesh: D
 		return
 	if data.surface_map[lx].size() <= lz:
 		return
-	# Player walls and digs live in the worker snapshot. Leave them alone.
 	if data.get_worker_build_tile(lx, lz) >= 0:
 		return
 	var layer: float = load("res://config/world_settings.gd").get_active().layer_height()
 	if absf(data.get_worker_height_delta(lx, lz)) > layer * 0.08:
 		return
-	# Set before the write so a column regen that has not entered its loop
-	# keeps this stamp. Snapshot so one already inside the loop can be
-	# restored on the preserve remesh.
 	data.preserve_column_maps = true
 	data.surface_map[lx][lz] = height
-	# A water tile on the approach blocks the cardinal. The terrace is dry ground.
 	if lx < data.tile_map.size() and data.tile_map[lx] is Array and lz < data.tile_map[lx].size():
 		var tile: int = int(data.tile_map[lx][lz])
 		if tile == _VoxelTypes.WATER or tile == _VoxelTypes.RIVER \

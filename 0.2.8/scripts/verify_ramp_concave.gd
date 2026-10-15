@@ -1,5 +1,4 @@
 extends SceneTree
-## L-gaps are cliffs, not compound FACE_RAMP_SIDE wedges.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

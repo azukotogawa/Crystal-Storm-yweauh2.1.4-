@@ -1,6 +1,4 @@
 extends SceneTree
-## Prove crystal presentation uses updated floor after dig (MultiMesh path).
-## Asserts _make_render_cell.terrain_y (feeds MultiMesh) and MultiMesh instance Y when available.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -57,7 +55,6 @@ func _run() -> void:
 	var view := ChunkView.new()
 	view.chunk_data = ChunkData.new(chunk_coord, world)
 	cm.chunks[chunk_coord] = view
-	# Bootstrap waits on spawn_area_ready(0, 0) and never streams while process is off.
 	if chunk_coord != Vector2i(0, 0):
 		var origin_view := ChunkView.new()
 		origin_view.chunk_data = ChunkData.new(Vector2i(0, 0), world)
@@ -87,7 +84,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Ensure presentation has layer root + floor callback (production wiring).
 	if crystal._presentation.layer_root == null and crystal._layer_root != null:
 		crystal._presentation.layer_root = crystal._layer_root
 	if crystal._presentation.crystal_floor_at.is_null():
@@ -100,12 +96,10 @@ func _run() -> void:
 	crystal._sim.depth[pos] = depth
 	crystal._presentation.rebuild_cell_index()
 
-	# Presentation render cell is the exact input to MultiMesh transforms.
 	var cell0: _CrystalCell = crystal._presentation._make_render_cell(pos, depth, -1)
 	var ty0: float = cell0.terrain_y
 	print("render_cell terrain_y before dig=%.3f floor=%.3f" % [ty0, crystal._crystal_floor_at(pos)])
 
-	# Build MultiMesh explicitly from that cell
 	var coord := Vector2i(
 		floori(float(pos.x) / float(ChunkData.SIZE)),
 		floori(float(pos.y) / float(ChunkData.SIZE))
@@ -127,7 +121,6 @@ func _run() -> void:
 
 	if not editor.try_dig(Vector3(float(pos.x) + 0.5, 0, float(pos.y) + 0.5)):
 		_fail("dig failed: %s" % editor.last_fail_reason)
-	# Production handler (marks dirty + full rebuild request)
 	crystal._on_player_terrain_edited(pos.x, pos.y, &"dig")
 
 	var cell1: _CrystalCell = crystal._presentation._make_render_cell(pos, depth, -1)
@@ -139,7 +132,6 @@ func _run() -> void:
 	else:
 		print("OK presentation render-cell terrain_y dropped %.3f→%.3f" % [ty0, ty1])
 
-	# Rebuild MultiMesh with updated cell (same path as chunk rebuild after dirty)
 	layer.rebuild([cell1], 3)
 	await process_frame
 	var applied1: float = layer.get_applied_terrain_y(pos)

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: player can step up a cardinal landing ramp (head clearance on slope).
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")

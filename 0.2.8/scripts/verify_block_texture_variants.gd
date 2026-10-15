@@ -1,12 +1,4 @@
 extends SceneTree
-## Every land family the surface mesh draws must vary per column, and the
-## cell it samples must not be the old 4px diagonal band. That band keeps
-## every row the same brightness, so the grid check's "20% darker than the
-## neighbor row" test stays green, and the grass/rock pass never built a
-## sand, leaf, wood, or snow chunk. Crystal, shard ground, and scar stay
-## one cell, but that cell is still sampled and must not be the band.
-## This builds a chunk through ChunkManager and reads the surface-mesh
-## vertex colors, which are the atlas cell the terrain shader samples.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -82,10 +74,6 @@ func _mode_marks(img: Image, cell: Vector2i) -> Dictionary:
 	return {"colors": counts.size(), "marks": tw * tw - mode}
 
 
-## The shipped grass tile is one fill plus the same 4px bands on every row
-## group. Those bands are lighter than the fill, so a "darker than the
-## neighbor row" test never sees them, and every row in a band has the same
-## average so the rows match each other.
 func _has_stripe(img: Image, cell: Vector2i) -> bool:
 	var tw: int = _VoxelTypes.ATLAS_TILE_PIXELS
 	var ox := cell.x * tw

@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Full headless verification suite — exit 0 when all suites pass.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-# Smoke-speed world bake: production defaults to full playable map; suite uses radius-2.
 export CRYSTALSTORM_BAKE_RADIUS="${CRYSTALSTORM_BAKE_RADIUS:-2}"
 export CRYSTALSTORM_FULL_WORLD_BAKE="${CRYSTALSTORM_FULL_WORLD_BAKE:-0}"
 export CRYSTALSTORM_BAKE_ON_NEW="${CRYSTALSTORM_BAKE_ON_NEW:-0}"
@@ -186,7 +184,6 @@ SUITES=(
 	"res://scripts/verify_dev_chat.gd"
 )
 
-# Main-scene probes SIGKILL on OK to avoid Godot teardown abort(134); match terminal marker not exit code.
 declare -A ABRUPT_OK_MARKER=(
 	["res://scripts/verify_texture_batch_live.gd"]="All texture batch live tests OK"
 	["res://scripts/verify_bootstrap_no_deadlock.gd"]="All bootstrap deadlock tests OK"

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: lowest surface columns must receive a top/ramp surface quad (not culled).
 
 
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")

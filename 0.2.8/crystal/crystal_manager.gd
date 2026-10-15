@@ -35,7 +35,6 @@ signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
 signal all_spawns_destroyed
 signal crystal_touched_player
 signal absorption_completed(source_id: StringName, world_pos: Vector2i)
-## Player broke into the crystal mass. broken=true when the cell is removed.
 signal crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool)
 
 @export var expansion_enabled: bool = true
@@ -55,23 +54,19 @@ var strength_tier: int = 0
 var total_volume: float = 0.0
 var covered_cells: int = 0
 
-## Fluid sim (compat): owned by CrystalSimulation; exposed for existing callers.
 var _sim: _CrystalFluidSim
 var _terrain_query: _CrystalTerrainQuery
-## Simulation / presentation split (CrystalGameplayFacade = this class).
 var _simulation: _CrystalSimulation
 var _presentation: _CrystalPresentation
-var _absorption: Dictionary = {}  # mirrored from simulation for save export
+var _absorption: Dictionary = {}
 var _ruin_absorption: Dictionary = {}
 var _absorbed_ruin_centers: Dictionary = {}
 var evolution: _CrystalEvolution
-## Enemy ids whose unlock relic was already handled this run.
 var _unlock_relics_granted: Dictionary = {}
 var _spawn_points: Array[CrystalSpawnPoint] = []
 var _spawn_markers: Dictionary = {}
 var _next_spawn_id: int = 0
 var _rng: RandomNumberGenerator
-## Untyped on purpose: the drawn mass is a ShaderMaterial. Settings tests still swap in a StandardMaterial3D.
 var _crystal_material
 var _marker_material: StandardMaterial3D
 var _layer_root: Node3D
@@ -92,21 +87,15 @@ var _sim_tick_id: int = 0
 var _perf_mesh_budget_us: int = 2500
 var _absorption_scan_offset: int = 0
 var _absorption_cells_per_tick: int = 64
-## Hold fluid expansion until CompositionRoot reaches INITIAL_STREAM_READY (stage 5).
-## Avoids crystal tick_flow competing with boot stream / loading screen.
 const _BOOT_STAGE_STREAM_READY: int = 5
-## After large player chunk jumps (teleport), pause expansion briefly so stream apply wins.
 const _TELEPORT_PAUSE_FRAMES: int = 24
 const _STREAM_PENDING_PAUSE_THRESHOLD: int = 8
 var _stream_pause_frames: int = 0
 var _last_tracked_player_chunk: Vector2i = Vector2i(999999, 999999)
-## Soft-start after gates clear so the first expansion ticks cannot spike one frame.
 const _EXPANSION_SOFT_START_TICKS: int = 8
 var _expansion_soft_ticks_left: int = _EXPANSION_SOFT_START_TICKS
-## Sparse front-edge pulse toward the player (readability; does not alter fluid state).
 const _FRONTIER_PULSE_INTERVAL: float = 2.4
 var _frontier_pulse_accum: float = 0.0
-## Hitch measurement (session counters).
 var _last_process_us: int = 0
 var _last_tick_us: int = 0
 var _last_sim_steps: int = 0
@@ -114,12 +103,9 @@ var _process_max_us: int = 0
 var _process_sum_us: int = 0
 var _process_n: int = 0
 var _expansion_skipped_frames: int = 0
-## Frame-budgeted sim event dispatch (Phase 3). Critical events flush immediately.
-var _dispatch_queue: Array = []  # {ev: Dictionary, enqueued_frame: int, enqueued_us: int}
+var _dispatch_queue: Array = []
 var _dispatch_queue_age_max: int = 0
-## Chunk rebuilds from absorption are deferred (one per frame) — immediate rebuild
-## inside dispatch/drain was the multi-hundred-ms hitch source.
-var _pending_absorption_rebuilds: Dictionary = {}  # Vector2i world cell -> true
+var _pending_absorption_rebuilds: Dictionary = {}
 var _perf_spread_damping_start: int = 600
 var _perf_spread_damping_full: int = 3000
 var _perf_mesh_rebuilds_when_large: int = 1
@@ -127,16 +113,13 @@ var _perf_mesh_depth_epsilon: float = 0.20
 var _last_crystal_new_cells: int = 0
 var _sim_loaded_chunks_only: bool = true
 var _last_player_chunk: Vector2i = Vector2i(-99999, -99999)
-## Diagnostics: last tick event count (no extra rebuilds checks).
 var _last_sim_event_count: int = 0
 
-## Single complete-tick fan-out trace (CRYSTALSTORM_CRYSTAL_TICK_TRACE=1).
 var _tick_trace_armed: bool = false
 var _tick_trace_active: bool = false
 var _tick_trace_done: bool = false
 var _tick_trace: Dictionary = {}
 
-## Measurement-only (CRYSTALSTORM_CRYSTAL_STARTUP_MEASURE=1): first N process frames after init.
 const _MEASURE_FRAMES: int = 300
 var _measure_init_ms: int = 0
 var _measure_frame_i: int = 0
@@ -258,7 +241,6 @@ func _measure_print_report() -> void:
 	print("flow cell scans: avg_active=%.1f avg_selected=%.1f per frame (sum of substeps)" % [
 		float(sum_active_cells) / float(n), float(sum_selected_cells) / float(n),
 	])
-	# Classify work
 	var cell0: int = int(first.get("cells", 0))
 	var cell_growth: int = int(last.get("cells", 0)) - cell0
 	var kind := "normal_simulation"
@@ -271,7 +253,6 @@ func _measure_print_report() -> void:
 	print("work_class_estimate: %s" % kind)
 	print("notes: ticks run every _process once _initialized; not gated on CompositionRoot RUNNING.")
 	print("notes: spawn seeding (_initialize_spawns) plants initial emitter depths before first tick.")
-	# Write JSON
 	var out_path := "user://crystal_startup_measure.json"
 	var scratch := OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if not scratch.is_empty():
@@ -417,18 +398,13 @@ func configure_evolution() -> void:
 	if cfg_svc and cfg_svc.game_config and cfg_svc.game_config.absorption_unlocks.size() > 0:
 		table = cfg_svc.game_config.absorption_unlocks
 	evolution.configure(table)
-	# Vertical slice: crystal_mite family is available at run start so combat pressure exists.
 	if not evolution.is_unlocked(&"crystal_mite"):
 		evolution.unlocked_enemies.append(&"crystal_mite")
-	# A later absorption milestone that unlocks a new enemy grants its mapped relic
-	# once per run. crystal_mite is already unlocked here, so it does not grant.
-	# Spawn destruction and ruin expeditions still grant relics on their own path.
 	if not evolution.enemy_unlocked.is_connected(_on_enemy_unlocked_grant_relic):
 		evolution.enemy_unlocked.connect(_on_enemy_unlocked_grant_relic)
 	_seed_unlock_relics_granted()
 
 
-## Map absorption enemy unlocks → starter relics for progression feedback.
 static func relic_for_enemy_unlock(enemy_id: StringName) -> StringName:
 	match enemy_id:
 		&"crystal_mite":
@@ -449,7 +425,6 @@ func _seed_unlock_relics_granted() -> void:
 
 
 func _on_enemy_unlocked_grant_relic(enemy_id: StringName) -> void:
-	# crystal_mite is unlocked at run start. Direct _grant_relic_for_unlock still equips it.
 	if enemy_id == &"crystal_mite":
 		return
 	if _unlock_relics_granted.has(enemy_id):
@@ -467,8 +442,6 @@ func _grant_relic_for_unlock(enemy_id: StringName) -> StringName:
 		return &""
 	if relic_mgr.equip(relic_id):
 		return relic_id
-	# Slots are full. With an overlay, offer replace for this relic only.
-	# Headless (no overlay) does not force-unequip.
 	if not is_inside_tree():
 		return &""
 	var tree := get_tree()
@@ -490,7 +463,6 @@ func _player_relic_manager():
 	return relic_mgr
 
 
-## Deterministic relic from a destroyed spawn. Skips relics already equipped.
 func set_origin_warden_alive(alive: bool) -> void:
 	if _spawn_ctrl:
 		_spawn_ctrl.origin_warden_alive = alive
@@ -538,9 +510,7 @@ func _init_sim() -> void:
 	_simulation = _CrystalSimulation.new(sim_config, _terrain_query)
 	_sim = _simulation.fluid
 	_sim.is_cell_active = Callable(self, "_is_cell_sim_active")
-	# Re-apply last quality caps (perf may have run before sim existed).
 	_reapply_stored_flow_caps()
-	# Presentation: mesh scheduling only; receives events from simulation.
 	_presentation = _CrystalPresentation.new()
 	_presentation.fluid = _sim
 	_presentation.sim_config = sim_config
@@ -558,7 +528,6 @@ func _init_sim() -> void:
 	_presentation.mesh_rebuilds_when_large = _perf_mesh_rebuilds_when_large
 
 
-## Dig/build must refresh crystal heights immediately (no stale trench routing).
 func _bind_terrain_edit_invalidation() -> void:
 	var editor = get_tree().get_first_node_in_group("terrain_editor")
 	if editor and editor.has_signal("terrain_edited"):
@@ -590,7 +559,6 @@ func _refresh_crystal_floor_near(wx: int, wz: int, radius: int = 2) -> void:
 			dirty_pos.append(pos)
 	if dirty_pos.is_empty():
 		return
-	# Force full chunk rebuild so terrain_y is re-sampled (patch alone can keep old floor).
 	for pos_v in dirty_pos:
 		var pos2: Vector2i = pos_v
 		var coord := Vector2i(
@@ -617,7 +585,6 @@ func _make_chunk_layer(coord: Vector2i) -> CrystalChunkLayer:
 
 
 func _on_sim_depth_changed(pos: Vector2i) -> void:
-	# Compat path for direct fluid signals (if any); prefer event batch from simulation.
 	if _presentation:
 		_presentation.apply_events([
 			_CrystalSimEvents.depth_changed(pos),
@@ -658,7 +625,6 @@ func _setup_materials() -> void:
 	var shader := load("res://shaders/crystal_pulse.gdshader") as Shader
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
-	# Brighter mass so the front is readable. The pulse is crystal_time on this same material.
 	_paint_crystal_mass(mat, _PlayerSettings.colorblind_palette)
 	mat.set_shader_parameter("emission_energy", 2.15)
 	mat.set_shader_parameter("crystal_time", 0.0)
@@ -675,13 +641,11 @@ func _setup_materials() -> void:
 	_marker_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
 
-## Recolour the live mass, markers, and spawn bars. No textures are swapped.
 func apply_color_palette(colorblind: bool) -> void:
 	if _crystal_material:
 		_paint_crystal_mass(_crystal_material, colorblind)
 
 
-## StandardMaterial3D keeps the settings-menu path. The drawn mass is the pulse shader.
 func _paint_crystal_mass(mat: Material, colorblind: bool) -> void:
 	if mat is ShaderMaterial:
 		var sh := mat as ShaderMaterial
@@ -849,12 +813,9 @@ func pick_origin_spawn_cell() -> Vector2i:
 func get_origin_cell() -> Vector2i:
 	if _spawn_points.size() > 0:
 		return _spawn_points[0].world_pos
-	# Corner threat before spawn init. Stream extras keep that corner resident.
 	return _resolve_origin_spawn_position()
 
 
-## Same seed always picks the same corner (NW, NE, SW, SE).
-## Inset and corner list live on WorldBorder so worldgen does not copy them.
 static func origin_corner_for_seed(seed_value: int) -> Vector2i:
 	return _WorldBorder.origin_corner_for_seed(seed_value)
 
@@ -876,8 +837,6 @@ func _resolve_origin_spawn_position() -> Vector2i:
 	return land
 
 
-## Walk from the chosen corner toward the map center until the cell is dry land.
-## Search stays inside that corner so the heart cannot drift back to the center.
 func _find_corner_land(preferred: Vector2i) -> Vector2i:
 	if not _origin_cell_unsuitable(preferred):
 		return preferred
@@ -918,7 +877,6 @@ func _origin_cell_unsuitable(pos: Vector2i) -> bool:
 
 
 func _origin_surface_bounds() -> Vector2:
-	# Valley grass near rivers can sit well below SEA_LEVEL; still walkable/buildable.
 	return Vector2(4.0, 138.0)
 
 
@@ -976,14 +934,10 @@ func _pick_ruin_spawn_position() -> Vector2i:
 	return best
 
 
-## Last performance config (re-applied after late _init_sim).
 var _stored_perf_cfg = null
-## Soft wall for tick_flow cell processing (us). 0 = unlimited.
 var _perf_flow_budget_us: int = 2500
-## Cached loaded-chunk set for snapshots (rebuilt when chunk count changes).
 var _loaded_chunks_cache: Dictionary = {}
 var _loaded_chunks_cache_n: int = -1
-## True while CrystalSimulation has an incomplete budgeted tick.
 var _sim_tick_pending: bool = false
 
 
@@ -999,7 +953,6 @@ func apply_performance_config(cfg) -> void:
 		flow_substeps = cfg.flow_substeps
 		if sim_config:
 			sim_config.flow_substeps = cfg.flow_substeps
-	# ~1/3 of main-thread budget for fluid processing; clamps worst frame.
 	if "main_thread_budget_us" in cfg:
 		_perf_flow_budget_us = maxi(int(cfg.main_thread_budget_us) / 3, 1200)
 	elif "chunk_upload_budget_us" in cfg:
@@ -1046,7 +999,6 @@ func _reapply_stored_flow_caps() -> void:
 	if _stored_perf_cfg != null:
 		apply_performance_config(_stored_perf_cfg)
 		return
-	# Fallback from performance service if config was applied before this node existed.
 	if not is_inside_tree():
 		return
 	var perf = get_tree().get_first_node_in_group("performance_service")
@@ -1170,7 +1122,6 @@ func _process(delta: float) -> void:
 		return
 
 
-## Advance the pulse on the shared mass material. Chunk layers draw that instance, not a copy.
 func _sync_crystal_glow(delta: float) -> void:
 	if _crystal_material == null or not (_crystal_material is ShaderMaterial):
 		return
@@ -1200,7 +1151,6 @@ func _sync_crystal_glow(delta: float) -> void:
 	var run_expansion := _should_run_expansion()
 	var sim_steps := 0
 	var tick_us_acc := 0
-	# Always finish an in-progress budgeted tick first (preserves logical tick results).
 	if _sim_tick_pending and _simulation:
 		var tt0 := Time.get_ticks_usec()
 		_continue_crystal_sim()
@@ -1210,11 +1160,9 @@ func _sync_crystal_glow(delta: float) -> void:
 	elif run_expansion:
 		_sim_accum += delta
 		var step_dt := 1.0 / _perf_sim_hz
-		# Soft-start + stream pressure: at most one sim step/frame until warm.
 		var max_steps := 1
 		if _expansion_soft_ticks_left <= 0 and not _stream_pressure_active():
 			max_steps = 2
-		# Soft-start spreads the first expansion ticks across frames (skip odd frames).
 		var allow_tick := true
 		if _expansion_soft_ticks_left > 0:
 			allow_tick = (_process_n % 2) == 0
@@ -1228,10 +1176,8 @@ func _sync_crystal_glow(delta: float) -> void:
 				_expansion_soft_ticks_left -= 1
 			if _sim_tick_pending:
 				break
-		# Drop excess accumulator after pause so resume does not multi-tick.
 		if _sim_accum > step_dt * 2.0:
 			_sim_accum = step_dt
-		# Absorption is advanced inside CrystalSimulation.tick via snapshot; side effects applied from events.
 		var power_t0 := Time.get_ticks_usec()
 		_tick_power(delta)
 		if profiler and profiler.has_method("record_func"):
@@ -1239,10 +1185,8 @@ func _sync_crystal_glow(delta: float) -> void:
 		_check_player_contact()
 	else:
 		_expansion_skipped_frames += 1
-		# Prevent catch-up burst when expansion resumes after boot/teleport/stream.
 		if not _sim_tick_pending:
 			_sim_accum = 0.0
-		# Re-arm soft-start so resume after long stream/teleport is gentle.
 		if _stream_pause_frames > 0 or not _boot_stream_ready():
 			_expansion_soft_ticks_left = maxi(_expansion_soft_ticks_left, _EXPANSION_SOFT_START_TICKS)
 
@@ -1254,11 +1198,9 @@ func _sync_crystal_glow(delta: float) -> void:
 			profiler.record_func("CrystalPresentation::refresh_lod", Time.get_ticks_usec() - lod_t0)
 	if run_expansion or (_presentation and _presentation.dirty_chunk_count() > 0):
 		_flush_dirty_chunks()
-	# Sparse readability pulse on the nearest open front (presentation only; no sim change).
 	if run_expansion and _sim != null and not _sim.depth.is_empty():
 		_tick_frontier_readability_pulse(delta)
 
-	# Drain deferred sim events under FrameBudgetScheduler (cannot monopolize frame).
 	var drain_t0 := Time.get_ticks_usec() if _tick_trace_active else 0
 	var applies_before := int(_tick_trace.get("apply_one_sim_event", 0)) if _tick_trace_active else 0
 	_drain_dispatch_queue_budgeted()
@@ -1266,8 +1208,6 @@ func _sync_crystal_glow(delta: float) -> void:
 	if _tick_trace_active:
 		_tick_trace["drain_applies_same_frame"] = int(_tick_trace.get("apply_one_sim_event", 0)) - applies_before
 		_tick_trace_phase("drain_dispatch_queue", drain_t0)
-		# Finish once first complete logical tick has been dispatched this frame
-		# (queue may still hold deferred FLOW_BATCH slices for later frames).
 		if int(_tick_trace.get("events_from_sim", 0)) > 0 and not _sim_tick_pending:
 			_tick_trace_finish()
 
@@ -1295,7 +1235,6 @@ func _sync_crystal_glow(delta: float) -> void:
 		_measure_record_frame(delta, sim_steps, tick_us_acc, proc_us)
 
 
-## True when fluid expansion may run (export on + boot/stream gates clear).
 func _should_run_expansion() -> bool:
 	if not expansion_enabled:
 		return false
@@ -1339,7 +1278,6 @@ func _update_stream_pause_state() -> void:
 		return
 	var manhattan := absi(pc.x - _last_tracked_player_chunk.x) + absi(pc.y - _last_tracked_player_chunk.y)
 	if manhattan >= 3:
-		# Teleport / large stream jump — yield frames to chunk activation.
 		_stream_pause_frames = maxi(_stream_pause_frames, _TELEPORT_PAUSE_FRAMES)
 		_sim_accum = 0.0
 	_last_tracked_player_chunk = pc
@@ -1396,7 +1334,6 @@ func _build_sim_snapshot(delta: float):
 	snap.tile_at = Callable(self, "_tile_at")
 	# Loaded chunk set from ChunkManager (façade gathers; sim never touches the tree).
 	snap.loaded_chunks = _get_loaded_chunks_snapshot()
-	# Spatial query (optional read-only discovery handle).
 	if is_inside_tree():
 		var sq = get_tree().get_first_node_in_group("spatial_query_service")
 		if sq:
@@ -1523,7 +1460,6 @@ func _finish_tick_side_effects(events: Array, profiler = null) -> void:
 
 
 func _dispatch_sim_events(events: Array) -> void:
-	## Split critical vs deferred. Simulation algorithms unchanged — only when side-effects run.
 	var frame_id := 0
 	var sched = get_node_or_null("/root/FrameBudgetScheduler")
 	if sched and sched.has_method("get_frame_id"):
@@ -1538,7 +1474,6 @@ func _dispatch_sim_events(events: Array) -> void:
 				_tick_trace["critical_applies"] = int(_tick_trace.get("critical_applies", 0)) + 1
 			_apply_one_sim_event(ev)
 			continue
-		# Split large FLOW_BATCH so one unit cannot monopolize a frame.
 		if int(ev.get("kind", 0)) == _CrystalSimEvents.Kind.FLOW_BATCH:
 			var q0 := _dispatch_queue.size()
 			_enqueue_flow_batch_units(ev, frame_id, now_us)
@@ -1563,7 +1498,6 @@ const _FLOW_DIRTY_CHUNK: int = 32
 
 
 func _enqueue_flow_batch_units(ev: Dictionary, frame_id: int, now_us: int) -> void:
-	# Split both changed + mesh_dirty so a single budget unit stays small.
 	var changed: Array = ev.get("changed", [])
 	var mesh_dirty: Array = ev.get("mesh_dirty", [])
 	var new_cells_left: int = int(ev.get("new_cells", 0))
@@ -1613,9 +1547,6 @@ func _enqueue_flow_batch_units(ev: Dictionary, frame_id: int, now_us: int) -> vo
 
 
 func _is_critical_sim_event(ev: Dictionary) -> bool:
-	## Immediate only for cheap/UI-critical stats. Absorption completes do WorldState.bump
-	## ×2 + SpatialQuery full reindex + chunk rebuild — applying many as critical caused
-	## multi-hundred-ms hitches in _dispatch_sim_events. They use the budgeted queue.
 	var kind: int = int(ev.get("kind", 0))
 	return kind in [
 		_CrystalSimEvents.Kind.POWER_DELTA,
@@ -1624,7 +1555,6 @@ func _is_critical_sim_event(ev: Dictionary) -> bool:
 
 
 func _apply_one_sim_event(ev: Dictionary) -> void:
-	# Presentation + gameplay for a single event (unit of budgeted work).
 	if _tick_trace_active:
 		_tick_trace["apply_one_sim_event"] = int(_tick_trace.get("apply_one_sim_event", 0)) + 1
 		_tick_trace_kind("apply_by_kind", int(ev.get("kind", 0)))
@@ -1676,7 +1606,6 @@ func _drain_dispatch_queue_budgeted() -> void:
 				token.spend_unit()
 		)
 	else:
-		# Fallback: hard unit cap without scheduler autoload.
 		var n := mini(_dispatch_queue.size(), 48)
 		for _i in n:
 			var item2: Dictionary = _dispatch_queue.pop_front()
@@ -1703,7 +1632,6 @@ func get_dispatch_queue_depth() -> int:
 	return _dispatch_queue.size()
 
 
-## Emergency: flush all deferred events (save / win-lose critical paths).
 func flush_dispatch_queue() -> void:
 	var sched = get_node_or_null("/root/FrameBudgetScheduler")
 	if sched and sched.has_method("note_emergency_flush"):
@@ -1711,7 +1639,6 @@ func flush_dispatch_queue() -> void:
 	while not _dispatch_queue.is_empty():
 		var item: Dictionary = _dispatch_queue.pop_front()
 		_apply_one_sim_event(item.get("ev", {}))
-	# Save/export must apply pending absorption mesh rebuilds for consistency.
 	while not _pending_absorption_rebuilds.is_empty():
 		_drain_one_absorption_rebuild()
 	_report_dispatch_queue()
@@ -1802,7 +1729,6 @@ func _bind_chunk_stream() -> void:
 		chunk_manager.chunk_ready.connect(_on_chunk_loaded)
 	if chunk_manager.has_signal("chunk_unloaded") and not chunk_manager.chunk_unloaded.is_connected(_on_chunk_unloaded):
 		chunk_manager.chunk_unloaded.connect(_on_chunk_unloaded)
-	# Origin extras may already be resident before this bind — chunk_ready will not re-fire.
 	if _presentation and _presentation.has_method("mark_all_indexed_dirty"):
 		_presentation.mark_all_indexed_dirty()
 
@@ -1831,7 +1757,6 @@ func _mark_chunk_dirty(pos: Vector2i) -> void:
 		_presentation.apply_events([_CrystalSimEvents.mesh_dirty([pos])])
 
 
-## Stream wake counters (CRYSTALSTORM_STREAM_WAKE_TRACE=1).
 var _stream_wake_enabled: bool = false
 var _stream_chunk_loaded_n: int = 0
 var _stream_chunk_unloaded_n: int = 0
@@ -1887,7 +1812,6 @@ func _on_chunk_loaded(coord: Vector2i, _data: ChunkData) -> void:
 		_stream_chunk_loaded_n += 1
 		_stream_chunk_loaded_us += dt
 		_stream_chunk_loaded_max_us = maxi(_stream_chunk_loaded_max_us, dt)
-		# Invalidate loaded-chunk snapshot cache so next sim tick rebuilds set.
 		_loaded_chunks_cache_n = -1
 
 
@@ -1942,7 +1866,6 @@ func _flush_dirty_chunks() -> void:
 
 
 func refresh_spawn_marker_textures() -> void:
-	# Textures are session-cached; preload is a no-op when already generated.
 	var vis = get_tree().get_first_node_in_group("game_visual_registry") if is_inside_tree() else null
 	if vis and vis.has_method("preload_game_bundle"):
 		vis.preload_game_bundle(false, "CrystalManager.refresh_spawn_marker_textures")
@@ -2069,7 +1992,6 @@ func _apply_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint) -> void:
 		bg.visible = spawn.active
 	var full_w := float(fill.get_meta("bar_width", 1.0))
 	fill.scale = Vector3(maxf(ratio, 0.001), 1.0, 1.0)
-	# Shrink toward the left edge so the bar reads as draining, not compressing in place.
 	fill.position.x = -full_w * (1.0 - ratio) * 0.5
 	if fill.material_override is StandardMaterial3D:
 		var mat := fill.material_override as StandardMaterial3D
@@ -2097,7 +2019,6 @@ func get_depth_at(wx: int, wz: int) -> float:
 	return _sim.get_depth_at(wx, wz) if _sim else 0.0
 
 
-## Add depth to a cell that already holds crystal. Does not seed a new cell.
 func nudge_depth(wx: int, wz: int, delta: float) -> float:
 	if _sim == null or absf(delta) < 0.00001:
 		return 0.0
@@ -2117,7 +2038,6 @@ func nudge_depth(wx: int, wz: int, delta: float) -> float:
 	return get_depth_at(wx, wz)
 
 
-## Nearby crystal sitting on water/channels — HUD "wet crawl" read.
 func count_wet_crystal_near(wx: int, wz: int, radius: int = 5) -> Dictionary:
 	var crystal_n := 0
 	var wet_n := 0
@@ -2179,7 +2099,6 @@ func crystal_walkable_floor(wx: float, wz: float) -> float:
 	return _crystal_floor_at(Vector2i(floori(wx), floori(wz))) + depth + 0.05
 
 
-## True when no crystal fluid is stored. Town scans can skip an empty disk.
 func spread_depth_empty() -> bool:
 	return _sim == null or _sim.depth.is_empty()
 
@@ -2210,7 +2129,6 @@ func get_spawn_progress() -> Dictionary:
 	return _spawn_ctrl.get_progress()
 
 
-## Headless test entry — wires spawns through the same controller path as runtime.
 func harness_setup_spawns(spawns: Array) -> void:
 	_spawn_points.clear()
 	for s in spawns:
@@ -2241,8 +2159,6 @@ func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) ->
 	return _spawn_ctrl.damage_spawn_at_world(pos, amount, radius)
 
 
-## Reduce crystal depth on one cell. Removes the cell when depth falls under min_depth.
-## Returns hit/broken/shards so weapons and probes can read the result without signals.
 func damage_crystal_at(cell: Vector2i, amount: float) -> Dictionary:
 	var result := {
 		"hit": false,
@@ -2369,7 +2285,6 @@ func get_nearest_crystal_distance(from_pos: Vector3) -> float:
 	return best
 
 
-## Presentation: pulse nearest open-edge crystal cell so the front is glanceable.
 func _tick_frontier_readability_pulse(delta: float) -> void:
 	_frontier_pulse_accum += delta
 	if _frontier_pulse_accum < _FRONTIER_PULSE_INTERVAL:
@@ -2391,7 +2306,6 @@ func _tick_frontier_readability_pulse(delta: float) -> void:
 	vfx.show_place_flash(pos, &"crystal_front")
 
 
-## Nearest crystal cell with an empty cardinal neighbor (the active front).
 func find_nearest_frontier_cell(from_pos: Vector3) -> Vector2i:
 	if _sim == null or _sim.depth.is_empty():
 		return Vector2i(999999, 999999)
@@ -2400,7 +2314,6 @@ func find_nearest_frontier_cell(from_pos: Vector3) -> Vector2i:
 	var pz := int(floor(from_pos.z))
 	var best := Vector2i(999999, 999999)
 	var best_d := INF
-	# Scan local window first (readable front near the player).
 	for dx in range(-40, 41):
 		for dz in range(-40, 41):
 			var key := Vector2i(px + dx, pz + dz)
@@ -2459,7 +2372,6 @@ func _complete_absorption(pos: Vector2i) -> void:
 		_tick_trace["clear_tile_calls"] = int(_tick_trace.get("clear_tile_calls", 0)) + 1
 		_tick_trace["clear_feature_calls"] = int(_tick_trace.get("clear_feature_calls", 0)) + 1
 		_tick_trace["corrupt_calls"] = int(_tick_trace.get("corrupt_calls", 0)) + 1
-	# One WorldState bump for the ground swap and the plant swap.
 	var ws = _WorldState.get_active() if _WorldState else null
 	if ws and ws.has_method("begin_batch"):
 		ws.begin_batch()
@@ -2477,8 +2389,6 @@ func _complete_absorption(pos: Vector2i) -> void:
 	absorption_completed.emit(source_id, pos)
 	if world and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(pos.x, pos.y)
-	# Defer mesh rebuild — immediate rebuild_chunk_at_world was the dominant hitch
-	# when many absorptions drained in one frame (or even a single dense rebuild).
 	_pending_absorption_rebuilds[pos] = true
 	if _tick_trace_active:
 		_tick_trace["rebuild_chunk_calls"] = int(_tick_trace.get("rebuild_chunk_calls", 0)) + 1
@@ -2507,7 +2417,6 @@ func _drain_one_absorption_rebuild() -> void:
 	if chunk_manager == null or not chunk_manager.has_method("rebuild_chunk_at_world"):
 		_pending_absorption_rebuilds.clear()
 		return
-	# One world cell rebuild per frame (chunk-level rebuild is the heavy part).
 	var pos: Vector2i = _pending_absorption_rebuilds.keys()[0]
 	_pending_absorption_rebuilds.erase(pos)
 	chunk_manager.rebuild_chunk_at_world(float(pos.x), float(pos.y))
@@ -2556,7 +2465,6 @@ func get_coverage_ratio() -> float:
 
 
 func export_state() -> Dictionary:
-	# Ensure deferred presentation/gameplay events are applied before snapshot export.
 	flush_dispatch_queue()
 	var depth_rows: Array = []
 	if _simulation:
@@ -2633,10 +2541,8 @@ func import_state(data: Dictionary) -> void:
 		evolution.unlocked_enemies.clear()
 		for entry in evo.get("unlocked_enemies", []):
 			evolution.unlocked_enemies.append(StringName(str(entry)))
-		# Restored unlocks did not emit. Mark them so a later re-emit does not grant twice.
 		_seed_unlock_relics_granted()
 
-	# Only replace spawn points when the save explicitly carries a spawns list.
 	# Missing key must not wipe live win targets (empty {} import used to clear all).
 	if data.has("spawns"):
 		_spawn_points.clear()

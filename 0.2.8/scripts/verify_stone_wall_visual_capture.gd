@@ -1,7 +1,4 @@
 extends SceneTree
-## Boot main.tscn, place stone_wall + wood_wall, capture gameplay-camera screenshots.
-## Usage: godot --path . -s scripts/verify_stone_wall_visual_capture.gd
-## Do NOT pass --headless (screenshots go black).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -259,7 +256,6 @@ func _run() -> void:
 
 
 func _frame_camera(player, cam, world, wx: int, wz: int, zoom: float = 14.0) -> void:
-	# Stand one cell southwest so the player cube does not hide the prop.
 	var sy: float = world.get_surface_height(float(wx - 1), float(wz - 1))
 	player.voxel_position = Vector3(float(wx) - 0.5, sy + 1.5, float(wz) - 0.5)
 	if player.has_method("_sync_global_from_voxel"):

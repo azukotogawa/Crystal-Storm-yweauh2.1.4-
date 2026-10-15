@@ -1,7 +1,6 @@
 class_name VoxelPrimitiveMeshes
 extends RefCounted
 
-## Exact unit-voxel primitives in local space [0,s]³.
 ## +X = east, +Z = south, +Y = up.
 ## Ramp/corner/concave meshes include slopes plus back/floor/side fills (greedy skips these cells).
 ## Cardinal +Z ramps are derived from the west (toward-low-west) reference via axis transforms.
@@ -220,7 +219,6 @@ static func _build_corner_ramp(s: float, dir_a: Vector2i, dir_b: Vector2i) -> Ar
 	return _commit_faces(faces)
 
 
-## Reference wedge NW of diagonal (leg_x=1, leg_z=1). Floor uses UP so isometric camera sees interior ground.
 static func _concave_nw_faces(s: float) -> Array:
 	return [
 		{

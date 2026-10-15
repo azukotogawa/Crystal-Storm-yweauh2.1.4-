@@ -231,7 +231,6 @@ func _process(delta: float) -> void:
 	var due := _rebuild_timer <= 0.0
 	var terrain_dirty := _content_revision_changed()
 	if due or moved or terrain_dirty:
-		# Timer and digs resample the whole view. Walking only scrolls new edges.
 		# A job still in flight must not consume the movement. Retry next frame.
 		if _queue_map_rebuild(_fullscreen_open, due or terrain_dirty):
 			_rebuild_timer = cfg.rebuild_interval_sec
@@ -244,8 +243,6 @@ func is_fullscreen_open() -> bool:
 	return _fullscreen_open
 
 
-## Pause, chat, and loading swallow the key and close the map.
-## The open map blocks other actions, so this does not use blocks_actions().
 func handle_toggle_action(just_pressed: bool) -> void:
 	if _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.pause_open:
 		if _fullscreen_open:

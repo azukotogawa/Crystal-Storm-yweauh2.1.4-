@@ -1,6 +1,4 @@
 extends SceneTree
-## External helper: read latest DevAssistant request and write a response line.
-## Usage: godot --headless -s scripts/dev_assistant_respond.gd -- "Your reply text"
 
 
 const _DeveloperAssistant = preload("res://systems/developer_assistant.gd")

@@ -21,12 +21,10 @@ const _PerformanceQualityConfig = preload("res://config/performance_quality_conf
 @export var performance: Resource
 
 @export_group("Run Rules")
-## Near crystal fluid → ASSAULT (fight). Farther → MAZE (dig/build prep).
 @export var assault_distance: float = 48.0
 @export var maze_min_distance: float = 72.0
 @export var crystal_damage_per_second: float = 28.0
 @export var town_fall_depth: float = 0.45
-## Power added to the crystal when a town falls. The run does not end.
 @export var town_fall_power_surge: float = 40.0
 
 @export_group("Content")

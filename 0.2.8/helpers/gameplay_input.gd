@@ -1,13 +1,10 @@
 class_name GameplayInput
 extends RefCounted
-## Global gate so UI text fields can pause gameplay action polling.
 
 
 static var dev_chat_open := false
-## True while the required start region is still baking/streaming.
 static var world_loading := false
 static var pause_open := false
-## True while the M full map covers the screen. The map key still closes it.
 static var map_open := false
 
 

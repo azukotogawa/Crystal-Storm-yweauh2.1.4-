@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed water after-correction sample on production main (no yard teleports).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")

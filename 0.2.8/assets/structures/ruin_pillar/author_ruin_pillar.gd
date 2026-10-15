@@ -1,11 +1,6 @@
 extends SceneTree
-## Author the Crystal Storm ruin_pillar landmark mesh + albedo atlas.
-##
-## Mesh is in voxel-column units (Y up from unraised ground).
 ## Runtime bind multiplies XZ by voxel_scale; Y stays 1.0 — a tall broken
 ## column, not a wall cap and not a gate arch.
-##
-## Usage: godot --headless --path . -s assets/structures/ruin_pillar/author_ruin_pillar.gd
 
 const HERE := "res://assets/structures/ruin_pillar"
 const SRC := HERE + "/src"
@@ -196,12 +191,10 @@ func add_shaft(cx: float, cz: float, r0: float, r1: float, y0: float, y1: float,
 				_remap(u0, v0, UV_COL), _remap(u1, v0, UV_COL),
 				_remap(u1, v1, UV_COL), _remap(u0, v1, UV_COL)
 			)
-	# Bottom cap
 	var c0 := Vector3(cx, y0, cz)
 	for s in sides:
 		var s1 := (s + 1) % sides
 		_add_tri(c0, pts[0][s1], pts[0][s], _remap(0.5, 0.5, UV_RUB), _remap(0.8, 0.2, UV_RUB), _remap(0.2, 0.2, UV_RUB))
-	# Jagged broken top — skip a couple of sides so it is not a flat cut.
 	var c1 := Vector3(cx + lean_x, y1, cz + lean_z)
 	for s in sides:
 		if s == 2 or s == 3:
@@ -216,20 +209,15 @@ func _build_mesh() -> void:
 	_vn.clear()
 	_f.clear()
 
-	# Rubble collar — wider than the shaft, not a wall slab.
 	add_block(Vector3(0.02, 0.08, 0.00), Vector3(0.72, 0.16, 0.70), UV_RUB, Vector2(0.1, 0.1), 0.02, UV_MOSS)
 	add_block(Vector3(-0.28, 0.07, 0.18), Vector3(0.22, 0.14, 0.20), UV_RUB, Vector2(0.4, 0.2), 0.012, UV_DIRT)
 	add_block(Vector3(0.30, 0.06, -0.16), Vector3(0.20, 0.12, 0.18), UV_RUB, Vector2(0.2, 0.5), 0.01, UV_DIRT)
 	add_block(Vector3(0.18, 0.05, 0.28), Vector3(0.16, 0.10, 0.16), UV_MOSS, Vector2(0.0, 0.3), 0.008, UV_MOSS)
 
-	# Main broken column — thin, leaning, taller than a gate.
 	add_shaft(-0.06, 0.04, 0.22, 0.155, 0.16, 2.18, 0.10, -0.05, 8)
-	# Capital ring near the break.
 	add_block(Vector3(0.02, 1.72, 0.00), Vector3(0.42, 0.10, 0.42), UV_COL, Vector2(0.3, 0.6), 0.012, UV_RUB)
-	# Jagged remaining teeth at the break.
 	add_block(Vector3(-0.04, 2.28, 0.02), Vector3(0.16, 0.22, 0.14), UV_COL, Vector2(0.1, 0.8), 0.01, UV_RUB)
 	add_block(Vector3(0.10, 2.22, -0.06), Vector3(0.12, 0.14, 0.12), UV_RUB, Vector2(0.5, 0.2), 0.008, UV_RUB)
-	# Fallen fragment at the foot — landmark rubble, not a merlon.
 	add_block(Vector3(0.34, 0.16, 0.08), Vector3(0.28, 0.18, 0.16), UV_COL, Vector2(0.2, 0.1), 0.012, UV_RUB)
 	add_block(Vector3(0.38, 0.28, 0.02), Vector3(0.18, 0.12, 0.14), UV_RUB, Vector2(0.4, 0.4), 0.008, UV_MOSS)
 

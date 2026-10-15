@@ -1,11 +1,9 @@
 extends SceneTree
-## Verifies frame-local / tick-local terrain query caches are deterministic and hit.
 
 
 func _init() -> void:
 	var failed := false
 
-	# --- CrystalTerrainQuery tick cache ---
 	var tq_scr = load("res://crystal/crystal_terrain_query.gd")
 	var tq = tq_scr.new()
 	tq.test_base_heights[Vector2i(1, 2)] = 40.0
@@ -29,7 +27,6 @@ func _init() -> void:
 	else:
 		print("OK CrystalTerrainQuery height tick cache hits=", st.get("height_hits"))
 
-	# New tick clears cache
 	tq.begin_sim_tick(3)
 	tq.reset_query_stats()
 	tq.get_terrain_height(Vector2i(3, 4))
@@ -40,9 +37,7 @@ func _init() -> void:
 	else:
 		print("OK tick cache invalidated on new tick_id")
 
-	# --- FeatureRegistry ruin centers frame + derived cache ---
 	var fr = load("res://world/feature_registry.gd")
-	# Structural API checks
 	for m in ["get_ruin_centers", "set_query_measure_enabled", "get_query_stats", "reset_query_stats"]:
 		if not fr.has_method(m):
 			push_error("FeatureRegistry missing %s" % m)
@@ -54,7 +49,6 @@ func _init() -> void:
 	else:
 		print("OK FeatureRegistry ruin center cache present")
 
-	# --- InfiniteNoiseWorld session cache sharing for tiles ---
 	var wsrc := FileAccess.get_file_as_string("res://world/InfiniteNoiseWorld.gd")
 	if not wsrc.contains("use_session_cache") or not wsrc.contains("_compute_surface_tile(wx, wz, true)"):
 		push_error("get_tile_type should reuse session surface/biome caches")
@@ -62,7 +56,6 @@ func _init() -> void:
 	else:
 		print("OK get_tile_type uses session surface/biome caches")
 	if not wsrc.contains("elev_for_temp: float = surface_h if not is_nan"):
-		# Accept either form of single-height reuse in biome compute
 		if not wsrc.contains("surface_h: float = NAN") and not wsrc.contains("surface_h: float ="):
 			push_error("biome compute should reuse single surface height")
 			failed = true

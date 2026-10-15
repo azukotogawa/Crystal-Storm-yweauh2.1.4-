@@ -4,9 +4,7 @@ extends Camera3D
 @export var use_smoothing := true
 @export var smooth_speed: float = 6.0
 
-# FIXED: Lock your tracking offset flatly to a straight depth buffer.
-# Because it stays on the Z-axis, it never de-synchronizes at distant coordinates.
-@export var camera_offset := Vector3(0.0, 0.0, 28.28) # Move back along +Z
+@export var camera_offset := Vector3(0.0, 0.0, 28.28)
 
 
 var zoom_level := 20.0 
@@ -28,7 +26,6 @@ func _ready():
 	projection = Camera3D.PROJECTION_ORTHOGONAL
 	size = zoom_level
 	
-	# Keep the camera pointed flatly at your 2D canvas planes
 	rotation_degrees = Vector3(0.0, 0.0, 0.0) 
 	
 	if target:
@@ -39,8 +36,6 @@ func _process(delta: float):
 	if target:
 		var target_3d = target.global_position + camera_offset
 		
-		# FIXED EVALUATION: If a rotation just happened, skip lerp math entirely 
-		# to ensure thread loading delays cannot throw the tracking out of alignment!
 		if use_smoothing and not bypass_smoothing:
 			var weight = 1.0 - exp(-smooth_speed * delta)
 			subpixel_pos = subpixel_pos.lerp(target_3d, weight)
@@ -48,7 +43,7 @@ func _process(delta: float):
 		else:
 			subpixel_pos = target_3d
 			global_position = target_3d
-			bypass_smoothing = false # Reset the flag on the next frame
+			bypass_smoothing = false
 
 func _input(event):
 	if event is InputEventMouseButton and event.pressed:

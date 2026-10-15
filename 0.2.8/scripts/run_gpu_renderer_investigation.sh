@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# GPU/renderer investigation — display session for screenshots + headless JSONL fallback.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

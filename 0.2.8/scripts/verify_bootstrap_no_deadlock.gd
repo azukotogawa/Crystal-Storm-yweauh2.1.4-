@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: world_features bootstrap must not await ChunkManager-bound visual commit.
 
 
 const _WorldFeatures = preload("res://world/world_features.gd")

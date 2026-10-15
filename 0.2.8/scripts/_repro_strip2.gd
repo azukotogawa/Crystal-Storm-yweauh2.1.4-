@@ -14,7 +14,6 @@ func _go() -> void:
 		f+=1
 	for _i in 45:
 		await process_frame
-	# Order: dependents first, then chunk world
 	var order = [
 		"Player",
 		"GameManager", 
@@ -24,7 +23,7 @@ func _go() -> void:
 		"TerrainEditor",
 		"SaveGameService",
 		"SpatialQueryService",
-		"VoxelWorld", # contains ChunkManager
+		"VoxelWorld",
 		"World",
 		"GameVisualRegistry",
 		"PerformanceService",
@@ -34,7 +33,6 @@ func _go() -> void:
 	for n in order:
 		var node = game.get_node_or_null(n)
 		if node == null:
-			# ChunkManager may live under VoxelWorld only
 			print("[REPRO] skip missing ", n)
 			continue
 		print("[REPRO] freeing ", n, " class=", node.get_class())

@@ -1,5 +1,4 @@
 extends SceneTree
-## Dump 3x3 topology around natural cardinal/corner cells.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ChunkData = preload("res://chunks/chunk_data.gd")

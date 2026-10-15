@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: build highlight available while sword selected if build_place held + stone.
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")

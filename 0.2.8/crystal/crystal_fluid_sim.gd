@@ -15,41 +15,30 @@ var global_flow_mult: float = 1.0
 
 var depth: Dictionary = {}
 var spawn_id_by_cell: Dictionary = {}
-## 0 = unlimited. Rotating subset of existing cells simulated per tick.
 var max_cells_per_tick: int = 0
-## 0 = unlimited. Hard cap on brand-new frontier cells created per tick.
 var max_new_cells_per_tick: int = 0
 var spread_damping_start_cells: int = 600
 var spread_damping_full_cells: int = 3000
 var spread_damping_min_mult: float = 0.35
-## Max depth that can flow into an empty neighbor per tick (gradual frontier).
 var empty_cell_inflow_cap: float = 0.10
-## Sim writes depth when delta exceeds this; smaller changes are ignored.
 var depth_write_epsilon: float = 0.03
-## Mesh/visual updates only when depth delta exceeds this (reduces rebuild churn).
 var mesh_depth_epsilon: float = 0.20
 
 var last_new_cells: int = 0
 var last_changed_cells: int = 0
 var last_mesh_dirty_cells: int = 0
-## Measurement: last tick_flow active/selected cell counts.
 var last_flow_active_cells: int = 0
 var last_flow_selected_cells: int = 0
 
 var _interior_flow_offset: int = 0
 var _frontier_new_offset: int = 0
-## When set, flow/emitters only affect cells where this returns true (loaded chunks).
 var is_cell_active: Callable = Callable()
-## Soft wall for flow cell processing (0 = unlimited). Incomplete ticks resume next call
-## with identical cell order / deltas — results of a completed logical tick are unchanged.
 var flow_budget_us: int = 0
 var last_flow_complete: bool = true
-## In-progress logical tick_flow job (empty when idle).
 var _flow_job: Dictionary = {}
 
-## --- Sim-only profile counters (CRYSTALSTORM_CRYSTAL_SIM_PROFILE=1) ---
 var _prof_enabled: bool = false
-var _prof_phase_us: Dictionary = {}  # phase -> total us
+var _prof_phase_us: Dictionary = {}
 var _prof_phase_max_us: Dictionary = {}
 var _prof_active_cells_sum: int = 0
 var _prof_selected_cells_sum: int = 0
@@ -198,7 +187,6 @@ func _spread_pressure_mult() -> float:
 		return 1.0
 	var span: int = maxi(spread_damping_full_cells - spread_damping_start_cells, 1)
 	var t: float = clampf(float(n - spread_damping_start_cells) / float(span), 0.0, 1.0)
-	# Ease-in so damping ramps before the nominal start threshold.
 	t = t * t
 	return lerpf(1.0, spread_damping_min_mult, t)
 
@@ -289,8 +277,6 @@ func _new_cell_priority(pos: Vector2i, magnitude: float) -> float:
 	return float(touches) * 12.0 + float(hole_bonus) + magnitude
 
 
-## Stable 0..1 tie-break. A per-tick shuffle re-picks scattered frontier cells
-## and reads as a living checkerboard instead of a settling pool.
 func _frontier_jitter(pos: Vector2i) -> float:
 	var h: int = pos.x * 73856093 ^ pos.y * 19349663
 	if h < 0:
@@ -306,8 +292,6 @@ func _frontier_diagonal_touches(pos: Vector2i) -> int:
 	return n
 
 
-## Holes and downhill faces rank first. Diagonal contact rounds the front
-## the way a pool thickens before it throws a spike.
 func _empty_neighbor_score(neighbor: Vector2i, transfer: float, pressure: float) -> float:
 	return (
 		_new_cell_priority(neighbor, transfer)
@@ -317,7 +301,6 @@ func _empty_neighbor_score(neighbor: Vector2i, transfer: float, pressure: float)
 	)
 
 
-## Birth depth for a creep step. Must clear min_flow_diff or the child can never spread.
 func _frontier_birth_depth() -> float:
 	return minf(empty_cell_inflow_cap, maxf(config.min_depth, config.min_flow_diff + config.min_depth))
 
@@ -370,10 +353,6 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		set_depth(pos, current + minf(added, room), spawn.id)
 
 
-## Returns cells whose depth changed (batched — no per-cell signals during flow).
-## Mesh rebuilds should use get_last_mesh_dirty_cells() / mesh_dirty subset only.
-## When flow_budget_us > 0, may return [] with last_flow_complete=false; call again to resume.
-## A completed logical tick produces the same depth/deltas as an unbounded single call.
 func tick_flow(delta: float) -> Array:
 	if not _flow_job.is_empty():
 		return _flow_job_continue()
@@ -472,8 +451,6 @@ func _flow_job_continue() -> Array:
 		if _prof_enabled:
 			_prof_terrain_tile += 1
 		var my_tile := terrain.get_tile(pos)
-		# Settle existing fluid conservatively. Growth into empty ground is one
-		# neighbor per cell (picked below) so mass cannot hop onto the other parity.
 		var settle: Dictionary = {}
 		var best_score := -1.0e20
 		var best_neighbor := Vector2i.ZERO
@@ -552,15 +529,12 @@ func _flow_job_continue() -> Array:
 				var conduct: float = raw_conduct * config.lateral_spread_bias * lateral_mult
 				var spread: float = min(amount * conduct * delta, config.max_flow_per_cell * delta * 0.35)
 				if _is_empty_neighbor(n_amount):
-					# Pressure already picked the face. Lateral mass only feeds that face.
 					if from_pressure:
 						if neighbor == best_neighbor:
 							spread = _cap_transfer_to_empty(spread)
 							if spread >= config.min_depth * 0.15:
 								best_transfer += spread
 						continue
-					# Shallow film (pressure below min_flow_diff) still creeps one
-					# open-ground step, the way water keeps wetting the next cell.
 					spread = _cap_transfer_to_empty(spread)
 					if spread <= 0.0 and raw_conduct < 0.25:
 						continue
@@ -619,7 +593,6 @@ func _flow_job_continue() -> Array:
 	if _prof_enabled:
 		_prof_add_phase("process_selected_cells", Time.get_ticks_usec() - t0)
 
-	# Apply phase — always complete after all cells processed (same as monolithic tick_flow).
 	var t_apply := Time.get_ticks_usec() if _prof_enabled else 0
 	var changed: Array = _apply_flow_deltas(deltas, frontier)
 	if _prof_enabled:
@@ -675,7 +648,6 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 			if absf(old_depth - new_depth) >= mesh_depth_epsilon:
 				mesh_dirty.append(pos)
 
-	# Rare settle path (should be empty). Keep hole-first order, no rotation.
 	if not pending_new.is_empty():
 		pending_new.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			var score_a: float = _new_cell_priority(a.pos, float(a.magnitude))
@@ -794,7 +766,6 @@ func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos
 		if to_depth >= config.min_depth and from_depth >= config.min_depth:
 			combined *= config.river_flow_factor
 		elif from_depth >= config.min_depth:
-			# Frontier spread into empty river/water — slow but not frozen.
 			combined *= maxf(config.river_flow_factor, 0.32)
 
 	return combined

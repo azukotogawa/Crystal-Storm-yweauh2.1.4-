@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# LOW-preset movement traversal probe — run twice for variance (Epic 2 criterion 2).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

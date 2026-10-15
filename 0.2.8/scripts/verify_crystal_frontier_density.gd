@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: crystal spread should not leave persistent checkerboard holes in the fluid envelope.
 
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
@@ -34,7 +33,6 @@ func _run() -> void:
 	var sim := _CrystalFluidSim.new(cfg, terrain)
 	_apply_medium_sim_params(sim, med)
 
-	# Line seed matches spread_limits; delta must match MEDIUM crystal_sim_hz (0.18 stalls spread).
 	for i in 10:
 		sim.set_depth(Vector2i(origin.x + i - 5, origin.y), cfg.initial_spawn_depth, 0, false)
 

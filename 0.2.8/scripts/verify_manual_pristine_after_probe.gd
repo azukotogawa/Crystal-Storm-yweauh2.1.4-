@@ -1,5 +1,4 @@
 extends SceneTree
-## Runs smoke wrapper and proves manual_verification.md is untouched.
 
 const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"

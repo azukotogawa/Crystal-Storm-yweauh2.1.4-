@@ -1,18 +1,4 @@
 extends Node
-## Early main-thread frame probe (measurement only).
-##
-## Named phase bookends (real begin/end call sites — objective: physics/process callbacks):
-##   physics_callbacks — open at first physics_process; closed when process band starts
-##   process_callbacks — open at first process; closed by late PerfProfiler close_process_envelope
-##
-## Nested systems (entity_physics, chunk_*, living_world, …) begin/end under these parents;
-## parent exclusive is only inter-callback gaps (hierarchical exclusive, not residual rename).
-##
-## Frame work wall (gate denominator):
-##   mark_frame_work_start at first physics/process
-##   → finalize at end of process (after all node _process)
-##
-## Does not change gameplay, scheduling budgets, or work amount.
 
 const SECTION_PHYSICS := "physics_callbacks"
 const SECTION_PROCESS := "process_callbacks"
@@ -72,7 +58,6 @@ func _process(_delta: float) -> void:
 		_process_open = true
 
 
-## Called by PerfProfiler (late, process_priority 100000) at end of process phase.
 func close_process_envelope() -> void:
 	var p = _profiler()
 	if p == null or not p.enabled:
@@ -92,5 +77,4 @@ func close_process_envelope() -> void:
 		_process_open = false
 	if p.has_method("finalize_frame"):
 		p.finalize_frame()
-	# Gap until next physics/process (engine post-process + MQ + wait). Not in wall.
 	_idle_start_us = Time.get_ticks_usec()

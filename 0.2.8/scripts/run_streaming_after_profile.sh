@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Post-optimization streaming profile — canonical traversal benchmark only.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

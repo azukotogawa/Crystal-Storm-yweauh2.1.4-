@@ -1,5 +1,4 @@
 extends SceneTree
-## Main scene: profiler-backed values become non-zero during healthy runtime.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

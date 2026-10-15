@@ -1,6 +1,4 @@
 extends SceneTree
-## Heightfield dig brush: radius 1 matches a single dig, wider radii are a disk,
-## one chunk flush per stroke, range and protected columns hold, edits save.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")

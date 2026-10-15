@@ -1,7 +1,4 @@
 extends SceneTree
-## Same-frame dig/build must change VoxelFloorProbe height.
-## The height-cache key must not alias one feet hint with another edit delta.
-## Usage: godot --headless -s scripts/verify_floor_probe_live_edit.gd
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -45,7 +42,6 @@ func _run() -> void:
 	quit(0)
 
 
-## Build, then dig past the cached zero so both deltas are new keys.
 func _test_same_frame_edit(probe, world) -> void:
 	var cx := 8
 	var cz := 8
@@ -69,7 +65,6 @@ func _test_same_frame_edit(probe, world) -> void:
 			% [h0, h1, f0, f1, c0, c1]
 		)
 		return
-	# +1 -> 0 -> -1. The negative delta was never cached.
 	if not _TerrainEdits.dig(cx, cz, 1) or not _TerrainEdits.dig(cx, cz, 1):
 		_fail("dig failed")
 		return
@@ -85,7 +80,6 @@ func _test_same_frame_edit(probe, world) -> void:
 	print("OK same-frame build raises and dig lowers floor probe")
 
 
-## (hint 65536, delta 0) and (hint 65536 ^ (delta_i << 16), one layer) share the old XOR key.
 func _test_hint_delta_key_does_not_alias(probe, world) -> void:
 	var cx := 10
 	var cz := 10

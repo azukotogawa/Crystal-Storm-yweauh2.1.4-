@@ -1,11 +1,4 @@
 extends SceneTree
-## Crystal simulation-only profile (measure, no optimize).
-## Counts active cells, terrain queries, neighbor evals, flow transfers, chunk crossings.
-## Windows: early post-boot (startup) + stressed field (gameplay-like).
-##
-## Usage:
-##   CRYSTALSTORM_CRYSTAL_SIM_PROFILE=1 CRYSTALSTORM_BAKE_RADIUS=2 \
-##   godot --headless -s scripts/profile_crystal_sim_only.gd
 
 const STARTUP_FRAMES := 180
 const GAMEPLAY_FRAMES := 240
@@ -59,7 +52,6 @@ func _run() -> void:
 	if tq and tq.has_method("set_query_measure_enabled"):
 		tq.set_query_measure_enabled(true)
 		tq.reset_query_stats()
-	# Unbounded flow for pure algorithmic cost (measure only; not a production change).
 	if fluid:
 		fluid.flow_budget_us = 0
 	if "_simulation" in crystal and crystal._simulation:
@@ -67,7 +59,6 @@ func _run() -> void:
 	if "_perf_flow_budget_us" in crystal:
 		crystal._perf_flow_budget_us = 0
 
-	# --- Window A: startup/early natural spread ---
 	var proc_a: Dictionary = await _sample_process(crystal, STARTUP_FRAMES)
 	var fluid_a: Dictionary = {}
 	if fluid and fluid.has_method("get_sim_profile"):
@@ -77,7 +68,6 @@ func _run() -> void:
 		tq_a = tq.get_query_stats()
 	var cells_a := int(crystal.covered_cells) if "covered_cells" in crystal else -1
 
-	# --- Window B: stressed gameplay-like field ---
 	if fluid and fluid.has_method("reset_sim_profile"):
 		fluid.reset_sim_profile()
 	if tq and tq.has_method("reset_query_stats"):
@@ -150,7 +140,6 @@ func _force_sim_running(crystal) -> void:
 	if "_sim_tick_pending" in crystal:
 		crystal._sim_tick_pending = false
 	if "_STREAM_PENDING_PAUSE_THRESHOLD" in crystal:
-		# raise so pressure gate rarely trips during measure
 		pass
 
 

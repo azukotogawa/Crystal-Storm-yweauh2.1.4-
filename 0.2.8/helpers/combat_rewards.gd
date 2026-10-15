@@ -1,6 +1,5 @@
 class_name CombatRewards
 extends RefCounted
-## Player kills convert into maze fuel (materials). Crystal still feeds on unattended deaths.
 
 
 static func grant_player_kill(tree: SceneTree, kind: StringName, display_name: String) -> Dictionary:

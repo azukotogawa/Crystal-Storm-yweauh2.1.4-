@@ -1,5 +1,4 @@
 extends SceneTree
-## Compare legacy vs procedural using the plan's five metrics only.
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 

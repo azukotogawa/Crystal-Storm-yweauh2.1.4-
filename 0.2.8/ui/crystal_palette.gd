@@ -1,7 +1,5 @@
 class_name CrystalPalette
 extends RefCounted
-## Alternate crystal colours with distinct luminance. No new textures:
-## existing StandardMaterial3D albedo and emission, plus HUD marker tints.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 

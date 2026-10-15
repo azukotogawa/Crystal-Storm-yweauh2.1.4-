@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: registry must bind textures to Sprite3D material_override and building meshes.
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -14,7 +13,6 @@ const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
 
 
 func _init() -> void:
-	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")

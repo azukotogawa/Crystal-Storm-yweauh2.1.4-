@@ -1,6 +1,5 @@
 class_name TerrainDirtyScope
 extends RefCounted
-## Dependency-aware dirty column scope for incremental terrain mesh updates.
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _TerrainEditor = preload("res://world/terrain_editor.gd")

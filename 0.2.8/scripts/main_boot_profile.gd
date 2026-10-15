@@ -1,5 +1,4 @@
 extends SceneTree
-## Boot smoke for profiling instrumentation — ≥30 frames, no crash.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

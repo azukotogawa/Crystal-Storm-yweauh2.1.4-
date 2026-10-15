@@ -1,6 +1,4 @@
 extends SceneTree
-## The player visual must be a closed solid from every yaw and pitch.
-## Front art is assets/player/player.png. Sides and back are darkened texels.
 
 const _Body = preload("res://player/player_body_mesh.gd")
 const _WS = preload("res://config/world_settings.gd")
@@ -216,9 +214,6 @@ func _run() -> void:
 	else:
 		print("OK volume size=%s" % aabb.size)
 
-	# Boots sit on the capsule bottom (local y = -height/2). The node is then
-	# lifted by height/2, so world feet are the body origin. A padded canvas
-	# used to leave the soles a quarter of the height above the ground.
 	var sole := aabb.position.y
 	var crown := aabb.position.y + aabb.size.y
 	if absf(sole + height * 0.5) > 0.02:
@@ -278,7 +273,6 @@ func _run() -> void:
 		print("OK sides and back are darker than the front")
 
 	var aim := _aim_on_front(verts, indices, normals)
-	# Sit the aim inside the shell so side rays are not coplanar with the front.
 	aim.z -= maxf(aabb.size.z * 0.35, 0.001)
 	var views: Array = [
 		{"yaw": 0.0, "pitch": 0.0, "axis": Vector3(0, 0, 1)},
@@ -321,9 +315,6 @@ func _run() -> void:
 	else:
 		print("OK solid from cardinal yaw, iso pitch, above, and below")
 
-	# Swings are not parented to a bone. They start at the feet + 0.7 voxels
-	# and step forward (spear 1.15, hammer 0.9). The body must still cover
-	# that height and stay narrower than the forward step.
 	var vs: float = ws.voxel_scale
 	var swing_y := 0.7 * vs
 	var world_y0 := aabb.position.y + height * 0.5

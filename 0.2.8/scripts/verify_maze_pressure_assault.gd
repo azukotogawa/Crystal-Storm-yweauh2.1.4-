@@ -1,6 +1,4 @@
 extends SceneTree
-## Complete MAZE → crystal pressure → ASSAULT loop using existing systems only.
-## Usage: godot --headless -s scripts/verify_maze_pressure_assault.gd
 
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")

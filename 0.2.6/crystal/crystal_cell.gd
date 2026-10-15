@@ -5,9 +5,7 @@ var world_pos: Vector2i = Vector2i.ZERO
 var terrain_y: float = 0.0
 var depth: float = 0.0
 var spawn_id: int = -1
-## Visual-only: cardinal neighbor growth mask (N=1,E=2,S=4,W=8). Not serialized.
 var neighbor_mask: int = 0
-## Visual-only: true when at least one cardinal neighbor lacks crystal (active front).
 var is_frontier: bool = false
 
 

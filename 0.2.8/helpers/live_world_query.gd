@@ -1,6 +1,5 @@
 class_name LiveWorldQuery
 extends RefCounted
-## Read-only snapshot of one world column for the Live World Inspector.
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -240,8 +239,6 @@ static func inspect_cell(tree: SceneTree, wx: int, wz: int, world = null, cm = n
 	}
 
 
-## Triangles whose centroid lies inside the column XZ. Side-lip verts on the
-## shared wall are ignored. Camera-truth proxy: slope vs flat square vs hole.
 static func column_surface_geometry(cm, wx: int, wz: int) -> Dictionary:
 	var out := {
 		"tri_count": 0,
@@ -366,8 +363,6 @@ static func _column_mesh_cover(cm, chunk: Vector2i, wx: int, wz: int) -> Diction
 			and float(lz) + 0.5 >= qz and float(lz) + 0.5 < qz + dz
 		)
 		if fc >= _WorldVisualCoords.FACE_RAMP:
-			# Cardinal/corner quads live on the owner column (landing or
-			# corner-low). dir points at the approach; that cell is FACE_TOP.
 			if not (is_equal_approx(float(lx), qx) and is_equal_approx(float(lz), qz)):
 				continue
 		elif not in_box:

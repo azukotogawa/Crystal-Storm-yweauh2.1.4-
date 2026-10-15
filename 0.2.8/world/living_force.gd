@@ -1,10 +1,5 @@
 class_name LivingForce
 extends RefCounted
-## Living-force reactions and the heightfield dig brush.
-## Terrain is one height per column, so the brush is a cylinder in plan:
-## a disk of columns whose surface lies inside the vertical radius.
-## Radius 1 is the old single-column dig. Cole can retune every static var.
-## See docs/LIVING_FORCE_ALIGNMENT.md.
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -20,13 +15,10 @@ const BRUSH_RADIUS_MAX := 3
 ## Added to the equipped tool's dig_radius. [ / ] adjust this while a dig tool is held.
 static var session_radius_bias: int = 0
 
-## Unsupported dug rims slump one layer. Natural noise cliffs are left alone
-## (the test is height_delta, not world noise). No cascade past the dug cells.
 static var settle_enabled: bool = true
 static var settle_trigger_layers: int = 2
 static var settle_max_cells: int = 4
 
-## A dug column below an adjacent natural waterline is handed to VoxelFluidService.
 static var water_inflow_enabled: bool = true
 
 ## Existing crystal near a dig or a new wall gains a little depth. Never seeds a new cell.
@@ -36,8 +28,6 @@ static var crystal_dig_pressure: float = 0.06
 static var crystal_build_pressure: float = 0.10
 static var crystal_pressure_cells_per_stroke: int = 4
 
-## Crystal sitting on a player build accumulates push, then consumes one build.
-## One break per tick. Progress is stored on the feature (`crystal_push`) so saves keep it.
 static var pushback_enabled: bool = true
 static var pushback_depth: float = 0.75
 static var pushback_step: float = 0.34
@@ -75,7 +65,6 @@ static func adjust_session_bias(delta: int, item_id: String) -> int:
 	return result
 
 
-## Columns inside the brush. `world` may be null (every column then shares layer 0).
 static func footprint(cx: int, cz: int, radius: int, world = null) -> Array:
 	var r := clampi(radius, 1, BRUSH_RADIUS_MAX)
 	var reach := r - 1
@@ -122,8 +111,6 @@ static func is_water_source_tile(tile: int) -> bool:
 	]
 
 
-## Towns, ruins, player structures, build tiles, and natural water are not brush targets.
-## Radius-1 try_dig keeps its older single-cell rules; the brush uses this set.
 static func is_protected_column(wx: int, wz: int, world = null) -> bool:
 	if world != null and world.has_method("get_tile_type"):
 		if is_water_source_tile(int(world.get_tile_type(float(wx), float(wz)))):
@@ -150,7 +137,6 @@ static func is_protected_column(wx: int, wz: int, world = null) -> bool:
 	return false
 
 
-## Drop immediate rims that stand `settle_trigger_layers` above a dug cell. One layer, no cascade.
 static func apply_settle(dug: Array, world = null) -> Array:
 	if not settle_enabled or dug.is_empty():
 		return []
@@ -190,7 +176,6 @@ static func apply_settle(dug: Array, world = null) -> Array:
 	return done
 
 
-## Crystal cells that already have depth, sorted, capped. Does not invent cells.
 static func pressure_targets(
 	origin: Vector2i,
 	depth_at: Callable,
@@ -239,7 +224,6 @@ static func rearm_push_watch() -> void:
 			push_watch[key_v] = true
 
 
-## Returns cells whose player build was consumed this tick (at most pushback_max_per_tick).
 static func tick_pushback(depth_at: Callable) -> Array:
 	if not pushback_enabled or push_watch.is_empty() or not depth_at.is_valid():
 		return []

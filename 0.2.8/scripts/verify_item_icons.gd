@@ -1,9 +1,4 @@
 extends SceneTree
-## Icons on the real hotbar and inventory.
-## The 8a check opened the bag with I and required 64px art, but only for the
-## six tools and weapons. Wood, stone, herb, the shard, and the items that
-## reuse those pictures (bomb and armor) stayed 32px files drawn larger than
-## the texture. This one stocks those slots too and still rejects an upscale.
 
 
 const _Inventory = preload("res://inventory/inventory.gd")
@@ -15,9 +10,7 @@ const _Registry = preload("res://systems/game_visual_registry.gd")
 const GEAR: Array[String] = [
 	"wooden_sword", "spear", "stone_pick", "crystal_hammer", "shortbow", "sling",
 ]
-## Placeable blocks. They share the hotbar with the gear (8 slots).
 const BLOCKS: Array[String] = ["wood", "stone"]
-## Bag-only stacks, including items whose picture is another item's visual_id.
 const ITEMS: Array[String] = [
 	"herb", "crystal_shard", "crystal_bomb", "leather_armor", "stone_plate", "crystal_weave",
 ]

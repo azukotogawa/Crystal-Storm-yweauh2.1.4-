@@ -1,7 +1,4 @@
 extends SceneTree
-## Author Batch 01 32×32 tiles: fill + 2–4px marks, one palette.
-## Blit ONLY the ten Cube.png cells. Usage:
-##   godot --headless --path . -s assets/tiles/batch01/author_batch01.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
@@ -23,8 +20,6 @@ const SLOTS := {
 	"dirt2": Vector2i(0, 6),
 }
 
-# One world: sit under honey gate / slate bridge / ochre ruin / terracotta hall.
-# Sides painted a step light (shader ×0.68).
 const GRASS := Color(0.30, 0.50, 0.24)
 const GRASS_D := Color(0.20, 0.36, 0.16)
 const GRASS_L := Color(0.40, 0.58, 0.28)
@@ -136,7 +131,6 @@ func _tile_clods(base: Color, dark: Color) -> Image:
 
 func _tile_water(base: Color, dark: Color, deep: bool) -> Image:
 	var im := _blank(base)
-	# Irregular 3–4px pools only — no full-width bars (those grid the ocean rim).
 	if deep:
 		_blob(im, 8, 10, 4, dark)
 		_blob(im, 22, 8, 3, dark)
@@ -161,7 +155,6 @@ func _tile_canopy() -> Image:
 
 func _tile_bark() -> Image:
 	var im := _blank(BARK)
-	# Three 3px vertical ribs that wrap in Y — reads as bark on sides, pad on tops.
 	for x in [5, 6, 7, 16, 17, 18, 26, 27, 28]:
 		for y in TILE:
 			_plot(im, x, y, BARK_D if x % 11 != 6 else BARK_L)
@@ -176,7 +169,6 @@ func _tile_stone(base: Color, dark: Color, lite: Color) -> Image:
 	_blob(im, 22, 8, 3, dark)
 	_blob(im, 14, 22, 4, dark)
 	_blob(im, 26, 24, 3, lite)
-	# Two 2px wrap cracks, not a brick lattice.
 	for x in TILE:
 		if (x + 3) % 11 != 0:
 			_plot(im, x, 15, dark)
@@ -188,7 +180,6 @@ func _tile_stone(base: Color, dark: Color, lite: Color) -> Image:
 
 
 func _wrap_blend(im: Image) -> void:
-	# 1px wrap soften only — keep 2–4px marks sharp.
 	for y in TILE:
 		var a: Color = im.get_pixel(0, y)
 		var b: Color = im.get_pixel(TILE - 1, y)

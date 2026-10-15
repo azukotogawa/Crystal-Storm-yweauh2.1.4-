@@ -1,5 +1,4 @@
 extends SceneTree
-## Audits display_session_probe.gd for skeptic-flagged regressions.
 
 const PROBE := "res://scripts/display_session_probe.gd"
 

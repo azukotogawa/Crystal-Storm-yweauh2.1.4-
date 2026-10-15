@@ -1,8 +1,5 @@
 class_name CompositionRoot
 extends Node
-## Single authoritative boot / service wiring authority for production main scene.
-## Stages are one-way. Critical peers are resolved via ServiceRegistry, not groups.
-## Groups may still exist as discovery adapters for UI/debug.
 
 const _ServiceRegistry = preload("res://systems/service_registry.gd")
 const _RuntimeConfigResolver = preload("res://systems/runtime_config_resolver.gd")
@@ -62,21 +59,19 @@ static var _active = null
 var registry = null
 var stage: int = Stage.UNINITIALIZED
 var resolved_config: Dictionary = {}
-var _stage_times_ms: Dictionary = {}  # stage name -> ms to reach
+var _stage_times_ms: Dictionary = {}
 var _boot_started_ms: int = 0
 var _boot_done: bool = false
 var _failed_reason: String = ""
 var _debug_overrides: Dictionary = {}
 var _platform_overrides: Dictionary = {}
 var _default_stage_timeout_frames: int = 1800
-## Boot stage dwell instrumentation (measurement only — no gameplay effect).
-## Each closed stage: start_ms, end_ms, duration_ms, ops[], slowest_op, slowest_ms.
 var _boot_trace_enabled: bool = true
-var _boot_trace_stages: Array = []  # closed stage dicts
+var _boot_trace_stages: Array = []
 var _boot_trace_current_name: String = ""
 var _boot_trace_current_start_ms: int = 0
-var _boot_trace_ops: Array = []  # {name, start_ms, end_ms, duration_ms}
-var _boot_trace_op_stack: Array = []  # open op names
+var _boot_trace_ops: Array = []
+var _boot_trace_op_stack: Array = []
 var _boot_trace_op_start_ms: Dictionary = {}
 
 
@@ -116,13 +111,11 @@ func is_at_least(s: int) -> bool:
 	return stage >= s
 
 
-## Main production boot entry. Call from main.gd after children enter tree.
 func boot_async() -> bool:
 	_boot_started_ms = Time.get_ticks_msec()
 	_boot_done = false
 	_failed_reason = ""
 	_boot_trace_reset()
-	# Always collect StartupProfiler samples during boot for stage op attribution.
 	_StartupProfiler.begin_session()
 	if _StartupTotal.is_enabled() and _StartupTotal.now_us() <= 0:
 		_StartupTotal.begin_session("composition_root")
@@ -132,7 +125,6 @@ func boot_async() -> bool:
 	if registry == null:
 		registry = _ServiceRegistry.new()
 
-	# --- Discover scene-owned services once by relative path (not groups) ---
 	var game := get_parent()
 	if game == null:
 		return _fail("composition_root has no parent Game node")
@@ -147,7 +139,6 @@ func boot_async() -> bool:
 	_StartupProfiler.end("scene_service_registration")
 	_trace_op_end("scene_service_registration")
 
-	# --- CONFIGURED ---
 	_trace_op_begin("load_config")
 	_StartupProfiler.begin("load_config")
 	if _StartupTotal.is_enabled():
@@ -155,12 +146,10 @@ func boot_async() -> bool:
 	var cfg = registry.require(ID_CONFIG)
 	if cfg == null:
 		return _fail("missing config_service")
-	# ConfigService._ready may already have run; ensure defaults applied.
 	if cfg.has_method("ensure_ready_sync"):
 		_trace_op_begin("ConfigService.ensure_ready_sync")
 		cfg.ensure_ready_sync()
 		_trace_op_end("ConfigService.ensure_ready_sync")
-	# Authored config fan-out via registry (not group search).
 	if cfg.has_method("apply_to_registered"):
 		_trace_op_begin("ConfigService.apply_to_registered(initial)")
 		cfg.apply_to_registered(registry, {})
@@ -171,7 +160,6 @@ func boot_async() -> bool:
 	_trace_op_end("load_config")
 	_advance(Stage.CONFIGURED)
 
-	# --- QUALITY + resolved config ---
 	_trace_op_begin("quality_and_perf_policy")
 	_StartupProfiler.begin("quality_and_perf_policy")
 	if _StartupTotal.is_enabled():
@@ -179,10 +167,8 @@ func boot_async() -> bool:
 	var perf = registry.require(ID_PERF)
 	if perf == null:
 		return _fail("missing performance_service")
-	# Env preset wins over leftover player_settings.json (quality + native distance).
 	if perf.has_method("apply_env_preset_if_set"):
 		perf.apply_env_preset_if_set()
-	# Ensure quality resource selected (env/preset may already have set quality).
 	if not bool(perf.get("_applied")) if "_applied" in perf else true:
 		if perf.has_method("ensure_ready"):
 			_trace_op_begin("PerformanceService.ensure_ready(wait__applied)")
@@ -196,12 +182,10 @@ func boot_async() -> bool:
 	_trace_op_begin("RuntimeConfigResolver._rebuild_resolved_config")
 	_rebuild_resolved_config(cfg, perf)
 	_trace_op_end("RuntimeConfigResolver._rebuild_resolved_config")
-	# Re-push authored config with resolved vegetation multipliers etc.
 	if cfg.has_method("apply_to_registered"):
 		_trace_op_begin("ConfigService.apply_to_registered(resolved)")
 		cfg.apply_to_registered(registry, resolved_config)
 		_trace_op_end("ConfigService.apply_to_registered(resolved)")
-	# Apply *effective* policy (quality folded with platform/debug) via registry.
 	if perf.has_method("apply_to_registered"):
 		_trace_op_begin("PerformanceService.apply_to_registered")
 		perf.apply_to_registered(registry, resolved_config)
@@ -221,8 +205,6 @@ func boot_async() -> bool:
 	_trace_op_end("quality_and_perf_policy")
 	_advance(Stage.QUALITY_APPLIED)
 
-	# --- FEATURES (textures only first — must not wait for chunks) ---
-	# Loading UI still shows QUALITY_APPLIED until FEATURES_SEEDED advances.
 	var features = registry.require(ID_FEATURES)
 	var visreg = registry.resolve(ID_VISUAL_REG)
 	_trace_op_begin("GameVisualRegistry.ensure_textures_ready")
@@ -247,7 +229,6 @@ func boot_async() -> bool:
 	elif features and features.has_method("ensure_ready"):
 		await features.ensure_ready()
 	if features == null or not bool(features.get("bootstrap_complete")):
-		# Wait for features seed if still async
 		_trace_op_begin("WorldFeatures.wait_bootstrap_complete")
 		var fframes := 0
 		while features and not bool(features.get("bootstrap_complete")) and fframes < _default_stage_timeout_frames:
@@ -262,7 +243,6 @@ func boot_async() -> bool:
 	_trace_op_end("WorldFeatures.bootstrap_with_services")
 	_advance(Stage.FEATURES_SEEDED)
 
-	# --- CHUNKS (includes bake index load + mesh plan bind + first stream request) ---
 	_trace_op_begin("VoxelWorld.create_chunk_manager_with_services")
 	_StartupProfiler.begin("world_and_chunk_manager_init")
 	if _StartupTotal.is_enabled():
@@ -274,7 +254,6 @@ func boot_async() -> bool:
 	if voxel.has_method("create_chunk_manager_with_services"):
 		cm = await voxel.create_chunk_manager_with_services(registry)
 	else:
-		# Fallback: wait for manager property
 		var cframes := 0
 		while (voxel.get("manager") == null) and cframes < _default_stage_timeout_frames:
 			await get_tree().process_frame
@@ -288,7 +267,6 @@ func boot_async() -> bool:
 	_StartupProfiler.end("world_and_chunk_manager_init")
 	_trace_op_end("VoxelWorld.create_chunk_manager_with_services")
 
-	# Explicit handoff fan-out (replaces group lookups in on_chunk_manager_ready)
 	_trace_op_begin("service_handoff_on_chunks")
 	_StartupProfiler.begin("service_handoff_on_chunks")
 	if _StartupTotal.is_enabled():
@@ -300,7 +278,6 @@ func boot_async() -> bool:
 	_trace_op_end("service_handoff_on_chunks")
 	_advance(Stage.CHUNKS_CREATED)
 
-	# --- INITIAL STREAM (first chunk(s) load + mesh upload drain window) ---
 	var SPP = load("res://systems/stream_phase_profiler.gd")
 	if SPP:
 		SPP.begin_session()
@@ -314,7 +291,6 @@ func boot_async() -> bool:
 	var _GameplayInput = load("res://helpers/gameplay_input.gd")
 	if _GameplayInput and _GameplayInput.has_method("set_world_loading"):
 		_GameplayInput.set_world_loading(true)
-	# Required start ring must be resident — one streamed chunk is not playable.
 	while sframes < _default_stage_timeout_frames:
 		var start_ready := false
 		if cm.has_method("is_start_region_ready"):
@@ -365,7 +341,6 @@ func boot_async() -> bool:
 		if _GI and _GI.has_method("set_world_loading"):
 			_GI.set_world_loading(false)
 
-	# --- VISUALS ---
 	_trace_op_begin("visuals_commit/post_bootstrap_refresh")
 	_StartupProfiler.begin("visuals_commit")
 	if _StartupTotal.is_enabled():
@@ -422,7 +397,6 @@ func _register_scene_services(game: Node) -> void:
 	_try_register(game, "Player", ID_PLAYER, [ID_WORLD, ID_CHUNKS])
 	_try_register(game, "WorldVisuals", ID_WORLD_VISUALS, [ID_VISUAL_REG, ID_CHUNKS])
 	_try_register(game, "GameManager", ID_GAME_MANAGER, [ID_CONFIG, ID_CRYSTAL])
-	# Nested under WorldFeatures
 	var features_node = game.get_node_or_null("WorldFeatures")
 	if features_node:
 		var em = features_node.get_node_or_null("EntityManager")
@@ -455,7 +429,6 @@ func _on_chunk_manager_ready_explicit(cm) -> void:
 	var cfg = registry.resolve(ID_CONFIG)
 	if cfg and cfg.has_method("on_chunk_manager_ready"):
 		cfg.on_chunk_manager_ready(cm)
-	# Also registry-push world_gen / sim after chunk exists.
 	if cfg and cfg.has_method("apply_to_registered"):
 		cfg.apply_to_registered(registry, resolved_config)
 	var terrain = registry.resolve(ID_TERRAIN)
@@ -472,7 +445,6 @@ func _on_chunk_manager_ready_explicit(cm) -> void:
 	var crystal = registry.resolve(ID_CRYSTAL)
 	if spatial and crystal and spatial.has_method("bind_crystal_manager"):
 		spatial.bind_crystal_manager(crystal)
-	# WorldState active session (if available)
 	if spatial and spatial.has_method("bind_world_state"):
 		var WS = load("res://world/world_state.gd")
 		var ws = WS.get_active() if WS and WS.has_method("get_active") else null
@@ -488,7 +460,6 @@ func _on_chunk_manager_ready_explicit(cm) -> void:
 	if combat and combat.has_method("on_chunk_manager_ready"):
 		combat.on_chunk_manager_ready(cm)
 	var perf = registry.resolve(ID_PERF)
-	# Effective policy (not raw quality) must reach ChunkManager.
 	if perf and perf.has_method("reapply_to_chunk_manager"):
 		perf.reapply_to_chunk_manager(cm, resolved_config)
 	elif perf and perf.has_method("apply_to_registered"):
@@ -504,7 +475,6 @@ func _advance(next_stage: int) -> void:
 		return
 	if next_stage < stage and next_stage != Stage.SHUTTING_DOWN and next_stage != Stage.FAILED:
 		push_warning("CompositionRoot: non-forward stage %s -> %s" % [get_stage_name(), get_stage_name(next_stage)])
-	# Close dwell for previous label (ops since last advance / PRE_CONFIGURED).
 	if not _boot_trace_current_name.is_empty():
 		_close_stage_trace(_boot_trace_current_name)
 	stage = next_stage
@@ -549,7 +519,6 @@ func _open_stage_trace(stage_name: String) -> void:
 func _close_stage_trace(stage_name: String) -> void:
 	if not _boot_trace_enabled:
 		return
-	# Flush any open ops.
 	while not _boot_trace_op_stack.is_empty():
 		_trace_op_end(str(_boot_trace_op_stack[_boot_trace_op_stack.size() - 1]))
 	var end_ms: int = Time.get_ticks_msec()
@@ -599,7 +568,6 @@ func _trace_op_end(op_name: String) -> void:
 	if _boot_trace_op_stack.size() > 0 and str(_boot_trace_op_stack[_boot_trace_op_stack.size() - 1]) == op_name:
 		_boot_trace_op_stack.pop_back()
 	else:
-		# Remove nested/mismatched by name
 		var idx: int = _boot_trace_op_stack.rfind(op_name)
 		if idx >= 0:
 			_boot_trace_op_stack.remove_at(idx)
@@ -624,7 +592,6 @@ func get_boot_stage_trace() -> Array:
 func _print_boot_stage_trace_report() -> void:
 	if not _boot_trace_enabled:
 		return
-	# Include StartupProfiler sub-ops under feature seeding for the gap report.
 	var sp_report: Dictionary = {}
 	if _StartupProfiler.is_enabled():
 		sp_report = _StartupProfiler.report()
@@ -650,7 +617,6 @@ func _print_boot_stage_trace_report() -> void:
 		])
 		rank += 1
 	print("")
-	# Detail each stage in boot order
 	print("--- Stage detail (boot order) ---")
 	for e in _boot_trace_stages:
 		print("")
@@ -673,7 +639,6 @@ func _print_boot_stage_trace_report() -> void:
 				float(op.get("duration_ms", 0.0)),
 				int(op.get("start_ms", 0)),
 			])
-	# Explicit QUALITY → FEATURES gap analysis
 	print("")
 	print("--- QUALITY_APPLIED → FEATURES_SEEDED gap analysis ---")
 	var qa: Dictionary = {}
@@ -694,7 +659,6 @@ func _print_boot_stage_trace_report() -> void:
 		print("  sum(traced ops) = %.1f ms  residual(dwell - sum) = %.1f ms" % [
 			sum_ops, float(qa.get("duration_ms", 0)) - sum_ops,
 		])
-	# StartupProfiler nested samples (feature seed internals)
 	if not sp_report.is_empty():
 		print("")
 		print("--- StartupProfiler samples (includes WorldFeatures sub-ops) ---")
@@ -721,7 +685,6 @@ func _print_boot_stage_trace_report() -> void:
 	print("")
 	print("========== END BOOT STAGE TRACE ==========")
 	print("")
-	# Persist JSON for offline analysis
 	var out_path := "user://boot_stage_trace.json"
 	var scratch3 := OS.get_environment("CRYSTALSTORM_SCRATCH")
 	if not scratch3.is_empty():
@@ -738,7 +701,6 @@ func _print_boot_stage_trace_report() -> void:
 		print("WROTE %s" % out_path)
 
 
-## Wait until stage reached or timeout (frames).
 func wait_for_stage(target: int, timeout_frames: int = -1) -> bool:
 	if timeout_frames < 0:
 		timeout_frames = _default_stage_timeout_frames
@@ -794,14 +756,12 @@ func get_health_report() -> Dictionary:
 	}
 
 
-## Deterministic shutdown: reverse registration order.
 func shutdown() -> void:
 	if stage == Stage.SHUTTING_DOWN:
 		return
 	_advance(Stage.SHUTTING_DOWN)
 	if registry == null:
 		return
-	# Chunk views / pending GPU uploads must release before worker wait ends and tree free.
 	var cm = registry.resolve(ID_CHUNKS)
 	if cm != null and cm.has_method("release_all_chunks_for_teardown"):
 		cm.release_all_chunks_for_teardown()
@@ -810,7 +770,6 @@ func shutdown() -> void:
 		var inst = registry.resolve(id)
 		if inst == null:
 			continue
-		# Chunk manager already fully released above.
 		if id == ID_CHUNKS:
 			continue
 		if inst.has_method("shutdown_workers"):

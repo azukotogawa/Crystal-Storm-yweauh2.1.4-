@@ -1,5 +1,4 @@
 extends SceneTree
-## Live production-scene audit. Discovers logical vs rendered disagreements.
 ## Does not pass by hardcoded expected cell values.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -123,7 +122,6 @@ func _run() -> void:
 	_observe_hud_and_vegetation(origin)
 	await _shot("audit_spawn")
 
-	# Camera continuous yaw — inspect one cell at several headings.
 	var cam = get_first_node_in_group("camera")
 	var yaw_cell := origin + Vector2i(2, 2)
 	for yaw in [45.0, 90.0, 180.0, 270.0, 12.0, 333.0]:
@@ -139,14 +137,12 @@ func _run() -> void:
 	if cam and cam.has_method("snap_yaw_degrees"):
 		cam.snap_yaw_degrees(45.0)
 
-	# Walk a few columns.
 	for step in range(6):
 		_look_at(origin.x + step, origin.y)
 		await process_frame
 	_actions.append("walk_6_columns")
 	await _shot("audit_walk")
 
-	# Dig / adjacent / under-structure / builds.
 	var cells := {
 		"dig": origin + Vector2i(3, 3),
 		"adj": origin + Vector2i(4, 3),
@@ -165,11 +161,9 @@ func _run() -> void:
 	await _do_build(editor, cm, insp, inv, "bridge", cells.bridge, &"bridge")
 	await _shot("audit_builds")
 
-	# Remove/rebuild gate via overlay clear (no dedicated demolish verb).
 	await _do_remove(editor, cm, feat_layer, insp, "gate_remove", cells.gate)
 	await _do_build(editor, cm, insp, inv, "gate_rebuild", cells.rebuild, &"gate")
 
-	# Generated ramps (existing helper, not a new mechanic).
 	var ramp_cells: Dictionary = _ValidationYard.cardinal_ramp_cells(origin)
 	_ValidationYard.apply_generated_ramps(self, ramp_cells)
 	await _idle(cm)
@@ -183,7 +177,6 @@ func _run() -> void:
 		_classify(str(rk), rc, _LiveWorldQuery.inspect_cell(self, rc.x, rc.y))
 	await _shot("audit_ramps")
 
-	# Water: player channel if possible, plus nearby natural river/ocean sample.
 	var water_cell := origin + Vector2i(3, 6)
 	if editor.has_method("try_channel_water"):
 		var wy: float = world.get_surface_height(float(water_cell.x), float(water_cell.y))
@@ -198,7 +191,6 @@ func _run() -> void:
 	if fluid and fluid.has_method("get_sim_diagnostics"):
 		_snaps["water_diag"] = fluid.get_sim_diagnostics()
 
-	# Crystal + enemies as they exist in this world (observation, not spawn hacks).
 	var crystal_node = get_first_node_in_group("crystal_manager")
 	if crystal_node and crystal_node.has_method("get_origin_cell"):
 		var coc: Vector2i = crystal_node.get_origin_cell()
@@ -214,10 +206,8 @@ func _run() -> void:
 	_observe_entities()
 	await _shot("audit_living")
 
-	# Stream unload/reload of the wall cell.
 	await _unload_reload(cm, insp, cells.wall)
 
-	# Travel toward far chunk then return (stream preserve).
 	var home := Vector2i(floori(player.voxel_position.x), floori(player.voxel_position.z))
 	_look_at(home.x + 48, home.y + 16)
 	for _t in 24:
@@ -245,7 +235,6 @@ func _run() -> void:
 	_classify("return_wall", cells.wall, _LiveWorldQuery.inspect_cell(self, cells.wall.x, cells.wall.y))
 	await _shot("audit_return")
 
-	# Pause.
 	var pause = get_first_node_in_group("pause_menu")
 	if pause and pause.has_method("open"):
 		pause.open()
@@ -259,7 +248,6 @@ func _run() -> void:
 		for _c in 2:
 			await process_frame
 
-	# Save overlay export (persistence authority) — do not full-reload the tree here.
 	var save = get_first_node_in_group("save_game_service")
 	if save and save.has_method("save_slot"):
 		var err: Error = save.save_slot(0, true)
@@ -412,7 +400,6 @@ func _classify(tag: String, cell: Vector2i, snap: Dictionary) -> void:
 	_actions.append({"op": "inspect", "tag": tag, "row": row})
 	if not items.is_empty():
 		_note("disagree", "%s %s,%s %s" % [tag, str(cell.x), str(cell.y), ",".join(PackedStringArray(items))], row)
-	# Logical vs rendered: feature claims a WorldObject the inspector cannot see.
 	if str(snap.get("build_id", "")) != "" and int(snap.get("structure_count", 0)) != 1:
 		_note("disagree", "%s feature %s structure_count=%s" % [tag, snap.get("build_id"), str(snap.get("structure_count"))], row)
 	if bool(snap.get("streamed", false)) and not bool(snap.get("column_mesh_covered", false)) and not bool(snap.get("has_ramp", false)):

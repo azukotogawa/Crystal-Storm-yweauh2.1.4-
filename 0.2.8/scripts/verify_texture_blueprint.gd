@@ -1,5 +1,4 @@
 extends SceneTree
-## Blueprint placeholders match source size, use distinct category colours, and restore.
 
 var _failed: int = 0
 

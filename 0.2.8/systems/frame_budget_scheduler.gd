@@ -1,8 +1,4 @@
 extends Node
-## Centralized per-frame work budget owner (Performance Phase 3).
-## Systems enqueue/drain unit work; this node records budget consumption for PerfProfiler.
-## Determinism: queues are FIFO; each system processes a fixed max unit count per frame
-## (soft wall-clock only stops after min_units to prevent starvation without reordering).
 
 const SYS_CRYSTAL_DISPATCH := &"crystal_dispatch"
 const SYS_LIVING_WORLD := &"living_world"
@@ -15,7 +11,6 @@ const SYS_WORLD_REBUILD := &"world_rebuild"
 const SYS_WORLD_BAKE_FILL := &"world_bake_fill"
 const SYS_HUD := &"hud_rebuild"
 
-## Lower priority number runs earlier when draining registered systems.
 const DEFAULT_PRIORITY := {
 	SYS_CRYSTAL_DISPATCH: 10,
 	SYS_CHUNK_APPLY: 20,
@@ -29,7 +24,6 @@ const DEFAULT_PRIORITY := {
 	SYS_HUD: 90,
 }
 
-## Soft wall-clock budget (microseconds) per system per frame.
 const DEFAULT_BUDGET_US := {
 	SYS_CRYSTAL_DISPATCH: 2000,
 	SYS_CHUNK_APPLY: 2500,
@@ -37,21 +31,14 @@ const DEFAULT_BUDGET_US := {
 	SYS_TOWN_DEFENSE: 1500,
 	SYS_LIVING_WORLD: 1200,
 	SYS_ENTITY_SPAWN: 1000,
-	## One chunk of billboards per frame — populate can be multi-ms for dense veg.
 	SYS_FEATURE_VISUAL: 2000,
 	SYS_WORLD_REBUILD: 1500,
-	## Schedule/collect only — generation runs on WorkerThreadPool.
 	SYS_WORLD_BAKE_FILL: 2500,
 	SYS_HUD: 800,
 }
 
-## Hard unit caps (work items) per frame — primary determinism control.
 const DEFAULT_MAX_UNITS := {
-	## Absorption completes can cost tens of ms each (WorldState + chunk rebuild).
-	## Cap units so a backlog of ABSORPTION_READY cannot monopolize a frame.
 	SYS_CRYSTAL_DISPATCH: 8,
-	## One apply/upload unit per frame: avoids stacking two multi-ms ChunkView.setup
-	## costs into a single hitch while stream still progresses every frame (min_units=1).
 	SYS_CHUNK_APPLY: 1,
 	SYS_CHUNK_UPLOAD: 1,
 	SYS_TOWN_DEFENSE: 2,
@@ -63,9 +50,7 @@ const DEFAULT_MAX_UNITS := {
 	SYS_HUD: 1,
 }
 
-## Guaranteed progress even if soft budget is already spent.
 const DEFAULT_MIN_UNITS := {
-	## Was 8: forced eight absorption rebuilds even when soft wall was long exceeded.
 	SYS_CRYSTAL_DISPATCH: 1,
 	SYS_CHUNK_APPLY: 1,
 	SYS_CHUNK_UPLOAD: 1,
@@ -79,13 +64,12 @@ const DEFAULT_MIN_UNITS := {
 }
 
 
-var _systems: Dictionary = {}  # id -> config dict
+var _systems: Dictionary = {}
 var _frame_id: int = 0
 var _frame_started_us: int = 0
-## Per-frame stats for profiler (reset each begin_frame).
 var _consumed_us: Dictionary = {}
 var _units_done: Dictionary = {}
-var _deferred_units: Dictionary = {}  # queue depth reported by systems
+var _deferred_units: Dictionary = {}
 var _oldest_age_frames: Dictionary = {}
 var _latency_sum_us: Dictionary = {}
 var _latency_count: Dictionary = {}
@@ -95,7 +79,7 @@ var _emergency_flushes: Dictionary = {}
 
 func _enter_tree() -> void:
 	add_to_group("frame_budget_scheduler")
-	process_priority = -50000  # early: open the frame accounting window
+	process_priority = -50000
 	set_process(true)
 	_register_defaults()
 
@@ -153,14 +137,12 @@ func begin_frame() -> void:
 	_publish_profiler_gauges()
 
 
-## Token used by systems while draining work under budget.
 func open_token(system_id: StringName) -> RefCounted:
 	if not _systems.has(system_id):
 		register_system(system_id, 1500, 4, 1, 100)
 	return _BudgetToken.new(self, system_id)
 
 
-## Run a drain callback with a budget token. Callback signature: (token) -> void
 func run_budgeted(system_id: StringName, drain: Callable) -> Dictionary:
 	var token: RefCounted = open_token(system_id)
 	var t0 := Time.get_ticks_usec()
@@ -301,7 +283,6 @@ func format_budget_report() -> String:
 	return "\n".join(lines)
 
 
-## Internal: used by BudgetToken
 func _token_can_continue(system_id: StringName, units_spent: int, started_us: int) -> bool:
 	var cfg: Dictionary = _systems.get(system_id, {})
 	var max_u: int = int(cfg.get("max_units", 0))
@@ -310,7 +291,6 @@ func _token_can_continue(system_id: StringName, units_spent: int, started_us: in
 		return false
 	var budget: int = int(cfg.get("budget_us", 0))
 	var elapsed: int = Time.get_ticks_usec() - started_us
-	# Always allow min_units even if soft budget exceeded (starvation prevention).
 	if units_spent < min_u:
 		return true
 	if budget > 0 and elapsed >= budget:

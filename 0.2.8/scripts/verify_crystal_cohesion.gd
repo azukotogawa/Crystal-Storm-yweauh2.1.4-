@@ -1,6 +1,4 @@
 extends SceneTree
-## Cohesive crystal mesh is centered and swells with depth.
-## Dig shards and hit markers land in world space.
 
 
 const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")

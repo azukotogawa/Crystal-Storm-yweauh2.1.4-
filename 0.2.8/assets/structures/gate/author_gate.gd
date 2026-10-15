@@ -1,19 +1,10 @@
 extends SceneTree
-## Author the Crystal Storm gate passage mesh + albedo atlas.
-##
-## Mesh is in voxel-column units (width ≈ 1 column, Y up from ground).
 ## Runtime bind multiplies XZ by voxel_scale. Y stays 1.0 — gate does not
 ## raise terrain, so this is a full-height arch, not a short wall cap.
-##
-## Usage: godot --headless --path . -s assets/structures/gate/author_gate.gd
-##
-## Open passage (two dressed posts + heavy lintel). Not a palisade,
-## not a masonry wall, not a runtime multi-box.
 
 const HERE := "res://assets/structures/gate"
 const SRC := HERE + "/src"
 
-# Atlas UV regions in OpenGL space (v=0 bottom), same layout as wood/stone.
 const UV_WOOD := Vector4(0.02, 0.02, 0.48, 0.98)
 const UV_END := Vector4(0.52, 0.52, 0.98, 0.98)
 const UV_IRON := Vector4(0.52, 0.27, 0.98, 0.48)
@@ -73,7 +64,6 @@ func _build_albedo(path: String, size: int) -> void:
 	atlas.blit_rect(end_q, Rect2i(0, 0, half, half), Vector2i(half, 0))
 	atlas.blit_rect(iron_q, Rect2i(0, 0, half, q), Vector2i(half, half))
 	atlas.blit_rect(rope_q, Rect2i(0, 0, half, q), Vector2i(half, half + q))
-	# Warm lift so it stays honey-amber next to the darker palisade.
 	_tint_rect(atlas, Rect2i(0, 0, half, size), Color(1.0, 0.82, 0.45), 0.12)
 	atlas.save_png(path)
 	print("wrote albedo %s %dx%d" % [path, atlas.get_width(), atlas.get_height()])
@@ -188,7 +178,6 @@ func add_block(center: Vector3, size: Vector3, region: Vector4, uv_shift: Vector
 	_add_quad(t00, t10, t11, t01, _remap(0.1, 0.1, top_r), _remap(0.9, 0.1, top_r), _remap(0.9, 0.9, top_r), _remap(0.1, 0.9, top_r))
 
 
-## Dressed octagonal post — not a pointed palisade stake.
 func add_post(x: float, z: float, r_bot: float, r_top: float, y0: float, y1: float, sides: int = 8) -> void:
 	var rings := 6
 	var pts: Array = []
@@ -215,7 +204,6 @@ func add_post(x: float, z: float, r_bot: float, r_top: float, y0: float, y1: flo
 				_remap(u0, v0, UV_WOOD), _remap(u1, v0, UV_WOOD),
 				_remap(u1, v1, UV_WOOD), _remap(u0, v1, UV_WOOD)
 			)
-	# Top cap (end grain)
 	var c1 := Vector3(x, y1, z)
 	for s in sides:
 		var s1 := (s + 1) % sides
@@ -225,7 +213,6 @@ func add_post(x: float, z: float, r_bot: float, r_top: float, y0: float, y1: flo
 			_remap(0.5 + 0.4 * cos(float(s) / float(sides) * TAU), 0.5 + 0.4 * sin(float(s) / float(sides) * TAU), UV_END),
 			_remap(0.5 + 0.4 * cos(float(s1) / float(sides) * TAU), 0.5 + 0.4 * sin(float(s1) / float(sides) * TAU), UV_END)
 		)
-	# Bottom cap
 	var c0 := Vector3(x, y0, z)
 	for s in sides:
 		var s1 := (s + 1) % sides
@@ -267,8 +254,6 @@ func _build_mesh() -> void:
 	_vn.clear()
 	_f.clear()
 
-	# Large-shape doorway: thick posts at the cell edges, empty middle, heavy lintel.
-	# Opening stays |x| < 0.26 so a player-sized volume is air, not a wall slab.
 	var px := 0.38
 	add_post(-px, 0.0, 0.125, 0.105, 0.08, 1.78, 8)
 	add_post(px, 0.0, 0.125, 0.105, 0.08, 1.78, 8)
@@ -278,7 +263,6 @@ func _build_mesh() -> void:
 	add_iron_band(-px, 0.0, 1.38, 0.110, 0.060)
 	add_iron_band(px, 0.0, 0.36, 0.122, 0.070)
 	add_iron_band(px, 0.0, 1.38, 0.110, 0.060)
-	# Overhead beam — thick enough to read at iso zoom. Nothing fills |x|<0.26 below y=1.70.
 	add_block(Vector3(0.0, 1.88, 0.0), Vector3(1.00, 0.28, 0.26), UV_WOOD, Vector2(0.2, 0.6), 0.016, UV_END)
 	add_block(Vector3(0.0, 2.08, 0.0), Vector3(0.78, 0.12, 0.20), UV_WOOD, Vector2(0.35, 0.1), 0.010, UV_END)
 

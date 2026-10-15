@@ -1,8 +1,6 @@
 class_name VoxelFloorProbe
 extends RefCounted
 
-## Shared heightfield + ramp floor sampling and voxel body collision.
-## Used by Player (CharacterBody3D) and EntityNavigation.
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
@@ -10,7 +8,6 @@ var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var crystal_manager
 
-## Feet height hint — when below surface, cave floors may apply.
 var feet_height_hint: float = 0.0
 
 var _probe_offsets: Array[Vector2] = []

@@ -1,6 +1,4 @@
 extends SceneTree
-## Prove town_hall uses the on-disk authored mesh, only on TOWN_BUILDING cells.
-## Usage: godot --headless -s scripts/verify_town_hall_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -64,7 +62,6 @@ func _test_asset_files_exist() -> void:
 		_fail("town_hall albedo expected 256px Texture2D")
 		return
 	var aabb: AABB = (mesh_res as Mesh).get_aabb()
-	# Wide hall with a roof, not a wall / pillar / deck / cube.
 	if aabb.size.x < 1.2:
 		_fail("town_hall too narrow to be a hall (w=%.3f)" % aabb.size.x)
 	if aabb.size.y < 2.0:

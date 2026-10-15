@@ -1,8 +1,6 @@
 class_name VoxelFloorProbe
 extends RefCounted
 
-## Shared heightfield + ramp floor sampling and voxel body collision.
-## Used by Player (CharacterBody3D) and EntityNavigation.
 
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -13,31 +11,23 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var crystal_manager
-## 0 unknown, 1 crystal_walkable_floor, 2 get_walkable_height, 3 neither.
 var _crystal_api: int = 0
 
-## Feet height hint — when below surface, cave floors may apply.
 var feet_height_hint: float = 0.0
 
 var _probe_offsets: Array[Vector2] = []
 
-## Per-physics-frame caches: can_step_to → is_blocked_at re-samples the same
-## (wx,wz) offsets; slope/snap/grounded also re-query identical columns.
 ## Disable with CRYSTALSTORM_PLAYER_HEIGHT_CACHE=0 for A/B measurement.
 var _height_cache_enabled: bool = true
 var _cache_physics_frame: int = -1
-var _walkable_height_cache: Dictionary = {}  # Vector4i key -> float
+var _walkable_height_cache: Dictionary = {}
 var _sample_feet_cache: Dictionary = {}
-## Ramp entries are per column and shared by the player probe and entity nav.
 static var _ramp_frame: int = -1
 static var _ramp_cache: Dictionary = {}
 static var _ramp_last_miss: bool = false
-## Column-center walkable height for this physics frame. Ramp samples that are
-## not at the cell center stay uncached so a wedge still changes across the cell.
 static var _center_frame: int = -1
 static var _center_y: Dictionary = {}
 
-## Nested measure (owned by Player physics measure).
 var _measure: bool = false
 var _m_walkable_height: int = 0
 var _m_walkable_height_us: int = 0
@@ -133,10 +123,6 @@ func _sync_frame_cache() -> void:
 
 
 func _height_cache_key(wx: float, wz: float) -> Vector4i:
-	# 0.01 column / 0.02 hint is finer than body-probe spacing and does not allocate.
-	# Hint and the live edit delta each own a component. XOR-packing them
-	# (hint ^ (delta << 16)) aliases pairs, and Vector3i's int32 drops the
-	# high bits of a negative or large delta.
 	var delta_i := int(round(_TerrainEdits.get_height_delta(floori(wx), floori(wz)) * 100.0))
 	var hint_i := int(round(feet_height_hint * 50.0))
 	return Vector4i(int(round(wx * 100.0)), int(round(wz * 100.0)), hint_i, delta_i)
@@ -159,7 +145,6 @@ static func cached_ramp_entry(chunk_manager, wx: float, wz: float) -> Dictionary
 	return entry
 
 
-## Terrain height at the center of a column. Shared by entity steps and crystal tops.
 static func cached_column_center_walkable(world, chunk_manager, col_x: int, col_z: int) -> float:
 	if world == null:
 		return 0.0
@@ -248,8 +233,6 @@ func walkable_height_at(wx: float, wz: float) -> float:
 		if _measure:
 			_m_cave_floor += 1
 		var cave_floor := world.get_cave_floor_height(wx, wz)
-		# Ignore the old false floor (inside the rendered top voxel) and only
-		# stand on a cave when the feet hint is already down in that air.
 		var layer_h: float = _ws().layer_height()
 		if cave_floor > 0.01 and cave_floor < surf - layer_h * 0.25 \
 				and feet_height_hint <= cave_floor + layer_h * 0.75:
@@ -283,8 +266,6 @@ func walkable_height_at(wx: float, wz: float) -> float:
 	return base
 
 
-## Flat, approach, and concave cells have one height for the whole column.
-## A landing wedge or corner still changes height inside the cell.
 func _height_uniform_in_column(entry: Dictionary) -> bool:
 	if entry.is_empty():
 		return true
@@ -301,15 +282,12 @@ func _height_uniform_in_column(entry: Dictionary) -> bool:
 func _same_column_repeat(wx: float, wz: float, sx: float, sz: float) -> bool:
 	if floori(sx) != floori(wx) or floori(sz) != floori(wz):
 		return false
-	# Cave feet can stand on a floor that is not the column top.
 	if world != null and feet_height_hint < world.get_surface_height(wx, wz) - _ws().layer_height() * 0.75:
 		return false
 	return _height_uniform_in_column(ramp_entry_at(wx, wz))
 
 
 func sample_walkable_feet(wx: float, wz: float) -> float:
-	## Continuous feet: center sample (ramps already interpolate within the cell).
-	## Neighbor max only when a higher contact is within a soft step band (ledge approach).
 	var t0 := Time.get_ticks_usec() if _measure else 0
 	if _measure:
 		_m_sample_feet += 1
@@ -335,7 +313,6 @@ func sample_walkable_feet(wx: float, wz: float) -> float:
 		if _grazes_blocking_wall(wx, wz, sx, sz):
 			continue
 		var h: float = walkable_height_at(sx, sz)
-		# Only pull up toward gentle higher contacts — not a hard max of all probes.
 		if h > best and (h - center) <= layer * 0.65:
 			best = lerpf(best, h, 0.55)
 	var result: float = best
@@ -346,7 +323,6 @@ func sample_walkable_feet(wx: float, wz: float) -> float:
 	return result
 
 
-## Highest probe contact — step-up / wall tests.
 func sample_walkable_feet_max(wx: float, wz: float) -> float:
 	var best := walkable_height_at(wx, wz)
 	for offset in _probe_offsets:
@@ -429,7 +405,6 @@ func is_blocked_at(
 			for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
 				var wx := float(x_world)
 				var wz := float(z_world)
-				# Ramp-aware head clearance: ignore solids at/under the walkable foot plane.
 				if _solid_blocks_head(wx, wz, head_y, floor_h, layer):
 					if _measure:
 						_m_blocked_us += Time.get_ticks_usec() - t0
@@ -440,17 +415,13 @@ func is_blocked_at(
 	return false
 
 
-## True when a solid at this column would hit the player's head (not floor/ramp body).
 func _solid_blocks_head(wx: float, wz: float, head_y: float, floor_h: float, layer: float) -> bool:
 	if world == null or not world.has_method("get_solid"):
 		return false
 	var check_y := floori(head_y)
 	var floor_y := floori(floor_h + layer * 0.05)
-	# Solids at or below the foot plane are ground, not head collision.
 	if check_y <= floor_y:
 		return false
-	# get_voxel() returns air above the surface, but it recomputes that surface
-	# with the uncached noise path. The cached surface is the same value.
 	var surf := world.get_surface_height(wx, wz)
 	var y0 := float(check_y)
 	var y1 := float(check_y + 1)
@@ -486,7 +457,6 @@ func _blocking_build_at(wx: int, wz: int) -> bool:
 	return blocking_build_column(wx, wz)
 
 
-## True when a probe offset only grazes a wall in a neighboring column.
 func _grazes_blocking_wall(center_x: float, center_z: float, sample_x: float, sample_z: float) -> bool:
 	var sx := floori(sample_x)
 	var sz := floori(sample_z)
@@ -511,7 +481,6 @@ func can_step_to(
 		if _measure:
 			_m_tile_type += 1
 		tile_id = world.get_tile_type(to_pos.x, to_pos.z)
-	# Oceans stop the player; border mountains block traversal; deep rim is impassable.
 	if _WorldBorder.blocks_player_at(to_pos.x, to_pos.z, tile_id):
 		if _measure:
 			_m_can_step_us += Time.get_ticks_usec() - t0
@@ -526,31 +495,25 @@ func can_step_to(
 			if _measure:
 				_m_can_step_us += Time.get_ticks_usec() - t0
 			return false
-	# Horizontal intent is independent of exact voxel height: soft-follow Y after XZ moves.
-	# Step clearance uses max contact so multi-layer walls still block honestly.
 	var target_feet := sample_walkable_feet_max(to_pos.x, to_pos.z)
 	var rise := target_feet - from_pos.y
 	var layer: float = _ws().layer_height()
-	# Allow ~1 layer up and ~1.25 layers down while walking so reshaped terrain feels smooth.
 	var max_drop: float = max_step if airborne else maxf(max_step, layer * 1.25)
 	var max_up: float = max_step if airborne else maxf(max_step, layer * 1.05)
 
 	if rise >= -max_drop and rise <= max_up:
 		var stepped := to_pos
-		# Keep proposed Y near current; soft_follow settles onto feet (not a hard snap).
 		stepped.y = from_pos.y if not airborne else target_feet
 		if airborne:
 			stepped.y = to_pos.y
 		var ok := not is_blocked_at(stepped, player_height, player_radius)
 		if not ok and not airborne:
-			# Retry at target feet for true step-up onto built walls.
 			stepped.y = target_feet
 			ok = not is_blocked_at(stepped, player_height, player_radius)
 		if _measure:
 			_m_can_step_us += Time.get_ticks_usec() - t0
 		return ok
 
-	# Free move into open space when the destination body isn't blocked.
 	if not is_blocked_at(to_pos, player_height, player_radius):
 		if airborne:
 			if _measure:
@@ -575,7 +538,6 @@ func snap_position_y(pos: Vector3, max_snap: float = -1.0) -> Vector3:
 	return out
 
 
-## Soft ground follow for continuous walking (no hard Y snap).
 func soft_follow_y(pos: Vector3, delta: float, follow_rate: float = 22.0) -> Vector3:
 	var target_feet := sample_walkable_feet(pos.x, pos.z)
 	var out := pos
@@ -592,7 +554,6 @@ func soft_follow_y(pos: Vector3, delta: float, follow_rate: float = 22.0) -> Vec
 	return out
 
 
-## Rendered walkable top, ignoring a low feet hint so the surface slab is not a cave.
 func rendered_top_at(wx: float, wz: float) -> float:
 	var saved: float = feet_height_hint
 	var surf: float = world.get_surface_height(wx, wz) if world else 0.0
@@ -602,8 +563,6 @@ func rendered_top_at(wx: float, wz: float) -> float:
 	return top
 
 
-## Body intersects the rendered ground slab or a solid voxel that is not cave air.
-## Samples the column under the feet only — no scene-tree search.
 func body_overlaps_terrain(pos: Vector3, player_height: float) -> bool:
 	if world == null:
 		return false
@@ -626,7 +585,6 @@ func body_overlaps_terrain(pos: Vector3, player_height: float) -> bool:
 	return false
 
 
-## Nearest free standing spot: this column's rendered top, then a one-cell ring, then straight up.
 func nearest_safe_stand(pos: Vector3, player_height: float) -> Vector3:
 	var layer: float = _ws().layer_height()
 	var best := Vector3(pos.x, rendered_top_at(pos.x, pos.z), pos.z)

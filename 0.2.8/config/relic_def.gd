@@ -9,7 +9,6 @@ enum Rarity { COMMON, UNCOMMON, RARE, LEGENDARY }
 @export var display_name: String = "Example Relic"
 @export var description: String = ""
 @export var rarity: Rarity = Rarity.COMMON
-## HUD / world icon key. Empty means `id`.
 @export var visual_id: StringName = &""
 
 @export_group("Stat Modifiers")

@@ -1,6 +1,4 @@
 extends SceneTree
-## Display-session corroboration: production main.tscn in a running window (not --headless).
-## Writes to display_session_evidence.md — NOT manual_verification.md (human-hand only).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -22,7 +20,6 @@ func _init() -> void:
 
 
 func _ensure_texture_generator_autoload() -> void:
-	# SceneTree -s probes may not receive CrystalTextureGenerator from project.godot.
 	if root.get_node_or_null("CrystalTextureGenerator") != null:
 		return
 	var gen := _CrystalTextureGenerator.new()
@@ -77,8 +74,6 @@ func _run() -> void:
 		await _finish(lines, true)
 		return
 
-	# Probes must not die from crystal contact / contact damage near origin
-	# (Living World seeds more agents; crystal pressure at spawn is intentional in play).
 	if player.has_method("take_damage") or "health" in player:
 		player.set("health", maxf(float(player.get("max_health")), 1000.0))
 		player.set("max_health", maxf(float(player.get("max_health")), 1000.0))
@@ -86,7 +81,6 @@ func _run() -> void:
 	if gm != null and "crystal_damage_per_second" in gm:
 		gm.set("crystal_damage_per_second", 0.0)
 	if gm != null and "run_state" in gm:
-		# Ensure PLAYING so weapons/dig remain enabled for the session.
 		gm.set("run_state", 0)
 
 	var perf = get_first_node_in_group("performance_service")
@@ -101,7 +95,6 @@ func _run() -> void:
 	var weapon: Node = player.get_node_or_null("WeaponController")
 	var inv = player.get("inventory")
 
-	# Dig via attack input → WeaponController production path (dry land; center is often river).
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging")
 	var probe_cell := _find_solid_probe_cell(player, world, chunk_manager)
@@ -159,7 +152,6 @@ func _run() -> void:
 		])
 		failed = true
 
-	# Target highlight modes (mouse column pick)
 	lines.append("")
 	lines.append("## P0 — Cursor highlight")
 	var test_cell := Vector2i(11, 11)
@@ -205,7 +197,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Build highlight FAIL mode=%s" % [stamp, build_info.get("mode")])
 		failed = true
 
-	# Build placement on a separate solid cell (avoid undoing the dig column).
 	lines.append("")
 	lines.append("## P0 — Build placement")
 	var terrain_editor: TerrainEditor = get_first_node_in_group("terrain_editor")
@@ -238,7 +229,6 @@ func _run() -> void:
 	var built: Dictionary = _FeatureRegistry.get_feature(build_wx, build_wz)
 	var built_id := str(built.get("build_id", ""))
 	var built_visual := str(built.get("visual_id", ""))
-	# Walls are WorldObjects: they block the column and do not raise the ground.
 	if build_ok and absf(build_delta) <= 0.01 and built_id == "stone_wall" and built_visual == "stone_wall":
 		lines.append("- PASS %s — Build WorldObject stone_wall at (%d,%d) delta=%.2f visual=%s." % [
 			stamp, build_wx, build_wz, build_delta, built_visual
@@ -251,7 +241,6 @@ func _run() -> void:
 		])
 		failed = true
 
-	# Entities
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
 	var entity_mgr = get_first_node_in_group("entity_manager")
@@ -281,7 +270,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Entity FAIL: %d/%d textured at %s." % [stamp, stats2.visible, stats2.total, test_cell])
 		failed = true
 
-	# Vegetation
 	lines.append("")
 	lines.append("## P0 — Vegetation billboards")
 	var visuals = get_first_node_in_group("world_visuals_root")
@@ -303,7 +291,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Vegetation FAIL: %d/%d textured." % [stamp, veg.textured, veg.total])
 		failed = true
 
-	# Chunk streaming
 	lines.append("")
 	lines.append("## P0 — Chunk streaming")
 	var before_chunks: int = chunk_manager.chunks.size()
@@ -326,7 +313,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Streaming FAIL: %d→%d hole=%s" % [stamp, before_chunks, after_chunks, hole])
 		failed = true
 
-	# P1 — jump via jump + move input through player physics (not Y teleport)
 	lines.append("")
 	lines.append("## P1 — Jump while moving")
 	var start_x: float = float(player.get("voxel_position").x)

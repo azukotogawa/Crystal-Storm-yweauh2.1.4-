@@ -62,9 +62,6 @@ func _ready() -> void:
 
 
 func _push_to_systems() -> void:
-	# Prefer composition registry (production boot graph). CompositionRoot
-	# also calls apply_to_registered directly after registration — that is
-	# the authoritative fan-out. This path is for late import_from_json / etc.
 	var root = null
 	var CR = load("res://systems/composition_root.gd")
 	if CR and CR.has_method("get_active"):
@@ -80,7 +77,6 @@ func _push_to_systems() -> void:
 	_push_to_systems_via_groups()
 
 
-## Production path: authored config fan-out through ServiceRegistry (no group search).
 func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 	if registry == null:
 		return
@@ -111,7 +107,6 @@ func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 	var chunk_mgr = registry.resolve(&"chunk_manager") if registry.has_method("resolve") else null
 	_apply_world_gen_to_chunk_manager(chunk_mgr)
 
-	# Vegetation / town live under WorldFeatures — resolve via parent children if registered.
 	var features = registry.resolve(&"world_features") if registry.has_method("resolve") else null
 	if features:
 		var town_mgr = features.get_node_or_null("TownManager")
@@ -130,7 +125,6 @@ func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 				veg_mgr.bush_density = world_gen.bush_density
 			if "scatter_attempts" in veg_mgr:
 				var attempts: int = int(world_gen.vegetation_scatter_attempts)
-				# Optional vegetation_scatter_multiplier from resolved policy.
 				var mult: float = 1.0
 				if not resolved.is_empty():
 					var policy: Dictionary = resolved.get("policy", {})
@@ -142,12 +136,10 @@ func apply_to_registered(registry, resolved: Dictionary = {}) -> void:
 
 	var perf_svc = registry.resolve(&"performance_service") if registry.has_method("resolve") else null
 	if perf_svc and game_config and game_config.performance:
-		# Only seed quality resource if not already applied by env/composition.
 		if not bool(perf_svc.get("_applied")) if "_applied" in perf_svc else true:
 			perf_svc.apply_quality(game_config.performance)
 
 
-## Legacy/group discovery path for scenes without CompositionRoot.
 func _push_to_systems_via_groups() -> void:
 	if world_settings:
 		_WorldSettings.apply_active(world_settings)

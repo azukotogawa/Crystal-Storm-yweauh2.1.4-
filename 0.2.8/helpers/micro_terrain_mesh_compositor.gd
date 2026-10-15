@@ -1,6 +1,5 @@
 class_name MicroTerrainMeshCompositor
 extends RefCounted
-## Authoritative micro-column mesh emission; macro greedy defers via build_skip_set.
 
 
 const FACE_NEG_X := 3
@@ -46,7 +45,6 @@ static func emit_micro_column_mesh(
 		return false
 	if data.has_ramp(lx, lz):
 		var entry: Dictionary = data.get_ramp_entry(lx, lz)
-		# Cardinal landing slope replaces the lid. Approach and corner keep a floor.
 		if not bool(entry.get("approach", false)) and not bool(entry.get("corner", false)):
 			return false
 	var x1: int = lx + 1

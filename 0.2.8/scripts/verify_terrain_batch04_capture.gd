@@ -1,5 +1,4 @@
 extends SceneTree
-## Usage: godot --path . -s scripts/verify_terrain_batch04_capture.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

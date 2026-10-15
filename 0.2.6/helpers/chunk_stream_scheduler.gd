@@ -1,7 +1,5 @@
 class_name ChunkStreamScheduler
 extends RefCounted
-## Distance/velocity/camera-aware stream priority (higher score = higher priority).
-## Sorting is amortized by callers via dirty flags; this module stays pure.
 
 
 static func priority_score(
@@ -31,8 +29,6 @@ static func priority_score(
 	return score
 
 
-## Build a fresh high→low priority row list from pending dict.
-## Call only when the pending set/scores changed (dirty flag).
 static func sort_load_candidates(load_pending: Dictionary) -> Array:
 	var rows: Array = []
 	rows.resize(load_pending.size())
@@ -54,8 +50,6 @@ static func sort_load_candidates(load_pending: Dictionary) -> Array:
 	return rows
 
 
-## O(n) pick of the single highest-score pending load (no full sort).
-## Deterministic: ties broken by coord string order (same as sort_load_candidates).
 static func pick_best_load_candidate(load_pending: Dictionary) -> Dictionary:
 	if load_pending.is_empty():
 		return {}
@@ -80,7 +74,6 @@ static func pick_best_load_candidate(load_pending: Dictionary) -> Dictionary:
 	return {"coord": best_coord, "score": best_score, "urgent": best_urgent}
 
 
-## Sort unload coords far→near (low priority first = unload distant first).
 static func sort_unload_candidates(
 	unload_pending: Array,
 	player_chunk: Vector2i,

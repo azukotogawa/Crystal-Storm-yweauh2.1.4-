@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: production player floor probe walks L-shaped step corners (synthetic chunk).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
