@@ -53,6 +53,7 @@ var _brush_right_held: bool = false
 var place_index: int = 0
 var blueprint_index: int = 0
 var blueprint_quarter: int = 0
+var blueprint_place_armed: bool = false
 var _blueprint_rotate_held: bool = false
 var _blueprint_cycle_held: bool = false
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
@@ -829,10 +830,12 @@ func selected_blueprint_id() -> StringName:
 
 
 func rotate_selected_blueprint(steps: int = 1) -> void:
+	blueprint_place_armed = true
 	blueprint_quarter = posmod(blueprint_quarter + steps, 4)
 
 
 func cycle_selected_blueprint(steps: int = 1) -> void:
+	blueprint_place_armed = true
 	var ids := _StructureBlueprints.ids()
 	if ids.is_empty():
 		blueprint_index = 0
@@ -869,6 +872,11 @@ func active_blueprint_id() -> StringName:
 	var ids := _StructureBlueprints.ids()
 	if ids.has(StringName(place_id)):
 		return StringName(place_id)
+	var slot = get_active_item()
+	if slot != null and ids.has(StringName(str(slot.id))):
+		return StringName(str(slot.id))
+	if not blueprint_place_armed:
+		return &""
 	return selected_blueprint_id()
 
 
