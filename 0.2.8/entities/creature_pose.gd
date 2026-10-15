@@ -2,6 +2,13 @@ extends RefCounted
 
 const _LEG_L := "LegL"
 const _LEG_R := "LegR"
+const IDLE_LIFT := 0.22
+const WALK_LEG := 1.15
+const WALK_STEP := 0.62
+const WALK_LIFT := 0.14
+const WALK_BOB := 0.06
+const ATTACK_LEG := 0.9
+const ATTACK_LUNGE := 0.55
 
 var _root_id: int = 0
 var _parts: Array = []
@@ -25,17 +32,17 @@ func apply(root: Node3D, pose: String, phase: float) -> void:
 			if kind == "body" or kind == "top":
 				pos.z -= reach
 			elif kind == "leg":
-				rot.x = side * 0.9
+				rot.x = side * ATTACK_LEG
 		elif pose == "walk":
 			if kind == "leg":
 				var kick := swing * side
-				rot.x = kick * 1.15
-				pos.z += kick * 0.62
-				pos.y += absf(swing) * 0.14
+				rot.x = kick * WALK_LEG
+				pos.z += kick * WALK_STEP
+				pos.y += absf(swing) * WALK_LIFT
 			elif kind == "top":
-				pos.y += absf(sin(phase * 2.0)) * 0.06
+				pos.y += absf(sin(phase * 2.0)) * WALK_BOB
 		elif kind == "top":
-			pos.y += swing * 0.22
+			pos.y += swing * IDLE_LIFT
 		mi.position = pos
 		mi.rotation = rot
 
@@ -70,7 +77,7 @@ func _bind(root: Node3D) -> void:
 	var body_mesh := body.mesh as BoxMesh
 	var body_h := body_mesh.size.y if body_mesh else 1.0
 	var hip_y: float = body.position.y - body_h * 0.5
-	var reach: float = maxf(body_h * 0.45, 0.55)
+	var reach: float = maxf(body_h * 0.45, ATTACK_LUNGE)
 	_add_legs(root, body, hip_y)
 	for mi in boxes:
 		var kind := "extra"

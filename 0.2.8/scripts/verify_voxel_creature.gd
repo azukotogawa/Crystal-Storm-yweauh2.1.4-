@@ -1,6 +1,8 @@
 extends SceneTree
 
 const _Builder = preload("res://helpers/voxel_creature_builder.gd")
+const _Model = preload("res://helpers/voxel_model_builder.gd")
+const _Pose = preload("res://entities/creature_pose.gd")
 const _Entity = preload("res://entities/world_entity.gd")
 
 var _failed := 0
@@ -16,118 +18,198 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	if _Builder.USE_PART_RIG:
-		_fail("USE_PART_RIG must stay off until a creature is switched")
-	var src := FileAccess.get_file_as_string("res://entities/world_entity.gd")
-	if src.find("USE_PART_RIG") < 0 or src.find("_ensure_voxel_model") < 0 or src.find("_ensure_sprite") < 0:
+	var builder_src := FileAccess.get_file_as_string("res://helpers/voxel_creature_builder.gd")
+	if builder_src.find("CANVAS") >= 0 or builder_src.find("Sprite3D") >= 0 or builder_src.find("DEPTH_STEPS") >= 0:
+		_fail("creature builder still cuts a sprite canvas")
+	if builder_src.find("if not USE_PART_RIG") < 0:
+		_fail("part rig flag no longer gates the voxel creatures")
+	var entity_src := FileAccess.get_file_as_string("res://entities/world_entity.gd")
+	if entity_src.find("uses_rig") < 0 or entity_src.find("_ensure_voxel_model") < 0 or entity_src.find("_ensure_sprite") < 0:
 		_fail("world entity must keep the sprite and voxel-prop fallback")
-	var parts: Array = _Builder.parts_for(&"rabbit")
-	if not _Builder.parts_fit_canvas(parts):
-		_fail("default parts leave the 32px canvas")
-	var rig := _Builder.build(_paint(parts), parts, 1.6, Color(0.8, 0.7, 0.6))
-	if rig == null:
-		_fail("full spec did not build")
-		_finish()
-		return
-	var skel := rig.get_node_or_null("Skeleton") as Skeleton3D
-	if skel == null:
-		_fail("rig has no skeleton")
-		_finish()
-		return
-	for bone_name in ["Body", "Head", "Leg_L", "Leg_R", "Tail", "Wing_L", "Wing_R"]:
-		if skel.find_bone(bone_name) < 0:
-			_fail("missing bone %s" % bone_name)
-	var meshes := 0
-	var min_y := 1.0e9
-	var max_y := -1.0e9
-	for child in skel.get_children():
-		var mi := child.get_node_or_null("Mesh") as MeshInstance3D
-		if mi == null or mi.mesh == null:
-			_fail("part %s has no mesh" % child.name)
-			continue
-		meshes += 1
-		var arrays: Array = mi.mesh.surface_get_arrays(0)
-		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		if verts.size() < 8:
-			_fail("part %s mesh is empty" % child.name)
-		for v in verts:
-			var y := rig.position.y + v.y
-			min_y = minf(min_y, y)
-			max_y = maxf(max_y, y)
-	if meshes < 7:
-		_fail("expected 7 part meshes, got %d" % meshes)
-	elif min_y > 0.08 or max_y < 1.4:
-		_fail("rig span y %.3f..%.3f is not the requested height" % [min_y, max_y])
-	else:
-		print("OK rig bones %d meshes span %.3f..%.3f" % [skel.get_bone_count(), min_y, max_y])
-	_Builder.apply_pose(rig, "walk", 1.2)
-	var leg_q := skel.get_bone_pose_rotation(skel.find_bone("Leg_L"))
-	var tail_q := skel.get_bone_pose_rotation(skel.find_bone("Tail"))
-	var wing_q := skel.get_bone_pose_rotation(skel.find_bone("Wing_L"))
-	if leg_q.is_equal_approx(Quaternion.IDENTITY):
-		_fail("walk left the leg at rest")
-	elif tail_q.is_equal_approx(Quaternion.IDENTITY):
-		_fail("walk left the tail at rest")
-	elif wing_q.is_equal_approx(Quaternion.IDENTITY):
-		_fail("walk left the wing at rest")
-	else:
-		print("OK walk pose leg %s" % leg_q)
-	var slim: Array = []
-	for part in parts:
-		var kind := str(part["kind"])
-		if kind == "tail" or kind == "wing":
-			continue
-		slim.append(part)
-	var slim_rig := _Builder.build(_paint(slim), slim, 1.2)
-	if slim_rig == null:
-		_fail("spec without tail or wings did not build")
-	else:
-		var slim_skel := slim_rig.get_node("Skeleton") as Skeleton3D
-		if slim_skel.find_bone("Tail") >= 0 or slim_skel.find_bone("Wing_L") >= 0:
-			_fail("optional parts were built from a spec that omitted them")
-		elif slim_skel.find_bone("Head") < 0 or slim_skel.find_bone("Leg_R") < 0:
-			_fail("trimmed spec dropped a required bone")
-		else:
-			print("OK trimmed spec bones %d" % slim_skel.get_bone_count())
-		slim_rig.free()
-	var broken: Array = []
-	for part in slim:
-		if str(part["kind"]) == "body":
-			continue
-		broken.append(part)
-	if _Builder.build(_paint(broken), broken, 1.2) != null:
-		_fail("a spec with no body still built")
-	else:
-		print("OK missing body refused")
-	if _Builder.build(null, parts, 1.2) != null:
-		_fail("a null image still built")
-	var holder := Node.new()
-	root.add_child(holder)
-	var entity := _Entity.new()
-	holder.add_child(entity)
-	entity._ensure_visual(Color.WHITE)
-	if entity.get_node_or_null("CreatureRig") != null:
-		_fail("flag off still spawned a part rig")
-	elif entity.get_node_or_null("MeshInstance3D") == null:
-		_fail("flag off did not keep the capsule fallback")
-	else:
-		print("OK entity fallback capsule")
-	holder.free()
-	rig.free()
+	if not _Builder.USE_PART_RIG:
+		_fail("USE_PART_RIG is off, so boar and deer stay on the old visual")
+	if _Builder.uses_rig(&"rabbit") or _Builder.uses_rig(&"bird"):
+		_fail("unconverted creatures must stay off the part rig")
+	if not _Builder.uses_rig(&"boar") or not _Builder.uses_rig(&"deer"):
+		_fail("boar and deer must use the part rig")
+	if not _Builder.parts_for(&"rabbit").is_empty():
+		_fail("rabbit has no voxel part spec")
+	_check_kind(&"boar")
+	_check_kind(&"deer")
+	_check_optional_wing()
+	_check_entities()
 	_finish()
 
 
-func _paint(parts: Array) -> Image:
-	var img := Image.create(_Builder.CANVAS, _Builder.CANVAS, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var n := 0
+func _check_kind(kind: StringName) -> void:
+	var parts: Array = _Builder.parts_for(kind)
+	if not _has_kinds(parts, true, false):
+		_fail("%s spec is not head, body, two legs, and a tail" % kind)
+		return
 	for part in parts:
-		var tint := Color(0.25 + 0.1 * float(n % 4), 0.45, 0.32, 1.0)
-		n += 1
-		for y in int(part["h"]):
-			for x in int(part["w"]):
-				img.set_pixel(int(part["x"]) + x, int(part["y"]) + y, tint)
-	return img
+		var spec: Dictionary = part
+		if spec.has("w") or spec.has("h"):
+			_fail("%s part %s still has a sprite rectangle" % [kind, spec.get("id", "")])
+		var cells: Array = spec.get("cells", [])
+		if cells.is_empty() or not (cells[0] is Vector4i):
+			_fail("%s part %s is not a voxel grid" % [kind, spec.get("id", "")])
+	var rig := _Builder.build(kind)
+	if rig == null:
+		_fail("%s did not build" % kind)
+		return
+	root.add_child(rig)
+	var skel := rig.get_node_or_null("Skeleton") as Skeleton3D
+	var player := rig.get_node_or_null("CreatureAnim") as AnimationPlayer
+	if skel == null or player == null:
+		_fail("%s rig is missing the skeleton or the animation player" % kind)
+		rig.free()
+		return
+	for clip in ["idle", "walk", "attack"]:
+		if not player.has_animation(clip):
+			_fail("%s missing clip %s" % [kind, clip])
+	for bone_name in ["Body", "Head", "Leg_L", "Leg_R", "Tail"]:
+		if skel.find_bone(bone_name) < 0:
+			_fail("%s missing bone %s" % [kind, bone_name])
+	if skel.find_bone("Wing_L") >= 0:
+		_fail("%s built a wing it does not have" % kind)
+	var cube := _Builder.cube_edge()
+	var body_mi := _part_mi(skel, "body")
+	var body: ArrayMesh = body_mi.mesh as ArrayMesh if body_mi != null else null
+	if body == null:
+		_fail("%s body has no mesh" % kind)
+	else:
+		var box := body.get_aabb()
+		if box.size.x <= cube * 1.5 or box.size.y <= cube * 1.5 or box.size.z <= cube * 1.5:
+			_fail("%s body is a slab %s" % [kind, box.size])
+		elif _Model.face_count(body) < 6:
+			_fail("%s body faces %d" % [kind, _Model.face_count(body)])
+		elif body_mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			_fail("%s body casts a shadow" % kind)
+		else:
+			print("OK %s body %s faces %d" % [kind, box.size, _Model.face_count(body)])
+	_Builder.play(rig, "idle", 1.2)
+	var head_y := skel.get_bone_pose_position(skel.find_bone("Head")).y
+	var idle_lift := sin(1.2) * _Pose.IDLE_LIFT
+	if absf(head_y - idle_lift) > 0.04:
+		_fail("%s idle head y %.3f want %.3f" % [kind, head_y, idle_lift])
+	else:
+		print("OK %s idle head %.3f" % [kind, head_y])
+	_Builder.play(rig, "walk", 1.2)
+	var leg_q := skel.get_bone_pose_rotation(skel.find_bone("Leg_L"))
+	var leg_z := skel.get_bone_pose_position(skel.find_bone("Leg_L")).z
+	var walk_z := sin(1.2) * -1.0 * _Pose.WALK_STEP
+	if leg_q.is_equal_approx(Quaternion.IDENTITY):
+		_fail("%s walk left the leg at rest" % kind)
+	elif absf(leg_z - walk_z) > 0.05:
+		_fail("%s walk leg z %.3f want %.3f" % [kind, leg_z, walk_z])
+	else:
+		print("OK %s walk leg %s" % [kind, leg_q])
+	_Builder.play(rig, "attack", 0.4)
+	var lunge := skel.get_bone_pose_position(skel.find_bone("Body")).z
+	var leg_attack := skel.get_bone_pose_rotation(skel.find_bone("Leg_R"))
+	if absf(lunge - (-_Pose.ATTACK_LUNGE)) > 0.04:
+		_fail("%s attack lunge %.3f" % [kind, lunge])
+	elif leg_attack.is_equal_approx(Quaternion.IDENTITY):
+		_fail("%s attack left the leg at rest" % kind)
+	else:
+		print("OK %s attack lunge %.3f" % [kind, lunge])
+	rig.free()
+
+
+func _has_kinds(parts: Array, want_tail: bool, want_wing: bool) -> bool:
+	var head := 0
+	var body := 0
+	var legs := 0
+	var tail := 0
+	var wing := 0
+	for part in parts:
+		var kind := str((part as Dictionary).get("kind", ""))
+		if kind == "head":
+			head += 1
+		elif kind == "body":
+			body += 1
+		elif kind == "leg":
+			legs += 1
+		elif kind == "tail":
+			tail += 1
+		elif kind == "wing":
+			wing += 1
+	if head != 1 or body != 1 or legs != 2:
+		return false
+	if want_tail != (tail == 1):
+		return false
+	if want_wing != (wing >= 1):
+		return false
+	return true
+
+
+func _part_mi(skel: Skeleton3D, part_name: String) -> MeshInstance3D:
+	var att := skel.get_node_or_null(part_name)
+	if att == null:
+		return null
+	return att.get_node_or_null("Mesh") as MeshInstance3D
+
+
+func _check_optional_wing() -> void:
+	var parts: Array = _Builder.parts_for(&"deer").duplicate(true)
+	parts.append({
+		"id": "wing_l",
+		"kind": "wing",
+		"bone": "Wing_L",
+		"parent": "Body",
+		"pivot": "center",
+		"cells": [Vector4i(0, 6, 7, 1), Vector4i(1, 6, 7, 1), Vector4i(0, 7, 7, 1)],
+	})
+	var rig := _Builder.build_parts(parts, _Builder.palette_for(&"deer"), _Builder.cube_edge())
+	if rig == null:
+		_fail("a spec with a wing did not build")
+	else:
+		var skel := rig.get_node("Skeleton") as Skeleton3D
+		if skel.find_bone("Wing_L") < 0:
+			_fail("wing part did not add a bone")
+		else:
+			print("OK optional wing")
+		rig.free()
+	var broken: Array = []
+	for part in _Builder.parts_for(&"boar"):
+		if str((part as Dictionary).get("kind", "")) == "body":
+			continue
+		broken.append(part)
+	if _Builder.build_parts(broken, _Builder.palette_for(&"boar"), _Builder.cube_edge()) != null:
+		_fail("a spec with no body still built")
+	else:
+		print("OK missing body refused")
+
+
+func _check_entities() -> void:
+	var holder := Node.new()
+	root.add_child(holder)
+	var rabbit := _Entity.new()
+	rabbit.entity_kind = &"rabbit"
+	holder.add_child(rabbit)
+	rabbit._ensure_visual(Color.WHITE)
+	if rabbit.get_node_or_null("CreatureRig") != null:
+		_fail("rabbit spawned a part rig")
+	elif rabbit.get_node_or_null("MeshInstance3D") == null:
+		_fail("rabbit lost the capsule fallback")
+	else:
+		print("OK rabbit fallback capsule")
+	for kind in [&"boar", &"deer"]:
+		var entity := _Entity.new()
+		entity.entity_kind = kind
+		holder.add_child(entity)
+		entity._ensure_visual(Color.WHITE)
+		var rig := entity.get_node_or_null("CreatureRig")
+		var anim := entity.get_node_or_null("CreatureRig/CreatureAnim") as AnimationPlayer
+		if rig == null or not rig.visible:
+			_fail("%s did not spawn a visible part rig" % kind)
+		elif anim == null or not anim.has_animation("walk"):
+			_fail("%s rig has no walk clip" % kind)
+		elif (entity.get_node_or_null("MeshInstance3D") as MeshInstance3D) != null and (entity.get_node("MeshInstance3D") as MeshInstance3D).visible:
+			_fail("%s kept the capsule beside the rig" % kind)
+		else:
+			print("OK %s entity rig" % kind)
+	holder.free()
 
 
 func _finish() -> void:

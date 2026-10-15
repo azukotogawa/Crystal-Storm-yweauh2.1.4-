@@ -21,3 +21,7 @@ Is a MagicaVoxel `.vox` file required later as the art source, with the grid gen
 The player rig now builds from `VoxelModelBuilder` on the existing bones. The grid is 8×17×4 cubes and the cube edge is `player_height / 17`, so the feet, crown, and width stay on the current capsule. That is not `voxel_scale / 8` and not `voxel_scale / 16`.
 
 `voxel_scale / 8` does not divide the 1.6-block body into a whole number of cubes, and the solid-body check still requires the silhouette to meet the capsule. Cole has not picked 8 or 16 cubes per block. This grid is a trial fit, not that choice.
+
+## 2026-10-15 — boar and deer use the player trial cube
+
+Boar and deer are voxel grids on that same trial edge (`player_height / 17` from `VoxelModelBuilder.player_grid_size().y`). They are not a second resolution and they are not `voxel_scale / 8` or `voxel_scale / 16`. The 8-versus-16 choice above is still open. A shorter boar is fewer cubes, not a smaller cube.

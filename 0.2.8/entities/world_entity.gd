@@ -143,12 +143,11 @@ func _column_world_position(cell: Vector2i) -> Vector3:
 
 func _ensure_visual(tint: Color) -> void:
 	_base_tint = tint
+	if _VoxelCreature.uses_rig(entity_kind) and _ensure_part_rig(tint):
+		return
 	if _VoxelModel.USE_GRID_PARTS and _ensure_grid_model(tint):
 		return
-	if _VoxelCreature.USE_PART_RIG and _ensure_part_rig(tint):
-		return
-	if _part_rig and is_instance_valid(_part_rig):
-		_part_rig.visible = false
+	_drop_part_rig()
 	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if registry != null and bool(registry.get("entity_voxel_models_enabled")):
 		_ensure_voxel_model(tint)
@@ -177,19 +176,16 @@ func _ensure_grid_model(_tint: Color) -> bool:
 		_mesh.visible = false
 	if _voxel_prop:
 		_voxel_prop.visible = false
-	if _part_rig and is_instance_valid(_part_rig):
-		_part_rig.queue_free()
+	_drop_part_rig()
 	_part_rig = built
 	add_child(_part_rig)
 	return true
 
 
-func _ensure_part_rig(tint: Color) -> bool:
-	var registry = get_tree().get_first_node_in_group("game_visual_registry") if is_inside_tree() else null
-	var img: Image = _VoxelCreature.image_of(_resolve_entity_texture(registry))
-	var ws = WorldSettings.get_active()
-	var height: float = ws.small_creature_height()
-	var built: Node3D = _VoxelCreature.build(img, _VoxelCreature.parts_for(entity_kind), height, tint)
+func _ensure_part_rig(_tint: Color) -> bool:
+	if not _VoxelCreature.uses_rig(entity_kind):
+		return false
+	var built: Node3D = _VoxelCreature.build(entity_kind)
 	if built == null:
 		return false
 	if _sprite:
@@ -198,11 +194,18 @@ func _ensure_part_rig(tint: Color) -> bool:
 		_mesh.visible = false
 	if _voxel_prop:
 		_voxel_prop.visible = false
-	if _part_rig and is_instance_valid(_part_rig):
-		_part_rig.queue_free()
+	_drop_part_rig()
 	_part_rig = built
 	add_child(_part_rig)
 	return true
+
+
+func _drop_part_rig() -> void:
+	if _part_rig and is_instance_valid(_part_rig):
+		if _part_rig.get_parent() == self:
+			remove_child(_part_rig)
+		_part_rig.free()
+	_part_rig = null
 
 
 func _hook_visual_registry() -> void:
@@ -632,8 +635,8 @@ func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> voi
 	elif locomotion_pose == "attack":
 		rate = 8.0
 	_bob_phase += delta * rate
-	if _VoxelCreature.USE_PART_RIG and _part_rig and is_instance_valid(_part_rig) and _part_rig.visible:
-		_VoxelCreature.apply_pose(_part_rig, locomotion_pose, _bob_phase)
+	if _part_rig and is_instance_valid(_part_rig) and _part_rig.visible and _VoxelCreature.uses_rig(entity_kind):
+		_VoxelCreature.play(_part_rig, locomotion_pose, _bob_phase)
 		return
 	var vis := _active_visual()
 	if vis == null or vis != _voxel_prop:
