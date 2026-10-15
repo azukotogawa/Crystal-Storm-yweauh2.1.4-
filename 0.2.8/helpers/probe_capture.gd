@@ -6,23 +6,28 @@ const _NAME_LIMIT := 64
 
 
 static func capture_step(step_name: String) -> String:
-	if DisplayServer.get_name() == "headless":
-		push_error("probe capture needs a window")
+	if not _can_grab():
 		return ""
 	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null or tree.root == null:
-		push_error("probe capture has no scene tree")
-		return ""
 	await RenderingServer.frame_post_draw
+	if not _can_grab():
+		return ""
 	var tex := tree.root.get_viewport().get_texture()
 	if tex == null:
-		push_error("probe capture viewport has no texture")
 		return ""
 	var img := tex.get_image()
 	if img == null or img.is_empty():
-		push_error("probe capture empty %s" % step_name)
 		return ""
 	return write_step(step_name, img)
+
+
+static func _can_grab() -> bool:
+	if DisplayServer.get_name() == "headless":
+		return false
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root == null:
+		return false
+	return tree.root.get_viewport() != null
 
 
 static func write_step(step_name: String, image: Image) -> String:

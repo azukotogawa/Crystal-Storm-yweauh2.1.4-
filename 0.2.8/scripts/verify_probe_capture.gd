@@ -16,7 +16,14 @@ func _run() -> void:
 	if not _check_writes():
 		quit(1)
 		return
-	if DisplayServer.get_name() != "headless":
+	if DisplayServer.get_name() == "headless":
+		var skipped: String = await _Capture.capture_step("headless_skip")
+		if not skipped.is_empty():
+			push_error("headless capture wrote %s" % skipped)
+			quit(1)
+			return
+		print("OK probe capture headless skip")
+	else:
 		if not await _check_viewport():
 			quit(1)
 			return
