@@ -6,6 +6,8 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
+const DROP_CAP_PER_SWING := 4
+
 
 static func _ws():
 	return _WorldState.get_active()
@@ -77,8 +79,11 @@ static func dig_cells(cells: Array, editor: Object = null) -> Dictionary:
 		return a.y > b.y
 	)
 	var removed: Array[Vector3i] = []
+	var dug_cells: Array[Vector3i] = []
 	var columns := {}
 	var dug_count := 0
+	var drop_count := 0
+	var drop_left := DROP_CAP_PER_SWING
 	var ws = _ws()
 	ws.begin_batch()
 	for cell in pending:
@@ -89,8 +94,13 @@ static func dig_cells(cells: Array, editor: Object = null) -> Dictionary:
 		if why != "dug":
 			continue
 		removed.append(cell)
+		dug_cells.append(cell)
 		dug_count += 1
 		columns[Vector2i(cell.x, cell.z)] = true
+		if drop_left > 0 and editor != null and editor.has_method("grant_break_loot"):
+			if bool(editor.grant_break_loot(cell.x, cell.z)):
+				drop_count += 1
+				drop_left -= 1
 	if editor != null and editor.has_method("settle_break_columns") and not columns.is_empty():
 		var extra: Array = editor.settle_break_columns(columns.keys())
 		for col_v in extra:
@@ -127,7 +137,9 @@ static func dig_cells(cells: Array, editor: Object = null) -> Dictionary:
 			editor.last_fail_reason = "Can't dig here"
 	return {
 		"removed": removed,
+		"dug": dug_cells,
 		"dug_count": dug_count,
+		"drop_count": drop_count,
 		"chunks": chunk_keys,
 		"remesh_count": remesh,
 		"water_count": water,
@@ -180,8 +192,6 @@ static func _dig_listed_cell(cell: Vector3i, world, editor: Object) -> String:
 		return "floor"
 	if world != null and world.has_method("invalidate_column_cache"):
 		world.invalidate_column_cache(cell.x, cell.z)
-	if editor != null and editor.has_method("grant_break_loot"):
-		editor.grant_break_loot(cell.x, cell.z)
 	return "dug"
 
 

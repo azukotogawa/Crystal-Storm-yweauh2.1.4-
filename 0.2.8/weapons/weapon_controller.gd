@@ -734,15 +734,24 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		return
 	dig_attempted.emit(target)
 	var dug := false
+	var batch: Dictionary = {}
 	if listed:
-		var batch: Dictionary = TerrainEdits.dig_cells(_last_break_cells, _terrain_editor)
+		batch = TerrainEdits.dig_cells(_last_break_cells, _terrain_editor)
 		dug = int(batch.get("dug_count", 0)) > 0
 	elif _terrain_editor.has_method("try_dig_brush") and _terrain_editor.try_dig_brush(target, dig_brush_radius(), player):
 		dug = true
 	if dug:
-		_cooldown_timer = _terrain_editor.get_dig_delay(target)
+		var broken := 1
+		if listed:
+			broken = maxi(int(batch.get("dug_count", 1)), 1)
+		_cooldown_timer = _terrain_editor.get_dig_delay(target) * ItemTypes.dig_time_scale(broken)
 		_flash_dig_feedback(target)
-		_notify_block_break(target)
+		if listed:
+			_notify_scaled_break(batch.get("dug", []), target)
+			if inventory != null:
+				inventory.wear_tool(_active_hotbar_index, ItemTypes.wear_for_cells(broken))
+		else:
+			_notify_block_break(target)
 	else:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
@@ -1146,6 +1155,29 @@ func _notify_block_break(target: Vector3) -> void:
 	var fx := _break_fx()
 	if fx and fx.has_method("notify_break"):
 		fx.notify_break(_column_fx_pos(target), _BlockBreakFx.tint_for_column(world, target))
+
+
+func _notify_scaled_break(cells: Array, fallback: Vector3) -> void:
+	_crack_fill = 0.0
+	var fx := _break_fx()
+	var tint := _BlockBreakFx.tint_for_column(world, fallback)
+	var positions: Array[Vector3] = []
+	for raw in cells:
+		if raw is Vector3i:
+			positions.append(_cell_fx_pos(raw))
+	if fx and fx.has_method("notify_scaled_breaks") and not positions.is_empty():
+		fx.notify_scaled_breaks(positions, tint)
+		return
+	_notify_block_break(fallback)
+
+
+func _cell_fx_pos(cell: Vector3i) -> Vector3:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	return _WorldVisualCoords.column_to_world_pos(
+		float(cell.x) + 0.5,
+		float(cell.y) * layer + layer * 0.45,
+		float(cell.z) + 0.5
+	)
 
 
 func _notify_block_place(target: Vector3) -> void:

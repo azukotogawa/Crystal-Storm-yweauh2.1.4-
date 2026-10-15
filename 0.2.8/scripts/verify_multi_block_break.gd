@@ -10,6 +10,8 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _Highlight = preload("res://player/target_highlight.gd")
+const _Inventory = preload("res://inventory/inventory.gd")
+const _BreakFx = preload("res://systems/block_break_fx.gd")
 
 var _failed: int = 0
 
@@ -34,6 +36,7 @@ func _run() -> void:
 	_test_weapon_uses_same_cells()
 	_test_break_preview()
 	_test_batch_dig()
+	_test_drops_fx_wear()
 	if _failed == 0:
 		print("All multi block break tests OK")
 		quit(0)
@@ -282,6 +285,111 @@ func _test_batch_dig() -> void:
 	flat.free()
 	cm.free()
 	cm_edge.free()
+
+
+func _test_drops_fx_wear() -> void:
+	var hammer := _ItemTypes.get_def("crystal_hammer")
+	if not is_equal_approx(float(hammer.get("impact_ratio", -1.0)), 0.62):
+		_fail("crystal hammer impact_ratio must stay 0.62")
+		return
+	if not is_equal_approx(float(hammer.get("anim_duration", -1.0)), 1.1):
+		_fail("crystal hammer duration must stay 1.1")
+		return
+	if _ItemTypes.tool_max_durability("stone_pick") != 48:
+		_fail("stone pick durability must start at 48")
+		return
+	if _ItemTypes.tool_max_durability("crystal_hammer") != 0:
+		_fail("crystal hammer must not use dig durability")
+		return
+	if not is_equal_approx(_ItemTypes.dig_time_scale(1), 1.0):
+		_fail("one broken cell must keep the dig timing")
+		return
+	if _ItemTypes.dig_time_scale(4) <= _ItemTypes.dig_time_scale(1):
+		_fail("more broken cells must slow the next dig")
+		return
+	if _ItemTypes.wear_for_cells(3) != 3:
+		_fail("wear must match the broken cell count")
+		return
+	var bag = _Inventory.new()
+	bag.set_slot(0, "stone_pick", 1)
+	bag.set_slot(1, "crystal_hammer", 1)
+	if bag.wear_tool(0, _ItemTypes.wear_for_cells(3)) != 45:
+		_fail("a 3-cell swing must wear the pick by 3")
+		return
+	var saved: Dictionary = bag.to_dict()
+	var loaded = _Inventory.new()
+	loaded.load_from_dict(saved)
+	var kept = loaded.get_slot(0)
+	if kept == null or int(kept.get("durability", -1)) != 45:
+		_fail("pick durability must round-trip through the save")
+		return
+	if bag.wear_tool(0, 45) != 0 or bag.get_slot(0) != null:
+		_fail("a spent pick must leave the hotbar")
+		return
+	if bag.wear_tool(1, 9) != -1 or bag.get_slot(1) == null:
+		_fail("the hammer swing must not spend durability")
+		return
+	_TerrainEdits.reset()
+	var flat := _FlatBreakWorld.new()
+	var editor := _TerrainEditor.new()
+	var pocket := _Pocket.new()
+	pocket.inventory = bag
+	pocket.add_to_group("player")
+	root.add_child(flat)
+	root.add_child(editor)
+	root.add_child(pocket)
+	editor.world = flat
+	var wide: Array[Vector3i] = []
+	for i in 6:
+		wide.append(Vector3i(20 + i, 0, 3))
+	var swing: Dictionary = _TerrainEdits.dig_cells(wide, editor)
+	var stone := bag.count_item("stone")
+	if int(swing.get("dug_count", 0)) != 6 or int(swing.get("drop_count", 0)) != _TerrainEdits.DROP_CAP_PER_SWING or stone != _TerrainEdits.DROP_CAP_PER_SWING:
+		_fail("six cells must drop only the swing cap, got dug %s drops %s stone %s" % [swing.get("dug_count"), swing.get("drop_count"), stone])
+	else:
+		var more: Array[Vector3i] = [Vector3i(30, 0, 3), Vector3i(31, 0, 3)]
+		var follow: Dictionary = _TerrainEdits.dig_cells(more, editor)
+		if int(follow.get("drop_count", 0)) != 2 or bag.count_item("stone") != stone + 2:
+			_fail("the next swing must drop again up to the cap")
+		else:
+			print("OK drops cap at %d per swing" % _TerrainEdits.DROP_CAP_PER_SWING)
+	if not is_equal_approx(_BreakFx.break_fx_scale(1), 0.85):
+		_fail("one cell must keep the chip scale")
+	elif _BreakFx.break_fx_scale(9) <= _BreakFx.break_fx_scale(1):
+		_fail("more cells must scale the break FX up")
+	elif _BreakFx.break_fx_scale(40) > 1.45 + 0.001:
+		_fail("break FX scale must stay capped")
+	else:
+		var fx = _BreakFx.new()
+		root.add_child(fx)
+		var spots: Array[Vector3] = []
+		for i in 6:
+			spots.append(Vector3(float(i), 1.0, 2.0))
+		var played := int(fx.notify_scaled_breaks(spots, Color(0.2, 0.55, 0.25)))
+		if played != _BreakFx.SWING_FX_CAP or fx.break_count() != _BreakFx.SWING_FX_CAP:
+			_fail("six breaks must play %d FX, played %d count %d" % [_BreakFx.SWING_FX_CAP, played, fx.break_count()])
+		else:
+			print("OK break FX scales and caps at %d" % _BreakFx.SWING_FX_CAP)
+		fx.free()
+	var src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
+	var at := src.find("func _do_dig_attack")
+	var end := src.find("\nfunc ", at + 10)
+	var body := src.substr(at, maxi(end - at, 0))
+	if "dig_time_scale(" not in body or "wear_tool(" not in body or "_notify_scaled_break(" not in body:
+		_fail("the dig stroke must scale timing, wear, and FX with the cell count")
+	elif "notify_scaled_breaks" not in src:
+		_fail("scaled break FX must go through BlockBreakFx")
+	else:
+		print("OK dig timing and durability scale with the cell count")
+	pocket.free()
+	editor.free()
+	flat.free()
+	_TerrainEdits.reset()
+
+
+class _Pocket:
+	extends Node
+	var inventory
 
 
 func _has_cell(cells: Array, want: Vector3i) -> bool:

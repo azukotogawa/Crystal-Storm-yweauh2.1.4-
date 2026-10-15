@@ -9,6 +9,7 @@ enum BreakShape { SINGLE, VERTICAL_1X2, LINE_3, FACE_3X3 }
 
 const MAX_STACK := 99
 const MULTI_BLOCK_BREAK := true
+const DIG_TIME_PER_EXTRA_CELL := 0.35
 const BREAK_SHAPE_ORDER: Array[int] = [
 	BreakShape.SINGLE,
 	BreakShape.VERTICAL_1X2,
@@ -90,6 +91,7 @@ const ITEMS: Dictionary = {
 		"anim_kind": 1,
 		"anim_duration": 0.26,
 		"impact_ratio": 0.45,
+		"durability": 48,
 		"description": "Dig radius 1. [ and ] widen the brush while this pick is held.",
 		"stackable": false,
 		"max_stack": 1,
@@ -285,6 +287,19 @@ static func breaks_blocks(item_id: String) -> bool:
 	if int(def.get("category", -1)) == Category.TOOL:
 		return true
 	return int(def.get("dig_radius", 0)) > 0
+
+
+static func tool_max_durability(item_id: String) -> int:
+	var raw: Dictionary = ITEMS.get(item_id, {})
+	return maxi(int(raw.get("durability", 0)), 0)
+
+
+static func wear_for_cells(cell_count: int) -> int:
+	return maxi(cell_count, 0)
+
+
+static func dig_time_scale(cell_count: int) -> float:
+	return 1.0 + DIG_TIME_PER_EXTRA_CELL * float(maxi(cell_count, 1) - 1)
 
 
 static func break_shape_for(item_id: String, tier: int = -1) -> int:

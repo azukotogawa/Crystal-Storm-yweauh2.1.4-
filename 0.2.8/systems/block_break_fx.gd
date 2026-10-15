@@ -4,6 +4,10 @@ extends Node3D
 const POP_SLOTS := 4
 const POP_SEC := 0.16
 const STAGES := 3
+const SWING_FX_CAP := 4
+const CHIP_SCALE := 0.85
+const CHIP_SCALE_PER_EXTRA := 0.08
+const CHIP_SCALE_MAX := 1.45
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _VfxPool = preload("res://systems/vfx_pool.gd")
@@ -65,12 +69,40 @@ func set_progress(world_pos: Vector3, progress: float, tint: Color = Color(0.45,
 	return stage
 
 
+static func break_fx_scale(cell_count: int) -> float:
+	var extra := float(maxi(cell_count, 1) - 1)
+	return clampf(CHIP_SCALE + CHIP_SCALE_PER_EXTRA * extra, CHIP_SCALE, CHIP_SCALE_MAX)
+
+
 func notify_break(world_pos: Vector3, tint: Color = Color(0.55, 0.42, 0.28)) -> bool:
+	return _spawn_chip(world_pos, tint, CHIP_SCALE)
+
+
+func notify_scaled_breaks(positions: Array, tint: Color = Color(0.55, 0.42, 0.28)) -> int:
+	var spots: Array[Vector3] = []
+	for raw in positions:
+		if raw is Vector3:
+			spots.append(raw)
+	if spots.is_empty():
+		return 0
+	var play := mini(spots.size(), SWING_FX_CAP)
+	var scale := break_fx_scale(spots.size())
+	var played := 0
+	for i in play:
+		var index := 0
+		if play > 1 and spots.size() > 1:
+			index = int(round(float(i) * float(spots.size() - 1) / float(play - 1)))
+		if _spawn_chip(spots[index], tint, scale):
+			played += 1
+	return played
+
+
+func _spawn_chip(world_pos: Vector3, tint: Color, scale: float) -> bool:
 	_ensure()
 	_stage = 4
 	_crack.visible = false
 	var pool := _pool_node()
-	var spawned: bool = pool.burst(_VfxPool.Kind.CHIP, world_pos, tint, 0.85)
+	var spawned: bool = pool.burst(_VfxPool.Kind.CHIP, world_pos, tint, scale)
 	if spawned:
 		_breaks += 1
 	return spawned

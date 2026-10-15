@@ -43,6 +43,27 @@ func clear_slot(index: int) -> void:
 	set_slot(index, "", 0)
 
 
+func wear_tool(index: int, cost: int) -> int:
+	var slot = get_slot(index)
+	if slot == null or cost <= 0:
+		return -1
+	var max_d := _ItemTypes.tool_max_durability(str(slot.id))
+	if max_d <= 0:
+		return -1
+	var left := max_d
+	if "durability" in slot:
+		left = int(slot.durability)
+	left -= cost
+	if left <= 0:
+		clear_slot(index)
+		return 0
+	slot["durability"] = left
+	changed.emit()
+	if index < HOTBAR_SIZE:
+		hotbar_changed.emit(index)
+	return left
+
+
 func add_item(item_id: String, count: int = 1) -> int:
 	if not _ItemTypes.is_valid(item_id) or count <= 0:
 		return count
@@ -188,7 +209,10 @@ func to_dict() -> Dictionary:
 		if slot == null:
 			out.append(null)
 		else:
-			out.append({"id": slot.id, "count": slot.count})
+			var row := {"id": str(slot.id), "count": int(slot.count)}
+			if "durability" in slot:
+				row["durability"] = int(slot.durability)
+			out.append(row)
 	return {"slots": out, "armor": armor_id}
 
 
@@ -199,7 +223,10 @@ func load_from_dict(data: Dictionary) -> void:
 		if entry == null:
 			_slots[i] = null
 		else:
-			_slots[i] = {"id": str(entry.get("id", "")), "count": int(entry.get("count", 1))}
+			var row := {"id": str(entry.get("id", "")), "count": int(entry.get("count", 1))}
+			if entry is Dictionary and (entry as Dictionary).has("durability"):
+				row["durability"] = int(entry.get("durability", 0))
+			_slots[i] = row
 	armor_id = str(data.get("armor", armor_id))
 	changed.emit()
 	armor_changed.emit(armor_id)

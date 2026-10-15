@@ -268,13 +268,13 @@ func break_cell_blocked(wx: int, wz: int) -> String:
 	return ""
 
 
-func grant_break_loot(wx: int, wz: int) -> void:
+func grant_break_loot(wx: int, wz: int) -> bool:
 	var inv = null
 	if is_inside_tree():
 		var player := get_tree().get_first_node_in_group("player")
 		if player and "inventory" in player:
 			inv = player.inventory
-	_grant_dig_loot(wx, wz, inv)
+	return _grant_dig_loot(wx, wz, inv)
 
 
 func settle_break_columns(columns: Array) -> Array:
@@ -330,14 +330,14 @@ func _brush_dig_cell(wx: int, wz: int, inventory) -> String:
 	return "dug"
 
 
-func _grant_dig_loot(wx: int, wz: int, inventory) -> void:
-	if inventory == null or world == null:
-		return
+func _grant_dig_loot(wx: int, wz: int, inventory) -> bool:
+	if inventory == null or world == null or not inventory.has_method("add_item"):
+		return false
 	var tile: int = world.get_tile_type(float(wx), float(wz))
 	var item_id := _loot_item_for_tile(tile)
 	if item_id.is_empty():
-		return
-	inventory.add_item(item_id, 1)
+		return false
+	return int(inventory.add_item(item_id, 1)) < 1
 
 
 func _loot_item_for_tile(tile: int) -> String:
