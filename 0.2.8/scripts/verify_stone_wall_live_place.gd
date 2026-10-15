@@ -221,7 +221,7 @@ func _check_blueprint_live(editor, world, player, feat_layer) -> void:
 	weapon.inventory = inv
 	inv.add_item("stone", 40)
 	inv.set_slot(0, "stone", 24)
-	var stone_before := inv.count_item("stone")
+	var stone_before: int = inv.count_item("stone")
 	weapon.blueprint_index = 0
 	weapon.blueprint_quarter = 0
 	weapon._cooldown_timer = 0.0
@@ -277,7 +277,7 @@ func _flat_blueprint_anchor(world, player) -> Vector2i:
 
 
 func _blueprint_run_clear(world, player, ax: int, az: int) -> bool:
-	var height := world.get_surface_height(float(ax), float(az))
+	var height: float = world.get_surface_height(float(ax), float(az))
 	for x in 3:
 		var wx := ax + x
 		if not _ActionTargeting._column_in_range(player, wx, az, 8.0):
