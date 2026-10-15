@@ -9,6 +9,8 @@ Crystal Storm is a 3D voxel action-survival roguelike built in Godot 4. It combi
 
 The defining idea is **a world the player can reshape while a hostile simulation reshapes it in return**.
 
+**Premise (2026-10-14, D-225):** the players are treasure hunters who accidentally released a single crystal. There is one crystal; destroying it wins the run (D-226). The boss is a mob that spawns when the player is close to destroying the crystal and fights near the end of that battle (D-227).
+
 Design inspirations include Minecraft (editable terrain), Terraria (exploration and progression), Noita (systemic interactions), Hades (combat feel), Vampire Survivors (escalating pressure), Sanctum (player-shaped defenses), Spelunky (emergent consequences), Rain World (environmental hostility), and Zelda (intuitive interaction). These are design references, not features to copy.
 
 Crystal Storm should retain its own identity: spatial problem-solving, terrain manipulation, crystal propagation, water interactions, and pressure that escalates over time.
@@ -19,9 +21,9 @@ Crystal Storm should retain its own identity: spatial problem-solving, terrain m
 2. Dig, gather resources, build, and alter the environment.
 3. Observe crystal propagation and identify threats.
 4. Manipulate terrain, water, structures, and routes to influence the simulation.
-5. Fight crystal creatures and destroy secondary crystal spawn points.
+5. Fight crystal creatures and wear down the single crystal; earn XP and levels along the way (D-230).
 6. Survive increasing pressure while protecting towns and managing crystal coverage.
-7. Destroy the origin boss to win before the world is overrun.
+7. Survive the boss mob that appears as the crystal nears destruction, and destroy the crystal to win; dying is the only way to lose.
 
 The central loop is:
 
@@ -33,7 +35,7 @@ Maze preparation and assault are the principal gameplay phases. The long-term go
 
 Crystal is the defining world-changing force, not merely an enemy texture or a purple liquid.
 
-The existing implementation includes crystal spawn points, propagation, absorption, power tiers, enemy unlocks, pressure-based behavior, water conductivity interactions, presentation, and persistence.
+The existing implementation includes crystal spawn points (being refactored to one crystal, D-225), propagation, absorption, power tiers, enemy unlocks, pressure-based behavior, water conductivity interactions, presentation, and persistence.
 
 The intended evolution is a richer simulation in which crystal can:
 
@@ -64,7 +66,12 @@ Terrain manipulation must become a strategic toolkit rather than a collection of
 - Explore material-dependent construction and destruction.
 - Investigate structural collapse or terrain deformation only when it adds meaningful gameplay and fits the architecture.
 
-Macro voxels provide efficient large-scale terrain; sparse micro voxels support selected detailed edits and features. The world should not become uniformly oversized cubes: maintain meaningful visual scale and readable terrain silhouettes.
+The macro/micro voxel split is rejected (2026-10-14, D-222). Instead:
+
+- Tools break more than one block at a time (area/multi-block breaking by tool and tier, D-223).
+- Players craft and place structures bigger than one block, such as walls, gates and towers, in the style of Sanctum 2 (D-224).
+
+Maintain meaningful visual scale and readable terrain silhouettes.
 
 Every new construction or destruction mechanic should interact with the simulation and offer a clear player benefit.
 
@@ -82,7 +89,9 @@ Vegetation, animals, ruins, towns, and terrain features already contribute to wo
 
 The game includes melee and ranged combat, crystal enemies, spawn-point destruction, enemy unlocks, relic/stat foundations, towns, militia, ruins, wildlife, and vegetation.
 
-The existing victory condition requires destroying all crystal spawn points, with the origin boss sealed until the secondary spawns are eliminated. Loss conditions include player death, excessive crystal coverage, and town loss.
+Victory (decided 2026-10-14): destroy the single crystal (D-226). The boss is a mob/entity that spawns when the player is close to destroying the crystal (D-227). The older multi-spawn, sealed-origin-boss victory is superseded. Loss (decided 2026-10-14, D-232): players lose only when they die. Crystal coverage and town loss no longer end the run.
+
+Next systems: a level/XP system (confirmed next, D-230), then skill abilities (D-231).
 
 Priorities:
 
@@ -99,6 +108,8 @@ The world uses seeded terrain generation, biomes, rivers, varied elevations, veg
 The visual direction is stylized, readable, and voxel-based, with a clear sense of terrain scale and an increasingly corrupted world. Terrain materials should eventually resemble stylized pixel-art materials rather than flat colors with noise. Crystal growth should feel organic and continuous rather than like a checkerboard of isolated markers.
 
 The player uses an isometric orthographic camera with smooth rotation and zoom. HUD elements communicate the crystal threat, current phase, tools, and world state.
+
+Characters and creatures are true voxelized 3D models, not billboards or 2D sprites (D-221). Lighting and shadows must improve: real-time shadows, ambient occlusion, and characters/structures that cast shadows (D-229). The world currently feels empty and needs more content and density: points of interest, treasure sites, props, wildlife and encounters (D-228).
 
 Replace placeholders incrementally. Do not undertake a wholesale art replacement before the gameplay and simulation are coherent.
 
@@ -137,7 +148,7 @@ These findings are dated observations, not a substitute for inspecting the curre
 1. **Crystal simulation:** improve propagation, terrain interaction, readability, and performance.
 2. **Voxel manipulation:** expand meaningful ways to build, shape, and break terrain.
 3. **System integration:** make terrain, water, crystal, collision, and chunk rebuilding agree.
-4. **Gameplay glue:** connect gathering, combat, towns, ruins, relics, and consumables to rewards.
+4. **Gameplay glue:** connect gathering, combat, towns, ruins, relics, and consumables to rewards; one-crystal loop, multi-block tools and structures, level/XP then skills (see `studio/plans/2026-10-14-design-pivot.md`).
 5. **Playability:** verify the complete run from world entry through victory or defeat.
 6. **Presentation:** improve crystal visuals, terrain materials, animations, sound, and feedback.
 7. **Performance and release quality:** profile representative gameplay and verify changes.
@@ -156,3 +167,5 @@ Agents should treat repository code and current Studio documentation as the auth
 8. Avoid unrelated refactors, giant repeated prompts, and unnecessary full-suite runs during iteration. Run the full suite at meaningful milestones.
 
 **The mission:** Build a coherent, compelling 3D voxel world in which the player can reshape the environment, crystal actively transforms it, and every system contributes to an escalating struggle for control of the world.
+
+**Decisions:** see `studio/DECISIONS.md` (indexed by topic in `studio/ATLAS.md`).
