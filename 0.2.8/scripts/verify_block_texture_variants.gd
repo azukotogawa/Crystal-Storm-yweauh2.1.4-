@@ -1,11 +1,12 @@
 extends SceneTree
-## Grass, dirt, stone, ore, and cave rock must vary per column on the mesh
-## the game draws. The grass pass only painted GRASSLAND3 and DIRT, so a
-## stone, crystal-vein, or cave-stone chunk could keep one cell (and a dark
-## grid on that cell) and this check still passed. Crystal, shard ground,
-## and scar stay one cell. This builds a chunk through ChunkManager and
-## reads the surface-mesh vertex colors, which are the atlas cell the
-## terrain shader samples.
+## Every land family the surface mesh draws must vary per column, and the
+## cell it samples must not be the old 4px diagonal band. That band keeps
+## every row the same brightness, so the grid check's "20% darker than the
+## neighbor row" test stays green, and the grass/rock pass never built a
+## sand, leaf, wood, or snow chunk. Crystal, shard ground, and scar stay
+## one cell, but that cell is still sampled and must not be the band.
+## This builds a chunk through ChunkManager and reads the surface-mesh
+## vertex colors, which are the atlas cell the terrain shader samples.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -30,9 +31,7 @@ func _cell_of(color: Color) -> Vector2i:
 	return Vector2i(int(round(color.r * 255.0)), int(round(color.g * 255.0)))
 
 
-func _paint_chunk(tile: int, cliff: bool) -> ChunkData:
-	var world = load("res://world/InfiniteNoiseWorld.gd").new()
-	world.world_seed = 42
+func _paint_chunk(tile: int, cliff: bool, world) -> ChunkData:
 	var data := _ChunkData.new(Vector2i(2, 3), world)
 	data.capture_worker_snapshot()
 	data._compute_column_maps(true)
@@ -172,6 +171,26 @@ func _cells_differ(img: Image, a: Vector2i, b: Vector2i) -> int:
 	return diff
 
 
+func _want_varied(label: String, drawn: Dictionary, failed_box: Array) -> void:
+	var tops: Dictionary = drawn["tops"]
+	var sides: Dictionary = drawn["sides"]
+	print("drawn %s tops %d sides %d" % [label, tops.size(), sides.size()])
+	if tops.size() < _MIN_VARIANTS or (sides.size() > 0 and sides.size() < _MIN_VARIANTS):
+		_fail(
+			"%s uses tops %d sides %d, want %d"
+			% [label, tops.size(), sides.size(), _MIN_VARIANTS]
+		)
+		failed_box[0] = true
+
+
+func _want_one(label: String, drawn: Dictionary, failed_box: Array) -> void:
+	var tops: Dictionary = drawn["tops"]
+	print("drawn %s tops %d" % [label, tops.size()])
+	if tops.size() != 1:
+		_fail("%s must stay one cell, got %d" % [label, tops.size()])
+		failed_box[0] = true
+
+
 func _run() -> void:
 	var failed := false
 	var img := Image.load_from_file(_VoxelTypes.ATLAS_TEXTURE_PATH)
@@ -180,81 +199,57 @@ func _run() -> void:
 		quit(1)
 		return
 
-	var grass := _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND3, true))
-	var dirt := _drawn_cells(_paint_chunk(_VoxelTypes.DIRT, false))
-	var stone := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true))
-	var ore := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL_VEIN, true))
-	var cave := _drawn_cells(_paint_chunk(_VoxelTypes.CAVE_STONE, true))
-	var crystal := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL, false))
+	var world = load("res://world/InfiniteNoiseWorld.gd").new()
+	world.world_seed = 42
+	var failed_box := [false]
+	var grass := _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND3, true, world))
+	var dirt := _drawn_cells(_paint_chunk(_VoxelTypes.DIRT, false, world))
+	var stone := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true, world))
+	var ore := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL_VEIN, true, world))
+	var cave := _drawn_cells(_paint_chunk(_VoxelTypes.CAVE_STONE, true, world))
+	var crystal := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL, false, world))
+	var shard := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL_SHARD_GROUND, false, world))
+	var scar := _drawn_cells(_paint_chunk(_VoxelTypes.CRYSTAL_SCAR, false, world))
+	var families := {
+		"sand": _drawn_cells(_paint_chunk(_VoxelTypes.DESERT, true, world)),
+		"beach": _drawn_cells(_paint_chunk(_VoxelTypes.BEACH, true, world)),
+		"leaves": _drawn_cells(_paint_chunk(_VoxelTypes.HILLS, true, world)),
+		"snow": _drawn_cells(_paint_chunk(_VoxelTypes.SNOW, true, world)),
+		"tundra": _drawn_cells(_paint_chunk(_VoxelTypes.TUNDRA, true, world)),
+		"basin": _drawn_cells(_paint_chunk(_VoxelTypes.BASIN, false, world)),
+		"valley": _drawn_cells(_paint_chunk(_VoxelTypes.VALLEY2, true, world)),
+		"steppe": _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND4, false, world)),
+		"farmland": _drawn_cells(_paint_chunk(_VoxelTypes.FARMLAND, false, world)),
+		"path": _drawn_cells(_paint_chunk(_VoxelTypes.TOWN_PATH, false, world)),
+		"ocean": _drawn_cells(_paint_chunk(_VoxelTypes.OCEAN, false, world)),
+		"river": _drawn_cells(_paint_chunk(_VoxelTypes.RIVER, false, world)),
+		"peak": _drawn_cells(_paint_chunk(_VoxelTypes.MOUNTAIN3, true, world)),
+	}
 	var grass_tops: Dictionary = grass["tops"]
 	var grass_sides: Dictionary = grass["sides"]
-	var dirt_tops: Dictionary = dirt["tops"]
 	var stone_tops: Dictionary = stone["tops"]
 	var stone_sides: Dictionary = stone["sides"]
-	var ore_tops: Dictionary = ore["tops"]
-	var ore_sides: Dictionary = ore["sides"]
-	var cave_tops: Dictionary = cave["tops"]
-	var cave_sides: Dictionary = cave["sides"]
-	print(
-		"drawn grass tops %d sides %d; dirt tops %d; stone tops %d sides %d; ore tops %d sides %d; cave tops %d sides %d; crystal tops %d"
-		% [
-			grass_tops.size(), grass_sides.size(), dirt_tops.size(),
-			stone_tops.size(), stone_sides.size(),
-			ore_tops.size(), ore_sides.size(),
-			cave_tops.size(), cave_sides.size(),
-			crystal["tops"].size(),
-		]
-	)
-	if grass_tops.size() < _MIN_VARIANTS:
-		_fail("plains grass tops use %d atlas cells, want %d" % [grass_tops.size(), _MIN_VARIANTS])
-		failed = true
-	if grass_sides.size() < _MIN_VARIANTS:
-		_fail("grass cliff sides use %d atlas cells, want %d" % [grass_sides.size(), _MIN_VARIANTS])
-		failed = true
-	if dirt_tops.size() < _MIN_VARIANTS:
-		_fail("dirt tops use %d atlas cells, want %d" % [dirt_tops.size(), _MIN_VARIANTS])
-		failed = true
-	if stone_tops.size() < _MIN_VARIANTS or stone_sides.size() < _MIN_VARIANTS:
-		_fail(
-			"stone uses tops %d sides %d, want %d"
-			% [stone_tops.size(), stone_sides.size(), _MIN_VARIANTS]
-		)
-		failed = true
-	if ore_tops.size() < _MIN_VARIANTS or ore_sides.size() < _MIN_VARIANTS:
-		_fail(
-			"ore (crystal vein) uses tops %d sides %d, want %d"
-			% [ore_tops.size(), ore_sides.size(), _MIN_VARIANTS]
-		)
-		failed = true
-	if cave_tops.size() < _MIN_VARIANTS or cave_sides.size() < _MIN_VARIANTS:
-		_fail(
-			"cave rock uses tops %d sides %d, want %d"
-			% [cave_tops.size(), cave_sides.size(), _MIN_VARIANTS]
-		)
-		failed = true
-	if crystal["tops"].size() != 1:
-		_fail("crystal mass must stay one cell, got %d" % crystal["tops"].size())
-		failed = true
+	_want_varied("grass", grass, failed_box)
+	_want_varied("dirt", dirt, failed_box)
+	_want_varied("stone", stone, failed_box)
+	_want_varied("ore", ore, failed_box)
+	_want_varied("cave", cave, failed_box)
+	for label in families.keys():
+		_want_varied(label, families[label], failed_box)
+	_want_one("crystal", crystal, failed_box)
+	_want_one("shard", shard, failed_box)
+	_want_one("scar", scar, failed_box)
+	failed = bool(failed_box[0])
 
 	var seen: Dictionary = {}
-	for cell in grass_tops.keys():
-		seen[cell] = true
-	for cell in grass_sides.keys():
-		seen[cell] = true
-	for cell in dirt_tops.keys():
-		seen[cell] = true
-	for cell in stone_tops.keys():
-		seen[cell] = true
-	for cell in stone_sides.keys():
-		seen[cell] = true
-	for cell in ore_tops.keys():
-		seen[cell] = true
-	for cell in ore_sides.keys():
-		seen[cell] = true
-	for cell in cave_tops.keys():
-		seen[cell] = true
-	for cell in cave_sides.keys():
-		seen[cell] = true
+	var bags: Array = [grass, dirt, stone, ore, cave, crystal, shard, scar]
+	for label in families.keys():
+		bags.append(families[label])
+	for drawn in bags:
+		for cell in drawn["tops"].keys():
+			seen[cell] = true
+		for cell in drawn["sides"].keys():
+			seen[cell] = true
 	var cells: Array = seen.keys()
 	for i in cells.size():
 		var cell: Vector2i = cells[i]
@@ -275,13 +270,13 @@ func _run() -> void:
 				_fail("cells %s and %s are not distinct (%d px)" % [cell, other, diff])
 				failed = true
 
-	var again := _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND3, true))
+	var again := _drawn_cells(_paint_chunk(_VoxelTypes.GRASSLAND3, true, world))
 	if again["tops"] != grass_tops or again["sides"] != grass_sides:
 		_fail("grass variants changed on a second mesh of the same columns")
 		failed = true
 	else:
 		print("OK remesh kept the same grass cells")
-	var stone_again := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true))
+	var stone_again := _drawn_cells(_paint_chunk(_VoxelTypes.STONE, true, world))
 	if stone_again["tops"] != stone_tops or stone_again["sides"] != stone_sides:
 		_fail("stone variants changed on a second mesh of the same columns")
 		failed = true
