@@ -40,3 +40,4 @@ Cole answers inline. Once answered, the decision moves to `studio/DECISIONS.md` 
 - Q-030 | 2026-10-14 | design pivot | [art] Voxel model resolution for characters and creatures (voxels per world block, e.g. 8 or 16 per block) and whether models are authored in a tool (MagicaVoxel .vox) or generated from code | answer:
 - Q-031 | 2026-10-14 | design pivot | [progression] XP sources (kills, crystal damage, mining, building, exploring) and whether levels persist between runs (D-158 said no meta-progression) | answer:
 - Q-032 | 2026-10-14 | design pivot | [voxels] Which multi-block break shapes per tool tier, and which large structures come first (wall segments, gates, towers, stairs)? | answer:
+- Q-033 | 2026-10-15 | death-only loss | [progression] Does standing in the crystal (_on_crystal_touched_player, "The crystal overwhelmed you") still end the run, or is that also not a loss under D-232? The step only stopped coverage overrun and town fall. | answer:
