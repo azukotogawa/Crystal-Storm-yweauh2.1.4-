@@ -76,8 +76,8 @@ static func _clear_water(water_mi: MeshInstance3D) -> void:
 static func _is_water_atlas(color: Color) -> bool:
 	var ax := int(round(color.r * 255.0))
 	var ay := int(round(color.g * 255.0))
-	# Ocean row (0, 0) and river / pool (1, 0). Nothing else uses those cells.
-	return (ax == 0 and ay == 0) or (ax == 1 and ay == 0)
+	# Row 0 except the air cell (6, 0). Ocean and river variants live there.
+	return ay == 0 and ax >= 0 and ax < 6
 
 
 static func _partition(arrays: Array) -> Dictionary:

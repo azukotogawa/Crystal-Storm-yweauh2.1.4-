@@ -118,6 +118,46 @@ const ORE_VARIANTS: Array[Vector2i] = [
 const CAVE_ROCK_VARIANTS: Array[Vector2i] = [
 	Vector2i(3, 6), Vector2i(4, 6), Vector2i(6, 6),
 ]
+const SAND_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 7), Vector2i(1, 7), Vector2i(2, 7),
+]
+const BEACH_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 1), Vector2i(1, 1), Vector2i(2, 1),
+]
+const LEAF_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 3), Vector2i(2, 3), Vector2i(4, 3),
+]
+const WOOD_VARIANTS: Array[Vector2i] = [
+	Vector2i(1, 3), Vector2i(3, 3), Vector2i(5, 3),
+]
+const SNOW_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5),
+]
+const TUNDRA_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 8), Vector2i(1, 8), Vector2i(2, 8),
+]
+const BASIN_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 9), Vector2i(1, 9), Vector2i(2, 9),
+]
+const VALLEY_VARIANTS: Array[Vector2i] = [
+	Vector2i(1, 6), Vector2i(2, 6), Vector2i(3, 9),
+]
+const DRY_GRASS_VARIANTS: Array[Vector2i] = [
+	Vector2i(3, 1), Vector2i(4, 2), Vector2i(5, 2),
+]
+const FARMLAND_VARIANTS: Array[Vector2i] = [
+	Vector2i(4, 1), Vector2i(4, 8), Vector2i(5, 8),
+]
+const PATH_VARIANTS: Array[Vector2i] = [
+	Vector2i(5, 1), Vector2i(6, 8), Vector2i(6, 9),
+]
+## Row 0 except the air cell. The water mesh only treats these as water.
+const OCEAN_VARIANTS: Array[Vector2i] = [
+	Vector2i(0, 0), Vector2i(2, 0), Vector2i(4, 0),
+]
+const RIVER_VARIANTS: Array[Vector2i] = [
+	Vector2i(1, 0), Vector2i(3, 0), Vector2i(5, 0),
+]
 
 
 static func _green_grass_top(tile_type: int) -> bool:
@@ -152,13 +192,47 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 		return _column_pick(ORE_VARIANTS, world_x, world_z, 67)
 	if _column_rock(tile_type):
 		return _column_pick(STONE_VARIANTS, world_x, world_z, 41)
+	if _is_desert_surface(tile_type):
+		return _column_pick(SAND_VARIANTS, world_x, world_z, 101)
+	if _is_beach(tile_type):
+		return _column_pick(BEACH_VARIANTS, world_x, world_z, 103)
+	if _is_forest_surface(tile_type) and face == 0:
+		return _column_pick(LEAF_VARIANTS, world_x, world_z, 107)
+	if _is_forest_surface(tile_type) and face >= 3:
+		return _column_pick(WOOD_VARIANTS, world_x, world_z, 109)
+	if tile_type == TREE_TRUNK:
+		return _column_pick(WOOD_VARIANTS, world_x, world_z, 109)
+	if tile_type == BUSH and face == 0:
+		return _column_pick(LEAF_VARIANTS, world_x, world_z, 107)
+	if _is_tundra(tile_type) and face == 0:
+		return _column_pick(TUNDRA_VARIANTS, world_x, world_z, 113)
+	if _is_tundra(tile_type) and face >= 3:
+		return _column_pick(STONE_VARIANTS, world_x, world_z, 41)
+	if _is_snow_only(tile_type) and face == 0:
+		return _column_pick(SNOW_VARIANTS, world_x, world_z, 127)
+	if _is_snow_only(tile_type) and face >= 3:
+		return _column_pick(STONE_VARIANTS, world_x, world_z, 41)
+	if _is_basin(tile_type):
+		return _column_pick(BASIN_VARIANTS, world_x, world_z, 131)
+	if _is_valley(tile_type):
+		return _column_pick(VALLEY_VARIANTS, world_x, world_z, 137)
+	if _is_dry_grass(tile_type) and face == 0:
+		return _column_pick(DRY_GRASS_VARIANTS, world_x, world_z, 139)
+	if tile_type == FARMLAND and face == 0:
+		return _column_pick(FARMLAND_VARIANTS, world_x, world_z, 149)
+	if tile_type == TOWN_PATH and face == 0:
+		return _column_pick(PATH_VARIANTS, world_x, world_z, 151)
+	if _is_ocean(tile_type):
+		return _column_pick(OCEAN_VARIANTS, world_x, world_z, 157)
+	if tile_type == RIVER or tile_type == WATER:
+		return _column_pick(RIVER_VARIANTS, world_x, world_z, 163)
 	return get_atlas_coord_for_face(tile_type, face_code)
 
 
 static func _column_rock(tile_type: int) -> bool:
 	return tile_type == STONE or tile_type == STONE2 \
 		or tile_type == MOUNTAIN or tile_type == MOUNTAIN2 \
-		or tile_type == MOUNTAIN4 or tile_type == MOUNTAIN5 \
+		or tile_type == MOUNTAIN3 or tile_type == MOUNTAIN4 or tile_type == MOUNTAIN5 \
 		or tile_type == MOUNTAIN6 or tile_type == MOUNTAIN7
 
 
@@ -174,7 +248,35 @@ static func _is_forest_surface(tile_type: int) -> bool:
 
 
 static func _is_snow_surface(tile_type: int) -> bool:
-	return tile_type in [SNOW, SNOW2, SNOW3, TUNDRA, TUNDRA2, TUNDRA3]
+	return _is_snow_only(tile_type) or _is_tundra(tile_type)
+
+
+static func _is_snow_only(tile_type: int) -> bool:
+	return tile_type == SNOW or tile_type == SNOW2 or tile_type == SNOW3
+
+
+static func _is_tundra(tile_type: int) -> bool:
+	return tile_type == TUNDRA or tile_type == TUNDRA2 or tile_type == TUNDRA3
+
+
+static func _is_beach(tile_type: int) -> bool:
+	return tile_type == BEACH or tile_type == BEACH2 or tile_type == BEACH3
+
+
+static func _is_basin(tile_type: int) -> bool:
+	return tile_type == BASIN or tile_type == BASIN2 or tile_type == BASIN3
+
+
+static func _is_valley(tile_type: int) -> bool:
+	return tile_type == VALLEY or tile_type == VALLEY2 or tile_type == VALLEY3
+
+
+static func _is_dry_grass(tile_type: int) -> bool:
+	return tile_type == GRASSLAND4 or tile_type == GRASSLAND5 or tile_type == GRASS_TUFT
+
+
+static func _is_ocean(tile_type: int) -> bool:
+	return tile_type == OCEAN or tile_type == OCEAN2 or tile_type == OCEAN3
 
 
 static func _is_stone_surface(tile_type: int) -> bool:

@@ -173,7 +173,7 @@ func _count_water_tops(mesh: ArrayMesh) -> int:
 		var vi := int(indices[i])
 		var ax := int(round(colors[vi].r * 255.0))
 		var ay := int(round(colors[vi].g * 255.0))
-		if normals[vi].y > 0.9 and ((ax == 0 and ay == 0) or (ax == 1 and ay == 0)):
+		if normals[vi].y > 0.9 and ay == 0 and ax >= 0 and ax < 6:
 			n += 1
 		i += 3
 	return n
