@@ -385,7 +385,6 @@ func _tick_player(player: Player, frames: int) -> void:
 ## on the bank. Camera yaw 45 is the live D heading.
 func _test_player_shore(world, layer: float, shore: float) -> void:
 	var player := _shore_player(world)
-	player.locked_yaw_degrees = 45.0
 	var probe: _VoxelFloorProbe = player._floor_probe
 	var bed := probe.sample_walkable_feet(87.5, 29.5)
 	player.voxel_position = Vector3(87.5, bed, 29.5)
@@ -423,6 +422,7 @@ func _test_player_shore(world, layer: float, shore: float) -> void:
 		print("OK swim slower %.2f vs dry %.2f" % [swim_moved, dry_moved])
 
 	var bank_y := probe.sample_walkable_feet(91.5, 25.5)
+	player.locked_yaw_degrees = 45.0
 	_assert_stood_on_bank(
 		player, float_y, bank_y, shore, layer, false,
 		"could not walk out of the pool onto the bank"
