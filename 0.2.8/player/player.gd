@@ -17,6 +17,7 @@ const _PlayerBodyMesh = preload("res://player/player_body_mesh.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 const _MoveFeel = preload("res://player/move_feel.gd")
 const _Dash = preload("res://player/dash_skill.gd")
+const _Slam = preload("res://player/ground_slam_skill.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
 var stat_component: _StatComponent
@@ -1078,12 +1079,32 @@ func begin_dash(dir: Vector2) -> bool:
 
 
 func _on_skill_activated(_slot: int, skill_id: StringName) -> void:
+	if skill_id == _Slam.SKILL_ID:
+		cast_ground_slam()
+		return
 	if skill_id != _Dash.SKILL_ID:
 		return
 	if _GameplayInput.blocks_actions():
 		return
 	var facing := rotate_input_to_world(Vector2(0.0, -1.0), locked_yaw_degrees)
 	begin_dash(_Dash.direction(_wish_xz, facing))
+
+
+func cast_ground_slam(extra: Array = []) -> Dictionary:
+	if _GameplayInput.blocks_actions():
+		return {}
+	var center := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
+	var editor = null
+	var nodes: Array = extra.duplicate()
+	var tree: SceneTree = _scene_tree()
+	if tree != null:
+		editor = tree.get_first_node_in_group("terrain_editor")
+		for group_name in ["crystal_enemy", "world_entity"]:
+			for node in tree.get_nodes_in_group(group_name):
+				nodes.append(node)
+	var batch: Dictionary = _Slam.break_ground(world, editor, center)
+	batch["hits"] = _Slam.strike(nodes, center, _ws(), self)
+	return batch
 
 
 func _bind_dash() -> void:
@@ -1104,6 +1125,15 @@ func _unbind_dash() -> void:
 	if skills != null and skills.has_signal("skill_activated") and skills.skill_activated.is_connected(_on_skill_activated):
 		skills.skill_activated.disconnect(_on_skill_activated)
 	_dash_bound = false
+
+
+func _scene_tree() -> SceneTree:
+	if is_inside_tree():
+		return get_tree()
+	var skills = _skill_service()
+	if skills != null and skills.is_inside_tree():
+		return skills.get_tree()
+	return null
 
 
 func _skill_service():

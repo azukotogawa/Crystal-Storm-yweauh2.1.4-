@@ -25,6 +25,7 @@ func _run() -> void:
 	_check_hotkeys()
 	_check_save_round_trip()
 	_check_dash()
+	_check_ground_slam()
 	if _failed == 0:
 		print("All skills tests OK")
 		quit(0)
@@ -426,3 +427,175 @@ func _check_dash() -> void:
 	player.free()
 	_drop(pair)
 	print("OK dash burst")
+
+
+func _check_ground_slam() -> void:
+	var slam = preload("res://player/ground_slam_skill.gd")
+	var edits = preload("res://world/terrain_edits.gd")
+	var settings = preload("res://config/world_settings.gd")
+	var spec: Dictionary = _Skills.CATALOG[&"ground_slam"]
+	if float(spec.get("cooldown", -1.0)) != _Skills.DEFAULT_COOLDOWN:
+		_fail("ground slam cooldown stays the catalog placeholder until Q-046")
+		return
+	var center := Vector2i(4, 4)
+	var patch: Array = slam.footprint(center)
+	if patch.size() != 9 or patch[0] != Vector2i(3, 3) or patch[8] != Vector2i(5, 5):
+		_fail("ground slam footprint must be the 3x3 around the player, got %s" % patch)
+		return
+	var src := FileAccess.get_file_as_string("res://player/ground_slam_skill.gd")
+	if not src.contains("dig_cells(") or src.contains(".dig("):
+		_fail("ground slam must break through the batched dig")
+		return
+	var body := FileAccess.get_file_as_string("res://player/player.gd")
+	if not body.contains("cast_ground_slam") or not body.contains("_Slam.break_ground"):
+		_fail("the player must cast ground slam through the batched break")
+		return
+	var svc := FileAccess.get_file_as_string("res://systems/skill_service.gd")
+	if svc.contains("dig_cells("):
+		_fail("the slam break must stay off the skill service")
+		return
+	edits.reset()
+	var world := _SlamWorld.new()
+	var editor := _SlamEditor.new()
+	editor.world = world
+	var layer: float = settings.get_active().layer_height()
+	var batch: Dictionary = slam.break_ground(world, editor, center)
+	if int(batch.get("dug_count", 0)) != 9 or editor.remesh_calls != 1 or int(batch.get("remesh_count", 0)) != 1:
+		_fail("3x3 slam dug %s across %d remesh calls" % [str(batch.get("dug_count", 0)), editor.remesh_calls])
+		edits.reset()
+		return
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			var drop: float = edits.get_height_delta(center.x + dx, center.y + dz)
+			if absf(drop - (-layer)) > 0.001:
+				_fail("column %s,%s dropped %s, want one layer" % [center.x + dx, center.y + dz, drop])
+				edits.reset()
+				return
+	if absf(edits.get_height_delta(8, 4)) > 0.001:
+		_fail("a column outside the 3x3 moved")
+		edits.reset()
+		return
+	edits.reset()
+	var outside: Dictionary = slam.break_ground(world, editor, Vector2i(3000, 0))
+	if int(outside.get("dug_count", 0)) != 0:
+		_fail("ground slam dug outside the border")
+		edits.reset()
+		return
+	var scale: float = settings.get_active().voxel_scale
+	var foe := _SlamFoe.new()
+	foe.position = Vector3(5.5 * scale, 1.0, 5.5 * scale)
+	var far := _SlamFoe.new()
+	far.position = Vector3(8.5 * scale, 1.0, 4.5 * scale)
+	var dead := _SlamFoe.new()
+	dead.health = 0.0
+	dead.position = Vector3(4.5 * scale, 1.0, 4.5 * scale)
+	var bystander := _SlamFoe.new()
+	bystander.add_to_group("player")
+	bystander.position = Vector3(4.5 * scale, 1.0, 3.5 * scale)
+	var pair = _pair(1)
+	var skills = pair.skills
+	var player := Player.new()
+	player.world = world
+	player.voxel_position = Vector3(4.2, 1.0, 4.1)
+	root.add_child(foe)
+	foe.add_to_group("crystal_enemy")
+	skills.unlock(&"ground_slam")
+	skills.equip(0, &"ground_slam")
+	player._bind_dash()
+	if not skills.skill_activated.is_connected(player._on_skill_activated):
+		_fail("player did not listen for ground slam")
+		_drop(pair)
+		player.free()
+		edits.reset()
+		return
+	player.cast_ground_slam([foe, far, dead, bystander, foe])
+	if absf(foe.health - (30.0 - slam.DAMAGE)) > 0.01 or foe.last_source != slam.SKILL_ID:
+		_fail("ground slam did not damage the enemy on the patch, health %s" % foe.health)
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	if absf(far.health - 30.0) > 0.01 or absf(dead.health) > 0.01 or absf(bystander.health - 30.0) > 0.01:
+		_fail("ground slam hit someone outside the patch, a dead body, or the player")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	root.remove_child(foe)
+	foe.remove_from_group("crystal_enemy")
+	if int(player.cast_ground_slam([]).get("hits", -1)) != 0:
+		_fail("a second slam with nobody on the patch still counted a hit")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	root.add_child(foe)
+	foe.add_to_group("crystal_enemy")
+	edits.reset()
+	var before := edits.get_height_delta(4, 4)
+	if not skills.try_activate(0):
+		_fail("equipped ground slam did not activate into the break")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	if absf(edits.get_height_delta(4, 4) - (-layer)) > 0.001:
+		_fail("activating ground slam did not break the player's column")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	if absf(foe.health - (30.0 - slam.DAMAGE * 2.0)) > 0.01:
+		_fail("activating ground slam did not hit the enemy again")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	_GameplayInput.pause_open = true
+	var paused: Dictionary = player.cast_ground_slam([foe])
+	_GameplayInput.pause_open = false
+	if not paused.is_empty() or absf(edits.get_height_delta(4, 4) - (-layer)) > 0.001:
+		_fail("pause started a ground slam")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	if absf(before) > 0.001:
+		_fail("the slam check started from a dirty column")
+		_cleanup_slam(pair, player, skills, edits)
+		return
+	_cleanup_slam(pair, player, skills, edits)
+	print("OK ground slam")
+
+
+func _cleanup_slam(pair: Dictionary, player: Player, skills, edits) -> void:
+	if skills.skill_activated.is_connected(player._on_skill_activated):
+		skills.skill_activated.disconnect(player._on_skill_activated)
+	player.free()
+	_drop(pair)
+	edits.reset()
+
+
+class _SlamWorld:
+	extends "res://world/InfiniteNoiseWorld.gd"
+
+	func get_surface_height(wx: float, wz: float) -> float:
+		var edits = preload("res://world/terrain_edits.gd")
+		return edits.get_height_delta(floori(wx), floori(wz))
+
+	func invalidate_column_cache(_wx: int, _wz: int) -> void:
+		pass
+
+
+class _SlamEditor:
+	extends RefCounted
+	var world
+	var remesh_calls: int = 0
+
+	func remesh_break_chunk(_chunk: Vector2i, _columns: Array) -> void:
+		remesh_calls += 1
+
+	func update_break_water(_chunk: Vector2i, _columns: Array) -> void:
+		pass
+
+	func update_break_crystal(_chunk: Vector2i, _columns: Array) -> void:
+		pass
+
+	func flush_break_chunks() -> void:
+		pass
+
+
+class _SlamFoe:
+	extends Node3D
+	var health := 30.0
+	var last_source: StringName = &""
+
+	func take_damage(amount: float, source: StringName = &"") -> void:
+		health -= amount
+		last_source = source
