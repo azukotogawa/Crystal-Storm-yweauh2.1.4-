@@ -6,6 +6,7 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _Wildlife = preload("res://world/wildlife_density.gd")
 
 @export var animals_per_biome_chunk: int = 3
 @export var max_entities: int = 128
@@ -191,11 +192,18 @@ func _town_defenders_lost(center: Vector2i) -> bool:
 
 
 func _seed_animal_spawns() -> void:
+	if _Wildlife.ENABLED and world != null:
+		_Wildlife.place(world, maxi(wildlife_seed_attempts, 96), 512)
+	else:
+		_seed_scattered_animals()
+	_seed_town_population()
+
+
+func _seed_scattered_animals() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = world.world_seed + 66003
 	var half := 512
 	var attempts: int = maxi(wildlife_seed_attempts, 96)
-	var placed := 0
 	for _i in attempts:
 		var wx := rng.randi_range(-half, half)
 		var wz := rng.randi_range(-half, half)
@@ -207,8 +215,6 @@ func _seed_animal_spawns() -> void:
 			_WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN,
 			animal_kind
 		)
-		placed += 1
-	_seed_town_population()
 
 
 func _seed_town_population() -> void:
@@ -422,9 +428,11 @@ func _activate_chunk_entities(coord: Vector2i) -> void:
 	_ensure_town_population_for_chunk(coord)
 	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:
 		return
-	var spawns: Array = _FeatureRegistry.get_spawns_in_chunk(coord)
+	var spawns: Array = _wildlife_order(_FeatureRegistry.get_spawns_in_chunk(coord))
+	var room := _wildlife_room()
+	var used := 0
 	for spawn in spawns:
-		if _entities.size() >= max_entities:
+		if _entities.size() >= max_entities or used >= room:
 			return
 		var pos: Vector2i = spawn.world_pos
 		var key := Vector2i(pos)
@@ -432,9 +440,16 @@ func _activate_chunk_entities(coord: Vector2i) -> void:
 			continue
 		if int(spawn.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
 			continue
-		var brain_cfg = _brain_for_animal(int(spawn.get("animal_kind", 0)))
-		_spawn_world_entity(pos.x, pos.y, brain_cfg, pos, _animal_color(int(spawn.get("animal_kind", 0))))
+		var animal_kind := int(spawn.get("animal_kind", 0))
+		var brain_cfg = _brain_for_animal(animal_kind)
+		var herd_home := pos
+		var share_home := false
+		if spawn.has("herd_home") and spawn.get("herd_home") is Vector2i:
+			herd_home = spawn.get("herd_home")
+			share_home = true
+		_spawn_world_entity(pos.x, pos.y, brain_cfg, pos, _animal_color(animal_kind), herd_home, share_home)
 		_spawned_cells[key] = true
+		used += 1
 
 
 func _ensure_town_population_for_chunk(coord: Vector2i) -> void:
@@ -476,12 +491,35 @@ func _brain_for_animal(animal_kind: int):
 			return _EntityBrainRegistry.get_def(&"rabbit")
 
 
+func _wildlife_room() -> int:
+	if not _Wildlife.ENABLED:
+		return 4096
+	return _Wildlife.wake_limit(animals_per_biome_chunk)
+
+
+func _wildlife_order(spawns: Array) -> Array:
+	if not _Wildlife.ENABLED:
+		return spawns
+	var herds: Array = []
+	var rest: Array = []
+	for spawn in spawns:
+		var kind := int(spawn.get("animal_kind", 0))
+		if kind == _WorldFeatureTypes.AnimalKind.DEER or kind == _WorldFeatureTypes.AnimalKind.BOAR:
+			herds.append(spawn)
+		else:
+			rest.append(spawn)
+	herds.append_array(rest)
+	return herds
+
+
 func _spawn_world_entity(
 	wx: int,
 	wz: int,
 	brain_cfg,
 	defend_center: Vector2i,
-	tint: Color
+	tint: Color,
+	herd_home: Vector2i = Vector2i.ZERO,
+	share_home: bool = false
 ) -> void:
 	if brain_cfg == null:
 		return
@@ -493,6 +531,9 @@ func _spawn_world_entity(
 		push_error("EntityManager: entity not in tree before setup")
 		return
 	entity.setup(brain_cfg, Vector2i(wx, wz), world, chunk_manager, crystal_manager, defend_center, tint)
+	if share_home and entity.brain != null:
+		entity.brain.home_pos = herd_home
+		entity.brain.patrol_anchor = herd_home
 	_entities.append(entity)
 	if entity.has_method("refresh_visual"):
 		entity.refresh_visual()

@@ -129,6 +129,7 @@ SUITES=(
 	"res://scripts/verify_treasure_sites.gd"
 	"res://scripts/verify_poi_scatter.gd"
 	"res://scripts/verify_prop_density.gd"
+	"res://scripts/verify_wildlife_density.gd"
 	"res://scripts/verify_crystal_terrain_routing.gd"
 	"res://scripts/verify_crystal_wet_crawl.gd"
 	"res://scripts/verify_crystal_grid_align.gd"
