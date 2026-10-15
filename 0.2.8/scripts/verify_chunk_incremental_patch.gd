@@ -1,5 +1,4 @@
 extends SceneTree
-## Telemetry corroboration: interior dig examines far fewer than 256 columns.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

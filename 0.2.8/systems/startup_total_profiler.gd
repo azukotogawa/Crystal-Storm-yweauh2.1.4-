@@ -1,8 +1,5 @@
 class_name StartupTotalProfiler
 extends RefCounted
-## Temporary wall-clock startup diagnosis. Completely inert unless
-## CRYSTALSTORM_STARTUP_TOTAL_PROFILE=1|true|on.
-## Measurement only — no gameplay / bake / stream behavior.
 
 const ENV_KEY := "CRYSTALSTORM_STARTUP_TOTAL_PROFILE"
 

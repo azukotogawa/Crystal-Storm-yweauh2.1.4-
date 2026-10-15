@@ -1,7 +1,5 @@
 class_name SpatialQueryService
 extends Node
-## Scene-facing Spatial Query Layer owner. Wires chunk/entity/WorldState updates.
-## Discovery only — no combat damage, AI decisions, or simulation rules.
 
 const _SpatialQueryLayer = preload("res://systems/spatial_query_layer.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
@@ -10,15 +8,13 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 
 static var _active = null
 
-## SpatialQueryLayer instance (typed as Variant to avoid class_name load-order issues).
 var layer = null
 var _chunk_manager = null
 var _entity_manager = null
 var _crystal_manager = null
 var _world_state = null
 var _bound_chunk_signals: bool = false
-var _tracked_nodes: Dictionary = {}  # instance_id -> spatial handle id
-## Stream wake counters (measurement).
+var _tracked_nodes: Dictionary = {}
 var _stream_ready_n: int = 0
 var _stream_ready_us: int = 0
 var _stream_ready_max_us: int = 0
@@ -71,7 +67,6 @@ func bind_chunk_manager(cm) -> void:
 	if cm.has_signal("chunk_unloaded") and not cm.chunk_unloaded.is_connected(_on_chunk_unloaded):
 		cm.chunk_unloaded.connect(_on_chunk_unloaded)
 	_bound_chunk_signals = true
-	# Index already-resident chunks
 	if "chunks" in cm:
 		for coord in cm.chunks.keys():
 			_on_chunk_ready(coord, null)
@@ -95,7 +90,6 @@ func bind_entity_manager(em) -> void:
 		em.entity_spawned.connect(_on_entity_spawned)
 	if em.has_signal("entity_despawned") and not em.entity_despawned.is_connected(_on_entity_despawned):
 		em.entity_despawned.connect(_on_entity_despawned)
-	# Index current entities
 	if "_entities" in em:
 		for ent in em._entities:
 			if is_instance_valid(ent):
@@ -115,7 +109,6 @@ func bind_world_state(ws) -> void:
 		ws.changed.connect(_on_world_state_changed)
 
 
-## Trace counter (measurement only).
 var _trace_ws_changed_count: int = 0
 var _trace_ws_changed_enabled: bool = false
 var _trace_ws_reindex_chunks: int = 0
@@ -140,20 +133,16 @@ func get_trace_ws_reindex_chunks() -> int:
 
 
 func _on_world_state_changed(domain: int, _revision: int) -> void:
-	# Domain-level invalidation: drop static feature markers; consumers re-query WorldState/features.
-	# We reindex loaded-chunk statics only (incremental to loaded set).
 	if layer == null:
 		return
 	if _trace_ws_changed_enabled:
 		_trace_ws_changed_count += 1
-	# Soft invalidation: remove structure/town statics in loaded chunks and reindex.
 	var loaded: Array = layer.iter_loaded_chunks()
 	if _trace_ws_changed_enabled:
 		_trace_ws_reindex_chunks += loaded.size()
 	for coord_v in loaded:
 		_remove_static_in_chunk(coord_v)
 		_index_static_features_in_chunk(coord_v)
-	# domain unused beyond trigger — full domain maps are WorldState authority
 	var _d := domain
 	_d = _d
 
@@ -179,10 +168,8 @@ func _on_chunk_ready(coord: Vector2i, _data = null) -> void:
 		return
 	var t0 := Time.get_ticks_usec()
 	layer.mark_chunk_loaded(coord)
-	# Terrain chunk marker (discovery of loaded terrain extent)
 	var cs := float(layer.chunk_size)
 	var center := Vector3((float(coord.x) + 0.5) * cs, 0.0, (float(coord.y) + 0.5) * cs)
-	# Avoid duplicate terrain markers: remove existing terrain in this chunk first
 	_remove_category_in_chunk(coord, _SpatialQueryLayer.CAT_TERRAIN)
 	layer.insert(
 		_SpatialQueryLayer.CAT_TERRAIN,
@@ -203,7 +190,6 @@ func _on_chunk_ready(coord: Vector2i, _data = null) -> void:
 func _on_chunk_unloaded(coord: Vector2i) -> void:
 	if layer == null:
 		return
-	# Remove statics tied to chunk; dynamics may be despawned by EntityManager separately.
 	_remove_static_in_chunk(coord)
 	_remove_category_in_chunk(coord, _SpatialQueryLayer.CAT_TERRAIN)
 	layer.mark_chunk_unloaded(coord, false)
@@ -217,7 +203,7 @@ func _remove_static_in_chunk(coord: Vector2i) -> void:
 		if not bool(h.get("dynamic", true)):
 			var cat: int = int(h.get("category", 0))
 			if cat == _SpatialQueryLayer.CAT_TERRAIN:
-				continue  # handled separately
+				continue
 			layer.remove(int(h.id))
 
 
@@ -245,7 +231,6 @@ func _index_static_features_in_chunk(coord: Vector2i) -> void:
 			cat = _SpatialQueryLayer.CAT_TOWN
 			key = "town:%d:%d" % [pos.x, pos.y]
 		elif kind == _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
-			# Spawns are placement data; live entities register separately.
 			continue
 		var world_pos := Vector3(float(pos.x) + 0.5, 0.0, float(pos.y) + 0.5)
 		layer.insert(cat, world_pos, 0.5, spawn, false, key, coord)
@@ -254,7 +239,6 @@ func _index_static_features_in_chunk(coord: Vector2i) -> void:
 func _reindex_crystal_spawns() -> void:
 	if layer == null or _crystal_manager == null:
 		return
-	# Drop existing crystal category statics and re-add active spawns (category iter, not huge radius).
 	var existing: Array = layer.iter_category(_SpatialQueryLayer.CAT_CRYSTAL)
 	for h in existing:
 		if not bool(h.get("dynamic", true)):
@@ -293,7 +277,6 @@ func _on_entity_despawned(entity: Node3D) -> void:
 	_unregister_node(entity)
 
 
-## Public registration for crystal enemies, projectiles, etc.
 func register_combatant(node: Node3D, category: int = -1) -> int:
 	var cat := category
 	if cat < 0:
@@ -346,7 +329,6 @@ func _unregister_node(node: Node3D) -> void:
 		return
 	var iid: int = node.get_instance_id()
 	if not _tracked_nodes.has(iid):
-		# Still try payload lookup
 		if layer:
 			layer.remove_by_payload(node)
 		return
@@ -372,7 +354,6 @@ func _node_radius(node: Node3D) -> float:
 	return 0.35
 
 
-## Rebuild after save/load: clear dynamics/statics and re-bind current world.
 func rebuild_from_runtime() -> void:
 	if layer == null:
 		layer = _SpatialQueryLayer.new()
@@ -386,7 +367,6 @@ func rebuild_from_runtime() -> void:
 		for ent in _entity_manager._entities:
 			if is_instance_valid(ent):
 				_register_node(ent, _SpatialQueryLayer.CAT_ENTITY, true)
-	# Crystal enemies in scene
 	if is_inside_tree():
 		for node in get_tree().get_nodes_in_group("crystal_enemy"):
 			if node is Node3D:
@@ -394,7 +374,6 @@ func rebuild_from_runtime() -> void:
 	_reindex_crystal_spawns()
 
 
-# ── Typed query façades (delegate to layer) ──────────────────────────────
 
 
 func query_radius(center: Vector3, radius: float, categories: int = _SpatialQueryLayer.CAT_ALL, max_results: int = -1) -> Array:
@@ -421,7 +400,6 @@ func iter_chunk_neighborhood(center_chunk: Vector2i, ring: int = 1, categories: 
 	return layer.iter_chunk_neighborhood(center_chunk, ring, categories) if layer else []
 
 
-## Combat discovery: entities + AI within radius (no gameplay filtering beyond category).
 func query_combat_candidates(center: Vector3, radius: float) -> Array:
 	var mask: int = _SpatialQueryLayer.CAT_ENTITY | _SpatialQueryLayer.CAT_AI
 	return query_radius(center, radius, mask)

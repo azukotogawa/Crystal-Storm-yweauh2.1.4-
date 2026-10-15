@@ -1,5 +1,4 @@
 extends SceneTree
-## Breaking a block beside water replaces that cell with a water/river tile (no cavity, no neighbor flood).
 
 
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
@@ -29,7 +28,6 @@ func _run() -> void:
 	else:
 		print("OK try_dig replaces adjacent-water cell with water tile")
 	if "_notify_water_reflow(wx, wz, true)" in src:
-		# Allowed on dry dig path; must not reflow after water replace.
 		var replace_fn := src.find("func _replace_cell_with_water_block")
 		var dig_fn := src.find("func try_dig")
 		var dig_body := src.substr(dig_fn, replace_fn - dig_fn) if replace_fn > dig_fn else src
@@ -102,15 +100,10 @@ func _run() -> void:
 	if bool(editor.call("_has_adjacent_water", 80, 80)):
 		print("OK skip dry-land adjacency (seed water nearby)")
 	elif bool(editor.call("_replace_cell_with_water_block", 80, 80)):
-		# Without adjacent water, replace still runs if called directly — guard is in try_dig.
-		# Direct helper does not re-check adjacency; try_dig does.
 		pass
-	# Direct helper no longer requires adjacency — keep try_dig as the gate.
-	# Ensure dry try_dig still digs height when no water neighbor.
 	_FeatureRegistry.reset()
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
-	# Pick a cell far from rivers if possible; still OK if replace isn't used.
 	print("OK dry path remains dig+reflow in try_dig")
 
 	if failed:

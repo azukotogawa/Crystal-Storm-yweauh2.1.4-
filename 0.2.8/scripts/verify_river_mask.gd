@@ -1,5 +1,4 @@
 extends SceneTree
-## Heart-corner river clearance: unshifted mask outside the disk, no river inside it.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -75,12 +74,10 @@ func _scan_seed(world: InfiniteNoiseWorld, seed_value: int) -> bool:
 	if world.get_tile_type(center.x, center.y) == _VoxelTypes.RIVER:
 		push_error("seed %d heart tile is RIVER" % seed_value)
 		failed = true
-	# The world origin is not the spawn. It keeps the unshifted mask.
 	if not _masks_match(world.get_river_mask(0.0, 0.0), world.river_mask_formula(0.0, 0.0)):
 		push_error("seed %d origin mask was still cleared" % seed_value)
 		failed = true
 
-	# Interior falloff: active forced off, strength scaled by smoothstep.
 	var sample := center + Vector2(24.0, -18.0)
 	var raw: Dictionary = world.river_mask_formula(sample.x, sample.y)
 	var faded: Dictionary = world.get_river_mask(sample.x, sample.y)
@@ -104,7 +101,6 @@ func _scan_seed(world: InfiniteNoiseWorld, seed_value: int) -> bool:
 
 	var mismatch := 0
 	var far := radius + 512
-	# Coarse grid around the origin: every sample outside the heart disk matches the formula.
 	for z in range(-far, far + 1, 16):
 		var zz := float(z)
 		for x in range(-far, far + 1, 16):
@@ -122,7 +118,6 @@ func _scan_seed(world: InfiniteNoiseWorld, seed_value: int) -> bool:
 	if mismatch > 0:
 		failed = true
 
-	# Near-rim band around the heart, step 2 so a ribbon a few columns wide is not skipped.
 	var nearest := -1.0
 	var band_active := 0
 	var band_total := 0
@@ -176,7 +171,6 @@ func _scan_seed(world: InfiniteNoiseWorld, seed_value: int) -> bool:
 	return failed
 
 
-## Walk outward from the heart on 16 rays until a river cell appears, or the search radius ends.
 func _first_active_distance(world: InfiniteNoiseWorld, center: Vector2, inner: float, outer: float) -> float:
 	var rays := 16
 	for dist_i in range(int(ceil(inner)) + 1, int(outer) + 1, 2):

@@ -1,7 +1,5 @@
 class_name WorldManager
 extends RefCounted
-## Player-facing world catalog. Does not open or delete .chk files.
-## Bake packages are inspected/removed only through WorldBakeService.
 
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
 
@@ -12,7 +10,6 @@ static var catalog_path: String = DEFAULT_CATALOG_PATH
 static var pending_launch: Dictionary = {}
 static var launched_from_catalog: bool = false
 static var return_to_select: bool = false
-## Set for the duration of a catalog play session (survives take_pending_launch).
 static var active_world_id: String = ""
 static var pending_resume: bool = false
 

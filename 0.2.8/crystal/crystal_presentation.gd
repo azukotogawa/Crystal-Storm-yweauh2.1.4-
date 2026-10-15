@@ -1,14 +1,11 @@
 class_name CrystalPresentation
 extends RefCounted
-## Crystal mesh/visual rebuild scheduling. Subscribes to simulation events only.
-## Does not own gameplay rules or fluid state.
 
 const _CrystalSimEvents = preload("res://crystal/crystal_sim_events.gd")
 const _CrystalClusterMesh = preload("res://helpers/crystal_cluster_mesh.gd")
 const _CrystalCell = preload("res://crystal/crystal_cell.gd")
 
-## Injected by façade
-var fluid = null  # CrystalFluidSim (read-only for mesh)
+var fluid = null
 var sim_config = null
 var layer_root: Node3D = null
 var crystal_material: Material = null
@@ -31,11 +28,10 @@ var patch_count: int = 0
 var events_applied: int = 0
 var last_flush_rebuilds: int = 0
 
-## Callables injected by façade (avoid presentation→tree coupling for world height).
-var crystal_floor_at: Callable = Callable()  # (Vector2i) -> float
-var is_chunk_render_active: Callable = Callable()  # (Vector2i) -> bool
-var player_chunk_coord: Callable = Callable()  # () -> Vector2i
-var make_layer: Callable = Callable()  # (coord) -> CrystalChunkLayer
+var crystal_floor_at: Callable = Callable()
+var is_chunk_render_active: Callable = Callable()
+var player_chunk_coord: Callable = Callable()
+var make_layer: Callable = Callable()
 
 
 func clear_visual_state() -> void:
@@ -58,7 +54,6 @@ func rebuild_cell_index() -> void:
 		_index_crystal_cell(pos_variant)
 
 
-## After save import: full reindex and schedule full rebuild for every occupied chunk.
 func mark_all_indexed_dirty() -> void:
 	rebuild_cell_index()
 	for coord_v in _cells_by_chunk.keys():
@@ -177,8 +172,6 @@ func flush(profiler = null) -> int:
 	for coord_variant in keys:
 		var coord: Vector2i = coord_variant
 		if not _chunk_active(coord):
-			# Keep the dirty bit until the chunk is resident — erasing here dropped
-			# origin-crystal meshes when stream extras were not yet "loaded".
 			continue
 		var layer_t0 := Time.get_ticks_usec()
 		if _chunk_needs_full_rebuild.has(coord):
@@ -299,7 +292,6 @@ func _make_render_cell(pos: Vector2i, depth: float, spawn_id: int):
 		cell.neighbor_mask = _CrystalClusterMesh.neighbor_mask_from_depths(
 			pos, fluid.depth, min_d
 		)
-		# Frontier = active purple front (open edge). Interior has all 4 cardinals filled.
 		cell.is_frontier = (cell.neighbor_mask & 15) != 15
 		if "terrain" in fluid and fluid.terrain and fluid.terrain.has_method("get_standing_water_level"):
 			cell.is_wet = float(fluid.terrain.get_standing_water_level(pos)) >= 0.05

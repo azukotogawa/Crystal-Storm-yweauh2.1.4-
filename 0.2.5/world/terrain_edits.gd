@@ -4,8 +4,8 @@ extends RefCounted
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-static var _height_delta: Dictionary = {}  # Vector2i -> int
-static var _build_tile: Dictionary = {}  # Vector2i -> int (VoxelTypes id)
+static var _height_delta: Dictionary = {}
+static var _build_tile: Dictionary = {}
 
 
 static func reset() -> void:

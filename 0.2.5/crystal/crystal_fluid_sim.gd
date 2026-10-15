@@ -15,18 +15,13 @@ var global_flow_mult: float = 1.0
 
 var depth: Dictionary = {}
 var spawn_id_by_cell: Dictionary = {}
-## 0 = unlimited. Rotating subset of existing cells simulated per tick.
 var max_cells_per_tick: int = 0
-## 0 = unlimited. Hard cap on brand-new frontier cells created per tick.
 var max_new_cells_per_tick: int = 0
 var spread_damping_start_cells: int = 600
 var spread_damping_full_cells: int = 3000
 var spread_damping_min_mult: float = 0.35
-## Max depth that can flow into an empty neighbor per tick (gradual frontier).
 var empty_cell_inflow_cap: float = 0.10
-## Sim writes depth when delta exceeds this; smaller changes are ignored.
 var depth_write_epsilon: float = 0.03
-## Mesh/visual updates only when depth delta exceeds this (reduces rebuild churn).
 var mesh_depth_epsilon: float = 0.20
 
 var last_new_cells: int = 0
@@ -34,7 +29,6 @@ var last_changed_cells: int = 0
 var last_mesh_dirty_cells: int = 0
 
 var _interior_flow_offset: int = 0
-## When set, flow/emitters only affect cells where this returns true (loaded chunks).
 var is_cell_active: Callable = Callable()
 
 
@@ -73,7 +67,6 @@ func _spread_pressure_mult() -> float:
 		return 1.0
 	var span: int = maxi(spread_damping_full_cells - spread_damping_start_cells, 1)
 	var t: float = clampf(float(n - spread_damping_start_cells) / float(span), 0.0, 1.0)
-	# Ease-in so damping ramps before the nominal start threshold.
 	t = t * t
 	return lerpf(1.0, spread_damping_min_mult, t)
 
@@ -180,8 +173,6 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		set_depth(pos, current + minf(added, room), spawn.id)
 
 
-## Returns cells whose depth changed (batched — no per-cell signals during flow).
-## Mesh rebuilds should use get_last_mesh_dirty_cells() / mesh_dirty subset only.
 func tick_flow(delta: float) -> Array:
 	last_new_cells = 0
 	last_changed_cells = 0

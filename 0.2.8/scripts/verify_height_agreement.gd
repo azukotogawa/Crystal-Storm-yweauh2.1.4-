@@ -1,6 +1,4 @@
 extends SceneTree
-## Walk slopes and mesh quads share one height inside a chunk.
-## Interior samples use surface_map. ramp_map is whatever the quads drew.
 
 
 const _ChunkManager = preload("res://chunks/chunk_manager.gd")
@@ -25,12 +23,9 @@ func _run() -> void:
 	for x in _ChunkData.SIZE:
 		for z in _ChunkData.SIZE:
 			data.patch_local_column(x, z, base_h, _VoxelTypes.GRASSLAND3)
-	# Terrace, not a one-cell spike. Model A emits a cardinal only when the
-	# landing has plateau behind it and the next 8 cells downhill stay low.
 	for x in range(8, 12):
 		for z in range(6, 10):
 			data.patch_local_column(x, z, base_h + layer, _VoxelTypes.GRASSLAND3)
-	# A stale interior halo must not win over the map the wedge is built from.
 	if data._has_halo_surface:
 		data._halo_surface[4 + _ChunkData.HALO][4 + _ChunkData.HALO] = 40.0
 
@@ -129,7 +124,6 @@ func _ramp_maps_match_quads(data: ChunkData, quads: Array) -> bool:
 			continue
 		var cell := Vector2i(int(floor(float(q.get("x", 0.0)))), int(floor(float(q.get("z", 0.0)))))
 		visual[cell] = true
-		# Model A: the approach cell keeps a flat top and is not a ramp_map entry.
 	for key_v in data.ramp_map.keys():
 		if not visual.has(key_v):
 			return false

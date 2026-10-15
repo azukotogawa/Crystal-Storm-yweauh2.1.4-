@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: same-height neighbors perpendicular to a cardinal ramp keep side faces toward it.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -51,7 +50,6 @@ func _run() -> void:
 	cm.ramp_placement_chance = 100
 	var quads: Array = cm._build_mesh(data).get("quads", [])
 
-	# South of the landing is one layer lower so that cut is exposed.
 	data.surface_map[ramp_x][south_z] = h
 	data.tile_map[ramp_x][south_z] = _VoxelTypes.STONE
 	quads = cm._build_mesh(data).get("quads", [])

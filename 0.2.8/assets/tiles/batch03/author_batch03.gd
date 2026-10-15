@@ -1,6 +1,4 @@
 extends SceneTree
-## Author Batch 03 into unused Cube.png holes. Usage:
-##   godot --headless --path . -s assets/tiles/batch03/author_batch03.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
@@ -15,15 +13,12 @@ const SLOTS := {
 	"town_path": Vector2i(5, 1),
 }
 
-# Dry steppe — tan-olive, darker than savanna, not dirt-brown.
 const STEPPE := Color(0.40, 0.36, 0.16)
 const STEPPE_D := Color(0.28, 0.24, 0.10)
 const STEPPE_L := Color(0.50, 0.44, 0.22)
-# Furrowed farm — cooler brown-green rows.
 const FARM := Color(0.36, 0.30, 0.14)
 const FARM_D := Color(0.24, 0.18, 0.08)
 const FARM_L := Color(0.44, 0.38, 0.18)
-# Packed town path — pale earth, not grass.
 const PATH := Color(0.66, 0.58, 0.42)
 const PATH_D := Color(0.50, 0.42, 0.28)
 const PATH_L := Color(0.76, 0.68, 0.52)
@@ -94,7 +89,6 @@ func _tile_steppe() -> Image:
 
 func _tile_furrows() -> Image:
 	var im := _blank(FARM)
-	# Horizontal 3px furrows that wrap in X — reads as plowed rows, not dirt clods.
 	for y in [5, 6, 7, 15, 16, 17, 25, 26, 27]:
 		for x in TILE:
 			_plot(im, x, y, FARM_D if y % 10 != 6 else FARM_L)

@@ -1,9 +1,7 @@
 class_name SaveSchema
 extends RefCounted
-## Versioned save schema: validate, migrate, integrity hash.
 ## schema_version 1 = legacy flat terrain_edits/features/channels
 ## schema_version 2 = world_state authority block + revisions + integrity
-##
 ## Terrain overlay contract (macro/micro):
 ## - Persist only WorldState height_delta / build_tile (and features/channels).
 ## - Micro bricks are runtime-derived from overlays on generate/rebuild — never saved.
@@ -20,7 +18,6 @@ static func current_version() -> int:
 	return CURRENT_VERSION
 
 
-## Content hash for corruption detection (order-independent canonical form).
 static func content_hash(payload: Dictionary) -> String:
 	var copy: Dictionary = payload.duplicate(true)
 	copy.erase("checksum")
@@ -29,7 +26,6 @@ static func content_hash(payload: Dictionary) -> String:
 	return "%08x" % int(encoded.hash())
 
 
-## Deterministic JSON: object keys sorted; arrays keep order; ints normalized.
 static func _canonical_json(value: Variant) -> String:
 	if value == null:
 		return "null"
@@ -38,7 +34,6 @@ static func _canonical_json(value: Variant) -> String:
 	if value is int:
 		return str(int(value))
 	if value is float:
-		# Prefer int form when whole to survive JSON number parsing.
 		var f: float = float(value)
 		if is_equal_approx(f, roundf(f)) and absf(f) < 1e15:
 			return str(int(roundf(f)))
@@ -70,12 +65,10 @@ static func attach_integrity(payload: Dictionary) -> Dictionary:
 	return out
 
 
-## Returns { "ok": bool, "reason": String, "data": Dictionary migrated to current }
 static func validate_and_migrate(raw) -> Dictionary:
 	if raw == null or not raw is Dictionary:
 		return {"ok": false, "reason": "not_object", "data": {}}
 	var data: Dictionary = (raw as Dictionary).duplicate(true)
-	# Legacy files used "version" only.
 	var ver: int = int(data.get("schema_version", data.get("version", 0)))
 	if ver <= 0:
 		return {"ok": false, "reason": "missing_version", "data": {}}
@@ -84,7 +77,6 @@ static func validate_and_migrate(raw) -> Dictionary:
 	if ver > CURRENT_VERSION:
 		return {"ok": false, "reason": "version_too_new_%d" % ver, "data": {}}
 
-	# Integrity check when present (v2+ saves).
 	if data.has("checksum") or data.has("integrity"):
 		var expected: String = str(data.get("checksum", data.get("integrity", "")))
 		var actual: String = content_hash(data)
@@ -102,7 +94,7 @@ static func validate_and_migrate(raw) -> Dictionary:
 		return structural
 
 	data["schema_version"] = CURRENT_VERSION
-	data["version"] = CURRENT_VERSION  # alias for older readers of top-level version
+	data["version"] = CURRENT_VERSION
 	return {"ok": true, "reason": "ok", "data": data}
 
 
@@ -115,7 +107,6 @@ static func validate_structure(data: Dictionary) -> Dictionary:
 			return {"ok": false, "reason": "world_state_not_object", "data": {}}
 		var wsd: Dictionary = ws
 		if not wsd.has("height_delta") and not wsd.has("build_tile") and not data.has("terrain_edits"):
-			# Empty world is valid (fresh).
 			pass
 	return {"ok": true, "reason": "ok", "data": data}
 
@@ -140,7 +131,6 @@ static func _migrate_v1_to_v2(data: Dictionary) -> Dictionary:
 	out["schema_version"] = 2
 	out["format"] = FORMAT_ID
 	out["version"] = 2
-	# Build world_state from flat overlay fields if missing.
 	if not out.has("world_state") or not out.world_state is Dictionary:
 		var terrain: Dictionary = out.get("terrain_edits", {})
 		var features: Dictionary = out.get("features", {})
@@ -169,7 +159,6 @@ static func _migrate_v1_to_v2(data: Dictionary) -> Dictionary:
 		if not w.has("seed"):
 			w["seed"] = int(out.get("world_seed", 0))
 		out["world"] = w
-	# Keep flat aliases for consumers that still read them.
 	_sync_flat_aliases_from_world_state(out)
 	return out
 
@@ -196,7 +185,6 @@ static func _sync_flat_aliases_from_world_state(out: Dictionary) -> void:
 		out["world_seed"] = int(out.world.get("seed", out.get("world_seed", 0)))
 
 
-## Structural readiness keys for future multiplayer / replay / mods (not full product).
 static func future_extension_stubs() -> Dictionary:
 	return {
 		"authority": {"mode": "local_singleplayer"},

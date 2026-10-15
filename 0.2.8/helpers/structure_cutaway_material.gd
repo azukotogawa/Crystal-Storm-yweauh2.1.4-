@@ -1,7 +1,5 @@
 class_name StructureCutawayMaterial
 extends RefCounted
-## One cached ShaderMaterial per structure look. Built when a mesh is configured,
-## never per frame. The shader discards the camera cutaway cone.
 
 const SHADER_PATH := "res://shaders/StructureCutaway.gdshader"
 const _SHADER: Shader = preload("res://shaders/StructureCutaway.gdshader")
@@ -34,7 +32,6 @@ static func binds_albedo(mat: Material) -> bool:
 	return albedo_texture(mat) != null
 
 
-## Nearest filter, same as the old BaseMaterial3D.TEXTURE_FILTER_NEAREST.
 static func uses_nearest_filter(mat: Material) -> bool:
 	if mat is StandardMaterial3D:
 		return (mat as StandardMaterial3D).texture_filter == BaseMaterial3D.TEXTURE_FILTER_NEAREST

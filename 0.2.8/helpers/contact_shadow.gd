@@ -1,6 +1,5 @@
 class_name ContactShadow
 extends RefCounted
-## One pooled ground quad per host. No shadow maps and no per-frame work.
 
 const GROUP := "contact_shadow"
 const _BLOB_SIZE := 32
@@ -27,7 +26,6 @@ static func attach(host: Node3D, y: float, diameter: float) -> MeshInstance3D:
 		inst.material_override = _shared_material()
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inst.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-		# QuadMesh faces +Z. Tip it onto the ground.
 		inst.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 		host.add_child(inst)
 		if not inst.is_in_group(GROUP):

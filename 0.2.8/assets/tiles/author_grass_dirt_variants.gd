@@ -1,14 +1,9 @@
 extends SceneTree
-## Repaint the grass-top and dirt-family cells of Cube.png.
-## Short blades and clods inside the tile. No 4px band and no dark grid line.
-##   godot --headless --path . -s res://assets/tiles/author_grass_dirt_variants.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
 const TILE := 32
 
-## base, dark, light, pebble. Each accent stays near the base so a full
-## row of one accent is not 20% darker than its neighbor.
 const GRASS := {
 	Vector2i(0, 2): [Color8(42, 78, 36), Color8(39, 73, 33), Color8(45, 83, 39), Color8(70, 64, 40), 3],
 	Vector2i(1, 2): [Color8(68, 124, 50), Color8(63, 115, 47), Color8(73, 133, 54), Color8(88, 110, 58), 11],

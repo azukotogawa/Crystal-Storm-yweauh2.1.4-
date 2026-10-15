@@ -1,6 +1,4 @@
 extends SceneTree
-## Mesh Plan Cache: parity, invalidation, corrupt/version, prefer path.
-## Usage: godot --headless -s scripts/verify_mesh_plan_cache.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -118,7 +116,6 @@ func _run() -> void:
 	_WorldBakeService.clear_active()
 	_MeshPlanCache.clear_active()
 
-	# Structural
 	var pipe_src := FileAccess.get_file_as_string("res://chunks/chunk_pipeline.gd")
 	if "try_get_plan" not in pipe_src and "mesh_plan_cache" not in pipe_src:
 		_fail("pipeline must prefer mesh plan cache")
@@ -140,7 +137,6 @@ func _run() -> void:
 	mgr.prebuild_chunk_buffers = true
 	mgr.terrain_surface_mesh = true
 
-	# --- Co-emit: WorldBakeService.bake_world(host) must produce MeshPlans + disk package ---
 	var bake: _WorldBakeService = _WorldBakeService.ensure_active()
 	bake.delete_bake(SEED, RADIUS)
 	var cache_wipe: _MeshPlanCache = _MeshPlanCache.ensure_active()
@@ -165,7 +161,6 @@ func _run() -> void:
 		_fail("save_bake after co-emit failed")
 		_finish()
 		return
-	# Plans are embedded in streamed per-chunk packages (not a separate mesh_plans file).
 	var plan_bytes: int = int(co_save.get("bytes", 0))
 	var sample_chk := bake.chunk_package_path(Vector2i(0, 0))
 	if not FileAccess.file_exists(sample_chk):
@@ -174,7 +169,6 @@ func _run() -> void:
 		return
 	_ok("streamed packages with embedded plans sample=%s total_bytes=%d" % [sample_chk, plan_bytes])
 
-	# Streamed bake: reload index only, mesh plans embedded in chunk packages.
 	_WorldBakeService.clear_active()
 	_MeshPlanCache.clear_active()
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
@@ -221,7 +215,6 @@ func _run() -> void:
 	else:
 		_ok("bootstrap prefer mesh_source=cache (streamed packages)")
 
-	# Streamed bake already co-emitted plans into chunk packages.
 	_WorldBakeService.set_active(bake3)
 	bake3.ensure_mesh_plans(mgr, world)
 	var cache2 = _MeshPlanCache.get_active()
@@ -231,7 +224,6 @@ func _run() -> void:
 		return
 	_ok("bake_plans ready via streamed packages count=%d" % cache2.plan_count())
 
-	# Parity: streamed plan vs live generate for pristine chunk
 	_WorldState.replace_active()
 	var coord := Vector2i(0, 0)
 	var d_gen = _ChunkData.new(coord, world)
@@ -265,7 +257,6 @@ func _run() -> void:
 		else:
 			_ok("cached plan matches generate n=%d" % cached.size())
 
-	# Prefer path via pipeline
 	cache2.reset_stats()
 	_WorldState.replace_active()
 	var d_pref = _ChunkData.new(coord, world)
@@ -278,7 +269,6 @@ func _run() -> void:
 	else:
 		_ok("prefer path mesh_source=cache mesh_us=%d" % int(job.get("build_mesh_us", 0)))
 
-	# Cached initial path must match fresh ramp geometry/metadata before any edit.
 	var ramp_coord: Vector2i = _find_ramp_plan_coord(cache2, bake, RADIUS)
 	if ramp_coord.x < -900000:
 		_fail("test seed/radius must include at least one cached FACE_RAMP")
@@ -323,7 +313,6 @@ func _run() -> void:
 		else:
 			_ok("cached initial ramps match fresh generate ramps n=%d" % initial_ramps.size())
 
-	# Dig invalidation → generate
 	_WorldState.replace_active()
 	_TerrainEdits.dig(3, 3, 2)
 	var d_dig = _ChunkData.new(coord, world)
@@ -335,7 +324,6 @@ func _run() -> void:
 		_fail("dig must invalidate plan cache mesh_source=%s" % str(job_dig.get("mesh_source")))
 	else:
 		_ok("dig invalidates plan cache → generate")
-	# Build tile invalidation
 	_WorldState.replace_active()
 	_TerrainEdits.build_wall(5, 5, 3)
 	var d_build = _ChunkData.new(coord, world)
@@ -348,15 +336,11 @@ func _run() -> void:
 	else:
 		_ok("build invalidates plan cache → generate")
 
-	# Crystal / WorldState ownership: cache must not write WorldState
 	if "height_delta[" in mp_src or "build_tile[" in mp_src:
 		_fail("mesh plan cache must not mutate WorldState dicts")
 	else:
 		_ok("cache does not mutate WorldState storage")
 
-	# Crystal invalidation path: terrain dig-like overlays are the mesh-input path;
-	# crystal cells that only touch crystal sim leave plans valid (Engine 1.0 split).
-	# Simulate crystal-related terrain dirty via height_delta (production mesh-input domain).
 	_WorldState.replace_active()
 	_WorldState.get_active().height_delta[Vector2i(1, 1)] = -1
 	_WorldState.get_active().terrain_revision += 1
@@ -374,7 +358,6 @@ func _run() -> void:
 	else:
 		_ok("terrain overlay miss → generate")
 
-	# Corrupt streamed chunk package (plans live inside bake packages now).
 	var bake_for_corrupt = _WorldBakeService.get_active()
 	if bake_for_corrupt != null and bake_for_corrupt.corrupt_chunk_package(Vector2i(0, 0)):
 		bake_for_corrupt.release_chunk(Vector2i(0, 0))
@@ -382,7 +365,6 @@ func _run() -> void:
 			_fail("corrupt chunk package must fail reload")
 		else:
 			_ok("corrupt streamed package rejected: %s" % bake_for_corrupt.last_error)
-		# Safe regenerate
 		var reb: Dictionary = bake_for_corrupt.bake_world(world, RADIUS, mgr)
 		var res: Dictionary = bake_for_corrupt.save_bake()
 		if not bool(reb.get("ok", false)) or not bool(res.get("ok", false)):
@@ -392,7 +374,6 @@ func _run() -> void:
 	else:
 		_ok("corrupt package path skipped (no active bake)")
 
-	# Version mismatch on bake index
 	var stub: String = ""
 	if bake_for_corrupt != null:
 		stub = str(bake_for_corrupt.write_version_mismatch_stub(SEED, RADIUS))
@@ -410,7 +391,6 @@ func _run() -> void:
 			badv.ensure_mesh_plans(mgr, world)
 			_ok("version mismatch safe regenerate")
 
-	# Disable cache → generate
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "0")
 	_MeshPlanCache.set_active(cache2)
 	_WorldState.replace_active()
@@ -425,8 +405,6 @@ func _run() -> void:
 		_ok("cache disabled → generate")
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "1")
 
-	# Before/after mesh plan timing
-	# Ensure valid plans reloaded
 	cache2.bake_plans(mgr, world, RADIUS, SEED)
 	cache2.save_plans()
 	cache2.load_plans(SEED, RADIUS)
@@ -438,7 +416,6 @@ func _run() -> void:
 		for cx in range(-RADIUS, RADIUS + 1):
 			coords.append(Vector2i(cx, cz))
 
-	# BEFORE: force generate
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "0")
 	var before_mesh_us := 0
 	var before_load_us := 0
@@ -461,7 +438,6 @@ func _run() -> void:
 			if load_us > hitch_before:
 				hitch_before = load_us
 
-	# AFTER: cache on
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_CACHE", "1")
 	_MeshPlanCache.set_active(cache2)
 	var after_mesh_us := 0
@@ -498,7 +474,6 @@ func _run() -> void:
 	else:
 		_ok("after path all cache hits n=%d" % cache_hits)
 	if avg_after_mesh >= avg_before_mesh * 0.5:
-		# Require significant reduction of dominant phase
 		_fail(
 			"mesh plan not significantly reduced before=%.1f after=%.1f"
 			% [avg_before_mesh, avg_after_mesh]
@@ -509,7 +484,6 @@ func _run() -> void:
 			% [avg_before_mesh, avg_after_mesh, avg_before_mesh / maxf(avg_after_mesh, 0.001)]
 		)
 
-	# Save architecture structural unchanged
 	var save_src := FileAccess.get_file_as_string("res://systems/save_schema.gd")
 	if "mesh_plan" in save_src:
 		_fail("save schema must not absorb mesh plan cache")

@@ -1,5 +1,4 @@
 extends SceneTree
-## Gameplay-camera proof of four cardinal wedges after resident remesh.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
@@ -109,7 +108,6 @@ func _run() -> void:
 			_ProbeExit.finish_tree(self, 1, "RAMP PIPELINE LIVE FAILED")
 			return
 		print("OK approach floor %s covered faces=%s" % [key, str(ap.get("column_face_codes", []))])
-	# Interior dig must not punch a hole several cells away.
 	var editor = get_first_node_in_group("terrain_editor")
 	var player = get_first_node_in_group("player")
 	if editor and player and player.inventory:

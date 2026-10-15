@@ -1,15 +1,12 @@
 class_name ServiceRegistry
 extends RefCounted
-## Typed service registration for the Composition Root.
-## Services are registered by StringName id; optional dependency edges enable
-## validation and cycle detection without scene-tree search.
 
 signal service_registered(id: StringName, instance: Object)
 signal service_unregistered(id: StringName)
 
-var _services: Dictionary = {}  # StringName -> Object
-var _deps: Dictionary = {}  # StringName -> Array[StringName] (required peer ids)
-var _init_order: Array = []  # registration / init order
+var _services: Dictionary = {}
+var _deps: Dictionary = {}
+var _init_order: Array = []
 var _shutdown_order: Array = []
 
 
@@ -31,7 +28,6 @@ func register(id: StringName, instance: Object, depends_on: Array = []) -> void:
 	_deps[id] = deps
 	if id not in _init_order:
 		_init_order.append(id)
-	# Shutdown is reverse of first registration order.
 	_shutdown_order = _init_order.duplicate()
 	_shutdown_order.reverse()
 	service_registered.emit(id, instance)
@@ -56,7 +52,6 @@ func resolve(id: StringName):
 	return _services[id]
 
 
-## Resolve required service or push_error + return null.
 func require(id: StringName):
 	var inst = resolve(id)
 	if inst == null:
@@ -80,7 +75,6 @@ func dependency_edges() -> Dictionary:
 	return _deps.duplicate(true)
 
 
-## Validate that every declared dependency is registered. Returns {ok, missing: [{service, missing_dep}]}
 func validate_dependencies() -> Dictionary:
 	var missing: Array = []
 	for id_variant in _deps.keys():
@@ -94,7 +88,6 @@ func validate_dependencies() -> Dictionary:
 	return {"ok": missing.is_empty(), "missing": missing}
 
 
-## Detect cycles in the dependency graph. Returns {ok, cycles: Array[Array]}
 func detect_cycles() -> Dictionary:
 	var cycles: Array = []
 	var visiting: Dictionary = {}

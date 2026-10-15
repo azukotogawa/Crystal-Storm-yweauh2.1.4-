@@ -1,6 +1,5 @@
 class_name TooltipPanel
 extends CanvasLayer
-## One shared tooltip. Follows the mouse, stays on screen, and uses the UI theme.
 ## Hidden tooltips do not run _process.
 
 const _TooltipText = preload("res://ui/tooltip_text.gd")

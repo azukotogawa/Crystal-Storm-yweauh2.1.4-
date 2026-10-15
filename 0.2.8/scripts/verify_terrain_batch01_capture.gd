@@ -1,6 +1,4 @@
 extends SceneTree
-## Boot main.tscn, stamp a streamed Batch 01 yard, capture each named ID.
-## Usage: godot --path . -s scripts/verify_terrain_batch01_capture.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -88,11 +86,8 @@ func _run() -> void:
 	_ok("grass_side_remap=%s" % str(VoxelTypes.get_atlas_coord_for_face(VoxelTypes.GRASSLAND3, 3)))
 	_ok("forest_side_remap=%s" % str(VoxelTypes.get_atlas_coord_for_face(VoxelTypes.HILLS, 3)))
 
-	# Natural locations (report only — yard is what we photograph).
 	_log_natural_hunt(world)
 
-	# 3×3 yard in the already-streamed start ring. BEACH does not generate on
-	# seed 12349 (ocean rim already h=2–8). HILLS lives at forest ~ (369,426).
 	var grass_c := _stamp_patch(world, cm, feat_layer, YARD + Vector2i(0, 0), VoxelTypes.GRASSLAND3)
 	var dirt_c := _stamp_patch(world, cm, feat_layer, YARD + Vector2i(4, 0), VoxelTypes.DIRT)
 	var river_c := _stamp_patch(world, cm, feat_layer, YARD + Vector2i(8, 0), VoxelTypes.RIVER)
@@ -104,7 +99,6 @@ func _run() -> void:
 	var stone2_c := _stamp_patch(world, cm, feat_layer, YARD + Vector2i(12, 4), VoxelTypes.STONE2)
 	var d2 := _stamp_dirt2(world, cm, feat_layer, YARD + Vector2i(16, 4))
 
-	# Raise grass/hills centers so dirt / bark sides show (patch + remesh, not bake cache).
 	_dig_and_patch(cm, grass_c, VoxelTypes.GRASSLAND3, -1.0)
 	_dig_and_patch(cm, hills_c, VoxelTypes.HILLS, -1.0)
 	_flush_remesh(cm, [grass_c, dirt_c, river_c, stone_c, hills_c, trunk_c, ocean_c, beach_c, stone2_c, d2])
@@ -125,7 +119,6 @@ func _run() -> void:
 	await _goto_and_capture(player, cam, world, cm, beach_c, 10.0, "beach", VoxelTypes.BEACH)
 	await _goto_and_capture(player, cam, world, cm, Vector2i(15, grass_c.y), 12.0, "chunk_boundary", -1)
 
-	# Optional wall on dirt fill (DIRT build tile).
 	var inv := _Inventory.new()
 	inv.add_item("wood", 20)
 	inv.add_item("stone", 10)

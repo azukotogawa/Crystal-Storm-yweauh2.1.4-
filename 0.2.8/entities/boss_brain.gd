@@ -1,7 +1,5 @@
 class_name BossBrain
 extends RefCounted
-## Telegraph timing for the origin warden and the shard tyrants.
-## Damage is applied by CrystalEnemy only when tick() reports impact.
 
 const SLAM_WINDUP := 0.8
 const BURST_WINDUP := 0.8
@@ -28,7 +26,6 @@ func notify_hp_ratio(ratio: float) -> void:
 		_phase2_fresh = true
 
 
-## dist_voxels is the horizontal gap to the player, in voxels.
 func tick(delta: float, dist_voxels: float) -> Dictionary:
 	var summon := 0
 	var phase_changed := false
@@ -57,7 +54,6 @@ func tick(delta: float, dist_voxels: float) -> Dictionary:
 		action = &"slam" if elite or dist_voxels <= 4.0 else &"charge"
 		windup = SLAM_WINDUP if action == &"slam" else CHARGE_WINDUP
 	else:
-		# Phase 2 alternates a telegraphed burst with a faster slam or charge.
 		if _burst_next:
 			action = &"burst"
 			windup = BURST_WINDUP

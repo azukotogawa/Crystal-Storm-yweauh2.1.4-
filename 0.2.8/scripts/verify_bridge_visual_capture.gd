@@ -1,7 +1,4 @@
 extends SceneTree
-## Boot main.tscn, place bridges over digs beside walls/gate, capture gameplay shots.
-## Usage: godot --path . -s scripts/verify_bridge_visual_capture.gd
-## Do NOT pass --headless.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -77,7 +74,6 @@ func _run() -> void:
 	inv.add_item("wood", 80)
 	inv.add_item("stone", 20)
 
-	# Inland of spawn (origin is river). Same pocket as the gate/stone captures.
 	var px := 12
 	var pz := 12
 	_frame_camera(player, get_first_node_in_group("camera"), world, px + 4, pz + 1, 16.0)

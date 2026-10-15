@@ -1,5 +1,4 @@
 extends SceneTree
-## Micro-on incremental patch vs micro-off whole-chunk remesh — frozen MicroTerrainPerfGate.
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")

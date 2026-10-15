@@ -25,7 +25,6 @@ var patrol_anchor: Vector2i = Vector2i.ZERO
 var target_cell: Vector2i = Vector2i.ZERO
 var state_timer: float = 0.0
 var attack_timer: float = 0.0
-## Militia disk scans share a result for a few physics frames. Crystal spread is slower than that.
 static var _crystal_near_bucket: int = -999999
 static var _crystal_near_cache: Dictionary = {}
 

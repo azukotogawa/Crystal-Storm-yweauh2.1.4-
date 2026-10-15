@@ -1,5 +1,4 @@
 extends SceneTree
-## Bounded live boot + PerfProfiler sample for one CRYSTALSTORM_PERF_PRESET.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")

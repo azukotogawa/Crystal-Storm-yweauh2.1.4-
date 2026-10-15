@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless gameplay profile — samples PerfProfiler each frame, ranks top frame-time consumers.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -106,7 +105,7 @@ func _run() -> void:
 	var frame_samples: Array[float] = []
 	var untracked_samples: Array[float] = []
 	var consumer_samples: Dictionary = {}
-	var func_max: Dictionary = {}  # name -> max_ms
+	var func_max: Dictionary = {}
 	var func_sum: Dictionary = {}
 	var func_n: Dictionary = {}
 	for key in CONSUMER_KEYS:
@@ -160,7 +159,6 @@ func _run() -> void:
 		if player.has_method("_sync_global_from_voxel"):
 			player.call("_sync_global_from_voxel")
 
-		# Avoid walking entire scene tree every frame (that itself was untracked cost).
 		if session_frames % 30 == 0 and profiler.has_method("sample_scene_stats"):
 			profiler.sample_scene_stats(self)
 		var snap: Dictionary = profiler.get_snapshot() if profiler.has_method("get_snapshot") else {}
@@ -180,7 +178,6 @@ func _run() -> void:
 		var funcs: Dictionary = snap.get("funcs", {})
 		for fk in funcs.keys():
 			var fms := float(funcs[fk].get("last_ms", 0.0))
-			# Session max from last-frame samples only (not process-lifetime max_ms).
 			func_sum[fk] = float(func_sum.get(fk, 0.0)) + fms
 			func_n[fk] = int(func_n.get(fk, 0)) + 1
 			func_max[fk] = maxf(float(func_max.get(fk, 0.0)), fms)
@@ -285,7 +282,6 @@ func _build_report(
 		)
 	lines.append("")
 
-	# Hot functions by average last-frame contribution
 	var func_ranked: Array = []
 	for fk in func_sum.keys():
 		var n: int = maxi(int(func_n.get(fk, 1)), 1)

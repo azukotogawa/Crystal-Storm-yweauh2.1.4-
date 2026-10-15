@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: adjacent landings with perpendicular ramp dirs must not both emit cardinals.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -34,7 +33,6 @@ func _run() -> void:
 	var bx := 5
 	var bz := 4
 	var h := 10.0
-	# Pad neighborhood so only the intended single-step edges exist (defaults are 8.0).
 	for x in range(3, 8):
 		for z in range(2, 7):
 			data.surface_map[x][z] = h

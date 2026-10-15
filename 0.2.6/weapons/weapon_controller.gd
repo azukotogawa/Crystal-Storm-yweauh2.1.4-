@@ -28,7 +28,6 @@ var _active_hotbar_index: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
 var _combat_def: _CombatDef
-## Rate-limit fail toasts so hold-to-dig doesn't spam.
 var _fail_toast_cd: float = 0.0
 var _last_fail_toast: String = ""
 
@@ -40,7 +39,6 @@ func _ready() -> void:
 	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 	world = get_tree().get_first_node_in_group("world")
 	_combat_def = _resolve_combat_def()
-	# After TargetHighlight so shared aim column is current this frame.
 	process_priority = 10
 	_bind_terrain_editor()
 
@@ -75,7 +73,6 @@ func _process(delta: float) -> void:
 			profiler.end("weapon_controller")
 		return
 
-	# Terrain tools: hold LMB dig / hold RMB build (Minecraft-style continuous reshape).
 	if _is_active_dig_tool() and Input.is_action_pressed("attack"):
 		if _cooldown_timer <= 0.0:
 			_try_dig_tool()
@@ -163,7 +160,6 @@ func _try_attack() -> void:
 		return
 
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
-	# Dig uses its own snappy delay — never the 0.55s weapon cooldown.
 	if kind == ItemTypes.WeaponKind.DIG:
 		_do_dig_attack(item_id, def)
 		return
@@ -280,15 +276,12 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		return
 	dig_attempted.emit(target)
 	if _terrain_editor.try_dig(target):
-		# Snappy dig cadence only — ignore weapon table cooldown.
 		_cooldown_timer = _terrain_editor.get_dig_delay(target)
 		_flash_dig_feedback(target)
 	else:
 		_notify_terrain_fail()
-		# Brief retry so hold-dig recovers quickly after a miss.
 		_cooldown_timer = 0.04
 
-	# Light combat on dig is intentional, but only on a fresh press (not every hold tick).
 	if Input.is_action_just_pressed("attack"):
 		var origin := _attack_origin(0.45)
 		var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
@@ -346,7 +339,6 @@ func _try_build_wall() -> void:
 		_:
 			ok = _terrain_editor.try_build(target, inventory, build_id)
 	if ok:
-		# Instant placement cadence (not weapon cooldown).
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
 		structure_built.emit(build_id, target)
 		_flash_build_feedback(target, build_id)
@@ -355,7 +347,6 @@ func _try_build_wall() -> void:
 		_cooldown_timer = 0.035
 
 
-## Dig/build ALWAYS use the highlighted cursor cell — never a facing fallback mismatch.
 func _resolve_terrain_target(range_v: float) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
@@ -365,18 +356,15 @@ func _resolve_terrain_target(range_v: float) -> Vector3:
 		if shared != Vector3.ZERO:
 			var sx := floori(shared.x)
 			var sz := floori(shared.z)
-			# Only act on the highlighted cell; out-of-range is a failed action (toast), not a different dig.
 			if not _ActionTargeting._column_in_range(player, sx, sz, range_v):
 				if _terrain_editor:
 					_terrain_editor.last_fail_reason = "Out of range"
 				return Vector3.ZERO
 			return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
-	# No highlight (headless / boot): mouse then facing.
 	return _ActionTargeting.target_column(player, range_v)
 
 
 func _resolve_buildable_id() -> StringName:
-	# SHIFT = gate (walk-through baffle), CTRL = bridge (span digs), else wall.
 	if Input.is_key_pressed(KEY_SHIFT):
 		return &"gate"
 	if Input.is_key_pressed(KEY_CTRL):
@@ -399,7 +387,6 @@ func _flash_dig_feedback(target: Vector3) -> void:
 	var highlight = player.get_node_or_null("TargetHighlight") if player else null
 	if highlight and highlight.has_method("pulse_place_success"):
 		highlight.pulse_place_success()
-	# Lightweight temporary visual — reuses place flash tinted as dig dust.
 	var vfx = get_tree().get_first_node_in_group("combat_visual_feedback")
 	if vfx and vfx.has_method("show_place_flash"):
 		vfx.show_place_flash(target, &"dig")

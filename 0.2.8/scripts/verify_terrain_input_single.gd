@@ -1,6 +1,4 @@
 extends SceneTree
-## One intentional build pulse must not stack two height layers.
-## Drives **shipped** WeaponController._process with real Input action edge/hold.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -49,8 +47,6 @@ func _run() -> void:
 	world.add_to_group("world")
 	root3d.add_child(world)
 
-	# (7, 7) is a river tile. Fill-place still stacks, but a wet column makes
-	# the following real frames long enough to repeat inside the short hold.
 	var hold_cell: Vector2i = _DryDigCells.find_cell(world, Vector2i(7, 7))
 	if not _DryDigCells.is_found(hold_cell):
 		_fail("no dry cell for weapon hold")
@@ -80,7 +76,6 @@ func _run() -> void:
 	editor.world = world
 	editor.bind_chunk_manager(cm)
 
-	# Real Player needs MeshInstance3D child before _ready (@onready).
 	var player: Player = _Player.new()
 	player.name = "Player"
 	var mesh := MeshInstance3D.new()
@@ -102,13 +97,11 @@ func _run() -> void:
 	player.inventory.add_item("wood", 40)
 	player.world = world
 	player.chunk_manager = cm
-	# After _ready spawn, move player onto the dry cell for range checks.
 	player.voxel_position = Vector3(float(hold_cell.x) + 0.5, 4.0, float(hold_cell.y) + 0.5)
 	if player.has_method("_sync_global_from_voxel"):
 		player._sync_global_from_voxel()
 	await process_frame
 
-	# Force aim column via mock highlight
 	var old_hl = player.get_node_or_null("TargetHighlight")
 	if old_hl:
 		player.remove_child(old_hl)
@@ -125,7 +118,6 @@ func get_action_column() -> Vector3:
 	hl.set_script(mock_gs)
 	player.add_child(hl)
 
-	# --- API baseline ---
 	var b0: float = _TerrainEdits.get_height_delta(4, 4)
 	editor.try_build(Vector3(4.5, 0, 4.5), player.inventory, &"wood_wall")
 	var placed: Dictionary = _FeatureRegistry.get_feature(4, 4)
@@ -136,7 +128,6 @@ func get_action_column() -> Vector3:
 	else:
 		print("OK single try_build places one wood_wall WorldObject")
 
-	# --- Ship WeaponController._process + Input edge/hold ---
 	var cell := hold_cell
 	hl.col = Vector3(float(cell.x) + 0.5, 1.0, float(cell.y) + 0.5)
 	var before: float = _TerrainEdits.get_height_delta(cell.x, cell.y)
@@ -147,10 +138,6 @@ func get_action_column() -> Vector3:
 	weapon._cooldown_timer = 0.0
 	weapon._build_hold_sec = 0.0
 
-	# The controller is in the tree, so the engine also calls _process on the
-	# press frame. is_action_just_pressed stays true until the frame advances,
-	# and _process spends the 0.03s place cooldown before the edge check. A slow
-	# frame therefore places a second layer. Drive _process only from this probe.
 	var weapon_was_processing := weapon.is_processing()
 	weapon.set_process(false)
 
@@ -164,15 +151,12 @@ func get_action_column() -> Vector3:
 	else:
 		print("OK weapon Input edge place = 1 layer")
 
-	# Retire is_action_just_pressed. The node must not _process these frames:
-	# a slow frame (delta > build delay 0.03s) would repeat and blow the short hold.
 	weapon.set_process(false)
 	await process_frame
 	await process_frame
 	weapon._build_hold_sec = 0.0
 	weapon._cooldown_timer = 0.0
 	weapon.set_process(true)
-	# Short hold: still pressed, not a new edge — accumulate < hold-start.
 	var hold_accum := 0.0
 	while hold_accum < weapon.TERRAIN_HOLD_REPEAT_START_SEC * 0.6:
 		weapon._process(0.016)
@@ -183,7 +167,6 @@ func get_action_column() -> Vector3:
 	else:
 		print("OK short hold still 1 layer (hold_start=%.2fs)" % weapon.TERRAIN_HOLD_REPEAT_START_SEC)
 
-	# Long hold past repeat start with cooldown cleared for cadence.
 	for _i in 20:
 		weapon._cooldown_timer = 0.0
 		weapon._process(0.02)
@@ -198,15 +181,12 @@ func get_action_column() -> Vector3:
 	await process_frame
 	weapon.set_process(weapon_was_processing)
 
-	# --- Herb via shipped _try_use_consumable ---
 	player.health = 40.0
 	player.max_health = 100.0
-	# Clear hotbar and put only herb on slot 0
 	var herb_n: int = 3
 	if player.inventory.has_method("set_slot"):
 		player.inventory.set_slot(0, "herb", herb_n)
 	else:
-		# consume extras then add
 		while player.inventory.count_item("herb") > 0:
 			player.inventory.consume_item("herb", 1)
 		player.inventory.add_item("herb", herb_n)
@@ -228,7 +208,6 @@ func get_action_column() -> Vector3:
 				hp0, player.health, herb_before, herb_after
 			])
 
-	# --- wood_wall short cap ---
 	var reg := _GameVisualRegistry.new()
 	root3d.add_child(reg)
 	var mi := MeshInstance3D.new()
@@ -241,12 +220,10 @@ func get_action_column() -> Vector3:
 		print("OK wood_wall authored short-cap scale.y=%.3f (xz=%.2f)" % [mi.scale.y, mi.scale.x])
 	mi.queue_free()
 
-	# --- null player guard ---
 	cm.player = null
 	cm.flush_rebuild_pending()
 	var pcol: Vector2 = cm._player_column_pos()
 	if pcol != Vector2.ZERO:
-		# Safe fallback is ZERO
 		print("NOTE _player_column_pos returned %s with null player" % str(pcol))
 	print("OK _player_column_pos/flush with null player (no SCRIPT ERROR)")
 

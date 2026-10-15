@@ -1,9 +1,4 @@
 extends SceneTree
-## Stream optimization baseline / after probe.
-## Writes {SCRATCH}/stream_opt_{TAG}.json (+ .md) with schedule/apply/queue metrics.
-## Usage:
-##   CRYSTALSTORM_SCRATCH=... CRYSTALSTORM_STREAM_OPT_TAG=baseline \
-##     godot --headless -s scripts/profile_stream_opt.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -12,8 +7,6 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW", "0")
-	# Stream probe uses a small radius bake (not production 128²) so boot stays
-	# sub-minute and comparisons stay stable. Production bake path is unchanged.
 	if OS.get_environment("CRYSTALSTORM_FULL_WORLD_BAKE").is_empty():
 		OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	if OS.get_environment("CRYSTALSTORM_BAKE_RADIUS").is_empty():
@@ -67,7 +60,6 @@ func _run() -> void:
 		max_cx = int(bake.max_cx)
 		min_cz = int(bake.min_cz)
 		max_cz = int(bake.max_cz)
-	# Bound walk to a local ring for headless speed while still streaming.
 	min_cx = maxi(min_cx, -3)
 	max_cx = mini(max_cx, 3)
 	min_cz = maxi(min_cz, -3)
@@ -86,7 +78,7 @@ func _run() -> void:
 
 	var schedule_samples: PackedFloat32Array = PackedFloat32Array()
 	var upload_samples: PackedFloat32Array = PackedFloat32Array()
-	var apply_samples: PackedFloat32Array = PackedFloat32Array()  # chunk_apply exclusive
+	var apply_samples: PackedFloat32Array = PackedFloat32Array()
 	var cm_func_samples: PackedFloat32Array = PackedFloat32Array()
 	var load_pending_max := 0
 	var mesh_q_max := 0
@@ -96,7 +88,7 @@ func _run() -> void:
 	var path_i := 0
 	var last_move := Time.get_ticks_msec()
 	var t0 := Time.get_ticks_msec()
-	var apply_count_sum := 0  # chunks_streamed_applied frame counter sum
+	var apply_count_sum := 0
 
 	print("STREAM_OPT begin tag=%s sec=%.0f" % [tag, session_sec])
 	while Time.get_ticks_msec() - t0 < int(session_sec * 1000.0):
@@ -120,7 +112,6 @@ func _run() -> void:
 		schedule_samples.append(float(secs.get("stream_schedule", {}).get("last_ms", 0.0)))
 		upload_samples.append(float(secs.get("chunk_upload", {}).get("last_ms", 0.0)))
 		apply_samples.append(float(secs.get("chunk_apply", {}).get("last_ms", 0.0)))
-		# Prefer exclusive section if present
 		var sch_ex: float = float(secs.get("stream_schedule", {}).get("exclusive_ms", -1.0))
 		if sch_ex >= 0.0:
 			schedule_samples[schedule_samples.size() - 1] = sch_ex

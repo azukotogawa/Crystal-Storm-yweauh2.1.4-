@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Chunk mesh investigation — per-rebuild telemetry + ROI report (no optimizations).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

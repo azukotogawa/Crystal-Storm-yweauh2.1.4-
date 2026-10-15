@@ -1,8 +1,4 @@
 extends SceneTree
-## Water tops must draw with the wave shader on the chunk mesh, and water_time
-## on that material must move when VoxelFluidService._process runs (including
-## the sleep path). A shader file that nothing draws does not count.
-## Usage: godot --headless -s scripts/verify_water_surface.gd
 
 const _Builder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 const _WaterSurface = preload("res://helpers/water_surface.gd")
@@ -34,7 +30,6 @@ func _run() -> void:
 		print("OK water shader waves and reads flow")
 
 	_ChannelRegistry.reset()
-	# Column (4, 7) flows south. (2, 2) has no channel, so its UV2 stays zero.
 	_ChannelRegistry.register_channel(4, 7, Vector2i(0, 1), 1.0)
 
 	var data := ChunkData.new(Vector2i(0, 0), null)
@@ -91,7 +86,6 @@ func _run() -> void:
 			failed = true
 		else:
 			var before: float = float(drawn.get_shader_parameter("water_time"))
-			# No dirty cells: the sim sleeps. The drawn material must still advance.
 			svc._process(0.5)
 			var after: float = float((water_mi.material_override as ShaderMaterial).get_shader_parameter("water_time"))
 			if after < before + 0.45:

@@ -1,7 +1,4 @@
 extends Control
-## Production loading overlay driven by CompositionRoot stages + WorldBakeService status.
-## Covers the viewport from the first frame until INITIAL_STREAM_READY, then fades out.
-## Does not alter boot logic — presentation only.
 
 const FADE_SEC: float = 0.35
 const TIP_ROTATE_SEC: float = 5.5
@@ -57,7 +54,7 @@ var _error_text: Label
 var _retry_btn: Button
 var _rebuild_btn: Button
 var _crystal_layer: Control
-var _crystals: Array = []  # { node, phase, speed, base }
+var _crystals: Array = []
 
 var _progress: float = 0.0
 var _display_progress: float = 0.0
@@ -83,7 +80,6 @@ func _ready() -> void:
 	_tip_i = randi() % maxi(TIPS.size(), 1)
 	_refresh_tip()
 	set_process(true)
-	# Bind as soon as CompositionRoot exists (same frame parent tree).
 	call_deferred("_try_bind")
 
 
@@ -95,7 +91,6 @@ func _try_bind() -> void:
 		return
 	_compose = tree.get_first_node_in_group("composition_root")
 	if _compose == null:
-		# Parent may be Game/CompositionRoot path
 		var game := get_parent()
 		while game and game.name != "Game":
 			game = game.get_parent()
@@ -109,7 +104,6 @@ func _try_bind() -> void:
 		_compose.boot_failed.connect(_on_boot_failed)
 	if _compose.has_signal("boot_completed") and not _compose.boot_completed.is_connected(_on_boot_completed):
 		_compose.boot_completed.connect(_on_boot_completed)
-	# Catch late bind mid-boot.
 	if _compose.has_method("get_stage_name"):
 		_on_stage_changed(int(_compose.stage) if "stage" in _compose else 0, str(_compose.get_stage_name()))
 	_try_bind_bake()
@@ -141,7 +135,6 @@ func bind_composition_root(root: Node) -> void:
 
 
 func _build_ui() -> void:
-	# Full-bleed dark backdrop (never black-void: deep indigo crystal night).
 	_bg = ColorRect.new()
 	_bg.name = "Backdrop"
 	_bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -283,7 +276,6 @@ func _build_ui() -> void:
 
 
 func _spawn_crystal_accents() -> void:
-	# Lightweight decorative quads — no textures required.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
 	for i in 14:
@@ -303,7 +295,6 @@ func _spawn_crystal_accents() -> void:
 		)
 		poly.color = c
 		poly.position = Vector2(rng.randf_range(0.05, 0.95), rng.randf_range(0.08, 0.92))
-		# Position as fraction — update in process via size
 		_crystal_layer.add_child(poly)
 		_crystals.append({
 			"node": poly,
@@ -378,7 +369,6 @@ func _process(delta: float) -> void:
 		_tip_i = (_tip_i + 1) % maxi(TIPS.size(), 1)
 		_refresh_tip()
 
-	# Smooth progress bar (never jump backwards except on error reset).
 	if _display_progress < _progress:
 		_display_progress = minf(_progress, _display_progress + delta * 0.55)
 	_bar.value = _display_progress
@@ -386,7 +376,6 @@ func _process(delta: float) -> void:
 	var elapsed_s: float = float(Time.get_ticks_msec() - _boot_t0_ms) / 1000.0
 	_elapsed_label.text = "%.1fs" % elapsed_s
 
-	# Animate crystal accents with viewport size.
 	var sz := size
 	if sz.x < 1.0 or sz.y < 1.0:
 		sz = get_viewport_rect().size
@@ -400,20 +389,17 @@ func _process(delta: float) -> void:
 		col.a = float(entry["base_a"]) * (0.65 + 0.35 * sin(ph * 1.3))
 		n.color = col
 
-	# Soft pulse on title
 	if _title:
 		var a: float = 0.88 + 0.12 * sin(_pulse * 1.8)
 		_title.modulate = Color(1, 1, 1, a)
 
 
-## Fallback if stage_changed was missed (e.g. bind order / headless edge cases).
 func _poll_composition_stage() -> void:
 	if _compose == null or _fading or _dismissed:
 		return
 	if not ("stage" in _compose):
 		return
 	var st: int = int(_compose.stage)
-	# CompositionRoot.Stage.INITIAL_STREAM_READY = 5, FAILED = 9
 	if st == 9:
 		return
 	if st >= 5:
@@ -446,7 +432,6 @@ func _on_stage_changed(_stage_id: int, stage_name: String) -> void:
 		return
 	var label: String = str(STAGE_LABELS.get(stage_name, stage_name))
 	var p: float = float(STAGE_PROGRESS.get(stage_name, _progress))
-	# Prefer bake-driven copy during terrain stages when generating.
 	if stage_name == "CHUNKS_CREATED" or stage_name == "FEATURES_SEEDED":
 		if _bake_mode == "generating":
 			label = _phase_text if not _phase_text.is_empty() else "Generating World..."
@@ -456,7 +441,6 @@ func _on_stage_changed(_stage_id: int, stage_name: String) -> void:
 	_set_progress(p, label)
 
 	if stage_name == "INITIAL_STREAM_READY":
-		# Early enter: player-safe world is ready; remaining work continues under the fade.
 		_set_progress(0.88, "Ready")
 		_begin_fade_out()
 	elif stage_name == "RUNNING" and not _dismissed and not _fading:
@@ -469,7 +453,6 @@ func _on_bake_status(mode: String, progress: float, message: String) -> void:
 	if not message.is_empty():
 		_bake_label.text = message
 	if mode == "generating":
-		# Map bake progress into remaining bar after feature seed (~0.4–0.82).
 		var p: float = clampf(0.40 + clampf(progress, 0.0, 1.0) * 0.40, 0.40, 0.82)
 		_set_progress(maxf(_progress, p), "Generating World...")
 	elif mode == "loading":
@@ -491,7 +474,6 @@ func _on_boot_failed(reason: String, _dump: Dictionary) -> void:
 	_bar.value = 0.0
 	_progress = 0.0
 	_display_progress = 0.0
-	# Rebuild is useful when bake/world package is the failure surface.
 	var r := reason.to_lower()
 	_rebuild_btn.visible = (
 		r.contains("bake") or r.contains("chunk") or r.contains("world") or r.contains("timeout")
@@ -500,7 +482,6 @@ func _on_boot_failed(reason: String, _dump: Dictionary) -> void:
 
 
 func _on_boot_completed() -> void:
-	# If fade already started at INITIAL_STREAM_READY, nothing to do.
 	if not _dismissed and not _fading:
 		_begin_fade_out()
 
@@ -523,7 +504,6 @@ func _finish_dismiss() -> void:
 	_dismissed = true
 	_fading = false
 	visible = false
-	# Allow HUD toasts etc. to show cleanly.
 	var overlay = get_tree().get_first_node_in_group("game_overlay") if get_tree() else null
 	if overlay == null:
 		var cl := get_parent()

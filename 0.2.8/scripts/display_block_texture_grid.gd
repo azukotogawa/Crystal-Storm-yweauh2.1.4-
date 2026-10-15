@@ -1,7 +1,5 @@
 extends SceneTree
 ## Windowed terrain shot at the game camera (ortho 16, iso pitch).
-## Separate top quads use the same shader and atlas as ChunkSurfaceMesh.
-## A magenta clear color shows cracks. The scan flags a dark seam between blocks.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -128,8 +126,6 @@ func _top_grid(scale: float, atlas: Vector2i) -> ArrayMesh:
 	return mesh
 
 
-## The broken shader writes linear (0.35, 0.42, 0.22), which the window
-## stores as about #9eab7f. That flat field is the grid.
 func _count_fallback(img: Image) -> Dictionary:
 	var terrain := 0
 	var fallback := 0

@@ -1,7 +1,5 @@
 class_name VoxelFluidService
 extends Node
-## Runtime water: dirty-region flood from persistent RIVER/WATER/OCEAN sources.
-## Overlay water_level stays 0–1; body surface_y is derived. Crystal is separate.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -25,7 +23,6 @@ var _terrain_query: _CrystalTerrainQuery
 var _dirty_cells: Dictionary = {}
 var _tick_accum: float = 0.0
 var _sim_tick_id: int = 0
-## Natural river/water tiles injected as sources this tick (not force-persisted as channels).
 var _river_source_cells: Dictionary = {}
 var _sleeping: bool = true
 var _last_tick_us: int = 0
@@ -86,8 +83,6 @@ func _init_water_engine() -> void:
 
 
 const _EMPTY_WALK_CAP := 96
-## Steady frames add one open cell. An edit's interactive step still uses the
-## engine cap so a short link beside water does not wait a frame per cell.
 const _SETTLE_NEW_CELLS_PER_TICK := 1
 
 
@@ -103,12 +98,6 @@ func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
 					_dirty_cells[cell + dir] = true
 
 
-## Edit opened a column or turned it into water. Queue that cell and its
-## orthogonal neighbours, then take one local step. Already-wet neighbours
-## stay in the queue so the body keeps moving into connected empty cells
-## instead of stopping on the first one. Open cells at the waterline or
-## below also fill on later ticks without another neighbour break.
-## Same-height solid ground is not wetted.
 func requeue_neighbors_on_edit(wx: int, wz: int) -> void:
 	var origin := Vector2i(wx, wz)
 	_queue_cell_and_neighbors(origin)
@@ -121,7 +110,6 @@ func requeue_neighbors_on_edit(wx: int, wz: int) -> void:
 	var prev_cap: int = 0
 	if _water_engine:
 		prev_cap = int(_water_engine.max_cells_per_tick)
-		# One bounded step. The rest of a long trench continues on _process.
 		_water_engine.max_cells_per_tick = mini(maxi(prev_cap, 1), 32)
 	_interactive_local_center = origin
 	_interactive_local_radius = 3
@@ -169,7 +157,6 @@ func _process(delta: float) -> void:
 	var t_proc := Time.get_ticks_usec()
 	if _water_engine == null:
 		return
-	# Settled water sleeps below. The surface still has to move.
 	_WaterSurface.advance(delta)
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
@@ -202,7 +189,6 @@ func _process(delta: float) -> void:
 		return
 	_tick_accum += delta
 	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz, 1.0)
-	# One gravity step per frame. Extra catch-up was multiplying the gather.
 	if _tick_accum >= step_dt:
 		var t0 := Time.get_ticks_usec()
 		_tick_water(step_dt)
@@ -247,8 +233,6 @@ func _tick_water(_delta: float) -> void:
 	_last_wet_count = int(result.get("wet_count", 0))
 	_last_body_surface_y = float(result.get("surface_y", 0.0))
 	_advance_dirty_from_changes(changed)
-	# The empty walk stopped before it reached water. Keep the unexpanded
-	# frontier or a pool larger than the walk cap never starts.
 	for resume_variant in _empty_resume:
 		_dirty_cells[resume_variant] = true
 	_empty_resume = []
@@ -280,9 +264,6 @@ func _collect_active_region() -> Dictionary:
 		cells[key] = true
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			cells[key + dir] = true
-	# A far dig only dirties its own neighbourhood. Walk the open columns
-	# (dug cells) from there to the water, one step onto the source, so the
-	# basin and a side pocket fill without breaking another neighbour.
 	_include_connected_empty(cells)
 	return cells
 
@@ -291,8 +272,6 @@ func _is_empty_column(pos: Vector2i) -> bool:
 	return _TerrainEdits.get_height_delta(pos.x, pos.y) < -0.001
 
 
-## Open column at the same level as the waterline or lower. A solid top that
-## only meets the line is ground, not an empty cell.
 func _accepts_flow(pos: Vector2i, surface_y: float) -> bool:
 	var top := _visual_top(pos)
 	if top > surface_y + 0.001:
@@ -333,8 +312,6 @@ func _include_connected_empty(cells: Dictionary) -> void:
 				continue
 			if _is_empty_column(n):
 				q.append(n)
-	# Water is connected, or the open component is fully walked. Drop the
-	# search memory so the fill frontier is local on the next frame.
 	if touched_water or q.is_empty():
 		_empty_searched = {}
 		return
@@ -385,12 +362,6 @@ func _sources_in_subset(subset: Dictionary) -> Dictionary:
 
 func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
 	var empty := {"wet": {}, "surface_y": 0.0, "wet_count": 0}
-	# Waterline is the source visual top (top of the river voxel), not an extra
-	# layer above ground. Indentations are columns whose visual top is below that.
-	# When the river has left the dirty set, overlay still in the subset carries
-	# the same waterline forward. It is not a natural source and is not stripped.
-	# A tick that still sees the river starts from the river only, so a puddle
-	# that is no longer connected can dry.
 	var surface_y := -1.0e9
 	var origins: Dictionary = {}
 	for key_variant in sources.keys():
@@ -469,8 +440,6 @@ func _persist_body(subset: Dictionary, sources: Dictionary, result: Dictionary) 
 		var is_source: bool = sources.has(pos)
 		var is_wet: bool = wet.has(pos)
 		if is_source:
-			# Natural (or tile-stamped) river stays a source. Overlay occupancy
-			# on a source would make a flooded cell look permanent — strip it.
 			if _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
 				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
 				changed.append(pos)
@@ -604,8 +573,6 @@ func get_sim_diagnostics() -> Dictionary:
 	}
 
 
-## Channel fill is the flood body's surface_y. The chunk mesher draws the lid.
-## A second water mesh would draw the same cell twice.
 func show_channel_level(pos: Vector2i, level: float, surface_y: float) -> void:
 	if level < 0.05:
 		if _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):

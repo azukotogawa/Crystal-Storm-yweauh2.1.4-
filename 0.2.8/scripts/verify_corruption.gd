@@ -1,7 +1,4 @@
 extends SceneTree
-## Crystal absorption corrupts ground and plants, scars heal, animals convert.
-## Grass absorption does not equip a relic (crystal_mite is already unlocked).
-## Other absorption milestones that unlock a new enemy do. Spawn destruction still does.
 
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")

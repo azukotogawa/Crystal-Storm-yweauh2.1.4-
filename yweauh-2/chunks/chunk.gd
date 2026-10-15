@@ -153,7 +153,7 @@ func initialize_layers(p_tile_set: TileSet):
 	
 	wall_layer = TileMapLayer.new()
 	wall_layer.tile_set = p_tile_set
-	wall_layer.z_index = 1          # Walls above ground
+	wall_layer.z_index = 1
 	add_child(wall_layer)
 	
 	setup_shader()
@@ -169,7 +169,6 @@ func generate(p_tile_set: TileSet):
 	
 	drift_map.clear()
 
-	# 1. Populate the cache using unified coordinate logic
 	for y in range(-1, CHUNK_SIZE_y + 1):
 		for x in range(-1, CHUNK_SIZE_x + 1):
 			var wx = float(cx * CHUNK_SIZE_x + x)
@@ -181,17 +180,14 @@ func generate(p_tile_set: TileSet):
 					"name": biome_data.get("name", "").to_lower()
 				}
 
-	# 2. Draw the Main Layer (Ground) using the same cache
 	for y in range(CHUNK_SIZE_y):
 		for x in range(CHUNK_SIZE_x):
 			var current_cell = Vector2i(x, y)
 			if not height_grid_cache.has(current_cell): continue
 			
 			var registry_entry = tile_registry[height_grid_cache[current_cell]["name"]]
-			# Ensure this cell coordinate matches exactly what the wall layer will use
 			main_layer.set_cell(current_cell, 6, registry_entry["top"], 0)
 
-	# 3. Draw the walls relative to the ground tiles
 	rebuild_walls_only(6)
 	check_all_walls()
 
@@ -211,7 +207,6 @@ func rebuild_walls_only(source_id: int):
 			var registry_entry = tile_registry.get(tile_data["name"])
 			if not registry_entry: continue
 			
-			# Only draw walls on the "front" sides (north relative to current view)
 			var active_faces = [
 				{"offset": front_left_offset, "key": left_wall_key},
 				{"offset": front_right_offset, "key": right_wall_key},
@@ -221,13 +216,12 @@ func rebuild_walls_only(source_id: int):
 				var neighbor_cell = current_cell + face["offset"]
 				var neighbor_data = height_grid_cache.get(neighbor_cell)
 				
-				# If current tile is HIGHER than the tile in front → draw wall
 				if neighbor_data and current_h > neighbor_data["height"]:
 					var wall_atlas = registry_entry.get(face["key"])
 					if wall_atlas is Vector2i:
 						wall_layer.set_cell(neighbor_cell, source_id, wall_atlas)
 				
-				var n_ledge_cell = current_cell + face["offset"] # Go opposite of wall direction
+				var n_ledge_cell = current_cell + face["offset"]
 				var n_ledge_data = height_grid_cache.get(n_ledge_cell)
 				if n_ledge_data and current_h < n_ledge_data["height"]:
 					var n_tile_data = height_grid_cache[n_ledge_cell]
@@ -252,11 +246,8 @@ func get_neighbor_tile_type(cell_pos: Vector2i, current_h: int) -> bool:
 	for offset in neighbors:
 		var neighbor_pos = cell_pos + offset
 		
-		# Look up the neighbor in the cache
 		var neighbor_data = height_grid_cache.get(neighbor_pos)
 		
-		# If the neighbor is higher than the current cell, it is "in front" 
-		# and should potentially clip the wall
 		if neighbor_data and neighbor_data["height"] > current_h:
 			return true
 			
@@ -282,10 +273,8 @@ func setup_shader():
 	var mat = ShaderMaterial.new()
 	mat.shader = shader
 	
-	# FORCE the material onto the layer
 	wall_layer.material = mat 
 	
-	# ADD THIS: Force the shader to be processed by the rendering server
 	wall_layer.use_parent_material = false 
 
 func _process(_delta):
@@ -294,13 +283,10 @@ func _process(_delta):
 		var vp = mask_viewport
 		if vp:
 			var tex = vp.get_texture()
-	# This prints once every frame; if the RID changes rapidly, 
-	# it means the viewport is re-initializing constantly.
 			mat.set_shader_parameter("ground_mask", tex)
 			if tex == null:
 				print("ERROR: Shader material has NO ground_mask texture!")
 				
-# Returns wall cells that should be clipped (only checking the right neighbor)
 func get_clippable_wall_cells() -> Array[Vector2i]:
 	var clippable: Array[Vector2i] = []
 	
@@ -311,12 +297,11 @@ func get_clippable_wall_cells() -> Array[Vector2i]:
 			
 			var current_h = height_grid_cache[current_cell]["height"]
 			
-			# Only check the RIGHT neighbor
 			var right_neighbor = current_cell + front_right_offset
 			
 			var neighbor_data = height_grid_cache.get(right_neighbor)
 			
 			if neighbor_data and current_h > neighbor_data["height"]:
-				clippable.append(right_neighbor)  # This wall cell should be clipped
+				clippable.append(right_neighbor)
 	
 	return clippable

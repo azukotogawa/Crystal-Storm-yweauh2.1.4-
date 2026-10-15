@@ -1,6 +1,5 @@
 class_name CrystalSimEvents
 extends RefCounted
-## Typed change events emitted by CrystalSimulation (discovery/update only — no scene access).
 
 enum Kind {
 	DEPTH_CHANGED = 1,

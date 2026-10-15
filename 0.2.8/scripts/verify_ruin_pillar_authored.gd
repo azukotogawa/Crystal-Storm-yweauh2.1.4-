@@ -1,6 +1,4 @@
 extends SceneTree
-## Prove ruin_pillar uses the on-disk authored mesh, only at ruin centers.
-## Usage: godot --headless -s scripts/verify_ruin_pillar_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -64,7 +62,6 @@ func _test_asset_files_exist() -> void:
 		_fail("ruin albedo expected 256px Texture2D")
 		return
 	var aabb: AABB = (mesh_res as Mesh).get_aabb()
-	# Tall thin landmark, not a wall slab / deck / cube.
 	if aabb.size.y < 2.0:
 		_fail("ruin pillar too short to be a landmark (h=%.3f)" % aabb.size.y)
 	if aabb.size.x > aabb.size.y * 0.55:

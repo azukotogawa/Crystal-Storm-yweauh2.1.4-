@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless checks for the win/loss run summary dictionary and panel.
 
 
 const _GameManager = preload("res://game/game_manager.gd")

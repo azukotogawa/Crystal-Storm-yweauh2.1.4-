@@ -1,5 +1,4 @@
 extends SceneTree
-## MAZE stays while crystal is weak or far; ASSAULT when tiered and near crystal.
 
 const _GameManager = preload("res://game/game_manager.gd")
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
@@ -53,7 +52,6 @@ func _init() -> void:
 	else:
 		print("OK tier0 phase MAZE (prep time)")
 
-	# Tiered but still far from crystal → stay MAZE
 	crystal.strength_tier = 2
 	crystal._near_dist = 120.0
 	gm._update_phase()
@@ -63,7 +61,6 @@ func _init() -> void:
 	else:
 		print("OK tiered+far remains MAZE")
 
-	# Tiered and near → ASSAULT
 	crystal._near_dist = 30.0
 	gm._update_phase()
 	if gm.phase != _GameManager.Phase.ASSAULT:
@@ -72,7 +69,6 @@ func _init() -> void:
 	else:
 		print("OK tiered+near phase ASSAULT")
 
-	# Pull back past hysteresis → MAZE again
 	crystal._near_dist = 90.0
 	gm._update_phase()
 	if gm.phase != _GameManager.Phase.MAZE:
@@ -81,10 +77,9 @@ func _init() -> void:
 	else:
 		print("OK retreat past maze_min_distance → MAZE")
 
-	# Hysteresis: once ASSAULT, stay until beyond maze_min
 	crystal._near_dist = 30.0
 	gm._update_phase()
-	crystal._near_dist = 60.0  # between assault 48 and maze 72
+	crystal._near_dist = 60.0
 	gm._update_phase()
 	if gm.phase != _GameManager.Phase.ASSAULT:
 		push_error("hysteresis should keep ASSAULT at dist 60")

@@ -1,15 +1,12 @@
-# infinite_noise_world.gd
 class_name InfiniteNoiseWorld
-extends Node3D                     # ← Changed to Node (this fixes the cast)
+extends Node3D
 
 var world_seed: int
 var biome_scale: float = 860
 var precip_weights = []
 var height_weights = []
 
-# ==================== BIOME DATA (ported from config1.py) ====================
 
-# Better balanced weights for FastNoiseLite
 func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_R:
 		generate_random_weights()
@@ -17,19 +14,16 @@ func _input(event):
 func generate_random_weights():
 	print("--- New Random Weights ---")
 	
-	# Generate random weights for Height
 	for i in range(39):
 		var base = randi_range(1,30)
 		base = base * 10
 		height_weights.append(int(base))
 	
-	# Generate random weights for Precipitation
 	for i in range(39):
 		var base = randi_range(1,30)
 		base = base * 10
 		precip_weights.append(int(base))
 	
-	# Print nicely
 	print("const BIOME_WEIGHTS_HEIGHT: Array = [")
 	print("    ", str(height_weights.slice(0,10)).replace("[","").replace("]","").replace(" ",""), ",")
 	print("    ", str(height_weights.slice(10,20)).replace("[","").replace("]","").replace(" ",""), ",")
@@ -45,22 +39,20 @@ func generate_random_weights():
 	print("]")
 
 const BIOME_WEIGHTS_HEIGHT: Array = [
-	# Low (deep ocean / basins) - less common
-	300, 250, 200, 180, 160, 140, 120, 100, 90, 90,   # 0–9  (deep basins)
-	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,   # 10–19 (plains)
-	80,  90, 100, 120, 140, 160, 180, 90, 90, 90,   # 20–29 (mountains)
+	300, 250, 200, 180, 160, 140, 120, 100, 90, 90,
+	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,
+	80,  90, 100, 120, 140, 160, 180, 90, 90, 90,
 	100, 100, 100, 100, 150, 160, 170, 200, 250, 300 
 ]
 
 const BIOME_WEIGHTS_PRECIP: Array = [
 	110, 110, 110, 100,100, 150, 100, 100, 100, 100, 
 	80,  90, 100, 120, 140, 160, 180, 90, 90, 90,  
-	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,   # 10–19 (plains)
+	90,  90,  85,  70,  60,  50,  50,  55,  60,  70,
 	90, 90, 100, 120,120, 140,160,180, 600, 700
 ]
 
 
-# Biome maps with duplicates for weighting (same idea as your Python version)
 const HIGH_MAP: Array = [
 "plains", "steppe", "savanna",
 "forest", "dense forest", "dense forest", "river",
@@ -94,7 +86,7 @@ var p2: FastNoiseLite
 var p3: FastNoiseLite
 var p4: FastNoiseLite
 
-@export var octaves: int = 12                   # Reduced from 5
+@export var octaves: int = 12
 @export var lacunarity: float = 2
 @export var gain: float = .5
 @export var amplitude_boost: float = .4
@@ -125,17 +117,15 @@ func _build_cumul(weights: Array) -> Array:
 	return cumul
 
 func _setup_noise():
-	# Configure a single, powerful native height fractal
 	height_noise = FastNoiseLite.new()
 	height_noise.seed = world_seed
 	height_noise.noise_type = FastNoiseLite.TYPE_PERLIN
-	height_noise.frequency = 3.6 / biome_scale # Bake the scale division here natively
+	height_noise.frequency = 3.6 / biome_scale
 	height_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	height_noise.fractal_octaves = 4 # Blends 4 operational layers inside C++ speeds!
+	height_noise.fractal_octaves = 4
 	height_noise.fractal_lacunarity = 2.0
 	height_noise.fractal_gain = 0.5
 
-	# Configure a single, powerful native precipitation fractal
 	precip_noise = FastNoiseLite.new()
 	precip_noise.seed = world_seed + 1000
 	precip_noise.noise_type = FastNoiseLite.TYPE_PERLIN
@@ -145,8 +135,6 @@ func _setup_noise():
 	precip_noise.fractal_lacunarity = 2.0
 	precip_noise.fractal_gain = 0.5
 
-# Drop the multi-variable math additions completely. 
-# This runs nearly 8 times faster!
 func get_height(wx: float, wy: float, wz: float) -> float:
 	return clamp(height_noise.get_noise_3d(wx, wy, wz) * 1.35, -1.0, 1.0)
 
@@ -154,19 +142,15 @@ func get_precip(wx: float, wy: float, wz: float) -> float:
 	return clamp(precip_noise.get_noise_3d(wx, wy, wz) * 1.35, -1.0, 1.0)
 
 func get_biome(wx: float, wy: float, wz: float) -> Dictionary:
-	# 1. Sample your raw 3D noises
 	var h = get_height(wx, wy * 2.5, wz)
 	var p = get_precip(wx, wy * 2.5, wz)
 
 	var h_norm = (h + 1.0) / 2.0
 	var p_norm = (p + 1.0) / 2.0
 
-	# Calculate a smooth linear vertical falloff gradient
-	# Height limits must match ChunkData.HEIGHT (e.g., 50)
 	var max_world_height: float = 256.0 
 	var calculated_ground = h_norm * max_world_height
 	
-	# Strict threshold evaluation: solid if underneath surface level, air if above
 	if wy > calculated_ground:
 		return {
 			"is_air": true,
@@ -183,12 +167,10 @@ func get_biome(wx: float, wy: float, wz: float) -> Dictionary:
 	var tile_name: String
 	var biome_type: String
 	
-	# ZONE 1: Mountains & High Elevations (Height 20-39)
 	if h_level >= 20:
 		tile_name = HIGH_MAP[h_level - 20]
 		biome_type = "High"
 		
-	# ZONE 2: Low-lying Oceans/Plains/Lakes (Height 0-19)
 	else:
 		if p_level >= 20:
 			var depth = p_level - 20

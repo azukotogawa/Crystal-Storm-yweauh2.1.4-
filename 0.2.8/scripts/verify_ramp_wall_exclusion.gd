@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: player-built walls suppress ramp placement on wall cells and neighbors.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

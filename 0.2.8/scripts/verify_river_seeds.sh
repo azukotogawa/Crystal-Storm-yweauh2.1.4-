@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Verify river generation on multiple seeds. Run from project root.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

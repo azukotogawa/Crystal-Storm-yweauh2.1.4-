@@ -1,6 +1,4 @@
 extends Node
-## Sound hooks only. Missing files are skipped and logged once per id.
-## No audio assets are created here.
 
 const _Manifest = preload("res://config/audio_manifest.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")

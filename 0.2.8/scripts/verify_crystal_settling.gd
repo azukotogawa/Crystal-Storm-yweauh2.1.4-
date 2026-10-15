@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: tuned crystal flow reduces checkerboard holes vs legacy lateral=0 params.
 
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")

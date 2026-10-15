@@ -1,12 +1,4 @@
 extends SceneTree
-## Automatic production world-bake workflow (no terminal/env required for players).
-##
-## Checks:
-## 1) Production defaults → full 128×128 chunks without any bake env vars.
-## 2) First bootstrap with missing bake → automatic rebuild.
-## 3) Second bootstrap → mode=loaded, mesh plans mode=valid (no rebuild/repair).
-##
-## Smoke uses a small radius for speed; production size is asserted separately.
 
 const _WorldState = preload("res://world/world_state.gd")
 const _InfiniteNoiseWorld = preload("res://world/InfiniteNoiseWorld.gd")
@@ -36,7 +28,6 @@ func _run() -> void:
 
 func _test_production_defaults() -> int:
 	var failed := 0
-	# No bake env → production path.
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "")
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "")
@@ -101,10 +92,9 @@ func _rm_rf(path: String) -> void:
 
 func _test_two_bootstrap_auto_bake() -> int:
 	var failed := 0
-	# Fast smoke size for rebuild proof (production size asserted above).
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", str(SMOKE_RAD))
-	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "")  # default auto
+	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "")
 	OS.set_environment("CRYSTALSTORM_WORLD_BAKE", "1")
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW", "")
 
@@ -117,7 +107,6 @@ func _test_two_bootstrap_auto_bake() -> int:
 	host.world = world
 	root.add_child(host)
 
-	# --- First bootstrap: missing → rebuild ---
 	var bake1: _WorldBakeService = _WorldBakeService.new()
 	_WorldBakeService.set_active(bake1)
 	var boot1: Dictionary = bake1.bootstrap_for_world(world, false, host)
@@ -145,7 +134,6 @@ func _test_two_bootstrap_auto_bake() -> int:
 	print("launch1 mesh_plan mode=%s" % str(mp1.get("mode", "")))
 	var meta_path: String = bake1.package_dir.path_join("plan_seed_meta.json")
 	if not FileAccess.file_exists(meta_path):
-		# ensure_mesh_plans should have written meta for valid plans.
 		bake1._write_plan_seed_meta()
 	if not FileAccess.file_exists(meta_path):
 		push_error("FAIL: plan_seed_meta.json not written after launch1")
@@ -153,7 +141,6 @@ func _test_two_bootstrap_auto_bake() -> int:
 	else:
 		print("OK plan_seed_meta written (repair stamp persisted)")
 
-	# --- Second bootstrap: load only ---
 	_WorldBakeService.clear_active()
 	var bake2: _WorldBakeService = _WorldBakeService.new()
 	_WorldBakeService.set_active(bake2)
@@ -178,7 +165,6 @@ func _test_two_bootstrap_auto_bake() -> int:
 	else:
 		print("OK launch2 validation still clean")
 
-	# Third bootstrap still loaded/valid (idempotent).
 	var boot3: Dictionary = bake2.bootstrap_for_world(world, false, host)
 	if str(boot3.get("mode", "")) != "loaded":
 		push_error("FAIL: third bootstrap expected loaded got %s" % str(boot3.get("mode")))

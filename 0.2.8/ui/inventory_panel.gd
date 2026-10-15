@@ -23,9 +23,6 @@ var _hotbar_index := -1
 func _ready() -> void:
 	visible = false
 	_SlotDrag.set_modal_open(false, self)
-	# Player._ready creates the inventory after this panel has entered the
-	# tree. Connecting only from _enter_tree never saw stack changes, so a
-	# drag updated the data and left the slot labels where they were.
 	_bind_inventory()
 	_refresh()
 
@@ -68,8 +65,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_ui("ui_open" if opening else "ui_close")
 		if opening:
 			# Godot picks the later sibling, and z_index does not change that.
-			# The dimmer is full-screen, so the bar has to move above it or
-			# drags never land on a hotbar slot.
 			_raise_hotbar()
 			_settle_layout()
 			_refresh()
@@ -78,8 +73,6 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _build_ui() -> void:
-	# The root stays click-through. The dimmer catches misses, and opening
-	# the bag moves the hotbar above that dimmer so its slots can be dropped on.
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -153,7 +146,6 @@ func _on_slot_pressed(index: int) -> void:
 	_ui("ui_click")
 	if _player == null or _player.inventory == null:
 		return
-	# A click that did not drag still files the stack into the hotbar.
 	var slot = _player.inventory.get_slot(index)
 	if slot == null:
 		return

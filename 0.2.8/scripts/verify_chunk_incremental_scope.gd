@@ -1,5 +1,4 @@
 extends SceneTree
-## P0 design contract: incremental terrain mesh invalidation scope.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")

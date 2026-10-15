@@ -1,5 +1,4 @@
 extends SceneTree
-## Gating: chunk mesh investigation artifacts contain all eleven per-rebuild metrics.
 
 
 const _ChunkRebuildTelemetry = preload("res://systems/chunk_rebuild_telemetry.gd")

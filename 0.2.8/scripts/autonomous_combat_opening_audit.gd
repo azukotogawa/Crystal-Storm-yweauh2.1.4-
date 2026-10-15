@@ -1,5 +1,4 @@
 extends SceneTree
-## Live opening + crystal→mite→combat chain. Windowed camera/F3/F4 are truth.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
@@ -87,7 +86,6 @@ func _run() -> void:
 		insp.panel_open = true
 	_bind_toast_watch()
 
-	# --- Opening presentation at native spawn (do not teleport). ---
 	_snaps["opening"] = _opening_snapshot("t0")
 	_dump_f3()
 	await _shot("open_spawn")
@@ -101,7 +99,6 @@ func _run() -> void:
 	if float(_snaps["opening"].get("crystal_dist", 0.0)) > 8.0 and not has_bearing:
 		_note("disagree", "HUD missing crystal bearing at spawn: %s" % ohud)
 
-	# Stay at spawn through grace (28s) + a little more.
 	await _wait_msec(32000, "spawn_grace")
 	_snaps["after_grace_at_spawn"] = _opening_snapshot("grace32")
 	await _shot("open_after_grace")
@@ -116,7 +113,6 @@ func _run() -> void:
 			float(_snaps["after_grace_at_spawn"].get("crystal_dist", -1))
 		])
 
-	# Walk to the existing crystal origin — combat is designed at the front.
 	var crystal = get_first_node_in_group("crystal_manager")
 	var origin := Vector2i.ZERO
 	if crystal and crystal.has_method("get_origin_cell"):
@@ -136,7 +132,6 @@ func _run() -> void:
 	])
 	await _shot("open_crystal_front")
 
-	# Wait for existing spawner (grace already elapsed, mites unlocked at boot).
 	var mite_wait_ms := 25000
 	var t_mite := Time.get_ticks_msec()
 	var saw_mite := false
@@ -160,7 +155,6 @@ func _run() -> void:
 	var enemies: Array = get_nodes_in_group("crystal_enemy")
 	var mite: Node3D = enemies[0] as Node3D
 	var mcol: Vector2 = _WorldVisualCoords.column_from_node(mite)
-	# Stand 1 column SE so iso look-dir (NW) includes the mite inside melee range.
 	_look_at(int(round(mcol.x)) + 1, int(round(mcol.y)) + 1)
 	if player:
 		player.voxel_position.x = mcol.x + 1.0
@@ -184,7 +178,6 @@ func _run() -> void:
 	])
 	await _shot("open_mite")
 
-	# Fight with the existing sword path (aim at the mite like a mouse hover).
 	if player:
 		var world = get_first_node_in_group("world")
 		_ActionTargeting.warp_mouse_to_column(player, world, mcol.x, mcol.y)

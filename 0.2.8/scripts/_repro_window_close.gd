@@ -1,5 +1,4 @@
 extends SceneTree
-## Repro window-close teardown: boot main, then free scene like WM close.
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW", "0")
@@ -21,7 +20,6 @@ func _run() -> void:
 	for _i in 60:
 		await process_frame
 	print("[REPRO] boot done, simulating window close")
-	# Mimic editor/game close: request quit via SceneTree
 	if compose and compose.has_method("shutdown"):
 		print("[REPRO] composition shutdown")
 		compose.shutdown()

@@ -11,12 +11,10 @@ signal enemy_spawned(enemy_id: StringName, world_pos: Vector2i)
 
 @export var spawn_interval: float = 8.0
 @export var max_active: int = 24
-## Prefer near-frontier spawns so early-run crystal rings (~few columns) can host mites.
 @export var spawn_near_player_min: float = 3.0
 @export var spawn_near_player_max: float = 36.0
 @export var require_crystal_depth: float = 0.2
 @export var assault_spawn_mult: float = 1.6
-## First seconds of a run: no mites so the player can orient (maze tools, dig).
 @export var spawn_grace_sec: float = 28.0
 
 var _timer: float = 0.0
@@ -119,8 +117,6 @@ func _on_enemy_unlocked(enemy_id: StringName) -> void:
 		_spawn_enemy(enemy_id)
 
 
-## Production spawn entry used by _process and unlock bursts.
-## Returns true when an enemy was added to the tree.
 func spawn_enemy_now(enemy_id: StringName = &"") -> bool:
 	_bind()
 	if _crystal == null or _player == null:
@@ -139,7 +135,6 @@ func spawn_enemy_now(enemy_id: StringName = &"") -> bool:
 	return _active.size() > before
 
 
-## Content path: place a guardian at a world column (ruin expedition, etc.).
 func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vector2i = Vector2i.ZERO) -> bool:
 	_bind()
 	if _player == null:
@@ -184,7 +179,6 @@ func _spawn_enemy(enemy_id: StringName) -> void:
 		if patrol == Vector2i.ZERO and not spawns.is_empty():
 			patrol = spawns[0].world_pos
 	var parent := _enemy_parent()
-	# Order matters for Spatial Query: position before setup (setup indexes spatial).
 	parent.add_child(enemy)
 	enemy.global_position = spawn_pos
 	enemy.setup(enemy_id, _player, spawn_def, patrol)
@@ -206,15 +200,12 @@ func _pick_spawn_pos() -> Vector3:
 	var col := _player_column_pos()
 	var px := col.x
 	var pz := col.y
-	# Random samples in the preferred ring (defaults allow early-run crystal rings).
 	var pos := _sample_crystal_ring(px, pz, spawn_near_player_min, spawn_near_player_max, 24)
 	if pos != Vector3.ZERO:
 		return pos
-	# Fallback: any crystal cell near the player (frontier often sits inside min ring).
 	pos = _sample_crystal_ring(px, pz, 1.0, spawn_near_player_max, 48)
 	if pos != Vector3.ZERO:
 		return pos
-	# Last resort: scan expanding Chebyshev rings for a crystal-depth column.
 	return _scan_crystal_near_player(px, pz, int(ceil(spawn_near_player_max)))
 
 
@@ -294,7 +285,6 @@ func import_enemies(rows: Array) -> void:
 		var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
 		var enemy: _CrystalEnemy = _CrystalEnemy.new()
 		var parent := _enemy_parent()
-		# Position before setup so spatial index samples final placement.
 		parent.add_child(enemy)
 		enemy.global_position = Vector3(
 			float(row.get("x", 0.0)),
@@ -345,7 +335,6 @@ func _player_column_pos() -> Vector2:
 	)
 
 
-## Chebyshev/Euclidean column distance to nearest crystal-depth cell near the player.
 func _nearest_crystal_column_distance(col: Vector2) -> float:
 	if _crystal == null:
 		return INF

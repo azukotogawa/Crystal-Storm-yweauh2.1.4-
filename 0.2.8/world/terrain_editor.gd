@@ -30,11 +30,8 @@ var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 
 var _channel_tick_accum: float = 0.0
 var _growth_manager: Node
-## Last dig/build/plant/channel failure for UI toast (empty on success).
 var last_fail_reason: String = ""
-## Last successful build id (for UI / feedback).
 var last_build_id: StringName = &""
-## Last dig stroke: cells, flush_count, chunk count. Tests and the brush share this.
 var last_stroke_stats: Dictionary = {}
 var _living_push_accum: float = 0.0
 var _living_crystal: Node
@@ -89,7 +86,6 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("terrain_editor")
-	# VoxelFluidService owns gravity water when present; equilibrium is fallback only.
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
 	if fluid_svc == null:
 		_channel_tick_accum += delta
@@ -112,7 +108,6 @@ func get_dig_delay(world_pos: Vector3) -> float:
 	var wx := floori(world_pos.x)
 	var wz := floori(world_pos.z)
 	var dug_depth := maxf(0.0, -_TerrainEdits.get_height_delta(wx, wz))
-	# Sustained rapid dig: ~12–16/s shallow, still responsive deep (terrain as strategy tool).
 	var base_delay := 0.055 + dug_depth * 0.016 + dug_depth * dug_depth * 0.008
 	var dig_speed := 1.0
 	if is_inside_tree():
@@ -130,7 +125,6 @@ func get_channel_delay(world_pos: Vector3) -> float:
 	return get_dig_delay(world_pos) / channel_speed
 
 
-## Walls / gates / bridges place instantly — hold-repeat stays snappy, never weapon-slow.
 func get_build_delay(_world_pos: Vector3 = Vector3.ZERO) -> float:
 	return 0.03
 
@@ -160,9 +154,6 @@ func try_dig(world_pos: Vector3) -> bool:
 	var player := get_tree().get_first_node_in_group("player")
 	if player and "inventory" in player:
 		inv = player.inventory
-	# Next to water: this column becomes a water tile (no cavity). Neighbours
-	# are re-queued so water keeps flowing into connected empty cells that
-	# were opened earlier. Same-height ground is not turned into a water lid.
 	if _has_adjacent_water(wx, wz):
 		_grant_dig_loot(wx, wz, inv)
 		if not _replace_cell_with_water_block(wx, wz):
@@ -207,8 +198,6 @@ func try_dig(world_pos: Vector3) -> bool:
 	return true
 
 
-## Heightfield brush. Radius 1 is try_dig (same cell, same water-replace rule).
-## Wider radii dig every column in the disk, then one remesh per dirty chunk.
 func try_dig_brush(world_pos: Vector3, radius: int = 1, range_player: Node = null) -> bool:
 	var r := clampi(radius, 1, _LivingForce.BRUSH_RADIUS_MAX)
 	if r <= 1:
@@ -349,7 +338,6 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 		last_fail_reason = "Outside playable area"
 		return false
 
-	# Gates need open ground (no wall/bridge WorldObject) so the player can walk through.
 	if def.is_passage:
 		var blocking: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 		var blocking_id := str(blocking.get("build_id", "")).strip_edges()
@@ -393,7 +381,6 @@ func try_build(world_pos: Vector3, inventory, buildable_id: StringName = &"stone
 			last_fail_reason = "Stack full" if not def.is_bridge else "Bridge stack full"
 			return false
 	else:
-		# Passage: mark build tile for crystal/query without raising surface.
 		if not _TerrainEdits.set_build_tile_only(wx, wz, def.tile_id):
 			inventory.add_item(paid_with, paid_count)
 			last_fail_reason = "Can't place gate here"
@@ -451,7 +438,6 @@ func try_fill(world_pos: Vector3, inventory, tile_id: int = -1) -> bool:
 	if not inventory.consume_item(paid, 1):
 		last_fail_reason = "Need 1 %s" % paid
 		return false
-	# Filling a flooded dig must remove the stamped water block / channel.
 	_clear_flood_water_block(wx, wz)
 	if not _TerrainEdits.build_wall(wx, wz, use_tile):
 		inventory.add_item(paid, 1)
@@ -584,7 +570,6 @@ func can_remove(world_pos: Vector3) -> bool:
 	return player_built or is_channel or is_plant
 
 
-## Remove player-placed wall/gate/bridge/plant/channel on this cell. One wall layer per call.
 func try_remove(world_pos: Vector3, inventory = null) -> bool:
 	last_fail_reason = ""
 	last_build_id = &""
@@ -851,7 +836,6 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 	return false
 
 
-## Replace this land cell with a water/river tile (no dig, no neighbor flood).
 func _replace_cell_with_water_block(wx: int, wz: int) -> bool:
 	if world == null:
 		return false
@@ -1043,8 +1027,6 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
 
 
-## Water-tile stamp did not dig. Wake the edited cell and its neighbours so
-## an earlier hole on the far side of this block still receives the body.
 func _requeue_water_neighbors(wx: int, wz: int) -> void:
 	if not is_inside_tree():
 		return
@@ -1053,16 +1035,12 @@ func _requeue_water_neighbors(wx: int, wz: int) -> void:
 		fluid_svc.requeue_neighbors_on_edit(wx, wz)
 
 
-## Dig/channel/build reshape water — mark fluid dirty; channels force immediate steps.
 func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
 	if fluid_svc == null:
 		return
-	# Immediate multi-step fluid only when water/channels are actually nearby.
-	# Dry-land dig/build was paying full recompute_region_now cost every edit (major hitch).
 	var near_water := _region_needs_immediate_water(wx, wz)
 	if immediate and near_water and fluid_svc.has_method("recompute_region_now"):
-		# One interactive step is enough for trench fill feedback; rest on process budget.
 		fluid_svc.recompute_region_now(wx, wz, 2, 1)
 	elif fluid_svc.has_method("mark_region_dirty"):
 		fluid_svc.mark_region_dirty(wx, wz, 2)

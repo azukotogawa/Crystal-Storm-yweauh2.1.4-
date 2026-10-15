@@ -1,5 +1,4 @@
 extends SceneTree
-## Live camera: continuous 360° yaw, hold-to-rotate, isometric pitch/zoom preserved.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -56,8 +55,6 @@ func _run() -> void:
 		_fail("start region not ready")
 		_finish()
 		return
-	# Loading fade keeps world_loading set for ~0.35s after the stream is ready.
-	# Rotate checks have to run after that, or hold-to-yaw never moves.
 	var _GI = load("res://helpers/gameplay_input.gd")
 	for _w in 90:
 		await process_frame
@@ -79,7 +76,6 @@ func _run() -> void:
 		_finish()
 		return
 
-	# Pitch + zoom contract.
 	if absf(cam.rotation_degrees.x - ISO_PITCH) > 0.05:
 		_fail("pitch want %.3f got %.3f" % [ISO_PITCH, cam.rotation_degrees.x])
 	else:
@@ -89,7 +85,6 @@ func _run() -> void:
 	else:
 		_ok("zoom maps to orthogonal size %.1f" % cam.size)
 
-	# Continuous snap, not mod-4.
 	if cam.has_method("snap_yaw_degrees"):
 		cam.snap_yaw_degrees(22.0)
 	else:
@@ -105,7 +100,6 @@ func _run() -> void:
 	if absf(cam.rotation_degrees.x - ISO_PITCH) > 0.05:
 		_fail("pitch drifted after yaw snap")
 
-	# Offset is a single isometric formula (no even/odd branches).
 	var src := (load("res://player/camera.gd") as GDScript).source_code
 	if "orbit_rotation % 2" in src or "orbit_rotation == 1" in src:
 		_fail("get_offset_from_rotation still has even/odd orbit branches")
@@ -127,7 +121,6 @@ func _run() -> void:
 	else:
 		_ok("offset y constant, xz follows yaw")
 
-	# Tap must not jump 90°.
 	cam.snap_yaw_degrees(45.0)
 	cam.set("use_smoothing", false)
 	Input.action_press("rotate_right")
@@ -141,7 +134,6 @@ func _run() -> void:
 	else:
 		_ok("tap does not snap 90° (delta=%.2f)" % tap_delta)
 
-	# Hold rotate_right moves yaw continuously over time.
 	cam.snap_yaw_degrees(10.0)
 	cam.set("use_smoothing", false)
 	Input.action_press("rotate_right")
@@ -162,7 +154,6 @@ func _run() -> void:
 	else:
 		_ok("hold rotate_right accumulated %.2f° with no 90° jumps" % moved)
 
-	# Movement basis follows continuous yaw (not 4-state).
 	if player.has_method("rotate_input_to_world"):
 		var a: Vector2 = player.rotate_input_to_world(Vector2(0, -1), 22.0)
 		var b: Vector2 = player.rotate_input_to_world(Vector2(0, -1), 45.0)

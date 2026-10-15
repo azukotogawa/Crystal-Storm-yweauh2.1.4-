@@ -1,7 +1,6 @@
 class_name WorldVisuals
 extends Node3D
 
-## Root for all world-space visual content (entities, vegetation, buildings, markers, VFX).
 
 
 func _enter_tree() -> void:

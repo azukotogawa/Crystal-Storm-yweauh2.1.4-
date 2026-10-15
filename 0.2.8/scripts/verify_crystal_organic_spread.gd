@@ -1,6 +1,4 @@
 extends SceneTree
-## Crystal growth fills as one connected pool, like water, instead of a checkerboard.
-## Usage: godot --headless -s scripts/verify_crystal_organic_spread.gd
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")

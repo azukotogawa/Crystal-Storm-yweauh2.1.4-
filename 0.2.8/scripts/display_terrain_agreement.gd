@@ -1,5 +1,4 @@
 extends SceneTree
-## Live camera: ramps, edit invalidation, building faces. Screenshot + structured dump.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
@@ -61,8 +60,6 @@ func _run() -> void:
 		_look(c.x, c.y)
 		if insp:
 			insp.pin_cell = c
-		# Camera snap is immediate; the viewport texture still holds the
-		# previous cell until this pin has been drawn.
 		await process_frame
 		await process_frame
 		await process_frame
@@ -185,8 +182,6 @@ func _look(wx: int, wz: int) -> void:
 func _shot(scratch: String, name: String) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
-	# process_frame resumes before the draw, so get_image() there is the
-	# previous cell. Capture after this frame's draw instead.
 	await RenderingServer.frame_post_draw
 	var tex: Texture2D = root.get_texture()
 	if tex == null:

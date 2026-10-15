@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless checks that weapon, armor, and relic tooltips read live defs.
 
 
 const _TooltipText = preload("res://ui/tooltip_text.gd")

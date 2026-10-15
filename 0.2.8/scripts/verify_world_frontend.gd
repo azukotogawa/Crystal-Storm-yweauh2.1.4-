@@ -1,5 +1,4 @@
 extends SceneTree
-## WorldManager + PlayerSettings CRUD against shipped catalog/settings I/O.
 
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")

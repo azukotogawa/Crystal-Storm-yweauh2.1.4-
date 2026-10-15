@@ -1,6 +1,5 @@
 class_name PlayerSettings
 extends RefCounted
-## Persisted player settings that map to existing systems only.
 
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
@@ -27,19 +26,13 @@ static var tutorial_completed: bool = false
 static var fullscreen: bool = false
 static var vsync_enabled: bool = true
 static var resolution: String = "1280x720"
-## Hide terrain and structures between the camera and the player. Default on.
 static var camera_cutaway_enabled: bool = true
-## Matches player/camera.gd ISO_PITCH_DEG. Restored on load; the camera clamps it.
 const CAMERA_PITCH_DEFAULT := -35.264
 static var camera_pitch_degrees: float = CAMERA_PITCH_DEFAULT
-## Times set_camera_pitch actually wrote the file. Headless probes count writes.
 static var camera_pitch_save_count: int = 0
-## Debug placeholders for every texture. Default off. F6 toggles it.
 static var texture_blueprint: bool = false
-## Graphics texture set. "original" or "batch1". Default original.
 static var texture_set: String = "original"
 static var keybinds: Dictionary = {}
-## Times `_apply_display_now` was entered. Headless still counts; it does not touch the window.
 static var display_apply_count: int = 0
 ## True after the first `apply_runtime`. Startup applies once; later reads must not.
 static var runtime_applied: bool = false
@@ -156,7 +149,6 @@ static func save_settings(data: Dictionary) -> bool:
 	return true
 
 
-## Copy persisted values into the statics. No InputMap, window, or scale calls.
 static func _sync_runtime(data: Dictionary) -> void:
 	screen_shake_enabled = bool(data.get("screen_shake_enabled", true))
 	hit_stop_enabled = bool(data.get("hit_stop_enabled", true))
@@ -185,7 +177,6 @@ static func _sync_runtime(data: Dictionary) -> void:
 		keybinds = {}
 
 
-## Push keybinds, UI scale, and display from the statics. Call once at startup and from the settings menu.
 static func apply_runtime(tree: SceneTree = null) -> void:
 	_apply_keybinds_now()
 	_apply_ui_scale_now(tree)
@@ -236,7 +227,6 @@ static func _store_volume(bus: String, v: float) -> void:
 			volume_master = v
 
 
-## Write persisted fields onto the live quality resource (does not call apply_quality).
 static func apply_to_performance(perf) -> Dictionary:
 	var data: Dictionary = load_settings()
 	if perf == null:
@@ -284,7 +274,6 @@ static func write_policy(policy: Dictionary) -> void:
 		policy["preset"] = saved_preset
 
 
-## After QUALITY_APPLIED: overlay player fields and push through apply_to_registered.
 static func apply_after_quality(perf, registry, resolved: Dictionary = {}) -> Dictionary:
 	var data: Dictionary = apply_to_performance(perf)
 	if resolved.has("policy") and resolved.policy is Dictionary:
@@ -317,8 +306,6 @@ static func set_ui_scale(scale: float, persist: bool = true) -> void:
 	_apply_ui_scale_now()
 
 
-## Persist the camera pitch. Callers clamp to the live camera limits first.
-## Skips the disk when the file already has this value.
 static func set_camera_pitch(degrees: float) -> bool:
 	var data := load_settings()
 	var prev := float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))

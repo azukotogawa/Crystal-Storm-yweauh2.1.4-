@@ -7,7 +7,6 @@ const _VoxelFloorProbe = preload("res://player/voxel_floor_probe.gd")
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 
-## When true, entities use single-sample height (no 8-probe floor sampling).
 static var use_lightweight_nav: bool = true
 
 static var _shared_probe: _VoxelFloorProbe
@@ -106,7 +105,6 @@ static func snap_to_ground(
 	return Vector3(world_pos.x, y, world_pos.z)
 
 
-## First tied cardinal in NEIGHBOR_DIRS order. That is the cell the full scan keeps.
 static func _cardinal_toward(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
 	var dx := target_cell.x - from_cell.x
 	var dz := target_cell.y - from_cell.y
@@ -148,8 +146,6 @@ static func _neighbor_step_ok(
 	else:
 		var probe := _get_probe(world, chunk_manager, crystal_manager, current_y)
 		cand_y = probe.sample_walkable_feet(cand_x, cand_z)
-	# A pool bed can be many layers down. Swim across it, and step out only
-	# when the bank is within a normal walk of the body.
 	if _Water.column_has_water(world, candidate.x, candidate.y):
 		var info := _Water.sample(world, candidate.x, candidate.y, current_y, cand_y)
 		if bool(info.get("submerged", false)):
@@ -181,9 +177,6 @@ static func step_toward_cell(
 
 	var best_cell := from_cell
 	var current_y := current.y
-	# Cardinal neighbors only. The closest open step is unique (ties follow
-	# NEIGHBOR_DIRS order). Other directions are checked only when that step is
-	# walled or steeper than max_step_up, which is the same cell the full scan picks.
 	var direct := _cardinal_toward(from_cell, target_cell)
 	if direct != Vector2i.ZERO and _neighbor_step_ok(
 		from_cell + direct, current_y, max_step_up, world, chunk_manager, crystal_manager
@@ -243,9 +236,6 @@ static func flee_cell(from_cell: Vector2i, threat_cell: Vector2i, distance: int 
 	)
 
 
-## Shove in world space. A step that would climb more than one layer stays put.
-## WorldObject walls block the segment, not only the destination column.
-## A world with sample_knock_ground(x, z) is a test stub. Live worlds use the walkable query.
 static func knockback_step(
 	current: Vector3,
 	dir: Vector3,
@@ -266,7 +256,6 @@ static func knockback_step(
 	var ground := _knock_ground_y(world, chunk_manager, crystal, dest, current.y)
 	var col := _column_xz_from_world(dest)
 	var water := _water_at(world, floori(col.x), floori(col.y), current.y, ground)
-	# The bed of a pool is not a wall. Slide along the float line.
 	if bool(water.get("submerged", false)):
 		dest.y = _Water.settle_y(current.y, water, 0.05)
 		return dest
@@ -277,7 +266,6 @@ static func knockback_step(
 	return dest
 
 
-## Samples the segment in column space. The start cell is allowed so a body can leave a wall.
 static func _segment_hits_blocking_wall(from_pos: Vector3, to_pos: Vector3) -> bool:
 	var a := _column_xz_from_world(from_pos)
 	var b := _column_xz_from_world(to_pos)

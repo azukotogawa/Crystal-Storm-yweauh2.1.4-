@@ -1,5 +1,4 @@
 extends Node3D
-## Headless combat stub for spatial query consumer verifies only.
 
 func get_combat_center() -> Vector3:
 	return global_position if is_inside_tree() else position

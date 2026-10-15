@@ -10,9 +10,7 @@ var player: Player
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 
-## Extra range when previewing build via RMB (build_place) while another tool is selected.
 const BUILD_PREVIEW_RANGE := 2.8
-## Hover pick distance (screen-follow); actions still clamp to tool range.
 const HOVER_PICK_RANGE := 14.0
 const DISPLAY_SNAP_SPEED := 64.0
 const HOVER_PULSE_HZ := 2.4
@@ -29,7 +27,6 @@ var _hover_t: float = 0.0
 var _last_mode: StringName = &"none"
 var _last_cell: Vector2i = Vector2i(999999, 999999)
 var _place_flash_t: float = 0.0
-## Last aim column shared with dig/build (column-space center) — always matches cursor cell.
 var _action_column: Vector3 = Vector3.ZERO
 
 
@@ -37,7 +34,6 @@ func _ready() -> void:
 	player = get_parent() as Player
 	world = get_tree().get_first_node_in_group("world")
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
-	# Run before WeaponController so dig/build read this frame's aim column.
 	process_priority = -20
 	_build_mesh()
 	_build_ghost()
@@ -108,24 +104,20 @@ func _process(delta: float) -> void:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 
 	var range_v := _active_range()
-	# Hold RMB / R to preview build even with sword or pick selected (build_place path).
 	if Input.is_action_pressed("build_place") or Input.is_action_pressed("interact"):
 		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
 
-	# Hover follows mouse beyond tool range (blocked tint when out of range).
 	var hover_col: Vector3 = _ActionTargeting.pick_hover_column(
 		player, world, chunk_manager, maxf(range_v, HOVER_PICK_RANGE)
 	)
 	if hover_col == Vector3.ZERO:
 		hover_col = _ActionTargeting.target_column(player, range_v)
 
-	# Exact mouse follow: action cell is always the live hover column (no hysteresis).
 	var hover_cell := Vector2i(floori(hover_col.x), floori(hover_col.z)) if hover_col != Vector3.ZERO \
 		else Vector2i(999999, 999999)
 	_stable_cell = hover_cell
 	var stable_col := Vector3(float(_stable_cell.x) + 0.5, player.voxel_position.y, float(_stable_cell.y) + 0.5) \
 		if _stable_cell.x < 900000 else Vector3.ZERO
-	# Always publish aim for dig/build — even when mode preview is blocked/out of range.
 	_action_column = stable_col
 
 	var resolve_t0 := Time.get_ticks_usec()
@@ -140,13 +132,11 @@ func _process(delta: float) -> void:
 		profiler.record_func("ActionTargeting::resolve_action", Time.get_ticks_usec() - resolve_t0)
 
 	var mode: StringName = info.get("mode", &"none")
-	# Show dig/build/attack previews even when blocked so aim stays readable.
 	if mode not in [&"dig", &"build", &"attack", &"ranged"] or stable_col == Vector3.ZERO:
 		_mesh.visible = false
 		if _ghost:
 			_ghost.visible = false
 		_display_ready = false
-		# Keep _action_column so hold-dig still hits the hovered cell under the mouse.
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -165,15 +155,12 @@ func _process(delta: float) -> void:
 	_mesh.scale = Vector3(scale * 1.06 * pulse_scale, box_h * (1.0 + 0.03 * pulse + 0.12 * place_boost), scale * 1.06 * pulse_scale)
 
 	var target_pos: Vector3 = info.get("world_pos", Vector3.ZERO)
-	# world_pos is the top face of the target layer; center the box in that layer.
 	target_pos.y -= layer * 0.5
 	var cell: Vector2i = info.get("cell", _stable_cell)
-	# Logical cell jumps: snap box instantly (cursor always under mouse).
 	if not _display_ready or mode != _last_mode or cell != _last_cell:
 		_display_pos = target_pos
 		_display_ready = true
 	else:
-		# Same cell: ease height when dig/build changes surface under the cursor.
 		var k: float = clampf(DISPLAY_SNAP_SPEED * delta, 0.0, 1.0)
 		_display_pos = _display_pos.lerp(target_pos, k)
 		if _display_pos.distance_to(target_pos) < 0.03:
@@ -190,7 +177,6 @@ func _process(delta: float) -> void:
 	else:
 		match mode:
 			&"dig":
-				# g kept <0.65 so dig-highlight verifies still read as orange.
 				_mat.albedo_color = Color(1.0, 0.52, 0.1, 0.28 + 0.16 * pulse)
 				_mat.emission = Color(1.0, 0.45, 0.05)
 				_mat.emission_energy_multiplier = 0.55 + 0.55 * pulse
@@ -217,12 +203,10 @@ func _process(delta: float) -> void:
 		profiler.end("target_highlight")
 
 
-## Satisfying placement pop when a wall/gate/bridge lands.
 func pulse_place_success() -> void:
 	_place_flash_t = 0.18
 
 
-## Column dig/build must use — matches the visible cursor (column-space).
 func get_action_column() -> Vector3:
 	return _action_column
 
@@ -231,7 +215,6 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 	if _ghost == null:
 		return
 	var mode: StringName = info.get("mode", &"none")
-	# Predict next tile along aim for dig/build continuous reshape.
 	if mode not in [&"dig", &"build"] or not bool(info.get("valid", false)):
 		_ghost.visible = false
 		return

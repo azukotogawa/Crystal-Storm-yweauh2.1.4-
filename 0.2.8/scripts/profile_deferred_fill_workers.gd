@@ -1,7 +1,4 @@
 extends SceneTree
-## Windowed A (fill off) / C (worker fill) gameplay profile.
-## B = previous main-thread fill baseline in deferred_fill_gameplay_profile.md
-## Env: CRYSTALSTORM_FILL_PROFILE_PHASE=A|C  CRYSTALSTORM_FILL_PROFILE_SEC=16
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _WorldBakeService = preload("res://world/world_bake_service.gd")

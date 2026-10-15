@@ -1,5 +1,4 @@
 extends SceneTree
-## Settle, river inflow, and crystal pressure/pushback stay bounded and deterministic.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -250,12 +249,10 @@ func _crystal_pressure() -> void:
 	editor.call("_living_crystal_react", [origin], &"build")
 	var build_delta := crystal.get_depth_at(origin.x, origin.y) - before_build
 	_expect(absf(build_delta - _LivingForce.crystal_build_pressure) < 0.0001 or crystal.nudges > 0, "a new wall adds build pressure to nearby crystal")
-	# The aimed cell is not always in the first 4 sorted targets. Check the sum of increases.
 	var gained := 0.0
 	for key in crystal.depths.keys():
 		var cell: Vector2i = key
 		gained += crystal.get_depth_at(cell.x, cell.y) - 0.5
-	# Four dig nudges of 0.06 plus up to four build nudges of 0.10, minus the digs already counted from 0.5.
 	_expect(gained > 0.2 and gained < 0.7, "pressure stays capped (gained %.3f)" % gained)
 
 

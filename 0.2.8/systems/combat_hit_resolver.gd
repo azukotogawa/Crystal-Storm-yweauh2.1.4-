@@ -126,7 +126,6 @@ static func apply_damage(
 	return final
 
 
-## Discover combatants via Spatial Query Layer when available; group scan is legacy fallback only.
 static func _combat_nodes(scene_root: Node, origin: Vector3, search_radius: float) -> Array:
 	var svc = _SpatialQueryService.get_active()
 	if svc == null and scene_root and scene_root.is_inside_tree():
@@ -143,7 +142,6 @@ static func _combat_nodes(scene_root: Node, origin: Vector3, search_radius: floa
 					nodes.append(p)
 			if not nodes.is_empty():
 				return nodes
-	# Group scan: tests without a layer, and live mites the radius query missed.
 	var out: Array = []
 	if scene_root == null or not scene_root.is_inside_tree():
 		return out

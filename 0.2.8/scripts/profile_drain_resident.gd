@@ -1,12 +1,4 @@
 extends SceneTree
-## Exclusive breakdown: ChunkManager._drain_stream_pipeline +
-## WorldBakeService.ensure_package_data_resident / _read_chunk_package leaves.
-## Measure only — no optimizations.
-##
-## Usage:
-##   CRYSTALSTORM_DRAIN_STREAM_MEASURE=1 CRYSTALSTORM_BAKE_RESIDENT_MEASURE=1 \
-##   CRYSTALSTORM_BAKE_RADIUS=2 CRYSTALSTORM_SCRATCH=... \
-##   godot --headless -s scripts/profile_drain_resident.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const WARM_FRAMES := 30
@@ -62,7 +54,6 @@ func _run() -> void:
 	for _i in WARM_FRAMES:
 		await process_frame
 
-	# Enable + reset measures after warm stream so cold window is clean.
 	if cm.has_method("set_drain_measure_enabled"):
 		cm.set_drain_measure_enabled(true)
 	var bake = load("res://world/world_bake_service.gd").get_active()
@@ -75,7 +66,6 @@ func _run() -> void:
 		dropped = int(bake.drop_resident_packages_for_measure())
 	print("dropped_resident_packages=", dropped)
 
-	# Direct cold microbench: one enqueue-shaped halo (center ensure + 8 data-only).
 	var direct: Dictionary = {}
 	if bake != null and bake.valid and bake.has_method("ensure_package_data_resident"):
 		var center := Vector2i(0, 0)
@@ -111,14 +101,12 @@ func _run() -> void:
 		print("DIRECT_COLD_HALO_MS=", float(direct_tot) / 1000.0,
 			" center_ms=", float(center_us) / 1000.0,
 			" halo_ms=", float(halo_us) / 1000.0, " halo_n=", halo_n)
-		# Reset counters so stream window is clean after direct microbench.
 		if bake.has_method("reset_resident_measure"):
 			bake.reset_resident_measure()
 		if cm.has_method("reset_drain_measure"):
 			cm.reset_drain_measure()
 		ChunkData.set_snapshot_measure_enabled(true)
 
-	# Force stream activity: teleport within bake bounds (in-package only).
 	var min_cx := -2
 	var max_cx := 2
 	var min_cz := -2
@@ -128,7 +116,6 @@ func _run() -> void:
 		max_cx = int(bake.max_cx)
 		min_cz = int(bake.min_cz)
 		max_cz = int(bake.max_cz)
-	# Stay 1 chunk inside package so stream ring still hits packages.
 	var targets: Array = [
 		Vector2i(maxi(min_cx + 1, min_cx), maxi(min_cz + 1, min_cz)),
 		Vector2i(mini(max_cx - 1, max_cx), maxi(min_cz + 1, min_cz)),
@@ -147,13 +134,11 @@ func _run() -> void:
 			gp.z = wz
 			player.global_position = gp
 		print("teleport_to_chunk=", tc, " world=(", wx, ",", wz, ")")
-		# Drop resident again each hop so halo ensure misses stay cold.
 		if bake != null and bake.has_method("drop_resident_packages_for_measure"):
 			bake.drop_resident_packages_for_measure()
 		for _f in COLD_TELEPORT_FRAMES:
 			await process_frame
 
-	# Walk path for additional enqueues.
 	var dirs: Array[String] = ["ui_right", "ui_up", "ui_left", "ui_down"]
 	var di := 0
 	for i in WALK_FRAMES:
@@ -308,7 +293,6 @@ func _print_report(r: Dictionary) -> void:
 		print("\n========== PACKAGE LOAD STATS ==========")
 		print(JSON.stringify(pls, "\t"))
 
-	# Final synthesis for exclusive leaf of the drain hitch.
 	print("\n========== SYNTHESIS ==========")
 	var drain_max := float(r.get("drain_max_ms", 0))
 	var enq: Dictionary = r.get("worst_enqueue", {})

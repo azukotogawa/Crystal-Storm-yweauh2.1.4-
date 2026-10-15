@@ -1,7 +1,4 @@
 extends SceneTree
-## Early-run survival PE: spawn far enough from crystal origin, mite grace holds,
-## first enemy spawn is announcable via production spawner signal.
-## Usage: godot --headless -s scripts/verify_early_survival.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -50,7 +47,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "Early survival FAILED")
 		return
 
-	# Structural: opening + mite toast wiring in overlay.
 	var overlay_src := (load("res://ui/game_overlay.gd") as GDScript).source_code
 	if "Maze phase" not in overlay_src and "_show_opening_toast" not in overlay_src:
 		_fail("overlay must show opening maze toast")
@@ -68,7 +64,6 @@ func _run() -> void:
 	else:
 		print("OK spawn_grace_sec=%.1f" % float(spawner.spawn_grace_sec))
 
-	# Spawn distance from boss origin.
 	var origin := Vector2i.ZERO
 	for s in crystal.get_active_spawns():
 		if s.is_boss:
@@ -83,8 +78,6 @@ func _run() -> void:
 	else:
 		print("OK spawn distance from origin=%.1f" % dist)
 
-	# Survive only while spawn grace is active (no post-grace combat buffer —
-	# idle player can legitimately die once mites start after grace ends).
 	var grace: float = float(spawner.spawn_grace_sec) if spawner and "spawn_grace_sec" in spawner else 28.0
 	var max_frames := mini(int(ceil(grace * 90.0)) + 120, 3600)
 	var t0 := Time.get_ticks_msec()
@@ -115,9 +108,7 @@ func _run() -> void:
 			Time.get_ticks_msec() - t0, float(player.health), frames_waited
 		])
 
-	# Production spawn path still works after grace (force).
 	if spawner and spawner.has_method("spawn_enemy_now"):
-		# Advance grace if needed for manual spawn tests of signal path.
 		if "spawn_grace_sec" in spawner:
 			spawner.set("_grace_elapsed", float(spawner.spawn_grace_sec) + 1.0)
 		var saw := {"id": &"", "pos": Vector2i.ZERO}
@@ -130,7 +121,6 @@ func _run() -> void:
 		for _w in 30:
 			await process_frame
 		if not ok_spawn and saw["id"] == &"":
-			# spawn may fail without crystal depth near far player — still OK if grace/survival passed
 			print("NOTE spawn_enemy_now no-op (no crystal ring near far spawn) — survival still OK")
 		else:
 			print("OK enemy spawn path id=%s pos=%s" % [saw["id"], saw["pos"]])

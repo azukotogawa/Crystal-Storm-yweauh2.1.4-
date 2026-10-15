@@ -9,7 +9,6 @@ void fragment() {
 	if (is_clipped) {
 		float current_pixel_y = FRAGCOORD.y;
 		
-		// Only clip pixels above the wall's peak
 		if (current_pixel_y < clip_threshold_y) {
 			col.a = 0.0;
 		}

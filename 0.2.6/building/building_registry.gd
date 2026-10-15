@@ -87,7 +87,6 @@ static func _make_gate() -> _BuildableDef:
 	d.height_delta = 0
 	d.raises_terrain = false
 	d.is_passage = true
-	# Strong baffle while remaining walkable (player passes; crystal crawls).
 	d.flow_resistance = 0.72
 	d.placement_range = 2.8
 	return d

@@ -1,6 +1,4 @@
 extends SceneTree
-## Live main.tscn: stamp a ruin, assert authored pillar at center only.
-## Usage: godot --path . -s scripts/verify_ruin_pillar_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

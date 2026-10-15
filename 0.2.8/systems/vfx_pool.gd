@@ -1,7 +1,5 @@
 class_name VfxPool
 extends Node3D
-## Pooled one-shot CPUParticles3D and a few swing meshes.
-## Idle pool does not run _process. LOW keeps the smallest cap.
 
 enum Kind { SHATTER, DUST, SPLASH, SPAWN_DEATH, CORRUPT, CHIP }
 
@@ -109,7 +107,6 @@ func active_count() -> int:
 
 
 func burst(kind: int, pos: Vector3, tint: Color = Color.WHITE, scale: float = 1.0) -> bool:
-	# Shatter and spawn-death are the large bursts. Dust, splash, and corruption stay.
 	if _PlayerSettings.reduce_motion and (kind == Kind.SHATTER or kind == Kind.SPAWN_DEATH):
 		return false
 	if kind == Kind.CORRUPT:
@@ -327,7 +324,6 @@ func _style(p: CPUParticles3D, kind: int, tint: Color, scale: float) -> void:
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.vertex_color_use_as_albedo = true
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		# Fixed white. Per-burst tint lives on p.color so in-flight bursts stay put.
 		mat.albedo_color = Color(1.0, 1.0, 1.0, 0.9)
 		_mats[kind] = mat
 	p.material_override = mat

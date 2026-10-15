@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless checks for M6 settings: keybinds, audio, UI scale, reduce motion, palette, tutorial.
 
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")

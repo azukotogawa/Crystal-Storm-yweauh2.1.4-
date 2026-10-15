@@ -1,8 +1,4 @@
 extends Node
-## Permanent runtime profiler for Crystal Storm.
-## Exposes per-frame subsystem timings, worker/stream gauges, memory, and
-## bottleneck ranking for in-game debug + headless probes.
-## Autoload: PerfProfiler. Does not change gameplay — measurement only.
 
 const FRAME_BUDGET_MS: float = 16.6
 const HISTORY_LEN: int = 120
@@ -16,9 +12,8 @@ const WORKER_STAGE_SECTIONS := {
 
 var enabled: bool = true
 
-## Active timing stacks / accumulation for the *current* frame.
-var _sections: Dictionary = {}  # name -> {active, start, cur_us, last_us, max_us, total_us, worker, exclusive_us, last_exclusive_us, calls, last_calls}
-var _funcs: Dictionary = {}  # Class::method -> same shape + calls
+var _sections: Dictionary = {}
+var _funcs: Dictionary = {}
 var _frame_us: int = 0
 var _frame_start: int = 0
 var _worker_us: int = 0
@@ -46,10 +41,8 @@ var _mem_current_mb: float = 0.0
 var _mem_peak_mb: float = 0.0
 var _engine_time_process_ms: float = 0.0
 var _engine_time_physics_ms: float = 0.0
-## Exclusive nested section stack (main-thread attribution without double-count).
-var _section_stack: Array = []  # section names, bottom→top
-var _exclusive_open_us: Dictionary = {}  # section -> usec when exclusive slice started
-## Last closed frame attribution (set in _process rotate).
+var _section_stack: Array = []
+var _exclusive_open_us: Dictionary = {}
 var _last_attribution: Dictionary = {}
 
 
@@ -59,7 +52,6 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	# Run late so section accumulation for the frame is complete before rotation.
 	process_priority = 100000
 	set_process(true)
 	call_deferred("_register_monitors_if_in_game")
@@ -74,18 +66,13 @@ func _register_monitors_if_in_game() -> void:
 func _process(_delta: float) -> void:
 	if not enabled:
 		return
-	# Close process envelope and schedule frame finalize after MessageQueue flush
-	# (call_deferred), so MainLoop_deferred exclusive is not cut short by rotate.
 	var probe = get_node_or_null("/root/MainThreadFrameProbe")
 	if probe and probe.has_method("close_process_envelope"):
 		probe.close_process_envelope()
 	else:
-		# No probe: finalize immediately (tests / stripped boots).
 		finalize_frame()
 
 
-## End-of-frame accounting. Prefer calling after deferred MessageQueue work.
-## full_wall = mark_frame_work_start → here (physics+process+deferred MQ only).
 func finalize_frame() -> void:
 	if not enabled:
 		return
@@ -93,10 +80,8 @@ func finalize_frame() -> void:
 	if _frame_work_started:
 		_frame_us = maxi(now - _frame_start, 1)
 	else:
-		# No phase marker (tests): fall back to prior finalize clock.
 		_frame_us = maxi(now - _frame_start, 1)
 	_frame_work_started = false
-	# Next work window starts on mark_frame_work_start; keep a fallback clock.
 	_frame_start = now
 	_worker_frame_us = _worker_us
 	_worker_us = 0
@@ -113,7 +98,6 @@ func finalize_frame() -> void:
 
 
 func _rotate_section_frame() -> void:
-	# Close any open exclusive slices (shouldn't happen if begin/end balanced).
 	var now := Time.get_ticks_usec()
 	if not _section_stack.is_empty():
 		var top: String = str(_section_stack.back())
@@ -147,7 +131,6 @@ func _rotate_section_frame() -> void:
 
 func _push_frame_history(frame_ms: float) -> void:
 	if _frame_history_ms.size() >= HISTORY_LEN:
-		# Shift left cheaply by rebuilding when full (HISTORY_LEN is small).
 		var next := PackedFloat32Array()
 		next.resize(HISTORY_LEN - 1)
 		for i in range(1, _frame_history_ms.size()):
@@ -184,9 +167,6 @@ const _MONITOR_SECTIONS := [
 
 
 func _exit_tree() -> void:
-	# Drop custom monitors while this node is still valid. Leaving lambdas
-	# registered in Performance after PerfProfiler is freed corrupts the heap
-	# on quit (proven: register→crash, register+remove→clean).
 	_unregister_monitors()
 
 
@@ -203,7 +183,6 @@ func _register_monitors() -> void:
 
 func _unregister_monitors() -> void:
 	if not _monitors_registered:
-		# Still best-effort clear in case flag desynced.
 		pass
 	for n in _MONITOR_SECTIONS:
 		var key := "crystalstorm/%s_ms" % n
@@ -233,7 +212,6 @@ func set_gauge(name: String, value: float) -> void:
 	_gauges[name] = value
 
 
-## Worker job completion hook — tracks avg/longest job (ms).
 func note_worker_job_ms(job_ms: float) -> void:
 	if not enabled or job_ms <= 0.0:
 		return
@@ -392,7 +370,6 @@ func is_worker_section(section: String) -> bool:
 	return WORKER_STAGE_SECTIONS.has(section) or bool(_sections.get(section, {}).get("worker", false))
 
 
-## Ranked list of hottest *main-thread* sections last frame (ms desc).
 func get_bottlenecks(limit: int = 5) -> Array:
 	var rows: Array = []
 	for key in _sections.keys():
@@ -408,7 +385,6 @@ func get_bottlenecks(limit: int = 5) -> Array:
 	return rows
 
 
-## Hottest functions by last-frame ms (and max for hitch hunting).
 func get_hot_functions(limit: int = 10, by_max: bool = false) -> Array:
 	var rows: Array = []
 	for key in _funcs.keys():
@@ -434,7 +410,6 @@ func get_hot_functions(limit: int = 10, by_max: bool = false) -> Array:
 	return rows
 
 
-## Main-thread attribution ms last frame (excludes worker-stage sections).
 func get_main_tracked_ms() -> float:
 	var tracked := 0
 	for key in _sections.keys():
@@ -642,7 +617,6 @@ func _format_runtime_report_v2(r: Dictionary) -> String:
 		float(r.frame.get("engine_process_ms", 0.0)),
 		float(r.frame.get("engine_physics_ms", 0.0)),
 	])
-	# Frame budget queues (Phase 3)
 	var fbs = Engine.get_main_loop()
 	if fbs is SceneTree:
 		var sched = (fbs as SceneTree).root.get_node_or_null("/root/FrameBudgetScheduler")
@@ -677,8 +651,6 @@ func _ensure_section(section: String) -> Dictionary:
 	return s
 
 
-## Single exclusive path: only the named section receives exclusive time.
-## No remap / divert / promote to a different section name.
 func _add_exclusive(section: String, us: int) -> void:
 	if us <= 0:
 		return
@@ -691,7 +663,6 @@ func begin(section: String) -> void:
 	if not enabled:
 		return
 	var now := Time.get_ticks_usec()
-	# Pause parent exclusive slice.
 	if not _section_stack.is_empty():
 		var parent: String = str(_section_stack.back())
 		if _exclusive_open_us.has(parent):
@@ -731,7 +702,6 @@ func record_us(section: String, elapsed_us: int) -> void:
 		_exclusive_open_us[parent] = Time.get_ticks_usec()
 
 
-## Attribute completed worker-stage time (does not reduce main untracked).
 func record_worker_stage(section: String, elapsed_us: int) -> void:
 	if not enabled or elapsed_us <= 0:
 		return
@@ -741,7 +711,6 @@ func record_worker_stage(section: String, elapsed_us: int) -> void:
 	s.total_us = int(s.total_us) + elapsed_us
 	s.last_us = int(s.cur_us)
 	s.max_us = maxi(int(s.max_us), elapsed_us)
-	# Worker exclusive is tracked separately and excluded from main wall %.
 	s.exclusive_us = int(s.get("exclusive_us", 0)) + elapsed_us
 	s.calls = int(s.get("calls", 0)) + 1
 	_sections[section] = s
@@ -756,7 +725,6 @@ func end(section: String) -> void:
 		return
 	var now := Time.get_ticks_usec()
 	var elapsed: int = now - int(s.get("start", 0))
-	# Exclusive slice for this section first (mutates _sections[section]).
 	if _exclusive_open_us.has(section):
 		_add_exclusive(section, now - int(_exclusive_open_us[section]))
 		_exclusive_open_us.erase(section)
@@ -767,20 +735,17 @@ func end(section: String) -> void:
 	s.last_us = int(s.cur_us)
 	s.max_us = maxi(int(s.max_us), elapsed)
 	_sections[section] = s
-	# Pop stack (tolerate mis-order by scanning).
 	if not _section_stack.is_empty() and str(_section_stack.back()) == section:
 		_section_stack.pop_back()
 	else:
 		var idx := _section_stack.rfind(section)
 		if idx >= 0:
 			_section_stack.remove_at(idx)
-	# Resume parent exclusive.
 	if not _section_stack.is_empty():
 		var parent: String = str(_section_stack.back())
 		_exclusive_open_us[parent] = Time.get_ticks_usec()
 
 
-## Function-level hotspot (e.g. "ChunkManager::_on_chunk_ready").
 func begin_func(func_name: String) -> void:
 	if not enabled:
 		return
@@ -835,7 +800,6 @@ func scope_func(func_name: String) -> RefCounted:
 func get_snapshot() -> Dictionary:
 	var main_us := _frame_us
 	var worker_us := _worker_frame_us
-	# Inclusive sum (legacy; may double-count nested). Prefer exclusive / attribution.
 	var tracked_main := 0
 	var exclusive_main := 0
 	for key in _sections.keys():
@@ -862,24 +826,18 @@ func get_snapshot() -> Dictionary:
 	}
 
 
-## Full main-thread wall attribution for the last completed frame.
-## Named exclusive leaf call sites only; residual is Unknown. Denominator = full_wall_us.
 func get_attribution() -> Dictionary:
 	if not _last_attribution.is_empty():
 		return _last_attribution.duplicate(true)
 	return _build_attribution_snapshot()
 
 
-## Legacy MainLoop_* names are never gate=named (forbidden residual dumps).
-## Live path uses physics_callbacks / process_callbacks with real begin/end instead.
 const ENVELOPE_SECTIONS := {
 	"MainLoop_process": true,
 	"MainLoop_physics": true,
 	"MainLoop_deferred": true,
 	"MainLoop_idle": true,
 }
-## Names forbidden as gate=named (residual dumps). physics_callbacks / process_callbacks
-## are ordinary named sections with real begin/end call sites — not listed here.
 const FORBIDDEN_NAMED_SECTIONS := {
 	"Unknown": true,
 	"Engine_process_unscoped": true,
@@ -894,14 +852,10 @@ const FORBIDDEN_NAMED_SECTIONS := {
 	"physics_server_step": true,
 }
 
-## Last inter-frame gap (usec) after previous finalize until next phase start.
-## Not part of full_wall; diagnostic only.
 var _last_inter_frame_gap_us: int = 0
 var _frame_work_started: bool = false
 
 
-## Mark the start of this frame's main-thread work window (first physics/process).
-## Call after closing any inter-frame gap. Measurement only.
 func mark_frame_work_start() -> void:
 	if not enabled:
 		return
@@ -911,16 +865,11 @@ func mark_frame_work_start() -> void:
 	_frame_work_started = true
 
 
-## Record pure inter-frame gap (not main-thread work). Does not enter section map.
 func note_inter_frame_gap_us(gap_us: int) -> void:
 	if gap_us > 0:
 		_last_inter_frame_gap_us = gap_us
 
 
-## Pure attribution contract (unit-testable). No wall shrinking, no residual renames.
-## section_map: name -> {exclusive_us, calls?, worker?}
-## Returns categories + named/unknown against full_wall_us only.
-## Stateless w.r.t. instance fields — safe to call on autoload for unit tests.
 func account_main_thread_frame(section_map: Dictionary, full_wall_us: int) -> Dictionary:
 	var wall: int = maxi(full_wall_us, 1)
 	var categories: Dictionary = {}
@@ -954,7 +903,6 @@ func account_main_thread_frame(section_map: Dictionary, full_wall_us: int) -> Di
 			"worker": false,
 		}
 		if ENVELOPE_SECTIONS.has(name) or FORBIDDEN_NAMED_SECTIONS.has(name):
-			# Phase bracket exclusive remainder — diagnostic only; counts in Unknown.
 			envelope_residual_us += ex
 			entry["gate"] = "unknown_envelope_residual"
 			categories[name] = entry
@@ -993,10 +941,6 @@ func account_main_thread_frame(section_map: Dictionary, full_wall_us: int) -> Di
 
 
 func _build_attribution_snapshot() -> Dictionary:
-	## Denominator = full_wall_us (frame work window only; see mark_frame_work_start).
-	## Named = exclusive times for sections with real begin/end (or record_us) only.
-	## No remapping: raw section_map is what account_main_thread_frame sees.
-	## Unknown = max(0, full_wall − named). MainLoop_* if present → envelope residual.
 	var full_wall_us: int = maxi(_frame_us, 1)
 	var section_map: Dictionary = {}
 	for key in _sections.keys():

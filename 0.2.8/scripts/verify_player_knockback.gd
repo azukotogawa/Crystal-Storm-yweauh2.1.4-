@@ -1,6 +1,4 @@
 extends SceneTree
-## Headless: a burst hit shoves the player away from the attacker.
-## Crystal pressure and a second hit during i-frames do not.
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")

@@ -1,8 +1,4 @@
 extends SceneTree
-## Full finite-world bake: bounds from WorldBorder, prefer bake, no outside generate.
-## Usage: godot --headless -s scripts/verify_full_world_bake.gd
-## Env CRYSTALSTORM_FULL_WORLD_BAKE_RUN=1 forces a real full-map bake (slow; measured).
-## Default: structural full-bounds checks + smoke-radius package behaving under full-world APIs.
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -43,7 +39,6 @@ func _run() -> void:
 	_WorldBakeService.clear_active()
 	_MeshPlanCache.clear_active()
 
-	# --- Full playable bounds (not radius-2) ---
 	var bounds: Dictionary = _WorldBakeService.full_world_chunk_bounds()
 	var exp_chunks: int = int(bounds.get("chunks", 0))
 	if exp_chunks < 1000:
@@ -57,14 +52,12 @@ func _run() -> void:
 				exp_chunks, int(bounds.half_x),
 			]
 		)
-	# Radius-2 smoke is NOT full world
 	var smoke_count: int = 5 * 5
 	if exp_chunks <= smoke_count:
 		_fail("full world must exceed smoke radius package size")
 	else:
 		_ok("full world span >> smoke radius (%d > %d)" % [exp_chunks, smoke_count])
 
-	# Outside finite world detection
 	var outside := Vector2i(int(bounds.max_cx) + 5, int(bounds.max_cz) + 5)
 	if not _WorldBakeService.is_chunk_outside_finite_world(outside):
 		_fail("chunk beyond playable must be outside finite world")
@@ -76,7 +69,6 @@ func _run() -> void:
 	else:
 		_ok("origin inside finite world")
 
-	# Structural: pipeline blocks generate when full bake active + miss
 	var pipe_src := FileAccess.get_file_as_string("res://chunks/chunk_pipeline.gd")
 	if "should_block_procedural_generate" not in pipe_src:
 		_fail("pipeline must block procedural generate under full-world bake")
@@ -108,7 +100,6 @@ func _run() -> void:
 		print("FULL_WORLD_BAKE_RUN starting expected_chunks=%d ..." % exp_chunks)
 		bake_result = bake.bake_world(world, -1, mgr)
 	else:
-		# Smoke: explicit radius package but exercise full-world bounds APIs + runtime prefer.
 		OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 		OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "2")
 		bake.delete_bake(SEED, 2)
@@ -153,7 +144,6 @@ func _run() -> void:
 		col_bytes, plan_bytes, int(saved.get("static_meta_bytes", 0))
 	])
 
-	# Reload prefer path
 	_WorldBakeService.clear_active()
 	_MeshPlanCache.clear_active()
 	var bake2: _WorldBakeService = _WorldBakeService.ensure_active()
@@ -181,7 +171,6 @@ func _run() -> void:
 	_WorldBakeService.set_active(bake2)
 	bake2.ensure_mesh_plans(mgr, world)
 
-	# Sample in-bounds prefer bake + mesh cache
 	_WorldState.replace_active()
 	var samples: Array = [Vector2i(0, 0), Vector2i(1, -1)]
 	if do_full:
@@ -212,7 +201,6 @@ func _run() -> void:
 			n_ok, float(load_us_total) / float(maxi(n_ok, 1))
 		])
 
-	# Dig invalidation still regenerates mesh
 	_WorldState.replace_active()
 	_TerrainEdits.dig(2, 2, 1)
 	var d_dig = _ChunkData.new(Vector2i(0, 0), world)
@@ -225,14 +213,11 @@ func _run() -> void:
 	else:
 		_ok("dig invalidates mesh plan → generate")
 
-	# Outside bounds: stream skip API + no infinite generate requirement
 	if _WorldBakeService.is_chunk_outside_finite_world(outside):
 		_ok("outside bounds refused as finite-world edge %s" % str(outside))
 
-	# When full_world package active, missing in-bounds should block generate
 	if do_full and bake2.full_world:
 		var fake := Vector2i(int(bounds.min_cx), int(bounds.min_cz))
-		# Temporarily erase one chunk from memory to test block path
 		if bake2._chunks.has(fake):
 			var kept = bake2._chunks[fake]
 			bake2._chunks.erase(fake)
@@ -245,7 +230,6 @@ func _run() -> void:
 				_ok("full-world in-bounds miss blocks procedural generate")
 			bake2._chunks[fake] = kept
 
-	# Corrupt / version (smoke path)
 	if not do_full:
 		if bake2.corrupt_bake_file(SEED, 2):
 			var bad := _WorldBakeService.new()
@@ -260,7 +244,6 @@ func _run() -> void:
 				_fail("version mismatch must fail")
 			else:
 				_ok("version mismatch rejected: %s" % badv.last_error)
-		# Safe regenerate
 		var reb: Dictionary = bake2.bake_world(world, 2, mgr)
 		var res: Dictionary = bake2.save_bake()
 		if bool(reb.get("ok", false)) and bool(res.get("ok", false)):

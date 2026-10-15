@@ -1,5 +1,4 @@
 extends SceneTree
-## Main-scene probe: toggling the texture set swaps live icons and restores them.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")

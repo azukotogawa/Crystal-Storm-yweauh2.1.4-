@@ -1,6 +1,5 @@
 class_name MacroLayerGrid
 extends RefCounted
-## Dense per-column macro terrain storage (v2 authority). Micro refinement is a sparse overlay.
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")

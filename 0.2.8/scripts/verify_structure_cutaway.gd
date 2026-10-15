@@ -1,6 +1,4 @@
 extends SceneTree
-## Walls and authored structures use the cutaway shader. The cone cuts a wall
-## between the camera and the player, and leaves a wall behind the player.
 
 const _Cutaway = preload("res://helpers/camera_cutaway.gd")
 const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
@@ -70,7 +68,6 @@ func _run() -> void:
 	else:
 		_ok("structure shader uses the same cone, rim, and feet rule")
 
-	# Player in a hole. Pin the ruin's centre on the rim between the camera and the body.
 	var feet := Vector3(0.0, 0.0, 0.0)
 	var cam_pos := Vector3(0.0, 18.0, 28.0)
 	var front_local := front.get_aabb().get_center()

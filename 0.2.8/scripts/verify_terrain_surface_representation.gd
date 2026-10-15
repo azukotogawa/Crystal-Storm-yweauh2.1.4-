@@ -1,5 +1,4 @@
 extends SceneTree
-## Before/after: legacy MultiMesh box instances vs consolidated surface ArrayMesh.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -94,7 +93,6 @@ func _run() -> void:
 	var live_stats := _stats_from_view(live_view)
 
 
-	# Incremental terrain edit on production surface representation.
 	_ChunkRebuildTelemetry.set_scenario("surface_incremental_dig")
 	_ChunkRebuildTelemetry.set_trigger_hint("terrain_edit", {"voxels_changed_hint": 1})
 	var dig_cell := _find_interior_dig_cell(chunk_manager, world)

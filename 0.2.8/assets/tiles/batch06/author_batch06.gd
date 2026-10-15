@@ -1,7 +1,4 @@
 extends SceneTree
-## Author corrupted-ground cells onto Cube.png.
-##   godot --headless --path . -s assets/tiles/batch06/author_batch06.gd
-## Placeholder nearest art. A later pass can replace the same atlas cells.
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
 const SRC_DIR := "res://assets/tiles/batch06"

@@ -8,7 +8,7 @@ signal stat_changed(stat_id: StringName, value: float)
 
 var _bases: Dictionary = {}
 var _modifiers: Array = []
-var _caps: Dictionary = {}  # StringName -> {min, max} optional
+var _caps: Dictionary = {}
 
 
 func _init(default_bases: Dictionary = {}) -> void:

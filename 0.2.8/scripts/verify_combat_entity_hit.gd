@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: melee hit resolver uses world-space origin matching entity global_position.
 
 
 const _CombatHitResolver = preload("res://systems/combat_hit_resolver.gd")

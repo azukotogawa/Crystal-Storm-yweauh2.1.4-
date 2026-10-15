@@ -1,7 +1,4 @@
 extends SceneTree
-## Phase-1 mesh/apply timing on real ChunkPipeline + ChunkView path.
-## Usage: godot --headless -s scripts/profile_mesh_phases.gd
-## Writes mesh_phase_profile.json under CRYSTALSTORM_SCRATCH.
 
 const _WorldState = preload("res://world/world_state.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
@@ -27,7 +24,6 @@ func _run() -> void:
 
 	var world = _InfiniteNoiseWorld.new(SEED)
 	var bake: _WorldBakeService = _WorldBakeService.ensure_active()
-	# Prefer baked columns so residual cost is mesh/apply (post World Bake baseline).
 	if not bake.load_bake(SEED, RADIUS):
 		bake.bake_world(world, RADIUS)
 		bake.save_bake()
@@ -39,12 +35,10 @@ func _run() -> void:
 	mgr.terrain_surface_mesh = true
 	root.add_child(mgr)
 
-	# Optional mesh plan cache (when present / env allows) for after-opt profiles.
 	var _MeshPlanCache = load("res://world/mesh_plan_cache.gd")
 	if _MeshPlanCache:
 		var mpc = _MeshPlanCache.ensure_active()
 		if not mpc.load_plans(SEED, RADIUS):
-			# Leave miss so baseline profiles measure pure generate mesh_plan.
 			pass
 		else:
 			_MeshPlanCache.set_active(mpc)
@@ -76,20 +70,17 @@ func _run() -> void:
 		if not bool(job.get("ok", false)):
 			push_error("worker job failed for %s" % str(coord))
 			continue
-		# Apply path: real ChunkView.setup + drain uploads (main-thread phases).
 		var view := ChunkView.new()
 		var holder := Node3D.new()
 		holder.name = "LayerContainer"
 		view.add_child(holder)
 		root.add_child(view)
-		# Rebind layer_container after add
 		view.layer_container = holder
 		var payload: Dictionary = job.get("payload", {})
 		if not payload.has("count"):
 			payload["count"] = payload.get("quads", []).size()
 		var t_apply := Time.get_ticks_usec()
 		view.setup(data, payload)
-		# Drain pending uploads fully (no budget cap for profile completeness).
 		var drained := 0
 		for _i in 64:
 			drained += ChunkView.drain_pending_surface_uploads(32, 50_000_000)

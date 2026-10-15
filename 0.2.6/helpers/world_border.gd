@@ -1,13 +1,6 @@
 class_name WorldBorder
 extends RefCounted
 
-# Rectangular playable map centered on origin.
-# -X / +X edges = ocean borders
-# -Z / +Z edges = mountain borders
-# Corners blend both (diagonal transition)
-#
-# Production world size: PLAYABLE_HALF 1024 cells → 128×128 chunks at CELLS=16
-# (see WorldBakeService.full_world_chunk_bounds / production_chunk_side).
 
 const PLAYABLE_HALF_X := 1024
 const PLAYABLE_HALF_Z := 1024
@@ -19,7 +12,6 @@ const OCEAN_FLOOR := 22.0
 const MOUNTAIN_FLOOR := 88.0
 const MOUNTAIN_PEAK := 138.0
 
-## Player is stopped once past these transition fractions into the border band.
 const PLAYER_OCEAN_TRANSITION_BLOCK := 0.12
 const PLAYER_MOUNTAIN_TRANSITION_BLOCK := 0.08
 const PLAYER_CORNER_TRANSITION_BLOCK := 0.14
@@ -72,12 +64,10 @@ static func is_playable(wx: float, wz: float) -> bool:
 	return zone_info(wx, wz).zone == "playable"
 
 
-## Crystal fluid / spawn / absorption stay inside the playable rectangle.
 static func allows_crystal(wx: float, wz: float) -> bool:
 	return is_playable(wx, wz)
 
 
-## Deep / mid border bands are impassable (ocean sink / unclimbable mountain wall).
 static func blocks_player_movement(wx: float, wz: float) -> bool:
 	var info: Dictionary = zone_info(wx, wz)
 	if info.zone == "playable":
@@ -96,12 +86,10 @@ static func blocks_player_movement(wx: float, wz: float) -> bool:
 			return t >= 0.2 or deep > 0.1
 
 
-## Ocean tiles (border seas) always stop the player — no swimming off the map.
 static func is_ocean_tile(tile_id: int) -> bool:
 	return tile_id in [_VoxelTypes.OCEAN, _VoxelTypes.OCEAN2, _VoxelTypes.OCEAN3]
 
 
-## Border mountain / ice walls that should block traversal.
 static func is_border_mountain_tile(tile_id: int) -> bool:
 	return tile_id in [
 		_VoxelTypes.MOUNTAIN, _VoxelTypes.MOUNTAIN2, _VoxelTypes.MOUNTAIN3,
@@ -110,7 +98,6 @@ static func is_border_mountain_tile(tile_id: int) -> bool:
 	]
 
 
-## Combined movement gate used by VoxelFloorProbe (tile + zone).
 static func blocks_player_at(wx: float, wz: float, tile_id: int = -1) -> bool:
 	if blocks_player_movement(wx, wz):
 		return true
@@ -118,7 +105,6 @@ static func blocks_player_at(wx: float, wz: float, tile_id: int = -1) -> bool:
 		return false
 	if is_ocean_tile(tile_id):
 		return true
-	# Mountain walls only force-block in the border band (interior highland stays walkable).
 	if is_border_mountain_tile(tile_id) and is_border_tile_zone(wx, wz):
 		return true
 	return false
@@ -141,7 +127,6 @@ static func apply_border_height(wx: float, wz: float, interior_h: float, info: D
 	var ow: float = float(info.ocean_weight)
 	var mw: float = float(info.mountain_weight)
 
-	# Steeper intentional drop into deep ocean / rise into mountain wall.
 	var ocean_target: float = lerpf(SEA_LEVEL - 6.0, OCEAN_FLOOR - deep * 18.0, maxf(t, deep * 0.55))
 	var mountain_target: float = lerpf(
 		SEA_LEVEL + 22.0,
@@ -195,10 +180,8 @@ static func is_near_playable_edge(wx: float, wz: float, margin: float = 6.0) -> 
 	var az: float = absf(wz)
 	var dx: float = float(PLAYABLE_HALF_X) - ax
 	var dz: float = float(PLAYABLE_HALF_Z) - az
-	# Inside, near edge
 	if dx >= 0.0 and dz >= 0.0:
 		return minf(dx, dz) <= margin
-	# Outside, still near rim
 	var ox: float = maxf(ax - float(PLAYABLE_HALF_X), 0.0)
 	var oz: float = maxf(az - float(PLAYABLE_HALF_Z), 0.0)
 	return minf(
@@ -207,7 +190,6 @@ static func is_near_playable_edge(wx: float, wz: float, margin: float = 6.0) -> 
 	) <= margin or (ox > 0.001 and oz > 0.001 and float(sqrt(ox * ox + oz * oz)) <= margin + 4.0)
 
 
-## Distance past playable half (0 inside). Useful for map rim styling.
 static func outside_distance(wx: float, wz: float) -> float:
 	var ox: float = maxf(absf(wx) - float(PLAYABLE_HALF_X), 0.0)
 	var oz: float = maxf(absf(wz) - float(PLAYABLE_HALF_Z), 0.0)
@@ -218,14 +200,12 @@ static func outside_distance(wx: float, wz: float) -> float:
 	return maxf(ox, oz)
 
 
-## 0..1 how strongly a map pixel should read as "edge rim" (inside near edge or outside).
 static func map_edge_rim_strength(wx: float, wz: float, rim_cells: float = 10.0) -> float:
 	var ax: float = absf(wx)
 	var az: float = absf(wz)
 	var dx: float = float(PLAYABLE_HALF_X) - ax
 	var dz: float = float(PLAYABLE_HALF_Z) - az
 	if dx < 0.0 or dz < 0.0:
-		# Outside: full rim + deepens with distance
 		var out_d: float = outside_distance(wx, wz)
 		return clampf(0.55 + out_d / maxf(TRANSITION_WIDTH, 1.0), 0.55, 1.0)
 	var near: float = minf(dx, dz)

@@ -1,6 +1,4 @@
 extends SceneTree
-## Headless: loading screen binds to CompositionRoot stages and dismisses at INITIAL_STREAM_READY.
-## Usage: godot --headless -s scripts/verify_loading_screen.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _CompositionRoot = preload("res://systems/composition_root.gd")
@@ -33,7 +31,6 @@ func _run() -> void:
 	var stages: Array = []
 	compose.stage_changed.connect(func(_id: int, name: String): stages.append(name))
 	var faded := false
-	# Watch modulate/visible after INITIAL_STREAM_READY
 	root.add_child(game)
 
 	var frames := 0
@@ -56,7 +53,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "LOADING_SCREEN_FAIL never reached INITIAL_STREAM_READY")
 		return
 	if not faded and not bool(loading.get("_fading")) and not bool(loading.get("_dismissed")):
-		# Allow a few more frames for tween start
 		for _i in 30:
 			await process_frame
 			if bool(loading.get("_fading")) or bool(loading.get("_dismissed")) or not loading.visible:
@@ -70,7 +66,6 @@ func _run() -> void:
 		return
 
 	if not stages.has("CONFIGURED") and not stages.has("INITIAL_STREAM_READY"):
-		# stage_changed may still have fired before we connected if boot raced; check phase text
 		pass
 	print("OK loading screen present stages_seen=%d ics=true fading_or_dismissed=true" % stages.size())
 	print("OK loading phase_text=%s progress=%.2f" % [

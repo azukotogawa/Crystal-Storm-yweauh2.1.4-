@@ -1,8 +1,5 @@
 class_name TextureSet
 extends RefCounted
-## One lookup for the Graphics texture set.
-## Batch 1 maps res://assets/art/X to res://assets/art_batch1/X when that file exists.
-## Otherwise the original path is used. Results are cached until the set changes.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 
@@ -28,7 +25,6 @@ static func batch_path(path: String) -> String:
 	return BATCH_PREFIX + path.substr(ART_PREFIX.length())
 
 
-## Path that resolve() will load for the active set. Missing batch files stay on the original.
 static func resolved_path(path: String) -> String:
 	if not is_batch1():
 		return path
@@ -60,8 +56,6 @@ static func clear_cache() -> void:
 	_cache.clear()
 
 
-## Reload item, vegetation, and mob sprites after the set changes.
-## Blueprint is peeled off first and put back on the new textures.
 static func refresh_live(tree: SceneTree) -> void:
 	if tree == null:
 		return

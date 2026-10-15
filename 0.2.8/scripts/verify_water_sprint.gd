@@ -1,6 +1,4 @@
 extends SceneTree
-## Water sprint contracts: river sources, trench redirect, depression fill, crystal resistance.
-## Usage: godot --headless -s scripts/verify_water_sprint.gd
 
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
@@ -61,7 +59,6 @@ func _test_trench_redirect() -> void:
 	for x in 8:
 		for z in 8:
 			heights[Vector2i(x, z)] = 10.0
-	# Slope: water should prefer +X downhill trench over flat +Z
 	heights[Vector2i(2, 2)] = 12.0
 	heights[Vector2i(3, 2)] = 9.0
 	heights[Vector2i(4, 2)] = 8.0
@@ -115,7 +112,6 @@ func _test_crystal_resists_water() -> void:
 	cfg.channel_base_flow_factor = 0.1
 	cfg.river_flow_factor = 0.06
 
-	# Dry baseline first (no channels registered).
 	var dry := _CrystalTerrainQuery.new()
 	dry.test_base_heights = heights
 	dry.sim_config = cfg
@@ -128,7 +124,6 @@ func _test_crystal_resists_water() -> void:
 		dry_sim.tick_flow(0.25)
 	var dry_far: float = dry_sim.get_depth_at(6, 2)
 
-	# Wet: water-filled channel across the path.
 	_ChannelRegistry.register_channel(3, 2, Vector2i(1, 0), 0.9)
 	_ChannelRegistry.register_channel(4, 2, Vector2i(1, 0), 0.9)
 	_ChannelRegistry.register_channel(5, 2, Vector2i(1, 0), 0.9)

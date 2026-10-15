@@ -1,8 +1,5 @@
 class_name SaveGameService
 extends Node
-## Transactional persistence layer. WorldState is the sole overlay authority.
-## Load stages: validate → checkpoint → pause → apply world_state → runtime →
-## single rebuild → resume. Failure rolls back to checkpoint (no partial commit).
 
 const _SaveCodec = preload("res://systems/save_codec.gd")
 const _SaveSchema = preload("res://systems/save_schema.gd")
@@ -18,7 +15,6 @@ signal load_completed(slot: int)
 signal save_failed(slot: int, reason: String)
 signal load_transaction_stage(stage: String)
 
-## Alias kept for external readers; schema version is authoritative.
 const SAVE_VERSION := 2
 
 const STAGE_IDLE := "idle"
@@ -178,7 +174,6 @@ func load_slot(slot: int = -1) -> bool:
 	return ok
 
 
-## In-process apply for tests/headless without a file.
 func apply_snapshot(data: Dictionary) -> void:
 	await apply_snapshot_transactional(data)
 
@@ -203,7 +198,6 @@ func apply_snapshot_transactional(raw) -> bool:
 	_pause_world_for_load()
 
 	var success := false
-	# Apply under pause; any failure rolls back to checkpoint.
 	success = await _transaction_apply_body(data)
 
 	if not success:
@@ -285,7 +279,6 @@ func _apply_runtime_state(data: Dictionary) -> void:
 	if crystal:
 		if crystal.has_method("ensure_ready"):
 			await crystal.ensure_ready()
-		# Never import empty missing crystal blob — that used to wipe spawn points.
 		if crystal.has_method("import_state") and data.has("crystal") and data.crystal is Dictionary:
 			var cdata: Dictionary = data.crystal
 			if not cdata.is_empty():
@@ -313,7 +306,6 @@ func _apply_runtime_state(data: Dictionary) -> void:
 	if enemy_spawner and enemy_spawner.has_method("import_enemies") and data.has("crystal_enemies"):
 		enemy_spawner.import_enemies(data.crystal_enemies)
 
-	# Spatial index rebuild after entities/spawns restored (discovery only).
 	var spatial = get_tree().get_first_node_in_group("spatial_query_service")
 	if spatial and spatial.has_method("rebuild_from_runtime"):
 		spatial.rebuild_from_runtime()
@@ -431,7 +423,6 @@ func collect_snapshot() -> Dictionary:
 			"metadata": {},
 		},
 		"world_state": world_state_bundle,
-		# Flat aliases for v1 compatibility / tooling.
 		"terrain_edits": overlay_export.get("terrain_edits", {}),
 		"channels": overlay_export.get("channels", {}),
 		"features": overlay_export.get("features", {}),
@@ -454,7 +445,6 @@ func collect_snapshot() -> Dictionary:
 		snapshot["entities"] = entity_mgr.export_entities()
 	if enemy_spawner and enemy_spawner.has_method("export_enemies"):
 		snapshot["crystal_enemies"] = enemy_spawner.export_enemies()
-	# Authored config snapshot is optional; performance quality is runtime and not sim authority.
 	if cfg_svc and cfg_svc.game_config:
 		snapshot["config"] = _ConfigJsonIO._serialize_game_config(cfg_svc.game_config)
 
@@ -477,12 +467,10 @@ func _write_text_atomic(path: String, text: String) -> Error:
 		return FileAccess.get_open_error()
 	file.store_string(text)
 	file.close()
-	# Replace destination.
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 	var err := DirAccess.rename_absolute(tmp_path, path)
 	if err != OK:
-		# Fallback: rewrite directly.
 		return _write_text(path, text)
 	return OK
 

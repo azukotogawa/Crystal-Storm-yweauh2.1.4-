@@ -1,5 +1,4 @@
 extends CanvasLayer
-## ESC pause: Resume, Settings (real PlayerSettings only), World Select, Quit.
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
@@ -37,7 +36,6 @@ func _is_pause_event(event: InputEvent) -> bool:
 			var key := event as InputEventKey
 			return key.pressed and not key.echo
 		return event.is_pressed()
-	# KEY_ESCAPE remains the default pause key when that binding is still on the action.
 	if event is InputEventKey:
 		var key := event as InputEventKey
 		return key.pressed and not key.echo and key.physical_keycode == KEY_ESCAPE and _escape_still_pauses()

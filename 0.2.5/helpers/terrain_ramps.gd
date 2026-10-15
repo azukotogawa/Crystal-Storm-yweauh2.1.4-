@@ -77,8 +77,6 @@ static func _ensure_mesh_scale() -> void:
 	_concave_mesh_rev = CONCAVE_MESH_REV
 
 
-## Step wedge: half-block diagonal cut, cell-centered.
-## Local y is in layer units from surface_y: 0 = column base, 1 = low walkable, 2 = high walkable toward +X.
 static func get_wedge_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _wedge_mesh != null:
@@ -120,8 +118,6 @@ static func get_wedge_mesh() -> ArrayMesh:
 	return _wedge_mesh
 
 
-## Concave L-corner filler: right angle at origin, legs along +X/+Z into the gap.
-## Two leg faces flush against the exposed sides of the L's voxels; hypotenuse faces the void.
 static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _concave_mesh != null:
@@ -267,7 +263,6 @@ static func wedge_transform(world_x: float, world_z: float, surface_y: float, di
 		return Transform3D.IDENTITY.translated(_ramp_origin(world_x, world_z, surface_y))
 	var layer: float = _ws().layer_height()
 	var origin := _ramp_origin(world_x, world_z, surface_y)
-	# Nudge wedge into the step face so it meets the high voxel interior, not just the outer lip.
 	origin.x += float(dir.x) * layer * 0.2
 	origin.z += float(dir.y) * layer * 0.2
 	return Transform3D(Basis(Vector3.UP, yaw), origin)

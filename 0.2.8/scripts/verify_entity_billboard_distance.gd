@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: near-player entities use voxels; distant entities fall back to sprites.
 
 
 const _VisualProximity = preload("res://helpers/visual_proximity.gd")

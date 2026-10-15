@@ -1,6 +1,5 @@
 class_name ChunkDataPool
 extends RefCounted
-## Reuse ChunkData shells for stream loads (terrain-edit reuse path unchanged).
 
 
 const MAX_POOL_SIZE := 24

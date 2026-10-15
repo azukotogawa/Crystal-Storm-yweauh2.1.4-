@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: attack path must classify tools via item def category (not GDScript.is_tool shadow).
 
 const _ItemTypes = preload("res://helpers/item_types.gd")
 

@@ -1,8 +1,4 @@
 extends SceneTree
-## Combined runtime stress: stream/teleport churn, dig/build, crystal tick, save/load,
-## WorldState revision + snapshot + stale-job contracts, throughput/health metrics.
-## Usage: CRYSTALSTORM_PERF_PRESET=medium CRYSTALSTORM_CHUNK_PROFILE=1 \
-##   godot --headless -s scripts/stress_worldstate_chunk_runtime.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -94,7 +90,6 @@ func _run() -> void:
 	if chunk_manager.has_method("set_rebuild_telemetry_context"):
 		chunk_manager.set_rebuild_telemetry_context("stress", {})
 
-	# --- Pure contract checks (deterministic pipeline + stale) while scene is live ---
 	await _contract_deterministic_pipeline(world, chunk_manager)
 	await _contract_snapshot_immutability()
 	await _contract_stale_rejection(chunk_manager)
@@ -147,7 +142,6 @@ func _run() -> void:
 			teleports += 1
 			var pc: Vector2i = chunk_manager.get_player_chunk_coord()
 			chunks_visited[pc] = true
-			# Force stream request around player
 			if chunk_manager.has_method("update_stream"):
 				var c: Vector2i = chunk_manager.get_player_chunk_coord()
 				chunk_manager.update_stream(c.x, c.y)
@@ -179,14 +173,12 @@ func _run() -> void:
 			var rev_before_save: int = int(_WorldState.get_active().revision)
 			if save_svc.save_slot(TEST_SLOT) == OK:
 				save_ok += 1
-				# Mid-churn load: reload overlays then keep streaming
 				loads += 1
 				var loaded: bool = await save_svc.load_slot(TEST_SLOT)
 				if loaded:
 					load_ok += 1
 				else:
 					_fail("load_slot failed during stress")
-				# Revision must remain coherent (non-negative, advanced or restored)
 				var rev_after: int = int(_WorldState.get_active().revision)
 				if rev_after < 0:
 					_fail("WorldState revision negative after save/load")
@@ -218,7 +210,6 @@ func _run() -> void:
 			elif "cells" in crystal and crystal.cells is Dictionary:
 				crystal_ticks_observed = maxi(crystal_ticks_observed, crystal.cells.size())
 
-		# Continuous movement input between teleports
 		if teleports % 2 == 0:
 			Input.action_press("ui_right")
 		else:
@@ -234,13 +225,11 @@ func _run() -> void:
 	if chunk_manager.has_method("await_rebuild_idle"):
 		await chunk_manager.await_rebuild_idle()
 
-	# Final samples
 	_sample_health(
 		chunk_manager, profiler, _WorldState.get_active(), rev_samples, mesh_rev_samples,
 		mem_samples, queue_samples, chunk_count_samples, frame_ms_samples, worker_ms_samples
 	)
 
-	# --- Assertions ---
 	if dig_ok < 3:
 		_fail("expected several successful digs during stress (got %d)" % dig_ok)
 	if teleports < 5:
@@ -252,12 +241,10 @@ func _run() -> void:
 	if not _revisions_monotonic_or_restored(mesh_rev_samples):
 		_fail("mesh_input_revision sequence invalid")
 
-	# Queue must not stick unbounded at end
 	var final_queue: int = int(chunk_manager._mesh_completion_queue.size()) if "_mesh_completion_queue" in chunk_manager else 0
 	if final_queue > 64:
 		_fail("upload/mesh completion queue not draining (final=%d max=%d)" % [final_queue, max_queue])
 
-	# Memory: reject pathological multi-x growth only
 	if mem_samples.size() >= MEM_SAMPLES_MIN:
 		var m0: float = float(mem_samples[0])
 		var m1: float = float(mem_samples[mem_samples.size() - 1])
@@ -378,14 +365,13 @@ func _sample_health(
 
 
 func _contract_deterministic_pipeline(world: InfiniteNoiseWorld, cm: ChunkManager) -> void:
-	_WorldState.get_active()  # ensure active session from game
+	_WorldState.get_active()
 	var data1 = _ChunkData.new(Vector2i(2, 2), world)
 	data1.capture_worker_snapshot()
 	var j1: Dictionary = _ChunkPipeline.run_worker_job(
 		cm, data1, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), [], {}, false, true
 	)
 	var data2 = _ChunkData.new(Vector2i(2, 2), world)
-	# Same frozen inputs: re-capture from same WorldState without further mutation
 	data2.capture_worker_snapshot()
 	var j2: Dictionary = _ChunkPipeline.run_worker_job(
 		cm, data2, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), [], {}, false, true
@@ -405,7 +391,6 @@ func _contract_snapshot_immutability() -> void:
 	var ws = _WorldState.get_active()
 	var rev0: int = int(ws.revision)
 	var data = _ChunkData.new(Vector2i(0, 0), null)
-	# Need world for full capture — skip height halo if null world still stamps
 	var world = get_first_node_in_group("world")
 	data.world = world
 	data.position = Vector2i(0, 0)
@@ -419,7 +404,6 @@ func _contract_snapshot_immutability() -> void:
 	if data.is_overlay_mesh_stamp_current():
 		_fail("mesh stamp should be stale after dig")
 	if int(ws.revision) <= rev0 and frozen == 0.0:
-		# dig may fail out of border; only fail if dig clearly applied
 		pass
 	_note("OK snapshot immutability frozen_h=%s stamp_stale=%s" % [
 		frozen, not data.is_overlay_mesh_stamp_current()
@@ -446,8 +430,6 @@ func _contract_stale_rejection(cm: ChunkManager) -> void:
 func _revisions_monotonic_or_restored(samples: Array) -> bool:
 	if samples.is_empty():
 		return false
-	# Allow drops only when save/load restores lower revision (restore_overlay_snapshot).
-	# Reject only negative or non-integer-like chaos.
 	for s in samples:
 		if int(s) < 0:
 			return false

@@ -80,10 +80,6 @@ static func _crash_crumb(msg: String) -> void:
 		f.close()
 
 
-## Offline bake: same placement rules, no FeatureRegistry writes.
-## Returns Vector2i world column -> {tile, kind, plant_id, growth_stage, growth_progress, biome}.
-## If bounds is provided {min_wx,max_wx,min_wz,max_wz}, scatter is limited to that
-## rectangle with attempt count scaled so per-cell density matches full-playable scatter.
 static func bake_scatter_map(
 	world,
 	attempts: int,
@@ -109,7 +105,6 @@ static func bake_scatter_map(
 	var region_w: int = maxi(max_wx - min_wx + 1, 1)
 	var region_h: int = maxi(max_wz - min_wz + 1, 1)
 	var region_cells: float = float(region_w * region_h)
-	# Density parity: E[plants]/cell] ≈ attempts * p / playable_cells.
 	var n: int = maxi(attempts, 0)
 	if region_cells < playable_cells:
 		n = maxi(int(round(float(attempts) * region_cells / playable_cells)), int(region_cells * 0.05))
@@ -136,9 +131,8 @@ static func bake_scatter_map(
 	return out
 
 
-## Bucket world-map vegetation into per-chunk local entries for package storage.
 static func bucket_by_chunk(world_map: Dictionary, cells: int = 16) -> Dictionary:
-	var by_chunk: Dictionary = {}  # Vector2i chunk -> Array
+	var by_chunk: Dictionary = {}
 	for key_v in world_map.keys():
 		var key: Vector2i = key_v
 		var entry: Dictionary = world_map[key]

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Canonical churn-gated streaming traversal benchmark — medium×2 + low×2.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

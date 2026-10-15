@@ -1,5 +1,4 @@
 extends SceneTree
-## Spawn, walk, jump, and dig must not bury the player. Auto and manual unstuck free a forced bury.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")

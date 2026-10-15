@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: all builtin plants have multi-part voxel props on MEDIUM+.
 
 
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")

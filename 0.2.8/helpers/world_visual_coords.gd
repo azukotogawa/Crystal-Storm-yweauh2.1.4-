@@ -1,15 +1,11 @@
 class_name WorldVisualCoords
 extends RefCounted
-## Single column ↔ Godot-world contract.
-##
-## Gameplay / overlays / targeting use integer columns (wx, wz).
 ## Y is already in world units (layer_height == voxel_scale).
 ## Node3D XZ is column * voxel_scale. Never treat global_position.x as a column
 ## and never treat voxel_position.x as a world-space metre.
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-## Must match ChunkView.gdshader face_code and ChunkManager FACE_* constants.
 const FACE_TOP := 0
 const FACE_BOTTOM := 2
 const FACE_NEG_X := 3
@@ -61,7 +57,6 @@ static func column_from_node(node: Node3D) -> Vector2:
 	return xz
 
 
-## Gameplay / walk / debug AABB for one column. Size XZ is one voxel, not 1.0 world unit.
 static func cell_aabb(wx: int, y0: float, wz: int, y1: float) -> AABB:
 	var vs: float = voxel_scale()
 	var top: float = maxf(y1, y0 + layer_height() * 0.05)

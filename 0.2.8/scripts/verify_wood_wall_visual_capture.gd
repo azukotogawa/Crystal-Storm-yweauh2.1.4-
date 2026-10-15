@@ -1,6 +1,4 @@
 extends SceneTree
-## Boot main.tscn, place wood_wall arrangements, capture gameplay-camera screenshots.
-## Usage: godot --path . -s scripts/verify_wood_wall_visual_capture.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -91,25 +89,19 @@ func _run() -> void:
 	var inv := _Inventory.new()
 	inv.add_item("wood", 80)
 
-	# Isolated
 	var isolated := Vector2i(px + 2, pz)
-	# Line along X
 	var line_x: Array[Vector2i] = [
 		Vector2i(px + 4, pz), Vector2i(px + 5, pz), Vector2i(px + 6, pz), Vector2i(px + 7, pz)
 	]
-	# Line along Z + corner
 	var corner: Array[Vector2i] = [
 		Vector2i(px + 2, pz + 3), Vector2i(px + 2, pz + 4), Vector2i(px + 2, pz + 5),
 		Vector2i(px + 3, pz + 5), Vector2i(px + 4, pz + 5)
 	]
-	# Beside terrain (dug cell)
 	var dig_cell := Vector2i(px + 9, pz)
 	_TerrainEdits.dig(dig_cell.x, dig_cell.y, 1)
 	var by_terrain := Vector2i(px + 10, pz)
-	# Gate + adjacent wall
 	var gate_cell := Vector2i(px + 5, pz + 3)
 	var by_gate := Vector2i(px + 6, pz + 3)
-	# Chunk boundary (SIZE=16): 14,15 | 16,17
 	var boundary: Array[Vector2i] = [
 		Vector2i(14, pz + 8), Vector2i(15, pz + 8), Vector2i(16, pz + 8), Vector2i(17, pz + 8)
 	]
@@ -134,7 +126,6 @@ func _run() -> void:
 	else:
 		feat_layer.refresh_cell(gate_cell.x, gate_cell.y)
 
-	# Let meshes apply + chunk rebuild from raised terrain.
 	for _j in 45:
 		await process_frame
 
@@ -166,7 +157,6 @@ func _run() -> void:
 	if authored < all_walls.size():
 		_fail("missing authored walls")
 
-	# No duplicate anchors per cell
 	var seen: Dictionary = {}
 	for key in feat_layer._nodes_by_cell.keys():
 		var node: Node = feat_layer._nodes_by_cell[key]
@@ -183,35 +173,27 @@ func _run() -> void:
 	else:
 		_ok("gate remains gate beside wall")
 
-	# Overview screenshot
 	_frame_camera(player, cam, world, px + 5, pz + 2)
 	await _capture("overview")
 
-	# Isolated close-up
 	_frame_camera(player, cam, world, isolated.x, isolated.y, 10.0)
 	await _capture("isolated")
 
-	# Line
 	_frame_camera(player, cam, world, px + 5, pz, 12.0)
 	await _capture("line")
 
-	# Corner
 	_frame_camera(player, cam, world, px + 3, pz + 5, 12.0)
 	await _capture("corner")
 
-	# Gate
 	_frame_camera(player, cam, world, gate_cell.x, gate_cell.y, 11.0)
 	await _capture("beside_gate")
 
-	# Terrain
 	_frame_camera(player, cam, world, by_terrain.x, by_terrain.y, 11.0)
 	await _capture("beside_terrain")
 
-	# Chunk boundary
 	_frame_camera(player, cam, world, 15, pz + 8, 12.0)
 	await _capture("chunk_boundary")
 
-	# Remove + rebuild mid line
 	var mid := line_x[1]
 	_FeatureRegistry.clear_feature(mid.x, mid.y)
 	feat_layer.refresh_cell(mid.x, mid.y)
@@ -243,7 +225,6 @@ func _run() -> void:
 	_frame_camera(player, cam, world, px + 5, pz, 12.0)
 	await _capture("after_rebuild")
 
-	# Stream-style repopulate
 	feat_layer._populate_chunk(Vector2i(0, 0))
 	await process_frame
 	var a0: Node3D = feat_layer._nodes_by_cell.get(isolated)

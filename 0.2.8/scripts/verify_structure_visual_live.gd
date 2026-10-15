@@ -1,7 +1,4 @@
 extends SceneTree
-## Live main-scene structure identity: place wall/gate/bridge, assert rendered props.
-## Usage: godot --path . -s scripts/verify_structure_visual_live.gd
-## (display preferred; headless still drives placement + mesh binding)
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -42,7 +39,6 @@ func _run() -> void:
 		return
 	var game = packed.instantiate()
 	root.add_child(game)
-	# Wait for composition + first chunks.
 	for _i in 180:
 		await process_frame
 		var cm = get_first_node_in_group("chunk_manager")
@@ -63,7 +59,6 @@ func _run() -> void:
 		_finish()
 		return
 
-	# Ensure placement refresh is bound.
 	if feat_layer.has_method("_bind_terrain_placement_refresh"):
 		feat_layer._bind_terrain_placement_refresh()
 
@@ -78,7 +73,6 @@ func _run() -> void:
 	inv.add_item("wood", 40)
 	inv.add_item("stone", 40)
 
-	# Clear cells for clean placement.
 	var cells := {
 		"wood_wall": Vector2i(px + 2, pz),
 		"gate": Vector2i(px + 3, pz),
@@ -89,28 +83,23 @@ func _run() -> void:
 		var c: Vector2i = cells[k]
 		_FeatureRegistry.clear_feature(c.x, c.y)
 
-	# Wood wall
 	var c_wood: Vector2i = cells["wood_wall"]
 	var y_wood: float = world.get_surface_height(float(c_wood.x), float(c_wood.y))
 	if not editor.try_build_wall(Vector3(float(c_wood.x) + 0.5, y_wood, float(c_wood.y) + 0.5), inv, false):
 		_fail("wood wall place: %s" % editor.last_fail_reason)
-	# Gate
 	var c_gate: Vector2i = cells["gate"]
 	var y_gate: float = world.get_surface_height(float(c_gate.x), float(c_gate.y))
 	if not editor.try_build_gate(Vector3(float(c_gate.x) + 0.5, y_gate, float(c_gate.y) + 0.5), inv):
 		_fail("gate place: %s" % editor.last_fail_reason)
-	# Bridge on dig
 	var c_br: Vector2i = cells["bridge"]
 	_TerrainEdits.dig(c_br.x, c_br.y, 1)
 	if not editor.try_build_bridge(Vector3(float(c_br.x) + 0.5, 0.0, float(c_br.y) + 0.5), inv):
 		_fail("bridge place: %s" % editor.last_fail_reason)
-	# Stone wall
 	var c_st: Vector2i = cells["stone_wall"]
 	var y_st: float = world.get_surface_height(float(c_st.x), float(c_st.y))
 	if not editor.try_build_wall(Vector3(float(c_st.x) + 0.5, y_st, float(c_st.y) + 0.5), inv, true):
 		_fail("stone wall place: %s" % editor.last_fail_reason)
 
-	# Force refresh if signal missed
 	for c in cells.values():
 		if feat_layer.has_method("refresh_cell"):
 			feat_layer.refresh_cell(c.x, c.y)
@@ -137,7 +126,6 @@ func _run() -> void:
 			continue
 		var parts: int = int(mesh.get_meta("structure_part_count", 0))
 		if parts < 1:
-			# Fallback: ask registry silhouette
 			var reg = get_first_node_in_group("game_visual_registry")
 			if reg and reg.has_method("structure_mesh_parts"):
 				parts = reg.structure_mesh_parts(vid).size()
@@ -157,11 +145,9 @@ func _run() -> void:
 			continue
 		_ok("live %s" % sig)
 
-	# Gate vs wood height
 	if seen.has("gate") and seen.has("wood_wall") and seen.has("bridge"):
 		_ok("wall/gate/bridge live identities separated")
 
-	# Town hall exists if towns seeded
 	var towns: Array = _FeatureRegistry.get_towns()
 	if towns.is_empty():
 		_lines.append("NOTE: no towns seeded in this session")
@@ -173,7 +159,6 @@ func _run() -> void:
 		await process_frame
 		var hall: Node3D = feat_layer._nodes_by_cell.get(center)
 		if hall == null:
-			# Stream may not have loaded town chunk — stamp check only.
 			var f: Dictionary = _FeatureRegistry.get_feature(center.x, center.y)
 			if int(f.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.TOWN_BUILDING:
 				_fail("town center kind not TOWN_BUILDING (got %s)" % str(f.get("kind", -1)))
@@ -186,7 +171,6 @@ func _run() -> void:
 			else:
 				_ok("town_hall rendered at center %s" % str(center))
 
-	# Ruin centers: only center has prop when loaded
 	var ruins: Array = _FeatureRegistry.get_ruin_centers()
 	if ruins.is_empty():
 		_lines.append("NOTE: no ruins seeded")

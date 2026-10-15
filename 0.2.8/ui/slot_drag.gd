@@ -1,10 +1,5 @@
 class_name SlotDrag
 extends CanvasLayer
-## Inventory and hotbar drag.
-## Left click is also the attack button, so a press on a slot releases that
-## action before WeaponController's poll. Godot's built-in drag accumulates
-## mouse relative; after window stretch that relative is often zero, so this
-## lifts from press→motion→release using the cursor position instead.
 
 
 const _Inventory = preload("res://inventory/inventory.gd")
@@ -21,7 +16,6 @@ var _origin := -1
 var _held_id := ""
 var _held_count := 0
 var _inv = null
-## Set when a drag drops, so the release that ends it does not also click.
 var _drop_click_block := false
 var _armed := false
 var _press_pos := Vector2.ZERO
@@ -78,7 +72,6 @@ static func _ensure(tree: SceneTree) -> void:
 	node.layer = 15
 	node.process_mode = Node.PROCESS_MODE_ALWAYS
 	_inst = node
-	# Root is still inserting the game scene during early _ready.
 	tree.root.call_deferred("add_child", node)
 
 
@@ -98,8 +91,6 @@ static func _on_slot_gui(event: InputEvent, control: Control) -> void:
 		if _inst != null and is_instance_valid(_inst):
 			_inst._arm(control, mb.position)
 		return
-	# Release is handled in _input so a drop still lands after the cursor
-	# leaves the origin slot. Ignore it here to avoid a second click.
 
 
 static func _shield_gui(event: InputEvent) -> void:

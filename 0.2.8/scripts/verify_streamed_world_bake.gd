@@ -1,6 +1,4 @@
 extends SceneTree
-## Streamed world bake: index-only startup, per-chunk load/release, no full-world RAM.
-## Usage: godot --headless -s scripts/verify_streamed_world_bake.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -64,7 +62,6 @@ func _run() -> void:
 		_ok("streamed bake chunks=%d bake_ms=%d bytes=%d" % [
 			int(baked.get("chunks", 0)), int(baked.get("bake_ms", 0)), int(baked.get("bytes", 0))
 		])
-	# After bake, RAM must not hold full map
 	if bake.resident_count() != 0:
 		_fail("after bake_world resident_count must be 0 got=%d" % bake.resident_count())
 	else:
@@ -81,7 +78,6 @@ func _run() -> void:
 	else:
 		_ok("wrote world.index path=%s bytes=%d" % [idx_path, int(saved.get("bytes", 0))])
 
-	# Reload: index only
 	_WorldBakeService.clear_active()
 	var bake2: _WorldBakeService = _WorldBakeService.ensure_active()
 	var t_load0 := Time.get_ticks_usec()
@@ -99,7 +95,6 @@ func _run() -> void:
 	_WorldBakeService.set_active(bake2)
 	bake2.ensure_mesh_plans(mgr, world)
 
-	# Stream load a few chunks
 	var coords: Array = [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 1)]
 	var disk_us0: int = bake2.stats_disk_read_us
 	for c in coords:
@@ -112,7 +107,6 @@ func _run() -> void:
 			coords.size(), bake2.stats_disk_reads, bake2.stats_disk_read_us - disk_us0
 		])
 
-	# Match generate base for sample
 	_WorldState.replace_active()
 	var d_gen = _ChunkData.new(Vector2i(0, 0), world)
 	d_gen.capture_worker_snapshot()
@@ -126,7 +120,6 @@ func _run() -> void:
 	else:
 		_ok("streamed chunk matches generate base")
 
-	# Pipeline prefer bake + mesh plan from package
 	_WorldState.replace_active()
 	var d_job = _ChunkData.new(Vector2i(0, 0), world)
 	d_job.capture_worker_snapshot()
@@ -140,7 +133,6 @@ func _run() -> void:
 	else:
 		_ok("pipeline bake+plan cache from streamed package")
 
-	# Dig overlay still works; mesh regenerates
 	_WorldState.replace_active()
 	_TerrainEdits.dig(2, 2, 2)
 	var d_dig = _ChunkData.new(Vector2i(0, 0), world)
@@ -155,7 +147,6 @@ func _run() -> void:
 	else:
 		_ok("dig: bake columns + mesh regenerate")
 
-	# Release reduces resident; reload preserves WorldState (dig still applied via snapshot)
 	bake2.release_chunk(Vector2i(0, 0))
 	if bake2.is_resident(Vector2i(0, 0)):
 		_fail("release_chunk did not drop resident")
@@ -168,13 +159,10 @@ func _run() -> void:
 	if not bake2.try_apply_base_to_chunk_data(d_rel):
 		_fail("reload after release failed")
 	elif is_equal_approx(float(d_rel.surface_map[4][4]), float(d_gen.surface_map[4][4])):
-		# dig should change height vs pristine generate without dig on 4,4
-		# d_gen was pristine; after dig on 4,4 height should differ
 		_fail("overlay dig not reflected after reload")
 	else:
 		_ok("reload after release applies WorldState dig overlay")
 
-	# Missing package → block generate (in bounds)
 	bake2.release_chunk(Vector2i(1, 1))
 	var cpath := bake2.chunk_package_path(Vector2i(1, 1))
 	if FileAccess.file_exists(cpath):
@@ -187,7 +175,6 @@ func _run() -> void:
 	else:
 		_ok("missing package blocked generate source=%s" % str(col.get("column_source")))
 
-	# Corrupt package fails safely
 	bake2.ensure_chunk_resident(Vector2i(-1, 0))
 	if bake2.corrupt_chunk_package(Vector2i(-1, 0)):
 		bake2.release_chunk(Vector2i(-1, 0))
@@ -196,7 +183,6 @@ func _run() -> void:
 		else:
 			_ok("corrupt package rejected: %s" % bake2.last_error)
 
-	# Version mismatch index
 	var stub := bake2.write_version_mismatch_stub(SEED, RADIUS)
 	if not stub.is_empty():
 		var bad := _WorldBakeService.new()
@@ -205,14 +191,12 @@ func _run() -> void:
 		else:
 			_ok("version mismatch rejected: %s" % bad.last_error)
 
-	# Safe regenerate
 	var reb: Dictionary = bake2.bake_world(world, RADIUS, mgr)
 	var res: Dictionary = bake2.save_bake()
 	if bool(reb.get("ok", false)) and bool(res.get("ok", false)):
 		_ok("safe regenerate streamed package")
 
 	var mem1 := OS.get_static_memory_usage()
-	# Structural: unload hooks release
 	var cm_src := FileAccess.get_file_as_string("res://chunks/chunk_manager.gd")
 	if "release_chunk" not in cm_src:
 		_fail("ChunkManager unload must release bake packages")

@@ -1,6 +1,5 @@
 class_name TerrainLighting
 extends RefCounted
-## Quality hook for baked AO and contact blobs.
 ## Detail, sun shade, and cave fog stay on at every preset.
 
 const _AO = preload("res://helpers/terrain_vertex_ao.gd")

@@ -1,6 +1,4 @@
 extends SceneTree
-## Stream unload ownership: load chunks, unload, re-load; no double-pool / pending upload race.
-## Usage: godot --headless -s scripts/verify_chunk_unload_ownership.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -31,7 +29,6 @@ func _ok(msg: String) -> void:
 
 
 func _run() -> void:
-	# Structural ownership guards
 	var cv_src := FileAccess.get_file_as_string("res://chunks/chunk_view.gd")
 	if "cancel_pending_uploads_for_view" not in cv_src:
 		_fail("ChunkView must cancel pending uploads on unload")
@@ -69,7 +66,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "unload ownership FAILED")
 		return
 
-	# Wait for some chunks resident
 	for _w in 120:
 		if cm.chunks.size() >= 4:
 			break
@@ -83,7 +79,6 @@ func _run() -> void:
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	var res0: int = bake.resident_count() if bake else -1
 
-	# Force unload of a far chunk if present, else unload one key
 	var keys: Array = cm.chunks.keys()
 	if keys.is_empty():
 		_fail("empty chunk map")
@@ -94,12 +89,10 @@ func _run() -> void:
 			_fail("unload left chunk resident")
 		else:
 			_ok("unloaded chunk %s" % str(key))
-		# Pending queues should not retain freed Multimeshes
 		if ChunkView.pending_buffer_upload_count() < 0:
 			_fail("pending count negative")
 		else:
 			_ok("pending buffer uploads=%d after unload" % ChunkView.pending_buffer_upload_count())
-		# Reload
 		cm.request_chunk(key, true)
 		for _r in 90:
 			if cm.chunks.has(key):
@@ -110,7 +103,6 @@ func _run() -> void:
 		else:
 			_fail("reload failed for %s" % str(key))
 
-	# Pool double-release should no-op
 	var stats0: Dictionary = _ChunkDataPool.get_stats()
 	var d = _ChunkDataPool.acquire(Vector2i(99, 99), null)
 	_ChunkDataPool.release(d)
@@ -124,7 +116,6 @@ func _run() -> void:
 	if compose and compose.has_method("shutdown"):
 		compose.shutdown()
 	await process_frame
-	# Second teardown must be safe
 	if cm.has_method("release_all_chunks_for_teardown"):
 		cm.release_all_chunks_for_teardown()
 	_ok("double teardown safe")

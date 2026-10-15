@@ -1,16 +1,9 @@
 extends SceneTree
-## Repaint the remaining Cube.png families. Grains stay inside the tile.
-## No 4px band and no dark grid line.
-##   godot --headless --path . -s res://assets/tiles/author_land_variants.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
 const TILE := 32
 
-## base, dark, light, grain. Accents stay near the base so one row is not
-## 20% darker than its neighbor. The grain is the mineral, not a black line.
-## base, dark, light, grain, seed. Accents stay near the base so one row
-## is not 20% darker than its neighbor.
 const FAMILIES := {
 	"sand": {
 		Vector2i(0, 7): [Color8(196, 168, 112), Color8(184, 156, 104), Color8(208, 180, 124), Color8(170, 150, 96), 101],

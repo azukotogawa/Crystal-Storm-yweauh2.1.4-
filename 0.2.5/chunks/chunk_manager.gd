@@ -14,15 +14,13 @@ signal chunk_unloaded(coord: Vector2i)
 
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var pending := {}
-var _chunk_tasks := {}  # coord -> WorkerThreadPool task id for async gen
-var _chunk_gen_tokens := {}  # coord -> monotonic token; stale worker results are dropped
+var _chunk_tasks := {}
+var _chunk_gen_tokens := {}
 var _mesh_completion_queue: Array = []
 var _shutting_down: bool = false
 
-# Optimization: only update when player moves to new chunk
 var _last_chunk_key: Vector2i = Vector2i(-99999, -99999)
 
-# Player will be obtained via the 'player_ready' signal
 var player: Node3D = null
 var world: InfiniteNoiseWorld
 
@@ -65,7 +63,6 @@ func _ready():
 	if world == null:                                                           
 		print("WARNING: World node (group 'world') not found in _ready!")
 
-	# Request initial chunks...
 	if player and world:
 		var col := _player_column_pos()
 		var cx = floori(col.x / float(ChunkData.SIZE))
@@ -86,7 +83,6 @@ func shutdown_workers() -> void:
 			WorkerThreadPool.wait_for_task_completion(tid)
 
 
-## Headless harness: drop chunk views before SceneTree quit to avoid teardown abort(134).
 func release_all_chunks_for_teardown() -> void:
 	shutdown_workers()
 	var keys := chunks.keys()
@@ -360,7 +356,6 @@ const _CONCAVE_L_PATTERNS := [
 
 
 func _find_concave_corner_cells(data: ChunkData) -> Dictionary:
-	# Three solids in an L; concave cell (x,z) is the gap. Prism touches the two inner faces.
 	var result: Dictionary = {}
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
@@ -410,7 +405,6 @@ func _emit_concave_corner_prisms(data: ChunkData, out_quads: Array, concave_cell
 		var h: float = entry["h"]
 		var vox: int = entry["vox"]
 		data.set_concave_prism(x, z, leg_x, leg_z, h)
-		# Solid support under the diagonal prism (fills the hole + walkable collision).
 		_append_voxel_face(out_quads, float(x), h, float(z), 1.0, 1.0, 1.0, 1.0, 1.0, vox, FACE_TOP)
 		out_quads.append({
 			"x": x,
@@ -468,7 +462,6 @@ func _emit_ramps(data: ChunkData, out_quads: Array, concave_cells: Dictionary = 
 				"dir2": Vector2i.ZERO,
 			})
 
-	# Corner + side-entry ramps that blend into step faces (not only outward steps).
 	for x in range(ChunkData.SIZE):
 		for z in range(ChunkData.SIZE):
 			var cell := Vector2i(x, z)
@@ -658,7 +651,6 @@ func _sample_height(data: ChunkData, lx: int, lz: int) -> float:
 		return halo_h
 	if lx >= 0 and lx < ChunkData.SIZE and lz >= 0 and lz < ChunkData.SIZE:
 		return data.get_surface_y(lx, lz)
-	# Worker path: rely on halo snapshot only (see capture_worker_snapshot).
 	return 0.0
 
 
@@ -848,7 +840,6 @@ func _generate_chunk_task(coord: Vector2i, data: ChunkData, token: int) -> void:
 	if data == null or not data._has_worker_snapshot:
 		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token)
 		return
-	# Worker: column maps + greedy mesh (uses halo snapshot — no live registry access).
 	var t0 := Time.get_ticks_usec()
 	_generate_chunk(data)
 	var quads := _build_mesh(data)
@@ -859,7 +850,6 @@ func _generate_chunk_task(coord: Vector2i, data: ChunkData, token: int) -> void:
 		var t_buf := Time.get_ticks_usec()
 		payload = _ChunkMeshBufferBuilder.build_mesh_payload(data, quads.get("quads", []))
 		buffer_us = Time.get_ticks_usec() - t_buf
-	# Detach world ref before handing results back to main thread.
 	data.world = null
 	call_deferred("_on_chunk_task_complete", coord, data, payload, mesh_us, buffer_us, token)
 

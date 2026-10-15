@@ -1,11 +1,5 @@
 extends SceneTree
-## Use poses have to play when attack is pressed, on the mesh the window draws.
-## verify_item_animations called HeldItemView.apply_playback and measured the
-## grip position. A sword that only slides, a bow whose string stays put, and
-## a pick that never chops all passed. This check selects the hotbar slot and
-## presses attack through WeaponController._process.
 ## Hammer impact stays 0.62 of the 1.1 s swing: the hit is not allowed early.
-## Usage: godot --path 0.2.8 -s res://scripts/verify_held_item_use.gd
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -76,9 +70,6 @@ func _run() -> void:
 	_finish()
 
 
-## action_press stays just_pressed until the engine ticks a frame.
-## A loop of WeaponController._process never clears it, so the next item
-## would swing on its own. One idle frame is the real click.
 func _idle_input() -> void:
 	Input.action_release("attack")
 	await process_frame
@@ -137,7 +128,6 @@ func _check_pick(weapon: WeaponController, view: Node3D) -> void:
 		_fail("pick has no HeldItem on the attack path")
 		return
 	var ready := held.transform.basis
-	# Impact is 0.45 of the 0.26 s dig. Sample on that chop, not after it recovers.
 	await _press_attack(weapon, 0.13)
 	var chopped := _angle(ready, held.transform.basis)
 	if chopped < 0.7:
@@ -222,7 +212,6 @@ func _check_bow(weapon: WeaponController, view: Node3D, vs: float) -> void:
 		_fail("bow has no string mesh")
 		return
 	var ready_z: float = string.position.z
-	# Release is 0.70 of 0.8 s. Sample the draw before the shot recovers.
 	await _press_attack(weapon, 0.50)
 	var pulled: float = string.position.z - ready_z
 	if pulled < vs * 0.35:

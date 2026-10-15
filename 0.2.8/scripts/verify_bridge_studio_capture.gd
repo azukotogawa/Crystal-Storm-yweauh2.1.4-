@@ -1,6 +1,4 @@
 extends SceneTree
-## Isolated iso studio shot of the authored bridge mesh (no main-scene streaming).
-## Usage: godot --path . -s scripts/verify_bridge_studio_capture.gd
 
 
 const OUT := "C:/users/cwith/weed/crystalstorm/.tmp_bridge_capture/studio_bridge.png"

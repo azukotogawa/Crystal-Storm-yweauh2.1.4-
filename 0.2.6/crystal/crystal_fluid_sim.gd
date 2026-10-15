@@ -15,41 +15,30 @@ var global_flow_mult: float = 1.0
 
 var depth: Dictionary = {}
 var spawn_id_by_cell: Dictionary = {}
-## 0 = unlimited. Rotating subset of existing cells simulated per tick.
 var max_cells_per_tick: int = 0
-## 0 = unlimited. Hard cap on brand-new frontier cells created per tick.
 var max_new_cells_per_tick: int = 0
 var spread_damping_start_cells: int = 600
 var spread_damping_full_cells: int = 3000
 var spread_damping_min_mult: float = 0.35
-## Max depth that can flow into an empty neighbor per tick (gradual frontier).
 var empty_cell_inflow_cap: float = 0.10
-## Sim writes depth when delta exceeds this; smaller changes are ignored.
 var depth_write_epsilon: float = 0.03
-## Mesh/visual updates only when depth delta exceeds this (reduces rebuild churn).
 var mesh_depth_epsilon: float = 0.20
 
 var last_new_cells: int = 0
 var last_changed_cells: int = 0
 var last_mesh_dirty_cells: int = 0
-## Measurement: last tick_flow active/selected cell counts.
 var last_flow_active_cells: int = 0
 var last_flow_selected_cells: int = 0
 
 var _interior_flow_offset: int = 0
 var _frontier_new_offset: int = 0
-## When set, flow/emitters only affect cells where this returns true (loaded chunks).
 var is_cell_active: Callable = Callable()
-## Soft wall for flow cell processing (0 = unlimited). Incomplete ticks resume next call
-## with identical cell order / deltas — results of a completed logical tick are unchanged.
 var flow_budget_us: int = 0
 var last_flow_complete: bool = true
-## In-progress logical tick_flow job (empty when idle).
 var _flow_job: Dictionary = {}
 
-## --- Sim-only profile counters (CRYSTALSTORM_CRYSTAL_SIM_PROFILE=1) ---
 var _prof_enabled: bool = false
-var _prof_phase_us: Dictionary = {}  # phase -> total us
+var _prof_phase_us: Dictionary = {}
 var _prof_phase_max_us: Dictionary = {}
 var _prof_active_cells_sum: int = 0
 var _prof_selected_cells_sum: int = 0
@@ -197,7 +186,6 @@ func _spread_pressure_mult() -> float:
 		return 1.0
 	var span: int = maxi(spread_damping_full_cells - spread_damping_start_cells, 1)
 	var t: float = clampf(float(n - spread_damping_start_cells) / float(span), 0.0, 1.0)
-	# Ease-in so damping ramps before the nominal start threshold.
 	t = t * t
 	return lerpf(1.0, spread_damping_min_mult, t)
 
@@ -329,10 +317,6 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		set_depth(pos, current + minf(added, room), spawn.id)
 
 
-## Returns cells whose depth changed (batched — no per-cell signals during flow).
-## Mesh rebuilds should use get_last_mesh_dirty_cells() / mesh_dirty subset only.
-## When flow_budget_us > 0, may return [] with last_flow_complete=false; call again to resume.
-## A completed logical tick produces the same depth/deltas as an unbounded single call.
 func tick_flow(delta: float) -> Array:
 	if not _flow_job.is_empty():
 		return _flow_job_continue()
@@ -511,7 +495,6 @@ func _flow_job_continue() -> Array:
 	if _prof_enabled:
 		_prof_add_phase("process_selected_cells", Time.get_ticks_usec() - t0)
 
-	# Apply phase — always complete after all cells processed (same as monolithic tick_flow).
 	var t_apply := Time.get_ticks_usec() if _prof_enabled else 0
 	var changed: Array = _apply_flow_deltas(deltas)
 	if _prof_enabled:
@@ -616,7 +599,6 @@ func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos
 		if to_depth >= config.min_depth and from_depth >= config.min_depth:
 			combined *= config.river_flow_factor
 		elif from_depth >= config.min_depth:
-			# Frontier spread into empty river/water — slow but not frozen.
 			combined *= maxf(config.river_flow_factor, 0.32)
 
 	return combined

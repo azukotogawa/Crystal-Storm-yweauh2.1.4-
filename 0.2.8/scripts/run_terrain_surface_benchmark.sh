@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Terrain representation A/B benchmark (legacy MultiMesh vs surface ArrayMesh).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

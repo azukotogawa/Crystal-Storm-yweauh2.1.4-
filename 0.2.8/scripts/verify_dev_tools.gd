@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: F3 debug overlay toggle + F11 bug-report bundle schema.
 
 
 const _BugReporter = preload("res://systems/bug_reporter.gd")

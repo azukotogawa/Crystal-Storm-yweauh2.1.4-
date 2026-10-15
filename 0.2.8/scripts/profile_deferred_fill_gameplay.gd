@@ -1,10 +1,4 @@
 extends SceneTree
-## Windowed production gameplay profile of background world-bake fill.
-## Measurement only. Does not change bake or gameplay architecture.
-## Env:
-##   CRYSTALSTORM_FILL_PROFILE_PHASE=A|BC
-##   CRYSTALSTORM_FILL_PROFILE_SEC=20
-## Writes user://deferred_fill_profile_<phase>.json
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
@@ -300,7 +294,6 @@ func _do_active_step(
 	var cycle := i % 90
 	var col: Vector3 = player.get_voxel_position() if player.has_method("get_voxel_position") else player.global_position
 	if cycle < 18:
-		# Cross chunk boundaries with repeated small steps.
 		player.voxel_position.x += 0.85
 		if player.has_method("_sync_global_from_voxel"):
 			player._sync_global_from_voxel()

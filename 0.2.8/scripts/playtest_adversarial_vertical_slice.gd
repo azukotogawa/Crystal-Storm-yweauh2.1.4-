@@ -1,6 +1,4 @@
 extends SceneTree
-## 20-step adversarial human-style playtest on main.tscn.
-## Records defects; does not "fix" them. Output → SCRATCH adversarial_playtest.md
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -15,7 +13,7 @@ const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 
 
 var _lines: PackedStringArray = []
-var _defects: Array = []  # {pri, step, title, detail}
+var _defects: Array = []
 var _failed: int = 0
 
 
@@ -101,10 +99,8 @@ func _run() -> void:
 		px = int(floor(pv.x))
 		pz = int(floor(pv.z))
 
-	# --- 1 spawn ---
 	_ok(1, "spawn world_ready at column (~%d,%d)" % [px, pz])
 
-	# --- 2 move ---
 	var moved := false
 	if "voxel_position" in player:
 		var before: Vector3 = player.voxel_position
@@ -118,7 +114,6 @@ func _run() -> void:
 	else:
 		_def("P1", 2, "movement not exercised", "could not confirm voxel relocate")
 
-	# --- 3 approach crystal ---
 	var crystal_cells := 0
 	var nearest_c := Vector2i(999999, 999999)
 	var best_d := INF
@@ -138,7 +133,6 @@ func _run() -> void:
 	else:
 		_def("P1", 3, "no crystal near spawn sample", "player may not see pressure immediately")
 
-	# --- 4 dig trench ---
 	var dig_dup := 0
 	var dig_hitch := 0
 	var dig_sum := 0.0
@@ -165,7 +159,6 @@ func _run() -> void:
 	else:
 		_ok(4, "trench dig 12 cells avg_ms=%.2f max=%.2f hitches=%d" % [dig_sum / 12.0, dig_max, dig_hitch])
 
-	# --- 5 single wall ---
 	var wx := px + 4
 	var wz := pz + 5
 	var wb: float = _TerrainEdits.get_height_delta(wx, wz)
@@ -182,7 +175,6 @@ func _run() -> void:
 	else:
 		_ok(5, "single wood_wall +1 layer ms=%.2f" % wms)
 
-	# Visual identity of wall prop
 	var feat_layer = get_first_node_in_group("feature_visual_layer")
 	if feat_layer and feat_layer.has_method("refresh_cell"):
 		feat_layer.refresh_cell(wx, wz)
@@ -200,7 +192,6 @@ func _run() -> void:
 			else:
 				_def("P3", 5, "wood_wall not authored", "meta uses_authored_mesh false")
 
-	# --- 6 connected walls ---
 	var conn_ok := 0
 	for i in 6:
 		var cx2 := px + 5 + i
@@ -211,7 +202,6 @@ func _run() -> void:
 		_def("P0", 6, "connected wall line incomplete", "placed=%d/6" % conn_ok)
 	else:
 		_ok(6, "connected stone wall line placed=%d" % conn_ok)
-	# stone visual
 	if feat_layer:
 		feat_layer.refresh_cell(px + 5, pz + 5)
 		await process_frame
@@ -226,7 +216,6 @@ func _run() -> void:
 			else:
 				_def("P3", 6, "stone_wall procedural/placeholder", "no authored mesh")
 
-	# --- 7 gate ---
 	var gx := px + 3
 	var gz := pz + 8
 	var gok: bool = bool(editor.try_build_gate(Vector3(float(gx) + 0.5, 0, float(gz) + 0.5), inv))
@@ -252,7 +241,6 @@ func _run() -> void:
 		else:
 			_ok(7, "gate is_passage feature")
 
-	# --- 8 bridge ---
 	var bx := px + 10
 	var bz := pz + 8
 	_TerrainEdits.dig(bx, bz, 1)
@@ -275,18 +263,15 @@ func _run() -> void:
 		else:
 			_ok(8, "bridge feature OK")
 
-	# --- 9 ramps ---
 	var surf: float = world.get_surface_height(float(px + 5), float(pz + 5))
 	var walk: float = _TerrainRamps.walkable_height(world, float(px + 5) + 0.5, float(pz + 5) + 0.5)
 	if walk + 0.001 < surf:
 		_def("P0", 9, "walkable below surface", "walk=%.2f surf=%.2f" % [walk, surf])
 	elif absf(walk - (surf + layer)) > layer * 0.25 and absf(walk - surf) > 0.01:
-		# ramp slope or flat top both OK if walkable sensible
 		_ok(9, "walkable=%.2f surface=%.2f layer=%.2f" % [walk, surf, layer])
 	else:
 		_ok(9, "ramp/walk surface=%.2f walkable=%.2f" % [surf, walk])
 
-	# --- 10 route water ---
 	var water_ms := 0.0
 	var water_ok := false
 	if editor.has_method("_channel_dig"):
@@ -307,11 +292,9 @@ func _run() -> void:
 	else:
 		_ok(10, "trench dig near water path total_ms=%.1f" % water_ms)
 
-	# Water visual: tile override present?
 	var wt := world.get_tile_type(float(px + 12), float(pz + 3))
 	_note("  water tile_at channel dig=%d (RIVER/WATER expected if channel)" % wt)
 
-	# --- 11 crystal response to terrain ---
 	var wall_c := Vector2i(px + 6, pz + 10)
 	editor.try_build(Vector3(float(wall_c.x) + 0.5, 0, float(wall_c.y) + 0.5), inv, &"stone_wall")
 	var wf: Dictionary = _FeatureRegistry.get_feature(wall_c.x, wall_c.y)
@@ -321,7 +304,6 @@ func _run() -> void:
 	else:
 		_ok(11, "wall flow_resistance=%.2f (crystal baffle)" % resist)
 
-	# Crystal floor after dig under crystal
 	if crystal and nearest_c.x < 99999:
 		var fl0: float = crystal._crystal_floor_at(nearest_c) if crystal.has_method("_crystal_floor_at") else 0.0
 		var d0: float = float(crystal.get_depth_at(nearest_c.x, nearest_c.y))
@@ -341,7 +323,6 @@ func _run() -> void:
 		else:
 			_ok(11, "crystal baffle only (no nearby depth for floor dig)")
 
-	# --- 12 fight enemies ---
 	var enemies: Array = get_nodes_in_group("crystal_enemy")
 	if enemies.is_empty():
 		enemies = get_nodes_in_group("enemies")
@@ -360,7 +341,6 @@ func _run() -> void:
 		else:
 			_ok(12, "enemy damaged %.1f→%.1f" % [hp0, hp1])
 
-	# --- 13 heal ---
 	var weapon_node = player.get_node_or_null("WeaponController")
 	if weapon_node and weapon_node.has_method("_try_use_consumable") and inv:
 		player.health = minf(player.health, player.max_health)
@@ -383,7 +363,6 @@ func _run() -> void:
 	else:
 		_def("P0", 13, "heal API missing", "no weapon consumable path")
 
-	# --- 14 approach spawn ---
 	var spawn_n := 0
 	if crystal and crystal.has_method("get_active_spawns"):
 		var spawns: Array = crystal.get_active_spawns()
@@ -393,7 +372,6 @@ func _run() -> void:
 	else:
 		_def("P1", 14, "no active spawns reported", "get_active_spawns empty/missing")
 
-	# --- 15 damage spawn ---
 	if crystal and crystal.has_method("damage_spawn_at_world"):
 		var dmg_ms := _time_ms(func():
 			crystal.damage_spawn_at_world(Vector2i(0, 0), 12.0, 6.0)
@@ -402,7 +380,6 @@ func _run() -> void:
 	else:
 		_def("P1", 15, "spawn damage API missing", "")
 
-	# --- 16 retreat ---
 	if "voxel_position" in player:
 		var midp: Vector3 = player.voxel_position
 		player.voxel_position = midp + Vector3(-3.0, 0, -2.0)
@@ -412,7 +389,6 @@ func _run() -> void:
 	else:
 		_ok(16, "retreat skipped (no voxel_position)")
 
-	# --- 17 return continue ---
 	if "voxel_position" in player:
 		player.voxel_position = Vector3(float(px) + 0.5, player.voxel_position.y, float(pz) + 0.5)
 		if player.has_method("_sync_global_from_voxel"):
@@ -421,7 +397,6 @@ func _run() -> void:
 	else:
 		_ok(17, "return skipped")
 
-	# --- 18 world boundaries ---
 	var half: float = float(_WorldBorder.PLAYABLE_HALF_X) if "PLAYABLE_HALF_X" in _WorldBorder else 1024.0
 	var edge_ok := _WorldBorder.is_playable(0.0, 0.0)
 	var far_ok := _WorldBorder.is_playable(half + 50.0, 0.0)
@@ -432,7 +407,6 @@ func _run() -> void:
 	else:
 		_ok(18, "border playable origin=yes outside=no half=%.0f" % half)
 
-	# --- 19 attempt leave ---
 	var block_ocean := false
 	var block_mtn := false
 	if _WorldBorder.has_method("blocks_player_at"):
@@ -443,7 +417,6 @@ func _run() -> void:
 	else:
 		_def("P1", 19, "border block API weak/missing", "player may walk out")
 
-	# --- 20 win/lose restart path ---
 	var gm = get_first_node_in_group("game_manager")
 	if gm == null:
 		_def("P1", 20, "game_manager missing", "no win/lose owner")
@@ -454,7 +427,6 @@ func _run() -> void:
 		else:
 			_def("P1", 20, "run_state not found on game_manager", "")
 
-	# Structure visual audit snapshot
 	_note("")
 	_note("## Structure authored-mesh snapshot")
 	var reg = get_first_node_in_group("game_visual_registry")
@@ -467,7 +439,6 @@ func _run() -> void:
 	else:
 		_def("P3", 0, "registry authored API missing", "")
 
-	# Town/ruin landmarks
 	var towns: Array = _FeatureRegistry.get_towns()
 	var ruins: Array = _FeatureRegistry.get_ruin_centers()
 	_note("")

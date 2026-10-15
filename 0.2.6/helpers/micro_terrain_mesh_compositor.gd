@@ -1,6 +1,5 @@
 class_name MicroTerrainMeshCompositor
 extends RefCounted
-## Authoritative micro-column mesh emission; macro greedy defers via build_skip_set.
 
 
 const FACE_NEG_X := 3

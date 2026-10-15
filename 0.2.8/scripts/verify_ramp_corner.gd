@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: L-shaped step corners emit triangular prism (FACE_RAMP_CORNER), not cardinal wedge.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -36,7 +35,6 @@ func _run() -> void:
 	var high_h := low_h + layer
 	data.surface_map[cx][cz] = low_h
 	data.tile_map[cx][cz] = _VoxelTypes.GRASSLAND
-	# 2×2 plateau: two perpendicular highs plus the inner diagonal.
 	for d in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
 		data.surface_map[cx + d.x][cz + d.y] = high_h
 		data.tile_map[cx + d.x][cz + d.y] = _VoxelTypes.GRASSLAND
@@ -81,7 +79,6 @@ func _run() -> void:
 	else:
 		print("OK corner cell floor support tops=%d" % floor_tops)
 
-	# Isolated two-pillar L (no diagonal plateau) must not emit a wedge.
 	var iso := _ChunkData.new(Vector2i(0, 0), world)
 	iso.capture_worker_snapshot()
 	_init_maps(iso)
@@ -103,7 +100,6 @@ func _run() -> void:
 	else:
 		print("OK isolated corner wedge suppressed")
 
-	# Default chance must not stamp a corner on every inner 2×2.
 	var sparse := 0
 	var old_pc: int = _TerrainRamps.placement_chance
 	_TerrainRamps.placement_chance = 28
@@ -139,7 +135,6 @@ func _run() -> void:
 	else:
 		print("OK ramp_map corner flag")
 
-	# Supporting full blocks of a 2×2 must stay full blocks, not cardinal slopes.
 	var support_cardinal := 0
 	for q in quads:
 		var qx := int(q.get("x", -1))

@@ -1,5 +1,4 @@
 extends SceneTree
-## P0 contract: terrain edits use ring=0 interior, ring=1 on the chunk-face cell only.
 
 
 const _TerrainEditor = preload("res://world/terrain_editor.gd")

@@ -1,5 +1,4 @@
 extends SceneTree
-## Catalog flow: cold/deferred create, warm load, incomplete bake row, return-to-select.
 
 const _WorldManager = preload("res://systems/world_manager.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")

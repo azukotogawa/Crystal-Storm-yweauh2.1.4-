@@ -20,7 +20,6 @@ enum Category { TERRAIN_WALL, STRUCTURE, TRAP, CRYSTAL_BAFFLE }
 @export var max_stack_height: int = 8
 
 @export_group("Crystal")
-## 0 = transparent to flow, 1 = nearly blocks lateral spread.
 @export var flow_resistance: float = 0.85
 @export var redirects_flow: bool = false
 

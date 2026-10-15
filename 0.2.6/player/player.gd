@@ -24,10 +24,8 @@ var player_material: StandardMaterial3D
 var _body_collision: CollisionShape3D
 
 @export var move_speed := 16.0
-## Horizontal acceleration / friction (units per second²) — removes binary start/stop grid feel.
 @export var move_accel := 95.0
 @export var move_friction := 85.0
-## Soft ground follow rate while walking (higher = stickier, lower = floatier).
 @export var ground_follow_rate := 24.0
 @export var max_health := 100.0
 
@@ -35,9 +33,7 @@ signal died
 
 var health := 100.0
 
-## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
-## Continuous horizontal velocity in column-space XZ (smooth micro-movement).
 var _move_vel_xz: Vector2 = Vector2.ZERO
 
 var sprite_scale_modifier := Vector2.ONE
@@ -55,12 +51,11 @@ var world_ready := false
 
 var _floor_probe: _VoxelFloorProbe
 
-## Physics process exclusive breakdown (CRYSTALSTORM_PLAYER_PHYSICS_MEASURE=1).
 var _phys_measure: bool = false
 var _phys_n: int = 0
 var _phys_sum_us: int = 0
 var _phys_max_us: int = 0
-var _phys_phase_sum: Dictionary = {}  # name -> us sum
+var _phys_phase_sum: Dictionary = {}
 var _phys_phase_max: Dictionary = {}
 var _phys_phase_calls: Dictionary = {}
 var _phys_worst_phases: Dictionary = {}
@@ -195,7 +190,6 @@ func _ready():
 	relic_manager = _RelicManager.new()
 	relic_manager.name = "RelicManager"
 	add_child(relic_manager)
-	# Vertical-slice starter relic: measurable crystal flow dampening.
 	if relic_manager.has_method("equip"):
 		relic_manager.equip(&"crystal_ward")
 
@@ -345,7 +339,6 @@ func _physics_process(delta: float) -> void:
 
 	var airborne := current_state in [State.JUMPING, State.FALLING]
 	t0 = Time.get_ticks_usec() if measure else 0
-	# Continuous accel/friction → micro-smooth starts/stops (no binary grid lurch).
 	var desired_vel := Vector2.ZERO
 	if input_dir != Vector2.ZERO:
 		var move_vec := rotate_input_to_world(input_dir, locked_rotation)
@@ -382,7 +375,6 @@ func _physics_process(delta: float) -> void:
 			velocity.y -= _gravity() * delta
 			var next_pos := voxel_position + Vector3(0.0, velocity.y * delta, 0.0)
 			if is_colliding_at(next_pos):
-				# Land with a firm settle (not a mid-air soft float).
 				voxel_position.y = _sample_walkable_feet(voxel_position.x, voxel_position.z)
 				velocity.y = 0.0
 				_move_vel_xz *= 0.65
@@ -429,7 +421,6 @@ func _physics_process(delta: float) -> void:
 
 
 func _slope_speed_multiplier() -> float:
-	# Horizontal movement stays independent of voxel height — only extreme slopes dip slightly.
 	var excess: float = _floor_probe.slope_excess_at(voxel_position.x, voxel_position.z)
 	var layer: float = _ws().layer_height()
 	var radius: float = _ws().player_floor_probe_radius
@@ -484,7 +475,6 @@ func _can_move_to(proposed: Vector3, airborne: bool = false) -> bool:
 	)
 
 
-## Full diagonal move first, then axis slide — removes grid-axis stutter without losing wall slide.
 func _try_move_delta(move_delta: Vector2, airborne: bool, delta: float) -> void:
 	var full := voxel_position + Vector3(move_delta.x, 0.0, move_delta.y)
 	if _can_move_to(full, airborne):
@@ -538,7 +528,6 @@ func _sample_walkable_feet(wx: float, wz: float) -> float:
 func _ground_snap_distance(moving: bool) -> float:
 	var snap: float = _ws().floor_snap_distance()
 	if moving:
-		# Match probe min/max band while stepping between columns (avoids spurious FALLING).
 		snap += _ws().layer_height() * 0.45
 	return snap
 
@@ -590,8 +579,6 @@ func _resolve_spawn_column() -> Vector2i:
 		var spawns: Array = crystal_manager.get_active_spawns()
 		if not spawns.is_empty():
 			source = spawns[0].world_pos
-	# Start outside assault_distance (~48) so the first minutes are pure MAZE prep:
-	# dig trenches / walls while watching crystal pressure build, then walk in to ASSAULT.
 	var ring_offsets: Array[Vector2i] = []
 	for dist in [56, 52, 60, 48, 64, 44]:
 		ring_offsets.append(Vector2i(dist, 0))
@@ -609,7 +596,6 @@ func _resolve_spawn_column() -> Vector2i:
 		if _CrystalTypes.is_water_tile(world.get_tile_type(float(candidate.x), float(candidate.y))):
 			continue
 		return candidate
-	# Last resort: still outside default assault_distance.
 	return source + Vector2i(56, -12)
 
 

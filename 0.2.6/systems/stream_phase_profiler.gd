@@ -1,9 +1,5 @@
 class_name StreamPhaseProfiler
 extends RefCounted
-## Fine-grained initial_chunk_stream / chunk-load phase timings.
-## Enable: CRYSTALSTORM_STREAM_PHASE_PROFILE=1
-## Auto-on while StartupProfiler session is active if CRYSTALSTORM_STARTUP_PROFILE=1
-## (still records only when is_enabled()).
 
 static var _enabled: bool = false
 static var _checked: bool = false
@@ -13,22 +9,17 @@ static var _window_open: bool = false
 static var _window_t0: int = 0
 static var _window_us: int = 0
 
-## stage -> total us (sum across all samples)
 static var _totals: Dictionary = {}
-## stage -> PackedInt64Array of per-event us
 static var _samples: Dictionary = {}
-## order of first-seen stages
 static var _order: Array = []
-## per-chunk: Array of {coord_x, coord_z, stages: {name: us}, wall_us}
 static var _chunks: Array = []
-static var _chunk_open: Dictionary = {}  # "cx,cz" -> {stages, t0}
+static var _chunk_open: Dictionary = {}
 
 
 static func enabled_from_env() -> bool:
 	var raw := OS.get_environment("CRYSTALSTORM_STREAM_PHASE_PROFILE").strip_edges().to_lower()
 	if raw == "1" or raw == "true" or raw == "on":
 		return true
-	# Piggyback startup profile sessions.
 	var sp := OS.get_environment("CRYSTALSTORM_STARTUP_PROFILE").strip_edges().to_lower()
 	if sp == "1" or sp == "true" or sp == "on":
 		return true
@@ -67,7 +58,6 @@ static func reset() -> void:
 	_t0_us = Time.get_ticks_usec()
 
 
-## Mark the composition_root initial_chunk_stream wall window.
 static func begin_window(name: String = "initial_chunk_stream") -> void:
 	if not is_enabled():
 		return
@@ -170,7 +160,6 @@ static func report() -> Dictionary:
 	var denom: float = float(maxi(wall, 1))
 	for st in stages:
 		st["pct_window"] = (float(st.get("total_us", 0)) / denom) * 100.0
-	# Sort by total descending for ranking
 	stages.sort_custom(func(a, b): return int(a.get("total_us", 0)) > int(b.get("total_us", 0)))
 	var dominant := ""
 	var dominant_us := 0

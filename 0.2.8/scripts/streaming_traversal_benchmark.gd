@@ -1,5 +1,4 @@
 extends SceneTree
-## Canonical churn-gated streaming traversal benchmark (Epic 2 criterion 2 / plan step 3).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

@@ -1,5 +1,4 @@
 extends SceneTree
-## Dirty-region water gather: sleep when idle, never scan the whole channel map.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
@@ -125,7 +124,6 @@ func _run() -> void:
 	else:
 		print("OK local reflow dest=%.3f" % dest)
 
-	# A river-tile field must not become a 3000-cell dirty wave.
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	svc.world = null
@@ -140,7 +138,6 @@ func _run() -> void:
 			str(river_diag.get("subset_cells")), str(river_diag.get("dirty_cells"))
 		])
 
-	# Walking must not gather the overlay. Only edits mark dirty.
 	svc.set("_dirty_cells", {})
 	var dummy := Node3D.new()
 	dummy.add_to_group("player")

@@ -9,7 +9,6 @@ var lod_tier: int = _CrystalClusterMesh.LOD_FULL
 var _mm_instance: MultiMeshInstance3D
 var _material: Material
 var _pos_to_index: Dictionary = {}
-## Last terrain_y applied into MultiMesh for each cell (presentation diagnostics / verifies).
 var _applied_terrain_y: Dictionary = {}
 var _mesh_lod_cached: int = -1
 var _legacy_mesh_cached: bool = false
@@ -20,8 +19,6 @@ func has_cell(pos: Vector2i) -> bool:
 	return _pos_to_index.has(pos)
 
 
-## Presentation diagnostic: MultiMesh instance center Y for a crystal cell (local to layer).
-## Returns -99999.0 if the cell is not currently instanced.
 func get_cell_instance_center_y(pos: Vector2i) -> float:
 	if _mm_instance == null or _mm_instance.multimesh == null:
 		return -99999.0
@@ -31,7 +28,6 @@ func get_cell_instance_center_y(pos: Vector2i) -> float:
 	return _mm_instance.multimesh.get_instance_transform(idx).origin.y
 
 
-## Terrain floor last written into the MultiMesh transform path for this cell.
 func get_applied_terrain_y(pos: Vector2i) -> float:
 	return float(_applied_terrain_y.get(pos, -99999.0))
 
@@ -124,14 +120,11 @@ func _ensure_mesh_for_mode(mm: MultiMesh) -> void:
 		mm.mesh = _CrystalClusterMesh.get_mesh_for_lod(lod_tier)
 
 
-## Footprint, visual depth, and frontier_boost for one cell.
 ## x = horizontal scale, y = height in world units, z = frontier_boost.
 static func visual_growth(cell: CrystalCell) -> Vector3:
 	var ws = _WorldSettings.get_active()
 	var depth := maxf(cell.depth, 0.08)
 	var layer_h: float = ws.layer_height()
-	# Smoothstep swell: a new cell is a small bead; a full layer overlaps its neighbors
-	# so the cluster reads as one crystal instead of a stack of full-size cubes.
 	var depth_n := clampf(depth / maxf(layer_h, 0.001), 0.0, 1.0)
 	var swell := clampf(depth_n * depth_n * (3.0 - 2.0 * depth_n), 0.18, 1.0)
 	var footprint := lerpf(0.34, 1.14, swell)
@@ -144,7 +137,6 @@ static func visual_growth(cell: CrystalCell) -> Vector3:
 		frontier_boost = 1.28
 		visual_depth *= frontier_boost
 		footprint *= 1.10
-	# Wet ground: the same swell, pulled into a low crawl.
 	if cell.is_wet:
 		frontier_boost *= 0.58
 		footprint *= 0.92

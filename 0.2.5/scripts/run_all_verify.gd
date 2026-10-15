@@ -1,7 +1,4 @@
 extends SceneTree
-## Run the full headless verification suite (delegates to run_all_verify.sh for reliable exit codes).
-## Usage: godot --headless -s scripts/run_all_verify.gd
-## Or directly: bash scripts/run_all_verify.sh
 
 const SHELL_SCRIPT := "res://scripts/run_all_verify.sh"
 

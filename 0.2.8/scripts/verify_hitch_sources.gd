@@ -1,12 +1,9 @@
 extends SceneTree
-## Verifies visual bundle is generated once and full-world refresh is not wired to chunk_ready.
-## Drives shipped GameVisualRegistry / WorldVisuals / CrystalManager APIs.
 
 
 func _init() -> void:
 	var failed := false
 
-	# --- Registry: generate once, preload no-ops, refresh does not regen ---
 	var reg_scr = load("res://systems/game_visual_registry.gd")
 	var reg = reg_scr.new()
 	var b1: Dictionary = reg.generate_game_visual_bundle()
@@ -23,7 +20,6 @@ func _init() -> void:
 	else:
 		print("OK preload no-op after first generate (gen_count=%d)" % gen1)
 
-	# Force regen path still works
 	reg.preload_game_bundle(true)
 	if int(reg._bundle_gen_count) != gen1 + 1:
 		push_error("force preload did not regenerate")
@@ -31,7 +27,6 @@ func _init() -> void:
 	else:
 		print("OK force preload regenerates once")
 
-	# clear_cache allows regen
 	reg.clear_cache()
 	if bool(reg._bundle_ready):
 		push_error("clear_cache left bundle_ready true")
@@ -54,7 +49,6 @@ func _init() -> void:
 		else:
 			print("OK hitch counters ", c)
 
-	# --- WorldVisuals: chunk_ready must not call full refresh ---
 	var wv_src: String = FileAccess.get_file_as_string("res://world/world_visuals.gd")
 	if wv_src.contains("call_deferred(\"_refresh_all_layers\")"):
 		push_error("WorldVisuals still defers _refresh_all_layers on chunk path")
@@ -65,7 +59,6 @@ func _init() -> void:
 		push_error("WorldVisuals lost _refresh_all_layers (needed for bootstrap)")
 		failed = true
 
-	# --- Registry: chunk_ready handler is no-op / disconnected ---
 	var reg_src: String = FileAccess.get_file_as_string("res://systems/game_visual_registry.gd")
 	if reg_src.contains("call_deferred(\"_refresh_scene_visuals\")"):
 		push_error("GameVisualRegistry still defers full scene refresh on chunk_ready")
@@ -76,7 +69,6 @@ func _init() -> void:
 		push_error("bundle_ready guard missing")
 		failed = true
 
-	# --- CrystalManager: expansion gated ---
 	var cm_src: String = FileAccess.get_file_as_string("res://crystal/crystal_manager.gd")
 	for needle in ["_should_run_expansion", "_stream_pressure_active", "_boot_stream_ready", "get_hitch_counters"]:
 		if not cm_src.contains(needle):

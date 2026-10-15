@@ -1,8 +1,4 @@
 extends SceneTree
-## Windowed screenshot with texture set Batch 1 and the tutorial hidden.
-## Headless prints a skip line and exits 0.
-## godot --path . -s res://tools/capture_texture_batch.gd -- --out <path>
-## Optional env: CRYSTALSTORM_BATCH_OUT
 
 const _TextureSet = preload("res://helpers/texture_set.gd")
 const _Shadow = preload("res://helpers/contact_shadow.gd")

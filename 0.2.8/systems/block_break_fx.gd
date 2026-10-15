@@ -1,7 +1,5 @@
 class_name BlockBreakFx
 extends Node3D
-## Crack stages on the mined cell, pooled break chips, and a pooled place pop.
-## The overlay is one mesh. Placement tweens a proxy and does not rebuild chunks.
 
 const POP_SLOTS := 4
 const POP_SEC := 0.16

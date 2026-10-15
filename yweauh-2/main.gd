@@ -22,7 +22,7 @@ var view_angle: int = 0
 var current_ground_h: float = 0.0
 var sprite_scale_modifier: Vector2 = Vector2.ONE
 var current_skew: float = 0.0
-var current_tile_h: float = 0.0 # Add this line
+var current_tile_h: float = 0.0
 
 func _ready():
 	world = InfiniteNoiseWorld.new(current_seed)
@@ -43,10 +43,8 @@ func _ready():
 	
 	_update_player_screen_position()
 	
-	# Sync the viewport size to the screen size
 	$WorldContainer/SubViewport.size = get_viewport().size
 	
-	# Connect to the window resize signal to keep them synced
 	get_viewport().size_changed.connect(_on_window_size_changed)
 	print("SubViewport size: ", $WorldContainer/SubViewport.size)
 	print("SubViewport children: ", $WorldContainer/SubViewport.get_child_count())
@@ -102,7 +100,6 @@ func _process(delta):
 	_handle_player_movement(delta)
 	_update_jump_and_fall_physics(delta)
 	
-	# Animation recovery
 	sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 	current_skew = move_toward(current_skew, 0.0, 10.0 * delta)
 	
@@ -113,7 +110,6 @@ func _process(delta):
 		if chunk.wall_layer.material is ShaderMaterial:
 			chunk.wall_layer.material.set_shader_parameter("ground_mask", mask_texture)
 	
-		# Force mask refresh
 	var sub = $WorldContainer/SubViewport
 	if sub:
 		var tex = sub.get_texture()
@@ -142,13 +138,11 @@ func _handle_player_movement(delta: float):
 	
 	raw_world_tile_pos += isometric_movement * movement_speed * delta
 	
-	# CALCULATE TARGET POSITION
 	var target_pos = raw_world_tile_pos + (isometric_movement * movement_speed * delta)
 	
 	if _can_move_to(target_pos):
 		raw_world_tile_pos = target_pos
 	else:
-	# Optional: Slide along the wall by checking X and Y axes separately
 		var move_x = Vector2(isometric_movement.x * movement_speed * delta, 0)
 		if _can_move_to(raw_world_tile_pos + move_x):
 			raw_world_tile_pos.x += move_x.x
@@ -157,28 +151,22 @@ func _handle_player_movement(delta: float):
 		if _can_move_to(raw_world_tile_pos + move_y):
 			raw_world_tile_pos.y += move_y.y
 
-# Inside main.gd
 
 func _can_move_to(target_pos: Vector2) -> bool:
-	# 1. Get current tile height
 	var screen_pos = IsoMath.grid_to_screen(raw_world_tile_pos)
 	var biome_pos = IsoMath.screen_to_grid(screen_pos) + Vector2(0.5, 0.5)
 	var current_h = world.get_biome(biome_pos.x, biome_pos.y).get("render_height", 0)
 	
-	# 2. Get target tile height
 	var target_grid_pos = IsoMath.grid_to_screen(target_pos)
 	var target_biome_pos = IsoMath.screen_to_grid(target_grid_pos) + Vector2(0.5, 0.5)
 	var target_h = world.get_biome(target_biome_pos.x, target_biome_pos.y).get("render_height", 0)
 	
-	# 3. Collision Rule: If target is higher, it's a wall.
-	# We use a threshold of 0 to block movement into higher ground (cliffs).
 	if target_h > current_h:
-		return false # Blocked by wall
+		return false
 		
 	return true
 
 func _update_jump_and_fall_physics(delta: float):
-	# Use visual position for accurate tile detection
 	var player_screen_pos = player.position
 	var sample_grid = IsoMath.screen_to_grid(player_screen_pos) + Vector2(0.5, 0.5)
 	
@@ -193,31 +181,27 @@ func _update_jump_and_fall_physics(delta: float):
 			player.is_jumping = true
 			player.z_velocity = 0.0
 			
-			if height_diff > 0:  # CLIMB
+			if height_diff > 0:
 				player.z_velocity = -100.0
 				sprite_scale_modifier = Vector2(0.6, 1.65)
 				current_skew = 0.25
-			else:  # FALL OFF EDGE - stronger drop
-				player.z_velocity = 65.0   # stronger initial downward velocity
+			else:
+				player.z_velocity = 65.0
 				sprite_scale_modifier = Vector2(1.45, 0.6)
 				current_skew = -0.15
 	
-	# === PHYSICS WITH GRAVITY ===
 	if player.is_jumping:
 		player.z_velocity += base_gravity * delta
 		player.z_height += player.z_velocity * delta
 		
-		# Land when falling down
 		if player.z_velocity >= 0 and player.z_height >= target_z_px - 8:
 			player.z_height = target_z_px
 			player.is_jumping = false
 			player.z_velocity = 0.0
 			current_ground_h = current_tile_h
 			
-			# Landing squash
 			sprite_scale_modifier = Vector2(1.6, 0.5)
 	else:
-		# Smooth follow when on ground
 		player.z_height = lerp(player.z_height, target_z_px, 18.0 * delta)
 
 func _update_player_screen_position():
@@ -236,7 +220,6 @@ func _update_player_screen_position():
 
 	var player_final_pos = screen_pos + Vector2(0, visual_ground_h * -8.0) + gravity_visual_offset
 
-		# === SIMPLE & RELIABLE OCCLUSION ===
 	var is_occluded: bool = false
 	var highest_block_screen_y: float = -999999.0
 
@@ -258,7 +241,6 @@ func _update_player_screen_position():
 				if wall_peak_y > highest_block_screen_y:
 					highest_block_screen_y = wall_peak_y
 
-	# Apply to player
 	if player_sprite and player_sprite.material is ShaderMaterial:
 		var mat = player_sprite.material as ShaderMaterial
 		mat.set_shader_parameter("is_clipped", is_occluded)
@@ -267,7 +249,6 @@ func _update_player_screen_position():
 
 	player.position = player_final_pos
 	
-	# Shadow
 	if player.has_node("ShadowSprite"):
 		var shadow = player.get_node("ShadowSprite")
 		shadow.position = -gravity_visual_offset

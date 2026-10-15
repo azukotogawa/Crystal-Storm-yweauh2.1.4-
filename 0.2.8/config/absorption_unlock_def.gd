@@ -1,7 +1,6 @@
 class_name AbsorptionUnlockDef
 extends Resource
 
-## One row in the crystal absorption → enemy unlock table.
 
 @export var source_id: StringName = &"grass"
 @export var display_name: String = "Grass"
@@ -9,5 +8,4 @@ extends Resource
 @export var enemy_id: StringName = &"crystal_mite"
 @export var bonus_power: float = 0.0
 @export var spawn_burst: int = 0
-## When true, CrystalEvolution.configure unlocks this enemy without absorption.
 @export var unlock_at_start: bool = false

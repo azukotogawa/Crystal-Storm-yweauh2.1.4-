@@ -15,7 +15,6 @@ void fragment() {
 	vec2 local_uv = clamp(UV, vec2(0.001), vec2(0.999));
 	local_uv.y = 1.0 - local_uv.y;
 	
-	// Fit into its atlas cell
 	local_uv /= atlas_grid;
 	vec2 atlas_offset = vec2(col, row) / atlas_grid;
 

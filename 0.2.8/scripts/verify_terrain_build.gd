@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: build_wall raises terrain, sets build tile, and terrain_editor places with inventory.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")

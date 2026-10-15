@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Run smoke_gameplay; exit 0 when terminal marker is OK (tolerates Godot teardown abort 134).
-# Optional: SMOKE_SESSION_SEC (default 30), SMOKE_LOG, SMOKE_FORCE_FAIL
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="${SMOKE_LOG:-}"

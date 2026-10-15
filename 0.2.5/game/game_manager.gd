@@ -70,7 +70,6 @@ func _update_phase() -> void:
 		return
 	var col := _player_column_xz()
 	var dist: float = col.length()
-	# Maze phase at origin (building/digging); assault when crystal has tiered up and player is near.
 	var next: Phase = Phase.MAZE
 	if _crystal and _crystal.strength_tier >= 1 and dist <= assault_distance:
 		next = Phase.ASSAULT

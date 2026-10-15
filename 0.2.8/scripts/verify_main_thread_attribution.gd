@@ -1,7 +1,4 @@
 extends SceneTree
-## Verifies exclusive main-thread attribution without residual rebrand.
-## Gate: named exclusive (real begin/end sections) / full_wall ≥ 95%, Unknown ≤ 5%.
-## Pure account_main_thread_frame is the only gate scorer (live path must not remap).
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -20,7 +17,6 @@ const FORBIDDEN_NAMED := [
 	"physics_server_step",
 ]
 
-## Production roots that may contain begin("name") / record_us("name") for named categories.
 const PROD_GLOBS := [
 	"res://systems/",
 	"res://chunks/",
@@ -61,7 +57,6 @@ func _test_pure_account_contract() -> int:
 	if profiler == null or not profiler.has_method("account_main_thread_frame"):
 		push_error("FAIL: account_main_thread_frame missing")
 		return 1
-	# Leaves named; MainLoop_* envelope exclusive → Unknown.
 	var sections := {
 		"chunk_upload": {"exclusive_us": 4000, "calls": 1},
 		"living_world": {"exclusive_us": 2000, "calls": 1},
@@ -85,14 +80,12 @@ func _test_pure_account_contract() -> int:
 		failed += 1
 	else:
 		print("OK pure envelope residual is Unknown")
-	# physics_callbacks exclusive is named (ordinary section, not envelope).
 	var with_phase := {
 		"physics_callbacks": {"exclusive_us": 5000, "calls": 1},
 		"entity_physics": {"exclusive_us": 3000, "calls": 10},
 		"MainLoop_physics": {"exclusive_us": 2000, "calls": 1},
 	}
 	var acct2: Dictionary = profiler.account_main_thread_frame(with_phase, 10000)
-	# named = 5+3 = 8ms; MainLoop 2ms → Unknown; named_pct 80
 	if absf(float(acct2.get("named_ms", 0.0)) - 8.0) > 0.05:
 		push_error(
 			"FAIL: pure physics_callbacks+entity expected named 8.0 got %.3f"
@@ -131,14 +124,12 @@ func _test_no_remap_and_real_begin_end() -> int:
 			failed += 1
 		else:
 			print("OK no %s in profiler" % banned)
-	# physics_server_step may appear only as a forbidden-named guard, not as a live section writer.
 	if 'section_map["physics_server_step"]' in pp or "begin(\"physics_server_step\")" in pp:
 		push_error("FAIL: physics_server_step used as live section")
 		failed += 1
 	else:
 		print("OK physics_server_step not a live section")
 	if "begin(SECTION_PHYSICS)" not in probe and 'begin("physics_callbacks")' not in probe:
-		# Probe uses const SECTION_PHYSICS := "physics_callbacks"
 		if 'SECTION_PHYSICS := "physics_callbacks"' not in probe:
 			push_error("FAIL: probe must begin physics_callbacks via real begin")
 			failed += 1
@@ -154,7 +145,6 @@ func _test_no_remap_and_real_begin_end() -> int:
 	if "MainLoop_physics" in probe and 'begin("MainLoop_physics")' in probe:
 		push_error("FAIL: probe still begins MainLoop_physics (use physics_callbacks)")
 		failed += 1
-	# Exclusive nest without remapping
 	if profiler.has_method("mark_frame_work_start"):
 		profiler.mark_frame_work_start()
 	profiler.begin("physics_callbacks")
@@ -171,7 +161,6 @@ func _test_no_remap_and_real_begin_end() -> int:
 	var parent_ex: float = float(cats.get("physics_callbacks", {}).get("ms", 0.0))
 	var child_ex: float = float(cats.get("entity_physics", {}).get("ms", 0.0))
 	print("exclusive physics_callbacks=%.3f entity_physics=%.3f" % [parent_ex, child_ex])
-	# Parent exclusive = inter-child gaps only (must not include child exclusive).
 	if child_ex < 2.0:
 		push_error("FAIL: entity_physics exclusive missing")
 		failed += 1
@@ -179,7 +168,6 @@ func _test_no_remap_and_real_begin_end() -> int:
 		push_error("FAIL: physics_callbacks exclusive missing gaps (got %.3f)" % parent_ex)
 		failed += 1
 	elif parent_ex > child_ex * 4.0 + 20.0:
-		# Pathological double-count if parent inclusive leaked into exclusive.
 		push_error("FAIL: physics_callbacks exclusive looks double-counted (got %.3f)" % parent_ex)
 		failed += 1
 	else:
@@ -187,7 +175,6 @@ func _test_no_remap_and_real_begin_end() -> int:
 	if str(cats.get("physics_callbacks", {}).get("gate", "")) != "named":
 		push_error("FAIL: physics_callbacks must be gate=named")
 		failed += 1
-	# section_map published for re-account
 	if not attr.has("section_map"):
 		push_error("FAIL: attribution must publish raw section_map")
 		failed += 1
@@ -204,7 +191,6 @@ func _test_no_remap_and_real_begin_end() -> int:
 
 
 func _collect_begin_record_names() -> Dictionary:
-	## name -> true if found as begin("name") or record_us("name") in production sources.
 	var found: Dictionary = {}
 	var paths: Array = []
 	for root_path in PROD_GLOBS:
@@ -216,7 +202,6 @@ func _collect_begin_record_names() -> Dictionary:
 		var text := FileAccess.get_file_as_string(path)
 		if text.is_empty():
 			continue
-		# begin("section") / record_us("section"
 		var i := 0
 		while true:
 			var b := text.find('begin("', i)
@@ -225,10 +210,10 @@ func _collect_begin_record_names() -> Dictionary:
 			var prefix_len := 0
 			if b >= 0 and (r < 0 or b < r):
 				pos = b
-				prefix_len = 7  # begin("
+				prefix_len = 7
 			elif r >= 0:
 				pos = r
-				prefix_len = 11  # record_us("
+				prefix_len = 11
 			else:
 				break
 			var start := pos + prefix_len
@@ -239,7 +224,6 @@ func _collect_begin_record_names() -> Dictionary:
 			if not name.is_empty() and not name.begins_with("%"):
 				found[name] = true
 			i = end + 1
-		# Also const SECTION_* := "name" in probe
 		if "physics_callbacks" in text:
 			found["physics_callbacks"] = true
 		if "process_callbacks" in text:
@@ -315,7 +299,6 @@ func _test_gameplay_walk_gate() -> int:
 				if cats.has(bad) and str(cats[bad].get("gate", "")) == "named":
 					push_error("FAIL: forbidden residual rebrand named: %s" % bad)
 					failed += 1
-			# Re-score with pure account on raw section_map
 			var sm: Dictionary = attr.get("section_map", {})
 			if sm.is_empty():
 				push_error("FAIL: walk attribution missing section_map")
@@ -339,7 +322,6 @@ func _test_gameplay_walk_gate() -> int:
 	if n < 5:
 		push_error("FAIL: too few samples")
 		return failed + 1
-	# Call-site audit once on the last sample's named set.
 	if samples.size() > 0:
 		var last_cats: Dictionary = samples[samples.size() - 1].get("categories", {})
 		for k in last_cats.keys():

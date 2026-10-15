@@ -1,5 +1,4 @@
 extends Control
-## Compact F3 performance/status overlay. Presentation only — no gameplay.
 
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")

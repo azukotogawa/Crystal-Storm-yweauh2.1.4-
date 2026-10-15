@@ -1,7 +1,4 @@
 extends SceneTree
-## Prove gate uses the on-disk authored mesh end-to-end (not multi-box procedural).
-## Also proves wood_wall / stone_wall authored binds are not regressed.
-## Usage: godot --headless -s scripts/verify_gate_authored.gd
 
 
 const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
@@ -77,15 +74,12 @@ func _test_asset_files_exist() -> void:
 	if tex.get_width() != 256 or tex.get_height() != 256:
 		_fail("gate albedo expected 256x256, got %dx%d" % [tex.get_width(), tex.get_height()])
 	var aabb: AABB = (mesh_res as Mesh).get_aabb()
-	# Open arch: tall, not a cube, thin in Z so the middle is a passage.
 	if aabb.size.y < 1.8:
 		_fail("gate mesh too short to be a passage arch (h=%.3f)" % aabb.size.y)
 	if aabb.size.z > aabb.size.x * 0.55:
 		_fail("gate mesh too deep to read as an open passage (size=%s)" % str(aabb.size))
 	if is_equal_approx(aabb.size.x, aabb.size.y) and is_equal_approx(aabb.size.y, aabb.size.z):
 		_fail("gate mesh looks like a cube %s" % str(aabb.size))
-	# Central passage must be empty: no verts in the walk volume.
-	# Posts + lintel must exist so it is a doorway, not an empty cell.
 	var blocked := 0
 	var left_post := 0
 	var right_post := 0
@@ -147,7 +141,6 @@ func _test_registry_loads_authored() -> void:
 			_fail("gate AABB matches a wall (wood=%s stone=%s gate=%s)" % [
 				str(w_aabb.size), str(s_aabb.size), str(g_aabb.size)
 			])
-		# Tall thin arch vs shorter/thicker wall slabs.
 		if g_aabb.size.y < w_aabb.size.y * 1.15:
 			_fail("gate not taller than wood_wall (gate.y=%.3f wood.y=%.3f)" % [
 				g_aabb.size.y, w_aabb.size.y
@@ -182,7 +175,6 @@ func _test_configure_binds_authored() -> void:
 		_fail("gate material missing albedo texture")
 	elif not _StructureMat.uses_nearest_filter(mi.material_override):
 		_fail("gate must use nearest texture filter")
-	# Full-height arch, not a short wall cap.
 	if mi.scale.y < 0.9 or mi.scale.y > 1.15:
 		_fail("gate Y scale must be full height (~1.0), got %.3f" % mi.scale.y)
 	var wi := MeshInstance3D.new()
@@ -338,7 +330,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		print("OK remove leaves no stale visual node")
 
-	# Adjacent wood still wood.
 	var wx := 12
 	var wz := 4
 	var wy: float = world.get_surface_height(float(wx), float(wz))
@@ -355,7 +346,6 @@ func _test_place_multi_refresh_stream() -> void:
 	else:
 		_fail("wood wall place failed: %s" % editor.last_fail_reason)
 
-	# Adjacent stone still stone.
 	var sx := 12
 	var sz := 5
 	var sy: float = world.get_surface_height(float(sx), float(sz))

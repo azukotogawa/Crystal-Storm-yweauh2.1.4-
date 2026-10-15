@@ -1,6 +1,4 @@
 extends SceneTree
-## Live main.tscn: stamp TOWN_BUILDING, assert authored hall; TOWN disk has none.
-## Usage: godot --path . -s scripts/verify_town_hall_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

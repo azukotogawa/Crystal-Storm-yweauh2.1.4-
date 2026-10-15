@@ -1,6 +1,4 @@
 extends SceneTree
-## Worker deferred bake: twelve contract checks against shipped WorldBakeService.
-## Usage: godot --headless -s scripts/verify_deferred_bake_workers.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _InfiniteNoiseWorld = preload("res://world/InfiniteNoiseWorld.gd")
@@ -46,7 +44,6 @@ func _run() -> void:
 	var bake: _WorldBakeService = _WorldBakeService.ensure_active()
 	bake.delete_bake(SEED, RADIUS)
 
-	# 1–3: worker generates, bytes match sync _bake_one_chunk, write exists.
 	bake._configure_session_bounds(world, RADIUS)
 	bake.valid = false
 	var veg: Array = []
@@ -80,7 +77,6 @@ func _run() -> void:
 	else:
 		_ok("2 worker package bytes match sync (%d)" % bytes_w.size())
 
-	# 4: available to streaming
 	var data = load("res://chunks/chunk_data.gd").new(Vector2i.ZERO, world)
 	data.capture_base_only_snapshot()
 	bake._register_package(Vector2i.ZERO)
@@ -91,7 +87,6 @@ func _run() -> void:
 	else:
 		_ok("4 package stream-available surface=%.2f" % float(data.surface_map[0][0]))
 
-	# 5–6 + 8 + 10 + 11: deferred bootstrap + fill + overlays + on-demand
 	bake.delete_bake(SEED, RADIUS)
 	_WorldBakeService.clear_active()
 	bake = _WorldBakeService.ensure_active()
@@ -110,7 +105,6 @@ func _run() -> void:
 	else:
 		_ok("5 small session completed during prime (valid iff complete)")
 
-	# 9 duplicate jobs
 	if bake.has_method("enqueue_package_job") and bake.bake_in_progress:
 		var far := Vector2i(RADIUS, RADIUS)
 		if not bake.package_ready(far):
@@ -127,7 +121,6 @@ func _run() -> void:
 	else:
 		_ok("9 enqueue API present=%s" % str(bake.has_method("enqueue_package_job")))
 
-	# 11 on-demand
 	var far2 := Vector2i(RADIUS, -RADIUS)
 	if bake.package_ready(far2):
 		_ok("11 far already packaged")
@@ -142,14 +135,12 @@ func _run() -> void:
 	else:
 		_ok("11 index not committed early")
 
-	# 8 live WorldState untouched
 	var overlay_after: int = int(_WorldState.get_active().height_delta.get(Vector2i(3, 3), 0))
 	if overlay_after != overlay_before:
 		_fail("8 WorldState overlay mutated %d -> %d" % [overlay_before, overlay_after])
 	else:
 		_ok("8 live WorldState overlay unchanged")
 
-	# 7 replace_active blocked during fill
 	if bake.bake_in_progress:
 		var prev = _WorldState.get_active()
 		var after = _WorldState.replace_active()
@@ -160,7 +151,6 @@ func _run() -> void:
 	else:
 		_ok("7 fill already complete; skip live block (forbid still tested when in progress)")
 
-	# 10 resume: existing .chk kept
 	var before_n: int = bake._packages_known.size()
 	bake._inventory_existing_packages()
 	if bake._packages_known.size() < before_n:
@@ -168,7 +158,6 @@ func _run() -> void:
 	else:
 		_ok("10 resume inventory kept %d packages" % bake._packages_known.size())
 
-	# Drain remaining fill (radius-limited expected).
 	var frames := 0
 	while bake.bake_in_progress and frames < 4000:
 		bake.tick_background_fill(0)
@@ -182,7 +171,6 @@ func _run() -> void:
 	else:
 		_ok("6 valid=true only at expected=%d" % expected)
 
-	# Incomplete fill on a larger session so workers actually run after prime.
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "6")
 	_WorldBakeService.clear_active()
 	bake = _WorldBakeService.ensure_active()
@@ -245,7 +233,6 @@ func _run() -> void:
 		])
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", str(RADIUS))
 
-	# 12 rollback env
 	OS.set_environment("CRYSTALSTORM_BAKE_DEFER_FILL", "0")
 	if bake.defer_fill_from_env():
 		_fail("12 DEFER=0 still defers")

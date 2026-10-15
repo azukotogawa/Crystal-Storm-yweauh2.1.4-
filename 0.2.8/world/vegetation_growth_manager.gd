@@ -28,7 +28,7 @@ var _growth_accum: float = 0.0
 var _index_timer: float = 0.0
 var _cached_plant_speed: float = 1.0
 var _plant_speed_cache_tick: int = -1
-var _env_cache: Dictionary = {}  # Vector2i -> {mult, tick}
+var _env_cache: Dictionary = {}
 
 
 func _enter_tree() -> void:

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: entity died signal must not error when connected to EntityManager.
 
 
 const _WorldEntity = preload("res://entities/world_entity.gd")

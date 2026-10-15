@@ -1,5 +1,4 @@
 extends SceneTree
-## Shared visual / collision contract: face codes, incremental clip, WorldObject, coords.
 
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
@@ -75,7 +74,6 @@ func _test_face_codes() -> void:
 		var q: Dictionary = q_v
 		var fc: int = int(q.get("face_code", -1))
 		var dy: float = float(q.get("dim_y", 1.0))
-		# Y-greedy surface slabs must be FACE_TOP, never a side code on a 1-layer top box.
 		if fc == _WorldVisualCoords.FACE_POS_X or fc == _WorldVisualCoords.FACE_POS_Z:
 			if float(q.get("dim_x", 1.0)) > 1.01 and float(q.get("dim_z", 1.0)) > 1.01 and dy >= 0.99:
 				bad += 1

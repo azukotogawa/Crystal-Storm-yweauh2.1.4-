@@ -53,7 +53,6 @@ static func should_place_ramp(world_x: int, world_z: int, dir: Vector2i) -> bool
 	return bucket < placement_chance
 
 
-## Corners are uncommon (hex silhouette), not every inner 2×2.
 static func should_place_corner(world_x: int, world_z: int) -> bool:
 	if _WorldBorder.should_force_ramp(world_x, world_z):
 		return true
@@ -106,7 +105,6 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Occupies the landing cell AABB only. Approach keeps its own top face.
 	# Winding A,D,C,B so the slope normal is (-1, 1, 0) — toward +Y. The previous
 	# A,B,C,D winding faced -Y, so the iso camera lit the underside (black diamonds).
 	var a := Vector3(-0.5, -1, -0.5) * s
@@ -124,8 +122,6 @@ static func get_wedge_mesh() -> ArrayMesh:
 	return _wedge_mesh
 
 
-## Concave L-corner filler: right angle at origin, legs along +X/+Z into the gap.
-## Two leg faces flush against the exposed sides of the L's voxels; hypotenuse faces the void.
 static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _concave_mesh != null:
@@ -149,7 +145,6 @@ static func get_concave_corner_prism_mesh() -> ArrayMesh:
 	return _concave_mesh
 
 
-## Step-corner ramp at the low cell when two perpendicular +1 steps meet.
 static func get_corner_step_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _corner_step_mesh != null:
@@ -157,8 +152,6 @@ static func get_corner_step_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Low corner at origin. Legs +X/+Z point at the two higher neighbors.
-	# Exposed top is ONE triangle — not a square cap at y=s.
 	var low := Vector3.ZERO
 	var high_x := Vector3(s, s, 0.0)
 	var high_z := Vector3(0.0, s, s)
@@ -224,7 +217,6 @@ static func voxel_top_y(surface_y: float) -> float:
 static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
 	var layer: float = _ws().layer_height()
 	var t: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
-	# Landing cell slopes down toward the low neighbor as t increases along dir.
 	return voxel_top_y(base_h) - t * layer
 
 
@@ -243,9 +235,6 @@ static func walkable_height_from_entry(
 		return voxel_top_y(ref_h)
 	var dir: Vector2i = entry.get("dir", Vector2i.ZERO)
 	var dir2: Vector2i = entry.get("dir2", Vector2i.ZERO)
-	# Model A corner: the drawn cap is the inner triangle at the plateau, flush
-	# with both landings. The outer half stays on this column's own top.
-	# surface_h is the resident column the mesh was built from.
 	if entry.get("corner", false) and dir != Vector2i.ZERO and dir2 != Vector2i.ZERO:
 		var column_h: float = float(entry.get("surface_h", base))
 		var layer: float = _ws().layer_height()
@@ -290,8 +279,6 @@ static func _ramp_origin(world_x: float, world_z: float, surface_y: float) -> Ve
 static func wedge_transform(world_x: float, world_z: float, surface_y: float, dir: Vector2i) -> Transform3D:
 	var away := Vector2i(-dir.x, -dir.y)
 	var yaw: float = 0.0
-	# Wedge high end is local +X. Godot Basis(+Y, θ) takes +X to −Z at +π/2
-	# (measured), so these yaws aim high toward `away` = −dir.
 	if away == Vector2i(1, 0):
 		yaw = 0.0
 	elif away == Vector2i(-1, 0):
@@ -312,7 +299,6 @@ static func concave_corner_prism_transform(
 	return _corner_prism_transform(world_x, world_z, surface_y, leg_x, leg_z)
 
 
-## Step-corner ramp: triangular prism in the low cell when two perpendicular steps meet.
 static func corner_ramp_legs(dir_a: Vector2i, dir_b: Vector2i) -> Vector2i:
 	var leg_x: int = dir_a.x if dir_a.x != 0 else dir_b.x
 	var leg_z: int = dir_b.y if dir_b.y != 0 else dir_a.y
@@ -329,7 +315,6 @@ static func corner_ramp_transform(
 static func _corner_prism_transform(
 	world_x: float, world_z: float, surface_y: float, leg_x: int, leg_z: int
 ) -> Transform3D:
-	# Right-handed yaw only — negative-scale bases inverted lighting/UVs on two of four corners.
 	var lx: int = 1 if leg_x >= 0 else -1
 	var lz: int = 1 if leg_z >= 0 else -1
 	var yaw := 0.0

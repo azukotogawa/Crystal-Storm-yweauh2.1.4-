@@ -1,7 +1,4 @@
 extends SceneTree
-## Live main scene: place stone walls in mixed arrangements; assert authored mesh bind.
-## Also places wood_wall to prove no authored-path regression.
-## Usage: godot --path . -s scripts/verify_stone_wall_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

@@ -1,5 +1,4 @@
 extends SceneTree
-## Micro terrain contract: sparse bricks, macro parity, incremental dirty scope.
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")

@@ -1,5 +1,4 @@
 extends SceneTree
-## Structural: chunk mesh uses unified mesh_groups (no overlay ramp buffer split).
 
 
 const _ChunkMeshBufferBuilder = preload("res://chunks/chunk_mesh_buffer_builder.gd")

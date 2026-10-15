@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed camera acceptance: ramps + river flood/fill. Not --headless.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

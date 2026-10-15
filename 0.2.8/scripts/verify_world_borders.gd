@@ -1,7 +1,4 @@
 extends SceneTree
-## World Borders sprint: oceans stop player, mountains block, crystal stays in bounds,
-## map edge styling is intentional.
-## Usage: godot --headless -s scripts/verify_world_borders.gd
 
 
 const _WorldBorder = preload("res://helpers/world_border.gd")
@@ -53,7 +50,6 @@ func _test_playable_rect() -> void:
 
 
 func _test_ocean_stops_player() -> void:
-	# Any ocean tile blocks regardless of zone.
 	if not _WorldBorder.blocks_player_at(0.0, 0.0, _VoxelTypes.OCEAN):
 		_fail("OCEAN tile must stop player even inside playable (coast/sea)")
 	if not _WorldBorder.blocks_player_at(0.0, 0.0, _VoxelTypes.OCEAN2):
@@ -61,7 +57,6 @@ func _test_ocean_stops_player() -> void:
 	if not _WorldBorder.blocks_player_at(0.0, 0.0, _VoxelTypes.OCEAN3):
 		_fail("OCEAN3 must stop player")
 
-	# Border ocean band blocks early in transition (not only deep abyss).
 	var ocean_x: float = float(_WorldBorder.PLAYABLE_HALF_X) + 40.0
 	if not _WorldBorder.blocks_player_movement(ocean_x, 0.0):
 		_fail("ocean border transition should block player at +40")
@@ -75,10 +70,8 @@ func _test_mountains_block() -> void:
 	var mtn_z: float = float(_WorldBorder.PLAYABLE_HALF_Z) + 30.0
 	if not _WorldBorder.blocks_player_movement(0.0, mtn_z):
 		_fail("mountain border transition should block at +30")
-	# Border mountain tiles block when in border zone
 	if not _WorldBorder.blocks_player_at(0.0, mtn_z, _VoxelTypes.MOUNTAIN3):
 		_fail("border mountain tile must block traversal")
-	# Interior highland mountain remains walkable (not border zone)
 	if _WorldBorder.blocks_player_at(10.0, 10.0, _VoxelTypes.MOUNTAIN):
 		_fail("interior mountain tile must not hard-block")
 	else:
@@ -118,7 +111,6 @@ func _test_map_edge_style() -> void:
 	if rim_out < 0.55:
 		_fail("outside border rim should be strong out=%.3f" % rim_out)
 
-	# Builder applies border style without crash
 	var cfg := _TopographicalMapConfig.create_default()
 	var c_ocean: Color = _TopographicalMapBuilder._apply_border_map_style(
 		Color(0.5, 0.7, 0.3), _WorldBorder.PLAYABLE_HALF_X + 50, 0, _VoxelTypes.OCEAN2, cfg

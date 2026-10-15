@@ -13,7 +13,6 @@ func _enter_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Pause still owns ESC. F3/F11 stay available while paused; block only loading/chat.
 	if event.is_action_pressed("debug_overlay_toggle"):
 		if not _GameplayInput.world_loading and not _GameplayInput.dev_chat_open:
 			_toggle_debug_overlay()

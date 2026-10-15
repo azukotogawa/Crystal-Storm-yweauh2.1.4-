@@ -1,7 +1,5 @@
 class_name WaterSurface
 extends RefCounted
-## Splits water tops off the chunk mesh the view is about to draw and binds
-## the wave shader on that mesh. Flow UV2 comes from the channel registry.
 
 const _SHADER: Shader = preload("res://shaders/water_surface.gdshader")
 const _ATLAS: Texture2D = preload("res://assets/tiles/Cube.png")
@@ -29,7 +27,6 @@ static func advance(delta: float) -> void:
 	shared_material().set_shader_parameter("water_time", _time)
 
 
-## Pull water tops onto a sibling mesh. Land faces, including water sides, stay.
 static func bind_instance(terrain_mi: MeshInstance3D) -> void:
 	if terrain_mi == null:
 		return
@@ -76,7 +73,6 @@ static func _clear_water(water_mi: MeshInstance3D) -> void:
 static func _is_water_atlas(color: Color) -> bool:
 	var ax := int(round(color.r * 255.0))
 	var ay := int(round(color.g * 255.0))
-	# Row 0 except the air cell (6, 0). Ocean and river variants live there.
 	return ay == 0 and ax >= 0 and ax < 6
 
 

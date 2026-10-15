@@ -1,22 +1,15 @@
 extends SceneTree
-## Measure frame-time spikes while walking a baked world.
-## Measurement only — no optimizations.
-##
-## Usage:
-##   CRYSTALSTORM_HITCH_SEC=60 CRYSTALSTORM_SCRATCH=... \
-##     godot --headless -s scripts/profile_frame_hitches.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const THRESHOLDS_MS: Array = [8.0, 12.0, 16.0, 25.0, 33.0, 50.0]
 
-## Map user-facing subsystem labels → PerfProfiler section keys / sources.
 const SUBSYSTEM_MAP: Array = [
 	{"label": "ChunkManager.process", "section": "stream_schedule", "func": "ChunkManager::_process"},
 	{"label": "ChunkView_uploads", "section": "chunk_upload"},
 	{"label": "chunk_apply", "section": "chunk_apply"},
-	{"label": "RenderingServer_calls", "section": "chunk_upload"},  # buffer set attributed here
+	{"label": "RenderingServer_calls", "section": "chunk_upload"},
 	{"label": "MultiMesh_updates", "counter": "multimesh_buffer_sets"},
 	{"label": "WorldState", "section": "world_state"},
 	{"label": "Crystal_update", "section": "crystal_sim"},
@@ -70,7 +63,6 @@ func _run() -> void:
 	while compose and not bool(compose.get("_boot_done")) and frames_wait < 3600:
 		await process_frame
 		frames_wait += 1
-	# Extra settle frames after boot
 	for _i in 30:
 		await process_frame
 
@@ -95,7 +87,6 @@ func _run() -> void:
 		min_cz = int(bake.min_cz)
 		max_cz = int(bake.max_cz)
 
-	# Snake path through baked package coords (repeat for full session).
 	var path: Array = []
 	for cz in range(min_cz, max_cz + 1):
 		var xs: Array = range(min_cx, max_cx + 1)
@@ -107,11 +98,11 @@ func _run() -> void:
 	while path.size() < 400:
 		path.append_array(base)
 
-	var hitches: Array = []  # all frames over 8ms
+	var hitches: Array = []
 	var bucket_counts: Dictionary = {}
 	for t in THRESHOLDS_MS:
 		bucket_counts[str(t)] = 0
-	var cause_totals: Dictionary = {}  # label -> {sum_ms, max_ms, hitch_frames, as_primary}
+	var cause_totals: Dictionary = {}
 	var all_frame_ms: PackedFloat32Array = PackedFloat32Array()
 
 	var path_i := 0
@@ -124,7 +115,6 @@ func _run() -> void:
 	var prev_mm_nodes := 0
 	var prev_mm_inst := 0
 
-	# Baseline
 	if profiler.has_method("sample_scene_stats"):
 		profiler.sample_scene_stats(self)
 	var snap0: Dictionary = profiler.get_snapshot() if profiler.has_method("get_snapshot") else {}
@@ -140,7 +130,6 @@ func _run() -> void:
 	])
 
 	while Time.get_ticks_msec() - t0 < int(session_sec * 1000.0):
-		# Move every ~300ms along path
 		if Time.get_ticks_msec() - last_move_ms >= 300 and path_i < path.size():
 			var target: Vector2i = path[path_i]
 			path_i += 1
@@ -156,10 +145,8 @@ func _run() -> void:
 		await process_frame
 		frame_n += 1
 
-		# Sample scene stats every frame on hitches; every 5 frames otherwise (cheaper).
 		var snap: Dictionary = profiler.get_snapshot() if profiler.has_method("get_snapshot") else {}
 		var frame_ms: float = float(snap.get("frame_ms", 0.0))
-		# Prefer engine TIME_PROCESS as alternate wall if larger
 		var eng_proc: float = float(Performance.get_monitor(Performance.TIME_PROCESS)) * 1000.0
 		var eng_phys: float = float(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0
 		if eng_proc > frame_ms:
@@ -206,7 +193,6 @@ func _run() -> void:
 				if sp == "untracked":
 					ms = float(snap.get("untracked_ms", 0.0))
 				elif sp == "mem_delta":
-					# Proxy: static memory growth this frame (MB→not ms). Store as 0 ms but note delta.
 					ms = 0.0
 			elif entry.has("engine"):
 				if str(entry.engine) == "process":
@@ -218,28 +204,23 @@ func _run() -> void:
 			elif entry.has("section") and secs.has(str(entry.section)):
 				ms = float(secs[str(entry.section)].get("last_ms", 0.0))
 			elif entry.has("counter"):
-				# Count-only; not milliseconds
 				ms = 0.0
 			subsystems[label] = ms
-			# Primary cause: largest main-thread section (skip pure engine wall which equals frame)
 			if not entry.get("worker", false) and str(entry.get("engine", "")) == "":
 				if ms > primary_ms and label not in ["SceneTree_process", "SceneTree_physics", "Physics"]:
 					primary_ms = ms
 					primary = label
 
-		# If untracked dominates, name it
 		var untracked: float = float(snap.get("untracked_ms", 0.0))
 		if untracked > primary_ms and untracked > frame_ms * 0.35:
 			primary = "Main_thread_waiting_untracked"
 			primary_ms = untracked
 
-		# Ranked causes for this frame
 		var ranked: Array = []
 		for k in subsystems.keys():
 			ranked.append({"name": k, "ms": float(subsystems[k])})
 		ranked.sort_custom(func(a, b): return float(a.ms) > float(b.ms))
 
-		# Accumulate cause totals among hitches
 		for row in ranked:
 			var nm: String = str(row.name)
 			if not cause_totals.has(nm):
@@ -306,7 +287,6 @@ func _run() -> void:
 		prev_mm_nodes = mm_nodes
 		prev_mm_inst = mm_inst
 
-	# --- Report ---
 	var report := _build_report(
 		session_sec, frame_n, all_frame_ms, hitches, bucket_counts, cause_totals,
 		min_cx, max_cx, min_cz, max_cz
@@ -393,7 +373,6 @@ func _build_report(
 		])
 	lines.append("")
 
-	# Ranked hitch causes by sum ms on hitch frames + primary count
 	var ranked_causes: Array = []
 	for k in causes.keys():
 		var ct: Dictionary = causes[k]
@@ -440,7 +419,6 @@ func _build_report(
 			break
 	lines.append("")
 
-	# Top worst hitch frames detail
 	var worst: Array = hitches.duplicate()
 	worst.sort_custom(func(a, b): return float(a.frame_ms) > float(b.frame_ms))
 	lines.append("## Worst hitch frames (top 25)")
@@ -473,7 +451,6 @@ func _build_report(
 		])
 	lines.append("")
 
-	# Detailed breakdown of top 10 worst
 	lines.append("## Detailed subsystem breakdown (top 10 worst frames)")
 	lines.append("")
 	for i in mini(10, worst.size()):

@@ -1,7 +1,4 @@
 extends SceneTree
-## Town Rally PE: threatened town is readable; player arrival restores health + militia
-## via LivingWorldDirector production path (try_rally / harness places player).
-## Usage: godot --headless -s scripts/verify_town_rally.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
@@ -50,7 +47,6 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "Town rally FAILED")
 		return
 
-	# Structural: HUD and rally surfaces present in production overlay.
 	if "get_town_hud_line" not in overlay_src and "town_line" not in overlay_src:
 		_fail("game_overlay must surface town HUD line")
 	else:
@@ -79,7 +75,6 @@ func _run() -> void:
 	var center: Vector2i = town.get("center", Vector2i.ZERO)
 	print("town=%s center=%s" % [town.get("name", "?"), center])
 
-	# Priority report / HUD before threat.
 	var report_safe: Dictionary = lwd.get_priority_town_report()
 	if report_safe.is_empty():
 		_fail("priority town report empty with towns present")
@@ -93,7 +88,6 @@ func _run() -> void:
 	else:
 		print("OK town HUD: %s" % hud_safe)
 
-	# Force ALERT + damaged health; measure restore + militia via real harness path.
 	tdm.force_threat_state(center, 1, 40.0)
 	var hp_before: float = float(tdm.get_town_health(center))
 	if hp_before > 45.0:
@@ -133,14 +127,12 @@ func _run() -> void:
 	else:
 		print("OK rallied towns=%d" % lwd.get_rallied_town_count())
 
-	# Idempotent: second rally same town must no-op.
 	var again: Dictionary = lwd.try_rally_at_player_column()
 	if not again.is_empty():
 		_fail("second rally must be idempotent empty got=%s" % again)
 	else:
 		print("OK rally idempotent")
 
-	# Double-grant health blocked by rally once (health unchanged on second).
 	var hp_mid: float = float(tdm.get_town_health(center))
 	lwd.rally_town_at(center)
 	if absf(float(tdm.get_town_health(center)) - hp_mid) > 0.01:

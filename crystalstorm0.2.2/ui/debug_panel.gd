@@ -23,7 +23,6 @@ func _process(_delta):
 	var player = main.get_node_or_null("Player") if main else null
 	var world = main.get_node_or_null("World") as InfiniteNoiseWorld if main else null
 	
-	# FIXED: Better chunk count lookup
 	var voxel_world = main.get_node_or_null("VoxelWorld") if main else null
 	if voxel_world and "world" in voxel_world:
 		seed_val = str(voxel_world.world.world_seed if "world_seed" in voxel_world.world else "12349")

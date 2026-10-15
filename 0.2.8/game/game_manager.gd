@@ -11,22 +11,16 @@ enum RunState { PLAYING, WON, LOST }
 signal phase_changed(new_phase: Phase)
 signal run_state_changed(new_state: RunState)
 
-## Enter ASSAULT when within this distance of crystal fluid (or origin boss if no fluid yet).
 @export var assault_distance: float = 48.0
-## Leave ASSAULT / stay in MAZE when farther than this (hysteresis so phase does not flicker).
 @export var maze_min_distance: float = 72.0
 @export var max_crystal_coverage: float = 0.72
 @export var crystal_damage_per_second: float = 28.0
-## Fallen towns are a penalty, not a loss. This much crystal power is added once.
 @export var town_fall_power_surge: float = 40.0
 
 var phase: Phase = Phase.MAZE
 var run_state: RunState = RunState.PLAYING
-## Last terminal loss reason for UI / verifies (empty while playing or after win).
 var last_loss_reason: String = ""
-## "boss" when the origin warden dies. "spawns" when every heart is destroyed.
 var victory_reason: String = ""
-## Run summary counters. Updated on signals, not by scanning the tree.
 var run_started_msec: int = 0
 var spawns_destroyed: int = 0
 var crystal_cells_broken: int = 0
@@ -34,14 +28,11 @@ var enemies_killed: int = 0
 var relics_taken: int = 0
 var deaths: int = 0
 var _stats_bound: bool = false
-## How many settlements have fallen this run (penalty already applied).
 var fallen_towns: int = 0
-## Last town-fall penalty line for the HUD and probes.
 var last_town_penalty: String = ""
 var _town_penalty_bound: bool = false
 
 var _player: Node3D
-## Duck-typed crystal façade (CrystalManager in production; stubs in verifies).
 var _crystal
 var _world: InfiniteNoiseWorld
 
@@ -101,13 +92,10 @@ func _process(delta: float) -> void:
 func _update_phase() -> void:
 	if _player == null or phase == Phase.VICTORY:
 		return
-	# MAZE = prepare with terrain; ASSAULT = close enough to fight the crystal mass.
-	# Tier 0 always MAZE so early dig/build has breathing room before pressure fights back.
 	var next: Phase = Phase.MAZE
 	if _crystal != null and int(_crystal.strength_tier) >= 1:
 		var dist: float = _distance_to_crystal_pressure()
 		if phase == Phase.ASSAULT:
-			# Hysteresis: stay in fight until you pull back past maze_min_distance.
 			if dist <= maze_min_distance:
 				next = Phase.ASSAULT
 		elif dist <= assault_distance:
@@ -117,7 +105,6 @@ func _update_phase() -> void:
 		phase_changed.emit(phase)
 
 
-## Distance to nearest crystal fluid; falls back to origin boss / map origin doorstep.
 func _distance_to_crystal_pressure() -> float:
 	if _player == null:
 		return INF
@@ -127,7 +114,6 @@ func _distance_to_crystal_pressure() -> float:
 		var d: float = float(_crystal.get_nearest_crystal_distance(from))
 		if d < INF * 0.5:
 			return d
-	# No fluid yet: distance to the origin boss (a map corner, relocated onto land).
 	if _crystal != null and _crystal.has_method("get_active_spawns"):
 		for spawn in _crystal.get_active_spawns():
 			if spawn != null and bool(spawn.get("is_boss")):
@@ -152,8 +138,6 @@ func _bind_town_penalty() -> void:
 	_town_penalty_bound = true
 
 
-## A fallen town is expected. The crystal surges and that town's defenders are gone.
-## The run continues until coverage or death.
 func _on_town_fallen(town_name: String, center: Vector2i) -> void:
 	if run_state != RunState.PLAYING:
 		return
@@ -203,8 +187,6 @@ func _on_all_spawns_destroyed() -> void:
 	_set_won()
 
 
-## The origin warden's death ends the run. Loss conditions are unchanged.
-## The origin heart stays sealed while that warden lives (see SpawnPointController).
 func notify_boss_defeated() -> void:
 	if run_state != RunState.PLAYING:
 		return

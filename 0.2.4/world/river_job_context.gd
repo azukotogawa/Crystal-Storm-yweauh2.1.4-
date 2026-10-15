@@ -1,4 +1,3 @@
-# river_job_context.gd
 class_name RiverJobContext
 extends RefCounted
 

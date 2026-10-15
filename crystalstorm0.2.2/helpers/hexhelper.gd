@@ -1,13 +1,10 @@
-# HexHelpers.gd
 class_name HexHelpers
 
-# Axial to Pixel (pointy-top)
 static func axial_to_pixel(q: int, r: int, size: float = 64.0) -> Vector2:
 	var x = size * (3.0 / 2.0 * q)
 	var y = size * (sqrt(3) / 2.0 * q + sqrt(3) * r)
 	return Vector2(x, y)
 
-# Simple round for axial
 static func round_axial(q: float, r: float) -> Vector2i:
 	var cube_x = q
 	var cube_z = r

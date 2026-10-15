@@ -1,7 +1,5 @@
 class_name HeldItemView
 extends Node3D
-## One reused arm box and one voxel mesh for the held item.
-## The player body has no rig, so a swing is this node's position.
 ## Parts are created once and resized. A swing must not allocate.
 
 const _ItemAnim = preload("res://systems/item_anim.gd")
@@ -64,7 +62,6 @@ func show_item(item_id: String) -> void:
 	var spec: Dictionary = _ItemAnim.spec_for(item_id)
 	var kind := int(spec.get("kind", _ItemAnim.Kind.NONE))
 	_tint_for(item_id, kind)
-	# u = 0 is the ready pose, which is also the first frame of a use.
 	_apply_unit(kind, 0.0, float(spec.get("impact_ratio", 0.42)))
 	visible = kind != _ItemAnim.Kind.NONE and item_id != ""
 
@@ -108,8 +105,6 @@ func _tint_for(item_id: String, kind: int) -> void:
 		var spec: Array = layout[i]
 		var box := mi.mesh as BoxMesh
 		box.size = spec[1]
-		# Part 0 is the HeldItem node. Its position is the hand pose, so the
-		# first box stays centered on that node and the rest hang off it.
 		if i > 0:
 			mi.position = spec[0]
 			mi.set_meta("rest_pos", spec[0])
@@ -127,7 +122,6 @@ func _tint_for(item_id: String, kind: int) -> void:
 
 func _apply_unit(kind: int, u: float, impact: float) -> void:
 	var vs := _vs
-	# Outside the body radius so the billboard is not hidden in the torso.
 	var chest := vs * 1.05
 	var side := vs * 1.50
 	var at := clampf(impact, 0.05, 0.92)
@@ -137,7 +131,6 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 	else:
 		phase = (u - at) / maxf(1.0 - at, 0.001)
 	phase = clampf(phase, -1.0, 1.0)
-	# 0 at the ready pose and at the end, 1 on the impact frame.
 	var strike := sin(clampf((phase + 1.0) * 0.5, 0.0, 1.0) * PI)
 	var arm_pos := Vector3(side * 0.45, chest * 0.75, -vs * 0.12)
 	var item_pos := Vector3(side, chest, -vs * 0.4)
@@ -160,10 +153,8 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 				item_pos = Vector3(side * 0.72, chest * 0.55 + vs * 1.65 * lift, -vs * (0.35 + 0.75 * (1.0 - lift)))
 				arm_pos = Vector3(side * 0.42, chest * 0.48 + vs * 0.9 * lift, -vs * (0.12 + 0.3 * (1.0 - lift)))
 				arm_rot = Vector3(-1.2 * lift, 0.0, 0.12)
-				# Head cocks back with the raise. Impact (lift 0) is the downward hit.
 				item_rot = Vector3(-1.35 * lift, 0.0, 0.18 * lift)
 			elif _item_id == "stone_pick":
-				# Overhead chop. Cocked back at the ready pose, buried forward on the hit.
 				var chop := strike
 				item_pos = Vector3(
 					side * 0.72,
@@ -182,7 +173,6 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 				)
 				arm_pos = Vector3(side * 0.5 + vs * 0.4 * sweep, chest * 0.7 + vs * 0.22 * strike, -vs * (0.12 + 0.38 * strike))
 				arm_rot = Vector3(0.3 * strike, 0.0, sweep * 0.95)
-				# Blade arcs across the body. Ready is rolled up; the hit is the follow-through.
 				item_rot = Vector3(lerpf(0.25, 1.05, strike), 0.0, lerpf(1.2, -1.1, strike))
 		_ItemAnim.Kind.THRUST:
 			var lunge := 0.4
@@ -234,7 +224,6 @@ func _string_part(item_id: String, index: int) -> bool:
 	return _ItemTypes.visual_key(item_id) == "shortbow"
 
 
-## Pull the string back toward the player. The bow mesh itself only shifts a little.
 func _set_string_draw(draw: float) -> void:
 	var pull := _vs * 0.62 * clampf(draw, 0.0, 1.0)
 	for mi in _parts:
@@ -244,7 +233,6 @@ func _set_string_draw(draw: float) -> void:
 		mi.position = rest + Vector3(0.0, 0.0, pull)
 
 
-## Boxes in metres. Part 0 is centered on the hand (the pose owns that node).
 ## The rest are offsets from the hand. Tall enough to read at ortho 16.
 ## u is one voxel (voxel_scale). Every part is thick on X and Z so the iso
 ## camera sees a side, not a paper edge.

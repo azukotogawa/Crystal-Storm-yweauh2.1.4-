@@ -33,8 +33,6 @@ func _maybe_legacy_create() -> void:
 		features.on_chunk_manager_ready(manager)
 
 
-## Composition-root path: features already seeded; create ChunkManager and return it.
-## World bake load/rebuild is awaited cooperatively so the loading UI stays responsive.
 const _StartupTotal = preload("res://systems/startup_total_profiler.gd")
 
 
@@ -45,7 +43,6 @@ func create_chunk_manager_with_services(registry) -> ChunkManager:
 	if _StartupTotal.is_enabled():
 		_StartupTotal.begin("VoxelWorld.create_chunk_manager_with_services", "bake_package_loading")
 	var features = registry.resolve(&"world_features") if registry else null
-	# Features already seeded by CompositionRoot FEATURES_SEEDED; only wait if incomplete.
 	if features and not bool(features.get("bootstrap_complete")) and features.has_method("ensure_ready"):
 		await features.ensure_ready()
 	manager = ChunkManager.new()
@@ -53,7 +50,6 @@ func create_chunk_manager_with_services(registry) -> ChunkManager:
 	add_child(manager)
 	if manager.has_method("bootstrap_world_bake_async"):
 		await manager.bootstrap_world_bake_async()
-	# Root performs explicit handoff; still notify features for chunk_manager field.
 	if features:
 		features.chunk_manager = manager
 	if _StartupTotal.is_enabled():

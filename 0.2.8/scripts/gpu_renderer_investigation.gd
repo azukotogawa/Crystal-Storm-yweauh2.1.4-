@@ -1,5 +1,4 @@
 extends SceneTree
-## GPU / renderer investigation — idle vs streaming movement (no optimizations).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -72,7 +71,6 @@ func _run() -> void:
 	for _w in 60:
 		await process_frame
 	if chunk_manager.has_method("await_rebuild_idle"):
-		# Crystal growth can keep rebuild queues hot; cap wait so the probe finishes.
 		await chunk_manager.await_rebuild_idle(180)
 	print("GPU_PROBE=boot_ready chunks=%d" % chunk_manager.chunks.size())
 
@@ -85,7 +83,6 @@ func _run() -> void:
 	var start_chunk_f3 := _chunk_coord_f3(player)
 	var start_voxel := _player_voxel_world(player)
 
-	# BEFORE: idle (stable loaded bubble)
 	print("GPU_PROBE=phase_idle start")
 	var idle_samples := await _sample_phase("idle", IDLE_SECONDS, false, profiler, chunk_manager, allow_screenshots)
 	print("GPU_PROBE=phase_idle done frames=%d" % idle_samples.size())
@@ -94,7 +91,6 @@ func _run() -> void:
 		await _capture_screenshot("%s/gpu_screenshot_before_idle.png" % scratch)
 		await _capture_f3_overlay("%s/gpu_f3_overlay_before.txt" % scratch, debug_panel)
 
-	# AFTER: sustained movement + streaming churn
 	print("GPU_PROBE=phase_stream start")
 	var stream_samples := await _sample_phase("streaming", STREAM_SECONDS, true, profiler, chunk_manager, allow_screenshots)
 	print("GPU_PROBE=phase_stream done frames=%d" % stream_samples.size())

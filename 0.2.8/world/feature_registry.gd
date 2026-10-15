@@ -1,7 +1,5 @@
 class_name FeatureRegistry
 extends RefCounted
-## Compatibility façade over WorldState feature overlay storage.
-## Plant denial caches remain derived local state rebuilt from the authority.
 
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _PlantableRegistry = preload("res://world/plantable_registry.gd")
@@ -10,23 +8,18 @@ const _WorldState = preload("res://world/world_state.gd")
 
 const CHUNK_CELLS := 16
 
-# Central overlay registry for towns, vegetation, and entity spawn points.
-# Terrain managers write here; chunk generation and entity systems read from here.
 
-## Derived caches (not authority storage).
 static var _plant_keys: Array = []
 static var _plant_keys_dirty: bool = true
 static var _plant_denial_cache: Array = []
 static var _plant_denial_cache_dirty: bool = true
-static var _denial_spatial: Dictionary = {}  # Vector2i chunk -> Array[denial entry]
+static var _denial_spatial: Dictionary = {}
 static var _denial_spatial_dirty: bool = true
-## Derived ruin-center list (dirty on feature write) + frame-local return cache.
 static var _ruin_centers_dirty: bool = true
 static var _ruin_centers_list: Array[Vector2i] = []
 static var _ruin_centers_frame: int = -1
 static var _ruin_centers_frame_cache: Array[Vector2i] = []
 static var _ruin_centers_frame_valid: bool = false
-## Measurement (optional).
 static var _measure_enabled: bool = false
 static var _ops: Dictionary = {}
 static var _ruin_centers_hits: int = 0
@@ -49,7 +42,6 @@ static func _invalidate_derived() -> void:
 	_ruin_centers_frame = -1
 
 
-## Call after WorldState.replace_active / restore so derived caches cannot leak across sessions.
 static func on_session_changed() -> void:
 	_plant_keys.clear()
 	_plant_denial_cache.clear()
@@ -97,7 +89,6 @@ static func _record_op(op: String, t0_us: int) -> void:
 	row["max_us"] = maxi(int(row["max_us"]), dt)
 
 
-## world_seeded: town/ruin/road stamps that are part of immutable world content for mesh plans.
 static func set_tile_override(wx: int, wz: int, voxel_id: int, world_seeded: bool = false) -> void:
 	var ws = _ws()
 	var key := Vector2i(wx, wz)
@@ -105,7 +96,6 @@ static func set_tile_override(wx: int, wz: int, voxel_id: int, world_seeded: boo
 	if world_seeded:
 		ws.seeded_tile_keys[key] = true
 	else:
-		# Runtime mutation of a tile override is no longer "seeded pristine".
 		ws.seeded_tile_keys.erase(key)
 	ws.bump(_WorldState.DOMAIN_FEATURE_TILE | _WorldState.DOMAIN_FEATURE)
 
@@ -148,15 +138,11 @@ static func register_feature(wx: int, wz: int, kind: int, data: Dictionary = {})
 	if entry.has("plant_id"):
 		_plant_keys_dirty = true
 		_maybe_invalidate_denial(entry, old_stage)
-	# Ruin centers are derived from feature_cells — invalidate on any write.
 	_ruin_centers_dirty = true
 	_ruin_centers_frame_valid = false
 	ws.bump(_WorldState.DOMAIN_FEATURE)
 
 
-## Install baked static vegetation for one chunk. Skips session-cleared cells and
-## cells that already have a WorldState feature (dynamic overlay wins).
-## entries: Array of {lx, lz, tile, kind, plant_id, growth_stage, growth_progress, biome?}
 static func apply_baked_vegetation_chunk(chunk_coord: Vector2i, entries: Array) -> int:
 	if entries.is_empty():
 		return 0
@@ -198,7 +184,6 @@ static func apply_baked_vegetation_chunk(chunk_coord: Vector2i, entries: Array) 
 	return installed
 
 
-## In-place growth update — avoids duplicate() + denial rebuild every progress tick.
 static func set_plant_growth_state(wx: int, wz: int, stage: int, progress: float) -> void:
 	var ws = _ws()
 	var key := Vector2i(wx, wz)
@@ -221,7 +206,6 @@ static func get_feature(wx: int, wz: int) -> Dictionary:
 	return found
 
 
-## Null when the column has no feature. Does not allocate a Dictionary on the miss.
 static func feature_at(wx: int, wz: int):
 	var cells: Dictionary = _ws().feature_cells
 	var key := Vector2i(wx, wz)
@@ -353,7 +337,6 @@ static func register_town(center: Vector2i, radius: int, town_name: String) -> v
 			if Vector2(dx, dz).length() > float(radius):
 				continue
 			register_feature(center.x + dx, center.y + dz, _WorldFeatureTypes.FeatureKind.TOWN, town)
-	# Landmark hall on the existing TOWN_BUILDING visual path (presentation only).
 	var hall := town.duplicate()
 	hall["town_building"] = "hall"
 	register_feature(center.x, center.y, _WorldFeatureTypes.FeatureKind.TOWN_BUILDING, hall)
@@ -370,7 +353,6 @@ static func get_towns() -> Array[Dictionary]:
 static func get_ruin_centers() -> Array[Vector2i]:
 	var t0 := Time.get_ticks_usec() if _measure_enabled else 0
 	var frame := Engine.get_process_frames()
-	# Same-frame duplicate: return without rescanning feature_cells.
 	if _ruin_centers_frame_valid and _ruin_centers_frame == frame:
 		if _measure_enabled:
 			_ruin_centers_hits += 1
@@ -488,7 +470,6 @@ static func get_spawns_in_chunk(chunk_coord: Vector2i, chunk_size: int = 16) -> 
 		if not spawn_variant is Dictionary:
 			continue
 		var spawn: Dictionary = spawn_variant
-		# Coerce world_pos after JSON load (may still be Array if codec path skipped).
 		var pos: Vector2i = _coerce_vec2i(spawn.get("world_pos", Vector2i.ZERO), Vector2i.ZERO)
 		spawn["world_pos"] = pos
 		if pos.x >= min_x and pos.x < max_x and pos.y >= min_z and pos.y < max_z:

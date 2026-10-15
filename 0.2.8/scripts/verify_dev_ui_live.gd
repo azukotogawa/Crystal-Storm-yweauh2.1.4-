@@ -1,5 +1,4 @@
 extends SceneTree
-## Live dump of compact F3 / sectioned F4 / loading-bake / pause input.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")

@@ -1,8 +1,4 @@
 extends RefCounted
-## Poses the extruded scout from the movement state.
-## The mesh is one shell. Each pose rewrites vertices from the rest capture,
-## so the feet stay planted at rest and a landing squash does not lift them.
-## This is not the juice walk-bob, which only scaled the whole node.
 
 var _mesh_id: int = 0
 var _rest := PackedVector3Array()

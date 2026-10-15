@@ -7,7 +7,6 @@ var player_material: StandardMaterial3D
 
 @export var move_speed := 16.0
 
-# Aligned System: X/Z = Flat Floor Plane, Y = Vertical Elevation
 var voxel_position := Vector3(0.0, 0.0, 0.0)
 var vertical_velocity: float = 0.0
 
@@ -29,7 +28,6 @@ var landing_timer: float = 0.0
 var is_input_locked: bool = false
 var locked_rotation: int = 0
 
-# Reference to camera for rotation state
 var camera: Camera3D
 
 func _ready():
@@ -42,7 +40,6 @@ func _ready():
 		push_error("Player: World not found!")
 		return
 
-	# Set box mesh dimensions matching player radius and height
 	var box := BoxMesh.new()
 	box.size = Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
 	player_mesh.mesh = box
@@ -56,14 +53,12 @@ func _ready():
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 	
 	player_mesh.material_override = player_material
-	player_mesh.position.y = PLAYER_HEIGHT / 2.0 # Anchor sprite pivot at feet
+	player_mesh.position.y = PLAYER_HEIGHT / 2.0
 
-	# Teleport player to safe spawning height (Y=45) over grid coordinate (0,0)
 	voxel_position = Vector3(0.5, 257.0, 0.5) 
 	while is_colliding_at(voxel_position) and voxel_position.y > 0:
 		voxel_position.y -= 1.0
 	
-	# Place feet on top of the uppermost surface block found
 	voxel_position.y += 1.0
 	update_visual_position()
 
@@ -72,7 +67,6 @@ func _process(delta):
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
-	# Input handling
 	var input_dir := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"): input_dir.x += 1
 	if Input.is_action_pressed("ui_left"): input_dir.x -= 1
@@ -87,17 +81,14 @@ func _process(delta):
 	else:
 		is_input_locked = false
 
-	# === HORIZONTAL MOVEMENT ===
 	if input_dir != Vector2.ZERO:
 		var move_vec = rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta = move_vec * move_speed * delta
 
-		# Move and check along horizontal X axis
 		var target_pos_x = voxel_position + Vector3(move_delta.x, 0, 0)
 		if not is_colliding_at(target_pos_x):
 			voxel_position.x = target_pos_x.x
 			
-		# Move and check along horizontal Z axis using move_delta.y
 		var target_pos_z = voxel_position + Vector3(0, 0, move_delta.y)
 		if not is_colliding_at(target_pos_z):
 			voxel_position.z = target_pos_z.z
@@ -108,13 +99,11 @@ func _process(delta):
 		if current_state == State.RUNNING:
 			change_state(State.IDLE)
 
-	# === VERTICAL PHSTICS STATE MACHINE ===
 	match current_state:
 		State.JUMPING:
 			vertical_velocity -= GRAVITY * delta
 			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
 			
-			# Ceiling collision check
 			if vertical_velocity > 0 and is_colliding_at(next_pos):
 				vertical_velocity = 0
 				current_state = State.FALLING
@@ -129,7 +118,7 @@ func _process(delta):
 			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
 			
 			if is_colliding_at(next_pos):
-				voxel_position.y = ceil(next_pos.y) # Clean floor alignment snap
+				voxel_position.y = ceil(next_pos.y)
 				vertical_velocity = 0
 				sprite_scale_modifier = Vector2(1.6, 0.5)
 				current_skew = -0.1
@@ -144,7 +133,6 @@ func _process(delta):
 			if Input.is_action_just_pressed("jump"):
 				change_state(State.JUMPING)
 			else:
-				# Air check below player feet
 				var test_ground_pos = voxel_position + Vector3(0, -0.1, 0)
 				if not is_colliding_at(test_ground_pos):
 					change_state(State.FALLING)
@@ -163,7 +151,6 @@ func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
 	)
 	
 func update_visual_position():
-	# Maps data coordinates consistently onto Godot Global Space components
 	global_position = Vector3(
 		voxel_position.x,
 		voxel_position.y,
@@ -171,7 +158,7 @@ func update_visual_position():
 	)
 
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
-	player_mesh.rotation.y = current_skew # Apply lean along vertical rotation axis
+	player_mesh.rotation.y = current_skew
 
 func is_colliding_at(pos: Vector3) -> bool:
 	if world == null: 

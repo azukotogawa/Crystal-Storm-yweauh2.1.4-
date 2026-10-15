@@ -1,14 +1,12 @@
 class_name StartupProfiler
 extends RefCounted
-## Fine-grained startup stage timing (mirrors runtime phase profiling style).
-## Enable with CRYSTALSTORM_STARTUP_PROFILE=1 or begin_session().
 
 static var _enabled: bool = false
 static var _session: bool = false
 static var _t0_us: int = 0
-static var _open: Dictionary = {}  # stage -> start_us
-static var _samples: Dictionary = {}  # stage -> PackedInt64Array of durations us
-static var _order: Array = []  # first-seen stage names for report order
+static var _open: Dictionary = {}
+static var _samples: Dictionary = {}
+static var _order: Array = []
 
 
 static func enabled_from_env() -> bool:
@@ -92,7 +90,6 @@ static func _stats(arr: PackedInt64Array) -> Dictionary:
 			worst = iv
 		sorted.append(iv)
 	sorted.sort()
-	# Nearest-rank p95 (inclusive).
 	var p95_i: int = clampi(int(ceil(float(n) * 0.95)) - 1, 0, n - 1)
 	var p95_us: float = float(sorted[p95_i])
 	return {
@@ -113,12 +110,10 @@ static func report() -> Dictionary:
 		stages.append(st)
 		sum_totals += int(st.get("total_us", 0))
 	var wall: int = total_us()
-	# Prefer wall clock for % if available; else sum of stages.
 	var denom: float = float(wall) if wall > 0 else float(maxi(sum_totals, 1))
 	for st in stages:
 		var tot: float = float(st.get("total_us", 0))
 		st["pct_total"] = (tot / denom) * 100.0
-	# Dominant by total contribution (first sample set / avg for single-shot stages).
 	var dominant := ""
 	var dominant_us := -1.0
 	for st in stages:
@@ -164,7 +159,6 @@ static func print_report() -> void:
 	print("STARTUP_PROFILE_OK")
 
 
-## Report only stages whose names start with prefix; pct is of that group wall (sum of stage avgs or of parent_us).
 static func report_prefix(prefix: String, parent_us: float = -1.0) -> Dictionary:
 	var stages: Array = []
 	var sum_avg: float = 0.0

@@ -1,10 +1,4 @@
 extends SceneTree
-## Trace exactly one complete crystal sim tick: events, WorldState.bump,
-## SpatialQuery reindex, GameVisualRegistry refresh.
-##
-## Usage:
-##   CRYSTALSTORM_CRYSTAL_TICK_TRACE=1 CRYSTALSTORM_BAKE_RADIUS=2 \
-##   godot --headless -s scripts/profile_crystal_tick_trace.gd
 
 
 func _initialize() -> void:
@@ -44,7 +38,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Force expansion so the first complete tick happens soon.
 	crystal.expansion_enabled = true
 	if crystal.has_method("begin_tick_trace_arm"):
 		crystal.begin_tick_trace_arm()
@@ -57,7 +50,7 @@ func _run() -> void:
 	if "_perf_sim_hz" in crystal:
 		crystal._perf_sim_hz = 30.0
 	if "_perf_flow_budget_us" in crystal:
-		crystal._perf_flow_budget_us = 0  # complete tick in one go for clean fan-out view
+		crystal._perf_flow_budget_us = 0
 	if "_simulation" in crystal and crystal._simulation:
 		crystal._simulation.flow_budget_us = 0
 	if "_sim" in crystal and crystal._sim:
@@ -78,7 +71,6 @@ func _run() -> void:
 	if crystal.has_method("get_tick_trace"):
 		trace = crystal.get_tick_trace()
 
-	# Kind labels
 	var kind_names := {
 		"1": "DEPTH_CHANGED",
 		"2": "DEPTH_CLEARED",
@@ -142,7 +134,6 @@ func _run() -> void:
 		f.close()
 		print("WROTE ", path)
 
-	# Structural call-graph note for absorption fan-out (code path)
 	print("\n--- FAN-OUT RULE (code) ---")
 	print("ABSORPTION_READY is critical → immediate _apply_one_sim_event → _complete_absorption")
 	print("  → FeatureRegistry.clear_tile_override → WorldState.bump (1)")

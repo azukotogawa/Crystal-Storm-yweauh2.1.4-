@@ -1,7 +1,5 @@
 class_name MeshPhaseProfiler
 extends RefCounted
-## Lightweight multi-sample phase timing for chunk mesh/apply path.
-## Enable with CRYSTALSTORM_MESH_PHASE_PROFILE=1 or begin_session().
 
 const PHASES := [
 	"column",
@@ -20,7 +18,7 @@ const PHASES := [
 ]
 
 static var _enabled: bool = false
-static var _samples: Dictionary = {}  # phase -> PackedInt64Array of us
+static var _samples: Dictionary = {}
 static var _session_active: bool = false
 
 
@@ -109,7 +107,6 @@ static func report() -> Dictionary:
 	for p in PHASES:
 		var s: Dictionary = stats_for(p)
 		phases.append(s)
-		# Decision uses worker-side mesh construction phases + apply-side upload/create.
 		if p in ["mesh_plan", "buffer_pack", "vertex_index_build", "gpu_upload",
 				"mesh_object_create", "scenetree_insert", "material_assign", "multimesh_populate"]:
 			var a: float = float(s.get("avg_us", 0.0))

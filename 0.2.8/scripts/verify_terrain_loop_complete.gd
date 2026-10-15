@@ -1,6 +1,4 @@
 extends SceneTree
-## End-to-end terrain gameplay loop contracts (completion checklist).
-## Usage: godot --headless -s scripts/verify_terrain_loop_complete.gd
 
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -66,13 +64,11 @@ func _test_dig_build_use_highlight_only() -> void:
 	var w := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
 	if "facing fallback mismatch" not in w and "ALWAYS use the highlighted" not in w \
 			and "highlighted cursor cell" not in w:
-		# Accept either wording
 		if "_resolve_terrain_target" not in w:
 			_fail("weapon missing shared terrain target")
 	if "Out of range" not in w:
 		_fail("out-of-range must fail clear, not dig another cell")
 	if w.find("player.voxel_position + forward") >= 0 and w.find("try_dig") > w.find("player.voxel_position + forward"):
-		# dig path must not re-introduce facing fallback after target ZERO
 		var dig_fn_start := w.find("func _do_dig_attack")
 		var dig_fn_end := w.find("func _try_build_wall")
 		if dig_fn_start >= 0 and dig_fn_end > dig_fn_start:
@@ -152,13 +148,11 @@ func _test_crystal_cache_invalidation() -> void:
 	_TerrainEdits.reset()
 	var h0: float = tq.get_terrain_height(Vector2i(1, 1))
 	_TerrainEdits.dig(1, 1, 1)
-	# Without invalidate, cache may hold old height
 	var h_cached: float = tq.get_terrain_height(Vector2i(1, 1))
 	tq.invalidate_terrain_caches()
 	var h1: float = tq.get_terrain_height(Vector2i(1, 1))
 	var layer: float = _WorldSettings.get_active().layer_height()
 	if not is_equal_approx(h1, h0 - layer) and not is_equal_approx(h1, 10.0 - layer):
-		# test_base + delta
 		if absf(h1 - (10.0 - layer)) > 0.01:
 			_fail("crystal query after invalidate want ~%.2f got %.2f (cached was %.2f)" % [
 				10.0 - layer, h1, h_cached

@@ -13,7 +13,6 @@ const TRANSFORM_BYTES_PER_INSTANCE := 64
 const VERTEX_BYTES_PER_TRIANGLE := 96
 const DRAW_CALL_OVERHEAD_BYTES := 256
 
-## One body plus four fused facets. LOD still drops pyramids; tri counts stay 6/12/12/30.
 const _PYRAMID_COUNT := 5
 
 static var _meshes: Dictionary = {}
@@ -128,8 +127,6 @@ static func _ensure_meshes() -> void:
 		_tri_counts[tier] = count * 6
 
 
-## Facets share one vertical span centered on the origin so the instance mid-height
-## sits the base on the terrain. Smaller pyramids are embedded in the body.
 static func _facet_specs(s: float) -> Array:
 	var natural_h := s * 0.88
 	var y0 := -natural_h * 0.5

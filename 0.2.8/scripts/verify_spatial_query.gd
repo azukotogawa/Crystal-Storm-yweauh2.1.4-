@@ -1,7 +1,4 @@
 extends SceneTree
-## Spatial Query Layer unit contracts: insert/remove/move, radius/nearest/AABB/ray,
-## deterministic ordering, chunk stream index, rebuild, perf vs linear scan.
-## Usage: godot --headless -s scripts/verify_spatial_query.gd
 
 const _SpatialQueryLayer = preload("res://systems/spatial_query_layer.gd")
 const _SpatialQueryService = preload("res://systems/spatial_query_service.gd")
@@ -37,7 +34,6 @@ func _run() -> void:
 	_test_rebuild_saveload()
 	_test_perf_not_full_scan()
 	_test_consumer_combat_via_layer()
-	# Flush deferred queue_free so production spawn sees a clean spatial service group.
 	await process_frame
 	_test_production_enemy_spawn_order()
 
@@ -55,7 +51,6 @@ func _test_insert_remove_move() -> void:
 		_fail("remove B failed")
 	if L.count() != 1:
 		_fail("after remove count should be 1")
-	# Move A far away
 	L.move(id_a, Vector3(50, 0, 50))
 	var old_cell: Array = L.query_radius(Vector3(1, 0, 1), 2.0)
 	if old_cell.size() != 0:
@@ -68,7 +63,6 @@ func _test_insert_remove_move() -> void:
 
 func _test_radius_nearest_order() -> void:
 	var L = _SpatialQueryLayer.new()
-	# Equal distance from origin: (1,0) and (0,1) both dist=1 — order by stable_key
 	L.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(1, 0, 0), 0.1, "z", true, "key_z")
 	L.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(0, 0, 1), 0.1, "a", true, "key_a")
 	L.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(3, 0, 0), 0.1, "far", true, "key_far")
@@ -115,13 +109,11 @@ func _test_chunk_streaming_index() -> void:
 	var neigh: Array = L.iter_chunk_neighborhood(c0, 0)
 	if neigh.size() < 2:
 		_fail("chunk neighborhood should list terrain+entity")
-	# Unload removes objects when requested
 	L.mark_chunk_unloaded(c0, true)
 	if L.is_chunk_loaded(c0):
 		_fail("chunk should be unloaded")
 	if L.count() != 0:
 		_fail("unload with remove_objects should clear chunk entries (got %d)" % L.count())
-	# Service-style: load without wiping dynamics later
 	L.mark_chunk_loaded(c1)
 	L.insert(_SpatialQueryLayer.CAT_TERRAIN, Vector3(24, 0, 8), 8.0, {"chunk": c1}, false, "t1", c1)
 	if L.loaded_chunk_count() != 1:
@@ -141,7 +133,6 @@ func _test_rebuild_saveload() -> void:
 	var hits: Array = L.query_radius(Vector3(2.5, 0, 2.5), 5.0)
 	if hits.size() != 2:
 		_fail("after rebuild radius should see 2")
-	# Service rebuild path
 	var svc = _SpatialQueryService.new()
 	if svc.layer == null:
 		svc.layer = _SpatialQueryLayer.new()
@@ -149,10 +140,9 @@ func _test_rebuild_saveload() -> void:
 	svc.layer.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(10, 0, 10), 0.3, "x", true, "x")
 	if svc.layer.count() != 1:
 		_fail("pre-rebuild count")
-	svc.rebuild_from_runtime()  # clear + rebind empty sources
+	svc.rebuild_from_runtime()
 	if svc.layer.count() != 0:
 		_fail("rebuild_from_runtime with no sources should leave empty (got %d)" % svc.layer.count())
-	# Re-insert after rebuild simulates save restore
 	svc.layer.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(4, 0, 4), 0.3, "restored", true, "restored")
 	var after: Array = svc.layer.query_radius(Vector3(4, 0, 4), 1.0)
 	if after.size() != 1 or str(after[0].payload) != "restored":
@@ -166,7 +156,6 @@ func _test_perf_not_full_scan() -> void:
 	L.cell_size = 8.0
 	var n := 2000
 	for i in n:
-		# Spread across a large area so a small radius only hits few cells
 		var x := float((i % 100) * 20)
 		var z := float((i / 100) * 20)
 		L.insert(_SpatialQueryLayer.CAT_ENTITY, Vector3(x, 0, z), 0.2, i, true, "e%04d" % i)
@@ -187,7 +176,6 @@ func _test_perf_not_full_scan() -> void:
 
 
 func _test_consumer_combat_via_layer() -> void:
-	# Fixed fixture: SpatialQueryService + two combat nodes; melee must use layer.
 	var svc = _SpatialQueryService.new()
 	if svc.layer == null:
 		svc.layer = _SpatialQueryLayer.new()
@@ -208,7 +196,6 @@ func _test_consumer_combat_via_layer() -> void:
 	elif hits[0].payload != e1:
 		_fail("consumer should return near entity")
 
-	# CombatHitResolver path (production consumer)
 	var melee: Array = _CombatHitResolver.query_melee(root, Vector3.ZERO, Vector3(1, 0, 0), 4.0)
 	if melee.size() != 1 or melee[0] != e1:
 		_fail("CombatHitResolver.query_melee must resolve via spatial layer (got %d)" % melee.size())
@@ -235,14 +222,11 @@ func _free_node(n: Node) -> void:
 	n.free()
 
 
-## Production path: CrystalEnemySpawner order is add_child → global_position → setup.
-## Index must not remain at origin after that sequence.
 func _test_production_enemy_spawn_order() -> void:
 	var svc = _SpatialQueryService.new()
 	if svc.layer == null:
 		svc.layer = _SpatialQueryLayer.new()
 	root.add_child(svc)
-	# Ensure group discovery resolves to this service (production uses group lookup).
 	var discovered = get_first_node_in_group("spatial_query_service")
 	if discovered != svc:
 		_fail("spatial_query_service group did not resolve to test service")
@@ -250,16 +234,13 @@ func _test_production_enemy_spawn_order() -> void:
 	var enemy_script = load("res://entities/crystal_enemy.gd")
 	var enemy = enemy_script.new()
 	var spawn_pos := Vector3(42.5, 3.0, -17.25)
-	# Exact production order from CrystalEnemySpawner._spawn_enemy / import_enemies
 	root.add_child(enemy)
 	enemy.global_position = spawn_pos
-	# Minimal setup without full world (setup calls sync_spatial_index)
 	if enemy.has_method("setup"):
 		enemy.setup(&"crystal_mite", null, null, Vector2i.ZERO)
 	if enemy.has_method("sync_spatial_index"):
 		enemy.sync_spatial_index()
 
-	# Origin must NOT report the enemy
 	var at_origin: Array = svc.query_combat_candidates(Vector3.ZERO, 2.0)
 	for h in at_origin:
 		if h.get("payload") == enemy:
@@ -267,7 +248,6 @@ func _test_production_enemy_spawn_order() -> void:
 			_free_node(enemy)
 			_free_node(svc)
 			return
-	# Spawn position must report the enemy
 	var at_spawn: Array = svc.query_combat_candidates(spawn_pos, 2.0)
 	var found := false
 	for h in at_spawn:
@@ -282,7 +262,6 @@ func _test_production_enemy_spawn_order() -> void:
 	else:
 		print("OK production CrystalEnemy spawn order indexes final position")
 
-	# import_enemies order mirror
 	var enemy2 = enemy_script.new()
 	var import_pos := Vector3(-8.0, 1.5, 33.0)
 	root.add_child(enemy2)

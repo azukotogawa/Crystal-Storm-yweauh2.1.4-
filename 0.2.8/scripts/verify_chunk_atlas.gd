@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: ChunkView material must use Cube.png 7×10 atlas; mesh buffers carry varied tile coords.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

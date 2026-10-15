@@ -1,8 +1,4 @@
 extends SceneTree
-## Measure CrystalTerrainQuery / world / FeatureRegistry query cost + duplicates.
-## Usage:
-##   CRYSTALSTORM_TERRAIN_QUERY_MEASURE=1 CRYSTALSTORM_BAKE_RADIUS=2 \
-##   godot --headless -s scripts/profile_terrain_queries.gd
 
 const SAMPLE_FRAMES := 240
 
@@ -40,14 +36,12 @@ func _run() -> void:
 		if composition and int(composition.stage) >= 7 and crystal and bool(crystal.get("_initialized")):
 			break
 
-	# Force expansion for measurement window if gated.
 	if crystal and "expansion_enabled" in crystal:
 		crystal.expansion_enabled = true
 	if crystal and "_stream_pause_frames" in crystal:
 		crystal._stream_pause_frames = 0
 	if crystal and "_expansion_soft_ticks_left" in crystal:
 		crystal._expansion_soft_ticks_left = 0
-	# Ensure sim can tick frequently for query statistics.
 	if crystal and "_perf_sim_hz" in crystal:
 		crystal._perf_sim_hz = 20.0
 	if crystal and "_perf_crystal_skip_frames" in crystal:
@@ -61,7 +55,6 @@ func _run() -> void:
 	if terrain and terrain.has_method("set_query_measure_enabled"):
 		terrain.set_query_measure_enabled(true)
 
-	# Also reset world / feature registry counters if present.
 	var world = current_scene.get_tree().get_first_node_in_group("world") if current_scene else null
 	if world and world.has_method("reset_query_stats"):
 		world.reset_query_stats()

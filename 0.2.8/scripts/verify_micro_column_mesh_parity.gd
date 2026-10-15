@@ -1,5 +1,4 @@
 extends SceneTree
-## Table-driven micro-on vs micro-off per-column mesh quad parity.
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
@@ -156,7 +155,6 @@ func _quad_covers_column(q: Dictionary, lx: int, lz: int) -> bool:
 
 
 func _column_local_signature(q: Dictionary, lx: int, lz: int) -> String:
-	## Normalize greedy merges to the column-local 1×1 slice (macro vs micro parity).
 	return "%d|%.3f|%.3f|%.3f|%.3f|%.3f|%.3f|%d" % [
 		int(q.get("face_code", -1)),
 		float(lx),

@@ -1,9 +1,4 @@
 extends SceneTree
-## Macro/Micro + save contract:
-## - generation fills macro authority
-## - dig allocates sparse micro bricks (not stored in saves)
-## - v1→v2 migrate preserves height_delta; load re-derives micro
-## Usage: godot --headless -s scripts/verify_macro_micro_save_migrate.gd
 
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
@@ -69,7 +64,6 @@ func _test_gen_macro_no_micro() -> void:
 	elif data.micro_grid != null and data.micro_grid.brick_count() > 0:
 		_fail("pristine generation must not allocate micro bricks")
 	else:
-		# Sample façade vs macro authority on a few columns
 		var ok := true
 		for cell in [Vector2i(0, 0), Vector2i(7, 7), Vector2i(15, 15)]:
 			if not is_equal_approx(
@@ -111,7 +105,6 @@ func _test_dig_micro_not_in_export() -> void:
 	else:
 		var hd: Dictionary = bundle.get("height_delta", {})
 		var key := "%d,%d" % [wx, wz]
-		# Codec may use "4,4" string keys
 		var found := false
 		for k in hd.keys():
 			if str(k) == key or (k is Vector2i and k == Vector2i(wx, wz)):
@@ -120,7 +113,6 @@ func _test_dig_micro_not_in_export() -> void:
 					_fail("height_delta for dig must be negative layers")
 				break
 		if not found:
-			# try vec2i key directly
 			if int(hd.get(Vector2i(wx, wz), 0)) >= 0 and not hd.has(Vector2i(wx, wz)):
 				_fail("height_delta missing dug column %s keys=%s" % [key, str(hd.keys())])
 			elif hd.has(Vector2i(wx, wz)) and int(hd[Vector2i(wx, wz)]) < 0:
@@ -133,7 +125,6 @@ func _test_dig_micro_not_in_export() -> void:
 
 func _test_v1_migrate_rederive_micro() -> void:
 	_TerrainEdits.reset()
-	# Legacy v1 save: one dug column at world (6, 8)
 	var v1 := {
 		"version": 1,
 		"world_seed": 4242,
@@ -160,7 +151,6 @@ func _test_v1_migrate_rederive_micro() -> void:
 		_fail("migrated world_state missing height_delta")
 		return
 
-	# Apply migrated world_state as production load does
 	_WorldState.get_active().import_persistence_bundle(ws_block)
 	var layers: int = int(_WorldState.get_active().height_delta.get(Vector2i(6, 8), 0))
 	if layers != -2:
@@ -168,7 +158,6 @@ func _test_v1_migrate_rederive_micro() -> void:
 		return
 	print("OK v1→v2 migrate + import height_delta=-2 at (6,8)")
 
-	# Chunk rebuild path re-derives micro from overlays (same as generate_chunk)
 	var data := _make_chunk(4242)
 	data.derive_micro_from_terrain_edits()
 	var lx := 6
@@ -187,7 +176,6 @@ func _test_v1_migrate_rederive_micro() -> void:
 				% [int(brick.dug_layers), lx, lz]
 			)
 
-	# Untouched column stays macro-only
 	if data.has_micro_brick(1, 1):
 		_fail("non-edited column must not gain micro after migrate re-derive")
 	else:

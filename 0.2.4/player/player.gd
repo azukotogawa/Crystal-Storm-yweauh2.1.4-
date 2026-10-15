@@ -9,7 +9,6 @@ var player_material: StandardMaterial3D
 
 @export var move_speed := 160.0
 
-# Aligned System: X/Z = Flat Floor Plane, Y = Vertical Elevation
 var voxel_position := Vector3(0.0, 0.0, 0.0)
 var vertical_velocity: float = 0.0
 
@@ -31,7 +30,6 @@ var landing_timer: float = 0.0
 var is_input_locked: bool = false
 var locked_rotation: int = 0
 
-# Reference to camera for rotation state
 var camera: Camera3D
 
 var world_ready := false
@@ -49,11 +47,9 @@ func _ready():
 	crystal_manager = get_tree().get_first_node_in_group("crystal_manager")
 
 
-	# Wait until spawn area exists
 	while not chunk_manager.spawn_area_ready(0, 0):
 		await get_tree().process_frame
 
-	# Set box mesh dimensions matching player radius and height
 	var box := BoxMesh.new()
 	box.size = Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
 	player_mesh.mesh = box
@@ -67,17 +63,14 @@ func _ready():
 	player_material.albedo_texture = preload("res://assets/player/player.png")
 	
 	player_mesh.material_override = player_material
-	player_mesh.position.y = PLAYER_HEIGHT / 2.0 # Anchor sprite pivot at feet
+	player_mesh.position.y = PLAYER_HEIGHT / 2.0
 
-	# Place player directly on the surface for the spawn column (0.5, 0.5).
-	# Use world surface directly (works even if visuals not yet loaded).
 	var spawn_x := 0.5
 	var spawn_z := 0.5
 	var surf := 0.0
 	if chunk_manager != null and chunk_manager.world != null:
 		surf = chunk_manager.world.get_surface_height(spawn_x, spawn_z)
 	voxel_position = Vector3(spawn_x, surf + 1.0, spawn_z)
-	# Safety nudge if still inside (floating point / edge)
 	while is_colliding_at(voxel_position) and voxel_position.y < surf + 5.0:
 		voxel_position.y += 0.1
 	
@@ -91,7 +84,6 @@ func _process(delta):
 		sprite_scale_modifier = sprite_scale_modifier.lerp(Vector2.ONE, 10.0 * delta)
 		current_skew = lerp(current_skew, 0.0, 10.0 * delta)
 
-	# Input handling
 	var input_dir := Vector2.ZERO
 	if Input.is_action_pressed("ui_right"): input_dir.x += 1
 	if Input.is_action_pressed("ui_left"): input_dir.x -= 1
@@ -106,18 +98,15 @@ func _process(delta):
 	else:
 		is_input_locked = false
 
-	# === HORIZONTAL MOVEMENT ===
 	if input_dir != Vector2.ZERO:
 		var move_vec = rotate_input_to_world(input_dir, locked_rotation)
 		var move_delta = move_vec * move_speed * delta
 
-		# Move and check along horizontal X axis (relaxed for small rises)
 		var target_pos_x = voxel_position + Vector3(move_delta.x, 0, 0)
 		if not is_colliding_at(target_pos_x) or _is_small_step_up(target_pos_x):
 			voxel_position.x = target_pos_x.x
 			_try_step_up()
 			
-		# Move and check along horizontal Z axis using move_delta.y
 		var target_pos_z = voxel_position + Vector3(0, 0, move_delta.y)
 		if not is_colliding_at(target_pos_z) or _is_small_step_up(target_pos_z):
 			voxel_position.z = target_pos_z.z
@@ -129,13 +118,11 @@ func _process(delta):
 		if current_state == State.RUNNING:
 			change_state(State.IDLE)
 
-	# === VERTICAL PHSTICS STATE MACHINE ===
 	match current_state:
 		State.JUMPING:
 			vertical_velocity -= GRAVITY * delta
 			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
 			
-			# Ceiling collision check
 			if vertical_velocity > 0 and is_colliding_at(next_pos):
 				vertical_velocity = 0
 				current_state = State.FALLING
@@ -150,9 +137,6 @@ func _process(delta):
 			var next_pos = voxel_position + Vector3(0, vertical_velocity * delta, 0)
 			
 			if is_colliding_at(next_pos):
-				# Snap cleanly to the surface height of the current column.
-				# get_surface_height already returns the correct playable top (after natural rivers, carving, cave breaches).
-				# This keeps behavior consistent with meshing, step-up, and the original heightfield model.
 				if chunk_manager != null and chunk_manager.world != null:
 					voxel_position.y = _walkable_height_at(voxel_position.x, voxel_position.z)
 				else:
@@ -171,7 +155,6 @@ func _process(delta):
 			if Input.is_action_just_pressed("jump"):
 				change_state(State.JUMPING)
 			else:
-				# Air check below player feet
 				var test_ground_pos = voxel_position + Vector3(0, -0.1, 0)
 				if not is_colliding_at(test_ground_pos):
 					change_state(State.FALLING)
@@ -190,7 +173,6 @@ func rotate_input_to_world(input: Vector2, rot: int) -> Vector2:
 	)
 	
 func update_visual_position():
-	# Maps data coordinates consistently onto Godot Global Space components
 	global_position = Vector3(
 		voxel_position.x,
 		voxel_position.y,
@@ -198,15 +180,14 @@ func update_visual_position():
 	)
 
 	player_mesh.scale = Vector3(sprite_scale_modifier.x, sprite_scale_modifier.y, 1.0)
-	player_mesh.rotation.y = current_skew # Apply lean along vertical rotation axis
+	player_mesh.rotation.y = current_skew
 
 func is_colliding_at(pos: Vector3) -> bool:
 	if chunk_manager == null or chunk_manager.world == null:
-		return false # Cannot check collision without world
+		return false
 
 	var world = chunk_manager.world
 
-	# Player's horiz footprint (small number of columns under the feet).
 	var player_min = pos - Vector3(PLAYER_RADIUS, 0, PLAYER_RADIUS)
 	var player_max = pos + Vector3(PLAYER_RADIUS, PLAYER_HEIGHT, PLAYER_RADIUS)
 	
@@ -214,16 +195,10 @@ func is_colliding_at(pos: Vector3) -> bool:
 
 	for x_world in range(floori(player_min.x), floori(player_max.x) + 1):
 		for z_world in range(floori(player_min.z), floori(player_max.z) + 1):
-			# Primary ground collision: use the authoritative surface height (already incorporates
-			# natural rivers, cave breaches, carving, etc.). This keeps movement consistent with the
-			# heightfield meshing and prevents the "always colliding on the ground slab" problem.
 			var slab_top := _walkable_height_at(float(x_world), float(z_world))
 			if pos.y < slab_top:
 				return true
 
-			# Secondary ceiling / "head in solid" check using volumetric data.
-			# This lets the player bump their head on cave roofs or if they clip into a block.
-			# Only check near the head to avoid false positives from the solid ground below the feet.
 			if world.has_method("get_solid"):
 				var check_y := floori(head_y)
 				if world.get_solid(float(x_world), float(check_y), float(z_world)) or \
@@ -233,13 +208,11 @@ func is_colliding_at(pos: Vector3) -> bool:
 	return false
 
 func _try_step_up():
-	# After horizontal move, lift feet onto slightly higher ground if within small step tolerance.
-	# Allows walking gentle slopes even with MAX_STEP_UP_WALK=0.
 	if chunk_manager == null or chunk_manager.world == null:
 		return
 	var target_feet := _walkable_height_at(voxel_position.x, voxel_position.z)
 	var diff := target_feet - voxel_position.y
-	if diff > 0.01 and diff <= 2.0:  # allow 1-2 voxel steps for natural terrain
+	if diff > 0.01 and diff <= 2.0:
 		voxel_position.y = target_feet
 
 func _is_small_step_up(proposed: Vector3) -> bool:

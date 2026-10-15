@@ -1,9 +1,7 @@
 class_name Juice
 extends RefCounted
-## Hit-stop, screen shake, hit flash, and walk-bob distances.
 ## Gameplay hit-stop and shake no-op when DisplayServer.get_name() == "headless"
 ## (Godot 4.7 --headless does not set the "headless" feature) so probe timers stay in sync.
-## verify_juice passes force=true to run the dip anyway. The player settings still gate it.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _FLASH_SHADER := "res://shaders/entity_hit_flash.gdshader"
@@ -23,7 +21,6 @@ static var _frustum: Array = []
 
 
 static func set_preset(preset: int) -> void:
-	# LOW keeps bob only for creatures near the player. SAFE skips creature bob.
 	match preset:
 		0:
 			bob_columns = 8.0
@@ -51,10 +48,6 @@ static func weight_for_item(item_id: String, damage: float) -> float:
 			return 0.0
 
 
-## Dip Engine.time_scale, then restore the previous scale on a real-time timer.
-## The setting always gates this. `force` only skips the headless no-op so
-## verify_juice can dip and restore. A scale that is already off 1 (relic modal
-## uses 0.05) is left alone unless a hit-stop this call owns is already active.
 static func request_hit_stop(seconds: float, tree: SceneTree, force: bool = false) -> bool:
 	if tree == null:
 		return false
@@ -87,8 +80,6 @@ static func _end_hit_stop(token: int) -> void:
 		Engine.time_scale = _saved_scale
 
 
-## End a live hit-stop now. The pending timer becomes a no-op.
-## Returns the pre-dip scale when a stop was active, otherwise the current scale.
 static func cancel_hit_stop() -> float:
 	if not _hit_active:
 		return Engine.time_scale
@@ -144,7 +135,6 @@ static func creature_bob_allowed(body: Node3D, player: Node3D) -> bool:
 	return true
 
 
-## get_frustum() allocates six planes. One copy per physics frame is enough for every body.
 static func _outside_frustum(cam: Camera3D, point: Vector3) -> bool:
 	var frame := Engine.get_physics_frames()
 	if frame != _frustum_frame or cam != _frustum_cam:
@@ -182,7 +172,6 @@ static func flash_material() -> ShaderMaterial:
 	return _flash_mat
 
 
-## White flash via one shared overlay shader. No material is allocated per hit.
 static func set_flash(node: Node, amount: float) -> void:
 	if node == null or not is_instance_valid(node):
 		return

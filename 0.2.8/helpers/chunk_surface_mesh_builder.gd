@@ -1,6 +1,5 @@
 class_name ChunkSurfaceMeshBuilder
 extends RefCounted
-## Consolidated face-only terrain mesh from greedy quads (replaces per-quad box MultiMesh).
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -243,10 +242,8 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var q0: Dictionary = q_pre
 		var fc0: int = int(q0.get("face_code", -1))
 		if fc0 == FACE_RAMP:
-			# slope + floor under the wedge + optional vertical flanks
 			extra_slots += 1 + int(q0.get("flank_a", 0)) + int(q0.get("flank_b", 0))
 		elif fc0 == FACE_RAMP_CORNER:
-			# triangular top + one diagonal vertical square
 			extra_slots += 1
 
 	var ws = _WorldSettings.get_active()
@@ -710,7 +707,6 @@ static func _write_corner_ramp(
 	atlas: Vector2i,
 	shade: float
 ) -> void:
-	# Low cell FACE_TOP is at surface_y+sy. Plateau FACE_TOP is one layer above that.
 	var yl: float = surface_y + sy
 	var yh: float = surface_y + sy + sy
 	var lx: int = 1 if (dir_a.x != 0 and dir_a.x > 0) or (dir_b.x != 0 and dir_b.x > 0) else -1
@@ -726,14 +722,12 @@ static func _write_corner_ramp(
 	var high_x := Vector3(x1 if lx > 0 else x0, yh, z0 if lz > 0 else z1)
 	var high_z := Vector3(x0 if lx > 0 else x1, yh, z1 if lz > 0 else z0)
 	var far_high := Vector3(x1 if lx > 0 else x0, yh, z1 if lz > 0 else z0)
-	# Inner half-block: flat triangle at plateau height meeting both supporting tops.
 	vertices[vi + 0] = high_x
 	vertices[vi + 1] = far_high
 	vertices[vi + 2] = high_z
 	vertices[vi + 3] = high_x
 	var top_n := _slope_shade_normal(vertices, vi)
 	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi, ii, atlas, 0.96, top_n, 1.0, 1.0)
-	# One diagonal vertical square on the cut (the other diagonal of the cell).
 	var hx_low := Vector3(high_x.x, yl, high_x.z)
 	var hz_low := Vector3(high_z.x, yl, high_z.z)
 	var vi2: int = vi + 4
@@ -758,8 +752,6 @@ static func _write_corner_ramp(
 	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi2, ii2, atlas, 0.74, n_try, 1.0, 1.0)
 
 
-## Keep +Y geometric winding; shade with the +Y slope normal. Visibility of
-## sloped faces from the iso camera is handled by ChunkSurfaceMesh (cull_disabled).
 static func _slope_shade_normal(vertices: PackedVector3Array, vi: int) -> Vector3:
 	var e1: Vector3 = vertices[vi + 1] - vertices[vi + 0]
 	var e2: Vector3 = vertices[vi + 2] - vertices[vi + 0]

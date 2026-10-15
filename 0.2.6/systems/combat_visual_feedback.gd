@@ -88,7 +88,6 @@ func _load_textures() -> void:
 		await registry.ensure_ready()
 	await _await_chunk_manager()
 	if registry:
-		# Bundle is generated once at registry init; preload is a no-op when ready.
 		if registry.has_method("preload_game_bundle"):
 			registry.preload_game_bundle(false, "CombatVisualFeedback._load_textures")
 		_textures = {
@@ -238,7 +237,6 @@ func _process(delta: float) -> void:
 		profiler.end("combat_vfx")
 
 
-## Brief placement flash for walls / gates / bridges (satisfying build feedback).
 func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") -> void:
 	if not enabled:
 		return
@@ -258,7 +256,6 @@ func show_place_flash(col_pos: Vector3, build_id: StringName = &"stone_wall") ->
 			color = Color(0.85, 0.55, 0.28)
 			label = ""
 		&"crystal_front":
-			# Sparse pulse on the nearest open crystal edge (readability only).
 			color = Color(0.85, 0.35, 1.0)
 			label = ""
 		_:

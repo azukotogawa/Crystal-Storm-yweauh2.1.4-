@@ -1,8 +1,4 @@
 extends SceneTree
-## Profile initial_chunk_stream only. Writes stream_phase_profile.json + startup summary.
-## Usage:
-##   CRYSTALSTORM_STARTUP_PROFILE=1 CRYSTALSTORM_STREAM_PHASE_PROFILE=1 \
-##   CRYSTALSTORM_SCRATCH=/tmp/... godot --headless -s scripts/profile_initial_chunk_stream.gd
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -43,7 +39,6 @@ func _run() -> void:
 		var SPP = load("res://systems/stream_phase_profiler.gd")
 		var startup: Dictionary = SP.report() if SP else {}
 		var stream: Dictionary = SPP.report() if SPP else {}
-		# Extract initial_chunk_stream from startup stages
 		var ics_ms := 0.0
 		for st in startup.get("stages", []):
 			if str(st.get("stage", "")) == "initial_chunk_stream":
@@ -58,7 +53,6 @@ func _run() -> void:
 		game.queue_free()
 		await process_frame
 		await process_frame
-	# Aggregate
 	var ics_vals: Array = []
 	var stage_sums: Dictionary = {}
 	for r in runs:

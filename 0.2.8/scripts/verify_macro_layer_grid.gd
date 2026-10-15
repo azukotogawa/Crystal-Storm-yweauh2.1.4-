@@ -1,5 +1,4 @@
 extends SceneTree
-## Macro terrain grid — parity with legacy surface_map/tile_map via real ChunkData path.
 
 
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -71,7 +70,6 @@ func _run() -> void:
 				mismatches += 1
 				push_error("façade mismatch at %d,%d" % [x, z])
 
-	# Incremental dirty refresh on one interior cell
 	var local := [Vector2i(4, 4)]
 	var before_y: float = data.macro_grid.get_surface_y(4, 4)
 	data.refresh_worker_snapshot_for_cells(local)
@@ -91,7 +89,6 @@ func _run() -> void:
 	if data.macro_grid.schema_version < 1:
 		mismatches += 1
 
-	# Ramp flags batch at finalize only — set_ramp_* must not touch macro flags inline.
 	data.ramp_map.clear()
 	data.set_ramp_cardinal(5, 5, Vector2i(1, 0))
 	var inline_ramp: int = data.macro_grid.get_flags(5, 5) & _MacroLayerGrid.FLAG_RAMP

@@ -1,5 +1,4 @@
 extends CanvasLayer
-## Developer Live World Inspector. F4 toggles. Does not change gameplay.
 
 const _LiveWorldQuery = preload("res://helpers/live_world_query.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
@@ -34,8 +33,6 @@ var pin_cell: Vector2i = Vector2i(2147483647, 2147483647):
 	set(v):
 		pin_cell = v
 		_shown_cell = Vector2i(2147483647, 2147483647)
-		# Harness screenshots are taken around the pin write. Waiting for a
-		# later _process left the panel on the previous cell for that draw.
 		if is_inside_tree() and panel_open:
 			refresh_now()
 var _shown_cell: Vector2i = Vector2i(2147483647, 2147483647)
@@ -149,8 +146,6 @@ func _ensure_markers() -> void:
 		_marker.name = "LiveInspectorMarker"
 		var box := BoxMesh.new()
 		var vs: float = _WorldVisualCoords.voxel_scale()
-		# Wire-thin slab. A full-cell BoxMesh with failed alpha reads as a
-		# black voxel top and was mistaken for missing terrain.
 		box.size = Vector3(vs * 0.92, 0.04, vs * 0.92)
 		_marker.mesh = box
 		var mat := StandardMaterial3D.new()

@@ -1,5 +1,4 @@
 extends SceneTree
-## Spear pierce, hammer and bomb crystal clears, armor, i-frames, knockback.
 
 
 const _ItemTypes = preload("res://helpers/item_types.gd")

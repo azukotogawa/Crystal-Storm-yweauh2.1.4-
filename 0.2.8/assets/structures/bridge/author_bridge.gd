@@ -1,11 +1,6 @@
 extends SceneTree
-## Author the Crystal Storm bridge deck mesh + albedo atlas.
-##
-## Mesh is in voxel-column units (width ≈ 1 column, Y up from the raised fill).
 ## Runtime bind multiplies XZ by voxel_scale and Y by ~1.15 — a LOW crossing
 ## cap on raised-over-dig terrain, not a wall, gate, or floor tile.
-##
-## Usage: godot --headless --path . -s assets/structures/bridge/author_bridge.gd
 
 const HERE := "res://assets/structures/bridge"
 const SRC := HERE + "/src"
@@ -69,7 +64,6 @@ func _build_albedo(path: String, size: int) -> void:
 	atlas.blit_rect(end_q, Rect2i(0, 0, half, half), Vector2i(half, 0))
 	atlas.blit_rect(rail_q, Rect2i(0, 0, half, q), Vector2i(half, half))
 	atlas.blit_rect(rope_q, Rect2i(0, 0, half, q), Vector2i(half, half + q))
-	# Cool the deck so it stays slate, not honey-gate or bark-palisade.
 	_tint_rect(atlas, Rect2i(0, 0, half, size), Color(0.72, 0.82, 0.95), 0.14)
 	atlas.save_png(path)
 	print("wrote albedo %s %dx%d" % [path, atlas.get_width(), atlas.get_height()])
@@ -185,8 +179,6 @@ func _build_mesh() -> void:
 	_vn.clear()
 	_f.clear()
 
-	# Walk-span is +X. Rails sit on ±Z. Yaw 90° when the trench runs north-south.
-	# Solid deck slab so iso does not read as an empty pallet, plus plank lips.
 	add_block(Vector3(0.0, 0.040, 0.0), Vector3(0.90, 0.06, 0.78), UV_DECK, Vector2(0.1, 0.05), 0.006, UV_DECK)
 	var plank_n := 5
 	var z0 := -0.38
@@ -207,11 +199,9 @@ func _build_mesh() -> void:
 		)
 		z += pw + gap
 
-	# End headers — the span beams that say "this crosses a gap".
 	add_block(Vector3(-0.48, 0.070, 0.0), Vector3(0.16, 0.14, 1.02), UV_RAIL, Vector2(0.05, 0.2), 0.008, UV_END)
 	add_block(Vector3(0.48, 0.070, 0.0), Vector3(0.16, 0.14, 1.02), UV_RAIL, Vector2(0.35, 0.1), 0.008, UV_END)
 
-	# Side rails — tall/thick enough to read at iso, still a low cap (Y < 0.7).
 	for side_i in 2:
 		var side := -1.0 if side_i == 0 else 1.0
 		var rz := side * 0.48
@@ -220,7 +210,6 @@ func _build_mesh() -> void:
 			add_block(Vector3(px, 0.28, rz), Vector3(0.10, 0.38, 0.10), UV_RAIL, Vector2(absf(px), 0.2), 0.008, UV_END)
 		add_block(Vector3(0.0, 0.49, rz), Vector3(1.02, 0.08, 0.08), UV_RAIL, Vector2(0.3, 0.4), 0.006, UV_RAIL)
 		add_block(Vector3(0.0, 0.32, rz), Vector3(0.90, 0.045, 0.05), UV_ROPE, Vector2(0.1, 0.2), 0.004, UV_ROPE)
-		# Knee braces from end posts down onto the headers.
 		add_block(Vector3(-0.34, 0.20, rz), Vector3(0.16, 0.10, 0.07), UV_RAIL, Vector2(0.4, 0.3), 0.005, UV_RAIL)
 		add_block(Vector3(0.34, 0.20, rz), Vector3(0.16, 0.10, 0.07), UV_RAIL, Vector2(0.15, 0.35), 0.005, UV_RAIL)
 

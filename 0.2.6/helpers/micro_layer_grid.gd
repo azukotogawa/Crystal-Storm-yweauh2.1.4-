@@ -1,6 +1,5 @@
 class_name MicroLayerGrid
 extends RefCounted
-## Sparse per-chunk micro brick storage. Macro columns remain world authority.
 
 
 const _MacroLayerGrid = preload("res://helpers/macro_layer_grid.gd")
@@ -10,7 +9,6 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 
-## Prefer frozen ChunkData worker overlays when present (worker-safe). Live TerrainEdits only on main-thread fallbacks.
 static func _overlay_build_tile(data, lx: int, lz: int, wx: int, wz: int) -> int:
 	if data != null and data.has_method("has_worker_overlay_snapshot") and data.has_worker_overlay_snapshot():
 		return int(data.get_worker_build_tile(lx, lz))
@@ -26,7 +24,7 @@ const SIZE := 16
 const SCHEMA_VERSION := 1
 
 var schema_version: int = SCHEMA_VERSION
-var _bricks: Dictionary = {}  # Vector2i(lx,lz) -> MicroColumnBrick
+var _bricks: Dictionary = {}
 var last_examined: int = 0
 var last_allocated: int = 0
 

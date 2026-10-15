@@ -1,4 +1,3 @@
-# Inside ChunkView.gd
 extends Node3D
 class_name ChunkView
 
@@ -18,7 +17,6 @@ const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
 
 var chunk_data: ChunkData
 var mesh_data: Dictionary
-## Names of LayerContainer children touched by the current emit_quads; others are freed after.
 var _emit_used_names: Dictionary = {}
 
 const FACE_RAMP := 7
@@ -29,7 +27,6 @@ static var _shared_box_mesh: BoxMesh
 static var _shared_ramp_material: ShaderMaterial
 static var _shared_chunk_material: ShaderMaterial
 static var _shared_surface_material: ShaderMaterial
-## Fresh materials so blueprint's first sampler bind is the placeholder.
 static var _bp_ramp_material: ShaderMaterial
 static var _bp_chunk_material: ShaderMaterial
 static var _bp_surface_material: ShaderMaterial
@@ -107,10 +104,8 @@ func setup(data: ChunkData, mesh_data: Dictionary):
 
 
 func _exit_tree() -> void:
-	# Drop any pending uploads that still point at this view's GPU objects.
 	cancel_pending_uploads_for_view(self)
 	# IMPORTANT: Do NOT remove_child/queue_free LayerContainer children here.
-	# On window close / SceneTree quit, Godot frees the subtree once.
 	# queue_free of those Multimesh nodes here was a proven double-free
 	# (glibc: "double free or corruption (!prev)").
 	# Only detach MultiMesh Resource refs so RID ownership is single-path.
@@ -143,8 +138,6 @@ func emit_quads():
 	var upload_t0 := Time.get_ticks_usec()
 	if keep_surface:
 		_emit_surface_mesh()
-		# Cardinal/corner ramps are triangles in the terrain ArrayMesh so F4
-		# FACE_RAMP and the camera cannot disagree. No concave MultiMesh wedges.
 		var diagonal_count: int = int(mesh_data.get("diagonal_count", 0))
 		if diagonal_count > 0:
 			_assign_buffer_multimesh(
@@ -190,7 +183,6 @@ func emit_quads():
 	_mesh_phase_record("apply_total", Time.get_ticks_usec() - apply_t0)
 
 
-## Free LayerContainer children not reused this emit (avoid free+recreate of MultiMesh nodes).
 func _free_unused_layer_children() -> void:
 	if layer_container == null:
 		return
@@ -243,7 +235,6 @@ func _ensure_surface_material() -> ShaderMaterial:
 static func _blueprint_chunk_material() -> ShaderMaterial:
 	if _bp_chunk_material == null:
 		_bp_chunk_material = _CHUNK_MATERIAL_RES.duplicate() as ShaderMaterial
-		# Drop the imported atlas so the placeholder is the first sampler bind.
 		_bp_chunk_material.set_shader_parameter("texture_atlas", null)
 	_bind_chunk_atlas(_bp_chunk_material)
 	return _bp_chunk_material
@@ -265,7 +256,6 @@ static func _blueprint_surface_material() -> ShaderMaterial:
 	return _bp_surface_material
 
 
-## Push the active atlas material onto chunk meshes already in the tree.
 static func rebind_live_materials(tree: SceneTree) -> void:
 	if tree == null:
 		return
@@ -310,7 +300,6 @@ func _clear_multimesh_children() -> void:
 		profiler.end("chunk_multimesh_free")
 
 
-## Safe while not yet inside the tree (setup/emit paths).
 func _perf_profiler() -> Node:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
@@ -342,7 +331,6 @@ func _emit_surface_mesh() -> void:
 		_emit_used_names["water_surface_mesh"] = true
 		_mesh_phase_record("gpu_upload", Time.get_ticks_usec() - tu)
 		return
-	# Deferred upload still binds water when the drain builds the mesh.
 	_emit_used_names["water_surface_mesh"] = true
 
 	var cache: Dictionary = mesh_data.get("surface_cache", {})
@@ -436,7 +424,6 @@ func _assign_buffer_multimesh(
 	_emit_used_names[node_name] = true
 
 	var t_obj := Time.get_ticks_usec()
-	# Reuse MultiMeshInstance3D + MultiMesh by name (rebuild/stream re-apply).
 	var mm_instance := layer_container.get_node_or_null(node_name) as MultiMeshInstance3D
 	var created := false
 	if mm_instance == null:
@@ -469,7 +456,6 @@ func _assign_buffer_multimesh(
 				mm.mesh = _shared_box_mesh
 		mm_instance.multimesh = mm
 		created = true
-	# Resize only when count changes (avoids GPU buffer realloc every apply).
 	if mm.instance_count != count:
 		mm.instance_count = count
 	_mesh_phase_record("mesh_object_create", Time.get_ticks_usec() - t_obj)
@@ -510,7 +496,6 @@ static func enqueue_surface_mesh_upload(mesh_instance: MeshInstance3D, built: Di
 	_pending_surface_uploads.append({"mesh_instance": mesh_instance, "built": built})
 
 
-## Drop pending uploads that reference MultiMesh / MeshInstance under a view about to free.
 ## Prevents heap corruption when stream-unload races the main-thread upload drain.
 static func cancel_pending_uploads_for_view(view: Node) -> void:
 	if view == null:
@@ -595,7 +580,6 @@ static func drain_pending_buffer_uploads(max_count: int, budget_us: int) -> int:
 		var item: Dictionary = _pending_buffer_uploads.pop_front()
 		var mm: MultiMesh = item.get("mm") as MultiMesh
 		var buffer: PackedFloat32Array = item.get("buffer", PackedFloat32Array())
-		# MultiMesh is RefCounted — skip if already freed (refcount 0 / invalid).
 		if mm != null and is_instance_valid(mm) and buffer.size() > 0:
 			var tu := Time.get_ticks_usec()
 			mm.buffer = buffer
@@ -604,7 +588,6 @@ static func drain_pending_buffer_uploads(max_count: int, budget_us: int) -> int:
 			var SPP = load("res://systems/stream_phase_profiler.gd")
 			if SPP and SPP.is_enabled():
 				SPP.record("rendering_server_buffer_set", du)
-			# Hitch instrumentation (PerfProfiler frame counters).
 			var pp = Engine.get_main_loop()
 			if pp is SceneTree:
 				var prof = (pp as SceneTree).root.get_node_or_null("/root/PerfProfiler")

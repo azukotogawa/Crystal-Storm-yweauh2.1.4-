@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: main-scene floor probe honors live builds (step 1-layer, block 2-layer).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -15,7 +14,6 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_PERF_PRESET", "medium")
 	OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
-	# Main boot would otherwise rebuild a missing full-world bake before the player exists.
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "2")
@@ -191,7 +189,6 @@ func _near_layer(before: float, after: float, layer: float) -> bool:
 	return absf((after - before) - layer) <= 0.05
 
 
-## Sample, build, then dig to a negative delta this physics frame has not cached.
 func _live_floor_edit_same_frame(floor_probe, world, chunk_manager, origin: Vector2i) -> bool:
 	var cell := _find_flat_edit_column(floor_probe, chunk_manager, origin)
 	if cell.x < -100000:

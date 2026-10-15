@@ -9,7 +9,7 @@ const _GeneratorScript = preload("res://systems/crystal_texture_generator.gd")
 @onready var _status: Label = %StatusLabel
 @onready var _preview: TextureRect = %PreviewRect
 
-var _generator  # CrystalTextureGenerator autoload or script instance
+var _generator
 var _config: _GenConfig
 
 

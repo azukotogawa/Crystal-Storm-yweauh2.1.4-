@@ -1,5 +1,4 @@
 extends SceneTree
-## Paired crystal renderer benchmark — same seed/spread, legacy vs procedural.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbeExit = preload("res://scripts/probe_exit.gd")

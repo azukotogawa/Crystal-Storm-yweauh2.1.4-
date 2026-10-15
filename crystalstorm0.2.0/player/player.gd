@@ -34,6 +34,5 @@ func _process(delta):
 	if move != Vector2i.ZERO:
 		voxel_position.x += move.x
 		voxel_position.y += move.y
-		# Immediately snap visual position
 		position = IsoMath.voxel_to_screen(voxel_position.x, voxel_position.y, voxel_position.z)
 		

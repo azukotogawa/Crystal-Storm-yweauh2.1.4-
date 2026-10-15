@@ -1,6 +1,4 @@
 extends SceneTree
-## Content contracts: ItemDef, visual_id, AbsorptionUnlockDef start unlocks.
-## Usage: godot --headless -s scripts/verify_content_contracts.gd
 
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _ItemDef = preload("res://config/item_def.gd")

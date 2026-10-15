@@ -1,7 +1,5 @@
 class_name WaterLocomotion
 extends RefCounted
-## One-column swim sample for the player and every entity step.
-## Channel dict, then a cached tile id. Never walks the fluid sim.
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
@@ -9,13 +7,10 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldState = preload("res://world/world_state.gd")
 
-## Speed while the body is under a real waterline.
 const SWIM_SPEED_MULT := 0.42
-## Speed while standing on a river tile (feet already on the water surface).
 const WADE_SPEED_MULT := 0.68
 const SWIM_ACCEL_MULT := 0.5
 const SWIM_FRICTION_MULT := 1.45
-## How fast feet ease toward the float line, in 1/seconds.
 const BUOYANCY_RATE := 6.0
 
 
@@ -31,7 +26,6 @@ static func dry(ground_y: float) -> Dictionary:
 	}
 
 
-## True when this column can affect movement. Cheap reject for dry land.
 static func column_has_water(world, col_x: int, col_z: int) -> bool:
 	if _channel_level(col_x, col_z) >= 0.05:
 		return true
@@ -51,7 +45,6 @@ static func sample(
 	if is_nan(surface):
 		return dry(ground_y)
 	var column_depth := surface - ground_y
-	# A dug pool (waterline above the bed). Feet at or under that line swim.
 	var deep := column_depth > layer * 0.28
 	var submerged := deep and feet_y <= surface + layer * 0.04
 	var wading := false
@@ -62,8 +55,6 @@ static func sample(
 		return dry(ground_y)
 	var float_y := ground_y
 	if deep:
-		# Chest-deep. A taller body sinks further, and never through the bed.
-		# Creatures omit body_height and sit half a layer under the waterline.
 		var sink := layer * 0.5
 		if body_height > layer:
 			sink = clampf(body_height * 0.55, layer * 0.45, body_height * 0.8)
@@ -79,7 +70,6 @@ static func sample(
 	}
 
 
-## Ease toward the float line. Dry columns keep the walked ground height.
 static func settle_y(current_y: float, info: Dictionary, delta: float) -> float:
 	if not bool(info.get("submerged", false)):
 		return float(info.get("ground_y", current_y))
@@ -88,7 +78,6 @@ static func settle_y(current_y: float, info: Dictionary, delta: float) -> float:
 	return lerpf(current_y, target, k)
 
 
-## NAN means this column is dry. A real waterline may sit at y = 0.
 static func _surface_y(world, col_x: int, col_z: int, ground_y: float, layer: float) -> float:
 	var level := _channel_level(col_x, col_z)
 	if level >= 0.05:
@@ -97,7 +86,6 @@ static func _surface_y(world, col_x: int, col_z: int, ground_y: float, layer: fl
 			return sy
 		return ground_y + layer * clampf(level, 0.35, 1.0)
 	if _is_inland_water_tile(world, col_x, col_z):
-		# River voxels are walked on their top. That top is the waterline.
 		return ground_y
 	return NAN
 

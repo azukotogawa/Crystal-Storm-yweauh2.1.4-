@@ -1,7 +1,3 @@
-# verify_river_specs.gd
-# Headless verification for the FINAL best-looking rivers: ~10-16 voxel clean contained ribbons, ultra-flat water_level, maximum seamless continuity inside the strict defined band, rich corridor visuals + biome integration.
-# Run: godot --headless --path . -s verify_river_specs.gd
-# Primary experience: godot world_viewer.tscn (BIOME + COMPOSITE for gorgeous linear corridors, RIVERS for the perfect thin seamless water ribbons).
 
 extends SceneTree
 
@@ -13,7 +9,6 @@ func _init():
 	var world := InfiniteNoiseWorld.new(seed_val)
 	var ctx := RiverJobContext.new()
 
-	# Known river-dense macro region for seed 12349 (from drainage patch debug)
 	var best_cx := 7680.0
 	var best_cz := 5120.0
 	print("Using sample center: (%.0f, %.0f)" % [best_cx, best_cz])
@@ -42,7 +37,6 @@ func _init():
 				river_pts.append(Vector2(x, z))
 				all_river_surf.append(surf)
 
-				# Width/bank probes are expensive — sample a subset (job cache still amortizes the grid pass).
 				if widths_x.size() < 48 and river_hits % 4 == 0:
 					var w_horiz: float = step
 					var tx: float = x + step
@@ -97,7 +91,6 @@ func _init():
 	var river_pct: float = 100.0 * river_hits / max(1, total_samples)
 	print("RIVER thin pct (dense sample): %.2f%%   (target 0.4-2.5 for 10-15 wide long features)" % river_pct)
 
-	# Width stats (now using min(horiz,vert) per river point as thickness proxy)
 	var sum_w: float = 0.0
 	var max_w: float = 0.0
 	var min_w: float = 999.0
@@ -112,7 +105,6 @@ func _init():
 	print("Measured ribbon widths (min cardinal run at 2u step, per river pt): avg=%.1f  max=%.1f  min=%.1f" % [avg_w, max_w, min_w])
 	print("Target: ~10-15 voxels thick. Cardinal min gives good cross-section thickness estimate regardless of river orientation.")
 
-	# Surf / water level check
 	var avg_riv_h: float = 0.0
 	for hh in all_river_surf:
 		avg_riv_h += hh
@@ -127,7 +119,6 @@ func _init():
 	print("River surf avg: %.1f   avg bank delta (river surf to nearby non-river): %.1f  (max seen %.1f)" % [avg_riv_h, avg_bank_delta, max_bank])
 	print("Water level success: delta ~3-12 (moderate valley carve; not 15-25 sunk pools). Small deltas = flat-ish good water level.")
 
-	# Continuity / long run proxy (reuse viewer logic style)
 	var continuity: float = 0.0
 	var river_neighbor: int = 0
 	var step_c: float = 11.0
@@ -140,7 +131,6 @@ func _init():
 		continuity = float(river_neighbor) / float(river_hits * 4)
 	print("Continuity (neighbor frac at ~11u): %.2f   ( >0.35 good for connected)" % continuity)
 
-	# Long run check (simple 1d-ish along sorted)
 	var has_long: bool = false
 	if river_pts.size() > 20:
 		river_pts.sort()
@@ -156,7 +146,6 @@ func _init():
 				run_len = 1
 	print("Long river segments: %s" % ("yes (good)" if has_long else "check (may be winding)"))
 
-	# Also test a few explicit voxel water levels on a river point
 	var test_wx: float = 0.0
 	var test_wz: float = 0.0
 	for p in river_pts:
@@ -169,7 +158,6 @@ func _init():
 	print("Example river column @ (%.0f,%.0f): surf(water_level)=%.1f  channel_depth=%.1f -> bed=%.1f" % [test_wx, test_wz, tsurf, trinfo.get("channel_depth", -1), tbed])
 	print("Voxel water should occupy (bed < wy <= surf) i.e. %.1f < wy <= %.1f" % [tbed, tsurf])
 
-	# Quick flatness check on water_level (low variance along a few river points = "flat surface")
 	if river_pts.size() > 5:
 		var ssum: float = 0.0
 		var ssum2: float = 0.0
@@ -184,10 +172,6 @@ func _init():
 		var var_s: float = (ssum2 / n) - (mean_s * mean_s)
 		print("Water level flatness (stddev of surf on ~%d river samples): %.2f  (lower = flatter consistent water surface)" % [n, sqrt(max(0.0, var_s))])
 
-	# River Corridor Feature quality (new for "fits into biome geography + clear/distinguishable" design goal).
-	# Average corridor_factor on the traced river points + count of strong corridor samples.
-	# High values + many samples = the wider valley+biome influence creates visible linear corridors (moist/basin shifts) around the strict water ribbon.
-	# Combined with BIOME mode in viewer this proves rivers are integrated geographic features, not faint overlays.
 	var c_samples: int = 0
 	var c_sum: float = 0.0
 	var c_strong: int = 0
@@ -203,14 +187,12 @@ func _init():
 		avg_c = c_sum / float(c_samples)
 	print("Corridor (valley+biome integration): avg_factor=%.2f  strong(>0.3)=%d/%d   (expect avg>0.25 + many strong for clear distinguishable river corridors in biome geography)" % [avg_c, c_strong, c_samples])
 
-	# --- Honest continuity metrics (components + flow-traced unbroken runs) ---
-	# Proximity components (fragmentation + real connected span)
 	var comps: Array = []
 	for pos in river_pts:
 		var found := false
 		for c in comps:
 			for p in c:
-				if pos.distance_to(p) < 4.5:  # dense 2u grid tolerance
+				if pos.distance_to(p) < 4.5:
 					c.append(pos)
 					found = true
 					break
@@ -227,13 +209,12 @@ func _init():
 			for jj in range(ii + 1, c.size()):
 				max_c_span = max(max_c_span, c[ii].distance_to(c[jj]))
 
-	# Flow-traced max unbroken (walk forward from samples using local river continuation)
 	var max_traced: float = 0.0
 	var tr_step := 3.0
 	for idx in range(0, river_pts.size(), 3):
 		var cur: Vector2 = river_pts[idx]
 		var run := 0.0
-		for _k in range(80):  # ~240 units max trace
+		for _k in range(80):
 			var best: Vector2 = Vector2.ZERO
 			var best_sc: float = -999.0
 			for d in [Vector2(tr_step,0), Vector2(-tr_step,0), Vector2(0,tr_step), Vector2(0,-tr_step),
@@ -243,7 +224,7 @@ func _init():
 				var nfo: Dictionary = world._compute_river_carve(np.x, np.y, world._compute_raw_elevation(np.x, np.y), ctx)
 				if nfo.get("is_river", false):
 					var sc: float = 1.0
-					sc += (d.normalized().dot( (np - cur).normalized() )) * 0.6   # slight forward bias
+					sc += (d.normalized().dot( (np - cur).normalized() )) * 0.6
 					if sc > best_sc:
 						best_sc = sc
 						best = np
@@ -258,7 +239,6 @@ func _init():
 	if max_traced > 150.0 or max_c_span > 180.0:
 		print("LONG GAP-FREE RIVER RUN DETECTED in dense probe — good sign for winding continuity.")
 
-	# Load main scene quick check (no crash)
 	print("\n--- Main scene / chunk load test ---")
 	var main_scene := load("scenes/main.tscn")
 	if main_scene:
@@ -269,7 +249,6 @@ func _init():
 	var chunk_scene := load("scenes/ChunkView.tscn")
 	print("ChunkView scene: %s" % ("OK" if chunk_scene else "null"))
 
-	# Basic API no-crash
 	var _h: float = world.get_surface_height(42.3, -17.6)
 	var _t: int = world.get_tile_type(42.3, -17.6)
 	var _v: int = world.get_voxel(42.3, 35.0, -17.6)

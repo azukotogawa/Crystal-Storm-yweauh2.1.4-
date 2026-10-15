@@ -7,11 +7,9 @@ const _PlantableDef = preload("res://config/plantable_def.gd")
 
 const CHUNK_CELLS := 16
 
-# Central overlay registry for towns, vegetation, and entity spawn points.
-# Terrain managers write here; chunk generation and entity systems read from here.
 
-static var _tile_overrides: Dictionary = {}       # Vector2i -> int (VoxelTypes id)
-static var _feature_cells: Dictionary = {}        # Vector2i -> { kind, data }
+static var _tile_overrides: Dictionary = {}
+static var _feature_cells: Dictionary = {}
 static var _towns: Array[Dictionary] = []
 static var _entity_spawns: Array[Dictionary] = []
 
@@ -19,7 +17,7 @@ static var _plant_keys: Array = []
 static var _plant_keys_dirty: bool = true
 static var _plant_denial_cache: Array = []
 static var _plant_denial_cache_dirty: bool = true
-static var _denial_spatial: Dictionary = {}        # Vector2i chunk -> Array[denial entry]
+static var _denial_spatial: Dictionary = {}
 static var _denial_spatial_dirty: bool = true
 
 
@@ -67,7 +65,6 @@ static func register_feature(wx: int, wz: int, kind: int, data: Dictionary = {})
 		_maybe_invalidate_denial(entry, old_stage)
 
 
-## In-place growth update — avoids duplicate() + denial rebuild every progress tick.
 static func set_plant_growth_state(wx: int, wz: int, stage: int, progress: float) -> void:
 	var key := Vector2i(wx, wz)
 	if not _feature_cells.has(key):

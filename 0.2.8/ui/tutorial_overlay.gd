@@ -1,7 +1,5 @@
 class_name TutorialOverlay
 extends CanvasLayer
-## First-run steps. Shown once unless reopened. Headless play does not auto-open it.
-## The controls page lists the bindings that are active right now.
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
@@ -46,7 +44,6 @@ static func open_controls(tree: SceneTree) -> void:
 		layer.show_controls()
 
 
-## Hide the controls/how-to page from every settings close path.
 static func dismiss() -> void:
 	if _inst != null and is_instance_valid(_inst):
 		_inst.close_overlay()

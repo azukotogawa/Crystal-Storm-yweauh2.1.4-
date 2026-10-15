@@ -1,5 +1,4 @@
 extends SceneTree
-## Audits smoke_gameplay.gd source + wrapper for skeptic-flagged regressions.
 
 const SMOKE := "res://scripts/smoke_gameplay.gd"
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"

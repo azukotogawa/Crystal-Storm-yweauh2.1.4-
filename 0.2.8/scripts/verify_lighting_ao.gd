@@ -1,5 +1,4 @@
 extends SceneTree
-## Corner AO: exposed top stays bright, a two-sided corner darkens, ramps stay open.
 
 const _AO = preload("res://helpers/terrain_vertex_ao.gd")
 const _Lighting = preload("res://helpers/terrain_lighting.gd")

@@ -11,20 +11,14 @@ const _WorldBakeService = preload("res://world/world_bake_service.gd")
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
 
-# 3D voxels/visibility removed for the one-voxel-thick heightfield path (was a major
-# main-thread alloc/init cost on every ChunkData.new during streaming).
-# get_voxel / is_visible / etc. now derive from the 2D maps (see overrides below).
-# Legacy full-3D code paths (the old greedy) are bypassed anyway.
 
 ## Macro terrain authority (v2). Legacy maps are synced views for mesh/verify scripts.
 var macro_grid = null
-## Sparse localized micro refinement overlay (optional per column).
 var micro_grid = null
 var last_micro_examined: int = 0
 
-# Compatibility façade — lazy-synced from macro_grid when legacy readers need it.
-var surface_map: Array = []  # [x][z] -> float
-var tile_map: Array = []       # [x][z] -> int
+var surface_map: Array = []
+var tile_map: Array = []
 var _legacy_maps_dirty: bool = false
 var _macro_enabled: bool = true
 var _macro_surface_bound: bool = false
@@ -32,29 +26,21 @@ var _macro_ramp_flags_dirty: bool = false
 var _maps_resident: bool = false
 static var s_macro_enabled_from_env: bool = true
 static var s_micro_enabled_from_env: bool = true
-# Vector2i(local x,z) -> { "corner": bool, "dir": Vector2i, "dir2": Vector2i }
 var ramp_map: Dictionary = {}
 
 # Snapshotted on main thread before worker generation (avoids live WorldState races).
 var _worker_height_delta: Array = []
 var _worker_build_tile: Array = []
 var _worker_feature_tile: Array = []
-## True when feature tile comes from baked static vegetation (still pristine for mesh plans).
 var _worker_feature_baked: Array = []
 ## Halo-region height deltas (world units), same dim as _halo_surface — worker-safe.
 var _worker_halo_height_delta: Array = []
 var _has_worker_snapshot: bool = false
-## Mesh-input revision stamp captured with the frozen overlay arrays.
 var overlay_mesh_stamp: Dictionary = {}
-## Job-local micro skip set for one mesh stage (owned by the single in-flight worker for this data).
-## Never shared across ChunkManager concurrent jobs — each job uses its own ChunkData.
 var _mesh_job_micro_skip: Dictionary = {}
-## 1-cell halo for greedy meshing at chunk borders (worker-safe).
 var _halo_surface: Array = []
-## Natural (pre-overlay) halo heights — baked base when available; used to recompose on dirty.
 var _halo_base_surface: Array = []
 var _has_halo_surface: bool = false
-## Immutable baked base columns (pre-WorldState). Set by WorldBakeService apply.
 var _baked_base_surface: Array = []
 var _baked_base_tile: Array = []
 var _has_baked_base: bool = false
@@ -63,7 +49,6 @@ const SIZE := 16
 const HALO := 1
 ## Legacy bound — prefer WorldSettings.get_active().chunk_height_bound() for checks.
 const HEIGHT := 48
-# Note: Worldgen is now fully volumetric (get_voxel). HEIGHT is still used as a safety bound.
 
 func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 	position = coord
@@ -71,19 +56,10 @@ func _init(coord: Vector2i, world_ref: InfiniteNoiseWorld = null):
 	_macro_enabled = s_macro_enabled_from_env
 	_macro_ramp_flags_dirty = false
 
-	# For one-voxel-thick heightfield terrain we only need the 2D surface maps.
-	# Removed the full 3D voxels/visibility arrays and their heavy nested alloc+init
-	# (was ~40k entries per chunk, ran on main thread in every ChunkData.new).
-	# This is a major win for chunk streaming FPS and memory.
-	# get_voxel / is_visible now synthesize from the maps for surface y only.
 	# Legacy 3D paths (if any) will see AIR / false.
 
-	# Note: surface_map / tile_map are *not* auto-computed here anymore.
-	# They are computed in the bg worker (_generate_chunk) via _compute_column_maps(true)
-	# so that noise for new chunks doesn't block the main thread on request.
 
 
-## Reset a pooled ChunkData shell for a new stream load (main thread only).
 func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	position = coord
 	world = world_ref
@@ -115,7 +91,6 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	_maps_resident = false
 	last_micro_examined = 0
 
-## Rebind zero-copy surface view after snapshot restore (outside timers).
 func touch_macro_view_pointers() -> void:
 	if macro_grid == null:
 		return
@@ -123,18 +98,14 @@ func touch_macro_view_pointers() -> void:
 	macro_grid.bind_surface_arrays(surface_map, tile_map)
 
 
-## Pre-allocate macro surface bind outside timed hot paths (extended metadata stays lazy).
 func prewarm_macro_storage() -> void:
 	if not _macro_enabled:
 		return
 	touch_macro_view_pointers()
 	_bind_macro_surface_if_needed()
 
-## Call on main thread immediately before dispatching chunk gen to WorkerThreadPool.
-## Copies mesh-input overlays from WorldState into frozen per-chunk arrays.
-## Optional exclusive leaves: CRYSTALSTORM_DRAIN_STREAM_MEASURE=1 (via static report).
 static var _snap_measure: bool = false
-static var _snap_phase: Dictionary = {}  # phase -> {n, total_us, max_us}
+static var _snap_phase: Dictionary = {}
 static var _snap_worst: Dictionary = {}
 static var _snap_n: int = 0
 static var _snap_max_us: int = 0
@@ -201,7 +172,6 @@ func capture_worker_snapshot() -> void:
 	if _snap_measure:
 		_snap_add("ensure_worker_overlay_storage", Time.get_ticks_usec() - t0)
 		parts["ensure_worker_overlay_storage_us"] = Time.get_ticks_usec() - t0
-	# Fast path: no overlay maps → zero-fill without Dictionary lookups (common on pristine bake walk).
 	var overlays_empty: bool = (
 		ws.height_delta.is_empty()
 		and ws.build_tile.is_empty()
@@ -231,7 +201,6 @@ func capture_worker_snapshot() -> void:
 				_worker_height_delta[x][z] = float(int(ws.height_delta.get(key, 0))) * layer_h
 				_worker_build_tile[x][z] = int(ws.build_tile.get(key, -1))
 				_worker_feature_tile[x][z] = int(ws.tile_overrides.get(key, -1))
-				# Baked vegetation + world-seeded stamps (towns/roads) are pristine for mesh plans.
 				var feat_entry: Dictionary = ws.feature_cells.get(key, {})
 				var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 					if "seeded_tile_keys" in ws else false
@@ -329,7 +298,6 @@ func _capture_halo_surface() -> void:
 			var wx := position.x * SIZE + lx
 			var wz := position.y * SIZE + lz
 			var key := Vector2i(wx, wz)
-			# Main-thread capture only: freeze height delta for later worker refresh.
 			var hdelta: float = float(int(ws.height_delta.get(key, 0))) * layer_h
 			_worker_halo_height_delta[ix][iz] = hdelta
 			var t_r := Time.get_ticks_usec() if _snap_measure else 0
@@ -368,8 +336,6 @@ func _capture_halo_surface() -> void:
 		}
 
 
-## Main-thread: natural (pre-overlay) height for a halo world cell.
-## Covered bake cells use package data only; missing packages defer (no noise).
 func _resolve_halo_natural_height(wx: int, wz: int, bake) -> Dictionary:
 	if bake != null and bake.valid and bake.has_method("covers_world_cell") \
 			and bool(bake.covers_world_cell(wx, wz)):
@@ -396,7 +362,6 @@ func store_baked_base(surface: PackedFloat32Array, tiles: PackedInt32Array) -> v
 		_baked_base_surface[lx].resize(SIZE)
 		_baked_base_tile[lx] = []
 		_baked_base_tile[lx].resize(SIZE)
-	# Package layout matches WorldBakeService: index = lz * CELLS + lx
 	var i := 0
 	for lz in SIZE:
 		for lx in SIZE:
@@ -436,7 +401,6 @@ func get_baked_base_tile(lx: int, lz: int) -> int:
 	return int(_baked_base_tile[lx][lz])
 
 
-## Natural (pre-overlay) height for dig/build strata mesh.
 func get_natural_surface_y(lx: int, lz: int) -> float:
 	if _has_baked_base:
 		return get_baked_base_height(lx, lz)
@@ -495,7 +459,6 @@ static func configure_micro_terrain_from_env() -> void:
 	s_micro_enabled_from_env = _MicroLayerGrid.enabled()
 
 
-## Benchmark-only: flip macro mode without OS env churn between paired samples.
 static func set_macro_enabled_for_benchmark(on: bool) -> void:
 	s_macro_enabled_from_env = on
 
@@ -537,7 +500,6 @@ func derive_micro_from_terrain_edits() -> void:
 	grid.derive_from_terrain_edits(self)
 
 
-## Benchmark layout: resident macro_grid stays bound; only _macro_enabled toggles between paired runs.
 func sync_macro_benchmark_layout() -> void:
 	sync_macro_mode_from_env()
 	if not _macro_enabled:
@@ -563,7 +525,6 @@ func mark_macro_ramp_flags_dirty() -> void:
 	_macro_ramp_flags_dirty = true
 
 
-## Batch macro metadata after column populate or mesh emit. ramp_map is source of truth.
 func finalize_macro_metadata(sync_ramps: bool = false) -> void:
 	if not _macro_enabled:
 		return
@@ -616,7 +577,6 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 		var seeded: bool = bool(ws.seeded_tile_keys.get(key, false)) \
 			if "seeded_tile_keys" in ws else false
 		_worker_feature_baked[x][z] = bool(feat_entry.get("_baked_static", false)) or seeded
-		# Refresh frozen halo height-delta ring for dirty edge columns (main thread).
 		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
 
@@ -676,7 +636,6 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 		if bake != null and bake.has_method("note_dirty_bake_hit"):
 			bake.note_dirty_bake_hit()
 		return
-	# No stored base: try live bake sample only if this column is covered (worker-safe if resident).
 	var wx_i: int = position.x * SIZE + x
 	var wz_i: int = position.y * SIZE + z
 	if bake != null and bake.valid and bake.has_method("covers_world_cell") \
@@ -686,7 +645,6 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 			sample = bake.sample_base(position, x, z)
 		if not sample.is_empty():
 			if not _has_baked_base and bake.has_method("sample_base"):
-				# Soft-fill single cell natural height for dig strata; keep maps consistent.
 				pass
 			surface_map[x][z] = _WorldBakeService.compose_surface_height(
 				float(sample.get("surface", 0.0)), hdelta
@@ -700,9 +658,7 @@ func _rebuild_dirty_column(x: int, z: int, bake) -> void:
 			if bake.has_method("note_dirty_bake_hit"):
 				bake.note_dirty_bake_hit()
 			return
-		# Covered but package unavailable: never re-noise static terrain.
 		return
-	# Outside package / no bake: legacy procedural column.
 	var wx := float(wx_i)
 	var wz := float(wz_i)
 	if _has_worker_snapshot:
@@ -721,7 +677,6 @@ func _refresh_halo_for_local_cell(x: int, z: int) -> void:
 	_refresh_halo_border_for_local_cell(x, z)
 
 
-## Main-thread only: refresh frozen halo height-delta cells around a local column.
 func _refresh_worker_halo_deltas_around(x: int, z: int, ws, layer_h: float) -> void:
 	if not _has_halo_surface or _worker_halo_height_delta.is_empty():
 		return
@@ -762,13 +717,11 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 				# Worker / post-capture path: never re-read live WorldState.
 				hdelta = float(_worker_halo_height_delta[ix][iz])
 			else:
-				# Main-thread pre-snapshot path only.
 				var wx: int = position.x * SIZE + lx
 				var wz: int = position.y * SIZE + lz
 				var key := Vector2i(wx, wz)
 				var layer_h: float = maxf(_WorldSettings.get_active().layer_height(), 0.001)
 				hdelta = float(int(_WorldState.get_active().height_delta.get(key, 0))) * layer_h
-			# Recompose from frozen natural base — never re-noise covered bake cells.
 			if ix < _halo_base_surface.size() and iz < _halo_base_surface[ix].size():
 				var base_h: float = float(_halo_base_surface[ix][iz])
 				if base_h <= -9000.0:
@@ -780,13 +733,11 @@ func _refresh_halo_border_for_local_cell(x: int, z: int) -> void:
 
 
 func _compute_column_maps(use_uncached: bool = true):
-	# Local capture avoids mid-loop use of a field cleared by another thread/path.
 	var w = world
 	if w == null:
 		return
 
 	_ensure_surface_map_storage()
-	# Prefer immutable baked base when present (should already be applied via pipeline).
 	if _has_baked_base and _has_worker_snapshot:
 		var bake = _WorldBakeService.get_active()
 		for x in SIZE:
@@ -818,12 +769,9 @@ func _compute_column_maps(use_uncached: bool = true):
 		_refresh_halo_interior_from_maps()
 
 func set_voxel(x: int, y: int, z: int, value: int):
-	# For heightfield, we only "set" at surface y via the maps (done in bg compute).
-	# This is a no-op for the removed 3D storage. Keep signature for compatibility.
 	pass
 
 func get_voxel(x: int, y: int, z: int) -> int:
-	# Synthesize from heightfield maps: only the surface y has the tile, everything else is AIR.
 	if x >= 0 and x < SIZE and z >= 0 and z < SIZE and _has_resident_column_maps():
 		var sy: float = get_surface_y(x, z)
 		if absf(float(y) - sy) < _surface_match_epsilon():
@@ -838,9 +786,8 @@ func get_visibility(x: int, y: int, z: int) -> bool:
 	return false
 
 func set_visibility(x: int, y: int, z: int, value: bool):
-	pass  # no-op, derived from maps
+	pass
 
-# Aliases for the "one voxel tall" + reveal work from the session
 func is_visible(x: int, y: int, z: int) -> bool:
 	return get_visibility(x, y, z)
 
@@ -923,7 +870,6 @@ func get_worker_feature_tile(lx: int, lz: int) -> int:
 	return int(_worker_feature_tile[lx][lz])
 
 
-## True when feature tile is baked static vegetation (not a runtime edit).
 func get_worker_feature_is_baked(lx: int, lz: int) -> bool:
 	if not _has_worker_snapshot:
 		return false
@@ -990,7 +936,6 @@ func _has_resident_column_maps() -> bool:
 	return true
 
 
-## Materialize legacy façade arrays from macro authority (verify/save readers only).
 func ensure_legacy_maps_synced() -> void:
 	if not _macro_enabled:
 		return
@@ -1010,7 +955,6 @@ func sync_legacy_cells(local_cells: Array) -> void:
 	macro_grid.sync_cells_to_legacy_maps(surface_map, tile_map, local_cells)
 
 
-## Test/verify helper: patch one column on macro authority and legacy façade together.
 func patch_local_column(lx: int, lz: int, surface_y: float, surface_tile: int) -> void:
 	if lx < 0 or lx >= SIZE or lz < 0 or lz >= SIZE:
 		return
@@ -1081,7 +1025,6 @@ static func _surface_match_epsilon() -> float:
 func is_in_bounds(x: int, y: int, z: int) -> bool:
 	return x >= 0 and x < SIZE and y >= 0 and y < HEIGHT and z >= 0 and z < SIZE
 
-# Seamless borders
 func get_voxel_global(gx: int, gy: int, gz: int) -> int:
 	if gy < 0 or gy >= HEIGHT:
 		return VoxelTypes.AIR
@@ -1098,11 +1041,8 @@ func get_voxel_global(gx: int, gy: int, gz: int) -> int:
 func _compute_voxel_at_world(wx: int, wy: int, wz: int) -> int:
 	if not world:
 		return VoxelTypes.AIR
-	# Prefer the new full volumetric get_voxel when available (best natural rivers + true 3D caves + layers).
-	# Falls back gracefully if the method is missing on older world instances.
 	if world.has_method("get_voxel"):
 		return world.get_voxel(float(wx), float(wy), float(wz))
-	# Legacy heightfield path (kept for compatibility)
 	var surface_y = world.get_surface_height_uncached(float(wx), float(wz))
 	if float(wy) > surface_y + 0.5:
 		return VoxelTypes.AIR

@@ -1,6 +1,4 @@
 extends SceneTree
-## Deferred fill: prime ring playable, valid only after all packages, on-demand far chunk.
-## Usage: godot --headless -s scripts/verify_deferred_world_bake.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _InfiniteNoiseWorld = preload("res://world/InfiniteNoiseWorld.gd")
@@ -86,7 +84,6 @@ func _run() -> void:
 			_fail("bake_in_progress should be true while packages remain")
 		else:
 			_ok("bake_in_progress")
-		# Far in-bounds coord should on-demand bake, not stay empty.
 		var far := Vector2i(RADIUS, RADIUS)
 		if bake.package_ready(far):
 			_ok("far coord already primed")
@@ -101,7 +98,6 @@ func _run() -> void:
 			_fail("on-demand must not commit world.index")
 		else:
 			_ok("index still invalid after on-demand")
-		# Session replace must be blocked during fill.
 		var prev = _WorldState.get_active()
 		var after = _WorldState.replace_active()
 		if after != prev:
@@ -111,7 +107,6 @@ func _run() -> void:
 	else:
 		_ok("smoke world fully primed; index committed immediately")
 
-	# Rollback helper exists.
 	OS.set_environment("CRYSTALSTORM_BAKE_DEFER_FILL", "0")
 	if bake.defer_fill_from_env():
 		_fail("DEFER_FILL=0 should disable defer")

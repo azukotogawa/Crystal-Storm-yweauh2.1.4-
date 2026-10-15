@@ -1,6 +1,4 @@
 extends SceneTree
-## Scripted play session: loads production main.tscn and exercises real gameplay paths.
-## Evidence → scripted_smoke_evidence.md under ProbePaths scratch (not human-hand manual QA).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ProbePaths = preload("res://scripts/probe_paths.gd")
@@ -98,7 +96,6 @@ func _run() -> void:
 		await _finish(lines, true)
 		return
 
-	# --- Pickaxe via WeaponController (production dig path) ---
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging (WeaponController)")
 	var weapon: Node = player.get_node_or_null("WeaponController")
@@ -106,8 +103,6 @@ func _run() -> void:
 	var dug := false
 	var dig_wx := -1
 	var dig_wz := -1
-	# _do_dig_attack aims with INTERACTION_RANGE, not the stone pick's item range.
-	# Score that resolved column. Map center is river; a water source does not change height.
 	var range_v: float = _ActionTargeting.INTERACTION_RANGE
 	var aimed := Vector3.ZERO
 	if weapon != null and not pick_def.is_empty() and weapon.has_method("_do_dig_attack") and weapon.has_method("_resolve_terrain_target"):
@@ -150,7 +145,6 @@ func _run() -> void:
 			])
 			failed = true
 
-	# --- Entities: EntityManager._spawn_world_entity + registry refresh (production path) ---
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
 	var entity_mgr = get_first_node_in_group("entity_manager")
@@ -199,11 +193,9 @@ func _run() -> void:
 		])
 		failed = true
 
-	# --- Melee damages spawned entity (production combat path) ---
 	lines.append("")
 	lines.append("## P0 — Melee entity damage")
 	var melee_entity_ok := false
-	# Prefer the entity we just spawned at test_cell (Living World also seeds town agents elsewhere).
 	var spawned_entity: Node = null
 	var best_d := INF
 	var ws_melee = preload("res://config/world_settings.gd").get_active()
@@ -239,7 +231,6 @@ func _run() -> void:
 		lines.append("- **Combat FAIL**: melee did not reduce spawned entity health.")
 		failed = true
 
-	# --- Vegetation ---
 	lines.append("")
 	lines.append("## P0 — Vegetation billboards")
 	var visuals = get_first_node_in_group("world_visuals_root")
@@ -263,12 +254,10 @@ func _run() -> void:
 		lines.append("- **Vegetation FAIL**: %d billboards, %d textured." % [veg_stats.total, veg_stats.textured])
 		failed = true
 
-	# --- Chunk streaming ---
 	lines.append("")
 	lines.append("## P0 — Chunk streaming")
 	var chunks_before: int = chunk_manager.chunks.size()
 	var start_col: Vector3 = player.get("voxel_position")
-	# Step toward the map centre. A fixed +X step from a corner spawn walks off the border.
 	var inward := Vector3(
 		-48.0 if start_col.x >= 0.0 else 48.0,
 		0.0,
@@ -296,7 +285,6 @@ func _run() -> void:
 		)
 		failed = true
 
-	# --- P1 Jump via jump + move input through player physics (not Y teleport) ---
 	lines.append("")
 	lines.append("## P1 — Jump while moving")
 	var probe = player.get("_floor_probe")
@@ -355,7 +343,6 @@ func _run() -> void:
 		lines.append("- **Jump FAIL**: jump input air=%s landed=%s moved=%s." % [air_seen, landed, moved])
 		failed = true
 
-	# --- P0 Combat VFX on hits ---
 	lines.append("")
 	lines.append("## P0 — Combat VFX")
 	var combat_vfx = get_first_node_in_group("combat_visual_feedback")
@@ -396,7 +383,6 @@ func _run() -> void:
 		lines.append("- **Combat VFX FAIL**: no visible damage labels or burst sprites after hit.")
 		failed = true
 
-	# --- P1 Ramp / step ---
 	lines.append("")
 	lines.append("## P1 — Ramp collision / terrain transitions")
 	var concave_h := _TerrainRamps.walkable_height_from_entry(
@@ -417,7 +403,6 @@ func _run() -> void:
 			lines.append("- **Ramp FAIL**: floor probe returned non-positive feet height.")
 			failed = true
 
-	# --- P1 Crystal chunk edge ---
 	lines.append("")
 	lines.append("## P1 — Crystal loaded/unloaded chunks")
 	var far_cell := Vector2i(512, 512)
@@ -438,7 +423,6 @@ func _run() -> void:
 		lines.append("- **Crystal edge FAIL**: cell count dropped unexpectedly.")
 		failed = true
 
-	# --- Sustained simulated gameplay (MEDIUM preset) ---
 	lines.append("")
 	lines.append("## P0 — Sustained session (MEDIUM preset)")
 	var session_start_ms := Time.get_ticks_msec()
@@ -528,9 +512,6 @@ func _run() -> void:
 	await _finish(lines, failed)
 
 
-## Stand behind a dry column and return the cell WeaponController will actually edit.
-## River and water-adjacent land stay put on purpose (try_dig refuses a water source
-## and replaces a bank cell with water without a height delta).
 func _aim_dry_dig_column(
 	player: Node,
 	world: InfiniteNoiseWorld,

@@ -1,5 +1,4 @@
 extends SceneTree
-## P1 regression: spawn marker textures have crystal core + ring; voxel vegetation scale baseline.
 
 
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")

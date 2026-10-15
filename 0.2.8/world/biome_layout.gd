@@ -1,14 +1,12 @@
 class_name BiomeLayout
 extends RefCounted
 
-## Exactly five interior biomes — one Voronoi region each per map seed.
-## Ocean and border_mountain are handled separately by WorldBorder.
 
 const INTERIOR_BIOMES: Array[String] = [
 	"plains", "steppe", "forest", "marsh", "highland",
 ]
 
-static var regions: Array = []  # {center: Vector2, biome: String, radius_hint: float}
+static var regions: Array = []
 static var _ready: bool = false
 
 

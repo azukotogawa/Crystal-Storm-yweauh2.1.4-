@@ -1,54 +1,35 @@
 class_name WorldState
 extends RefCounted
-## Canonical session owner for mutable world overlays.
-##
-## TerrainEdits / FeatureRegistry / ChannelRegistry are public façades that
-## delegate storage and mutations here. Worker paths must use frozen snapshots
-## (capture_mesh_overlay_snapshot / ChunkData.capture_worker_snapshot), never
-## live Dictionary references off the main thread.
-##
-## Domains:
-## - TERRAIN / FEATURE_TILE affect heightfield mesh inputs.
-## - FEATURE (meta) covers plants/towns/spawns without forcing mesh invalidation.
-## - CHANNEL covers water routing (sim/query; not terrain mesh).
 
 const DOMAIN_NONE := 0
 const DOMAIN_TERRAIN := 1
 const DOMAIN_FEATURE := 2
 const DOMAIN_FEATURE_TILE := 4
 const DOMAIN_CHANNEL := 8
-## Mesh workers care about terrain height/build tiles and feature tile overrides.
 const DOMAIN_MESH_INPUT := DOMAIN_TERRAIN | DOMAIN_FEATURE_TILE
 
 signal changed(domain: int, revision: int)
 
 static var _active = null
 
-## Monotonic global revision (any overlay mutation).
 var revision: int = 0
 var terrain_revision: int = 0
 var feature_revision: int = 0
 var feature_tile_revision: int = 0
 var channel_revision: int = 0
 
-## TerrainEdits storage (write authority)
-var height_delta: Dictionary = {}  # Vector2i -> int (layer deltas)
-var build_tile: Dictionary = {}  # Vector2i -> int (VoxelTypes id)
+var height_delta: Dictionary = {}
+var build_tile: Dictionary = {}
 
-## FeatureRegistry storage
-var tile_overrides: Dictionary = {}  # Vector2i -> int
-var feature_cells: Dictionary = {}  # Vector2i -> Dictionary
-## World-seed stamps (towns/ruins/roads) — immutable content for mesh-plan pristine checks.
-## Not player digs/builds/crystal; does not itself force plan rebuild.
-var seeded_tile_keys: Dictionary = {}  # Vector2i -> true
+var tile_overrides: Dictionary = {}
+var feature_cells: Dictionary = {}
+var seeded_tile_keys: Dictionary = {}
 var towns: Array = []
 var entity_spawns: Array = []
 ## Session tombstones: baked static vegetation/features removed by dig/absorb/harvest.
-## Prevents re-applying baked plants when a chunk becomes resident again.
-var feature_cleared: Dictionary = {}  # Vector2i -> true
+var feature_cleared: Dictionary = {}
 
-## ChannelRegistry storage
-var channels: Dictionary = {}  # Vector2i -> { water_level, flow_dir }
+var channels: Dictionary = {}
 
 var _batch_depth: int = 0
 var _batch_domains: int = 0
@@ -68,7 +49,6 @@ static func ensure_active():
 	return get_active()
 
 
-## Replace the active session with a fresh empty state (tests / full reload).
 static func replace_active(state = null):
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake != null and bool(bake.get("forbid_session_replace")):
@@ -83,7 +63,6 @@ static func replace_active(state = null):
 
 
 static func _notify_session_changed() -> void:
-	# FeatureRegistry keeps process-local derived caches; clear on session swap.
 	var fr = load("res://world/feature_registry.gd")
 	if fr and fr.has_method("on_session_changed"):
 		fr.on_session_changed()
@@ -101,7 +80,6 @@ func end_batch() -> void:
 		_bump_now(domains)
 
 
-## Trace counter (measurement only): CRYSTALSTORM_CRYSTAL_TICK_TRACE=1 arms via reset_trace_counters.
 static var _trace_bump_count: int = 0
 static var _trace_bump_domains: Array = []
 static var _trace_bump_enabled: bool = false
@@ -151,7 +129,6 @@ func _bump_now(domain: int) -> void:
 
 
 func mesh_input_revision() -> int:
-	## Stable combined stamp; both counters are monotonic.
 	return terrain_revision * 1_000_003 + feature_tile_revision
 
 
@@ -170,8 +147,6 @@ func is_mesh_stamp_current(stamp: Dictionary) -> bool:
 	return int(stamp.get("mesh_input_revision", -1)) == mesh_input_revision()
 
 
-## Frozen mesh-input overlay for a rectangular world-column region (inclusive min, exclusive max).
-## Copies values so workers never hold live mutable maps.
 func capture_mesh_overlay_snapshot(min_wx: int, min_wz: int, max_wx: int, max_wz: int) -> Dictionary:
 	var height: Dictionary = {}
 	var build: Dictionary = {}
@@ -198,8 +173,6 @@ func capture_mesh_overlay_snapshot(min_wx: int, min_wz: int, max_wx: int, max_wz
 
 
 func capture_overlay_snapshot() -> Dictionary:
-	## Full serializable session snapshot for rollback / deterministic restore.
-	## Nested entries are deep-copied so the result is immutable w.r.t. later writes.
 	return {
 		"revision": revision,
 		"terrain_revision": terrain_revision,
@@ -217,8 +190,6 @@ func capture_overlay_snapshot() -> Dictionary:
 	}
 
 
-## Restore overlay storage and revision counters from a capture_overlay_snapshot payload.
-## Does not emit intermediate change events; emits one combined domain event.
 func restore_overlay_snapshot(snap: Dictionary) -> void:
 	height_delta = (snap.get("height_delta", {}) as Dictionary).duplicate()
 	build_tile = (snap.get("build_tile", {}) as Dictionary).duplicate()
@@ -227,7 +198,6 @@ func restore_overlay_snapshot(snap: Dictionary) -> void:
 	towns = (snap.get("towns", []) as Array).duplicate(true)
 	entity_spawns = (snap.get("entity_spawns", []) as Array).duplicate(true)
 	channels = (snap.get("channels", {}) as Dictionary).duplicate(true)
-	# Preserve captured counters when present so replay/restore is deterministic.
 	if snap.has("revision"):
 		revision = int(snap.revision)
 		terrain_revision = int(snap.get("terrain_revision", 0))
@@ -278,7 +248,6 @@ func reset_all_overlays() -> void:
 	end_batch()
 
 
-## JSON-safe full persistence bundle (sole overlay authority for save).
 func export_persistence_bundle() -> Dictionary:
 	const _Codec = preload("res://systems/save_codec.gd")
 	var tiles := {}
@@ -315,7 +284,6 @@ func export_persistence_bundle() -> Dictionary:
 	}
 
 
-## Restore from export_persistence_bundle (JSON-decoded). Replaces all overlay storage.
 func import_persistence_bundle(data: Dictionary) -> void:
 	const _Codec = preload("res://systems/save_codec.gd")
 	const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
@@ -385,7 +353,6 @@ func export_save_overlays() -> Dictionary:
 
 
 ## Apply legacy flat save-dict fields (terrain_edits/features/channels).
-## Prefer import_persistence_bundle for full authority restore with revisions.
 func apply_save_overlay_dicts(terrain_data: Dictionary, feature_data: Dictionary, channel_data: Dictionary) -> void:
 	var ch_map: Dictionary = channel_data.get("channels", channel_data)
 	import_persistence_bundle({

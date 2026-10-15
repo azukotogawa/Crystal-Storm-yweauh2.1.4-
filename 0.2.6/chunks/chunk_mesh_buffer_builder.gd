@@ -58,7 +58,6 @@ static func build_mesh_payload(
 			cache = _TerrainSurfaceCache.patch_region(
 				prior_surface_cache, data, patch_quads, keep_quads
 			)
-		# Defer ArrayMesh build to main-thread surface upload drain.
 		_TerrainSurfaceCache.attach_to_payload(cache, payload, false)
 	elif use_surface_mesh:
 		payload["terrain_buffer"] = PackedFloat32Array()

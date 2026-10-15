@@ -1,6 +1,4 @@
 extends SceneTree
-## Live water phase profile on production main.tscn.
-## Idle sample, then a real TerrainEditor channel, then post-edit sample.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -85,7 +83,6 @@ func _run() -> void:
 			player._snap_to_ground()
 
 	var after_edit: Dictionary = await _sample_window(20)
-	# Second: channel on a river tile — this used to explode dirty to ~3500 / 220ms.
 	var river_edit := {"cell": [0, 0], "ok": false, "tile": -1}
 	var river_cell := Vector2i(24, 24)
 	if world:

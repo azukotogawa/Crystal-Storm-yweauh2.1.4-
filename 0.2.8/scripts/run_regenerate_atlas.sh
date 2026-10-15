@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Regenerate assets/tiles/Cube.png from scripts/regenerate_cube_atlas.py
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

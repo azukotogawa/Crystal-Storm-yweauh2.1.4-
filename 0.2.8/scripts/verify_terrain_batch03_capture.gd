@@ -1,6 +1,4 @@
 extends SceneTree
-## Boot main.tscn, stamp Batch 03 yard, capture named IDs.
-## Usage: godot --path . -s scripts/verify_terrain_batch03_capture.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -109,7 +107,6 @@ func _run() -> void:
 		var nat: Vector2i = found[VoxelTypes.GRASSLAND4]
 		yard = Vector2i(nat.x + 2, nat.y)
 		print("YARD_FROM_NATURAL %s" % str(yard))
-	# Stream the land yard before stamping so remesh is not fighting a river bake.
 	_frame_camera(player, get_first_node_in_group("camera"), world, yard.x, yard.y, 12.0)
 	var ycoord := Vector2i(int(floor(float(yard.x) / 16.0)), int(floor(float(yard.y) / 16.0)))
 	if cm and cm.has_method("request_chunk"):

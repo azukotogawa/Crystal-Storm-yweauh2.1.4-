@@ -1,7 +1,4 @@
 extends SceneTree
-## Live main scene: place gates in mixed arrangements; assert authored mesh bind.
-## Also places wood_wall + stone_wall to prove no authored-path regression.
-## Usage: godot --path . -s scripts/verify_gate_live_place.gd
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -115,7 +112,6 @@ func _run() -> void:
 	else:
 		feat_layer.refresh_cell(bridge_cell.x, bridge_cell.y)
 
-	# Gate next to wood and stone
 	var near_wood := Vector2i(wood_cell.x, wood_cell.y + 1)
 	var y2: float = world.get_surface_height(float(near_wood.x), float(near_wood.y))
 	if editor.try_build_gate(Vector3(float(near_wood.x) + 0.5, y2, float(near_wood.y) + 0.5), inv):

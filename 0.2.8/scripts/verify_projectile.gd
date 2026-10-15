@@ -1,5 +1,4 @@
 extends SceneTree
-## Arrow travel, gravity drop, a hit on the line, and a miss off the line.
 
 
 const _Projectile = preload("res://weapons/projectile.gd")
@@ -251,8 +250,6 @@ func _pool_after_parent_freed() -> bool:
 	return true
 
 
-## The iso camera looks along the shot. A flat cross has no triangle that spans
-## both X and Y, so it vanishes. The bow must spawn a thick arrow at the muzzle.
 func _bow_arrow_visible(parent: Node3D) -> bool:
 	var ws = load("res://config/world_settings.gd").get_active()
 	var vs: float = float(ws.voxel_scale)

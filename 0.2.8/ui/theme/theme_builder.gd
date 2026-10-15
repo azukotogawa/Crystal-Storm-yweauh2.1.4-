@@ -1,7 +1,5 @@
 class_name ThemeBuilder
 extends RefCounted
-## Crystal Storm UI theme. Built in code from Pixelify Sans (see assets/fonts/README.md).
-## UI scale is Window.content_scale_factor, so these sizes stay the 100% design size.
 
 const FONT_PATH := "res://assets/fonts/PixelifySans.ttf"
 

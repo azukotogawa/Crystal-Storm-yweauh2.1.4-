@@ -1,5 +1,4 @@
 extends SceneTree
-## Warden phase change, telegraph before damage, boss victory, and a 3-relic offer.
 
 
 const _BossBrain = preload("res://entities/boss_brain.gd")

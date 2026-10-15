@@ -1,5 +1,4 @@
 extends SceneTree
-## Crystal mass breaking, town-fall penalty (not a loss), and corner origin.
 
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")
 const _CrystalSimulation = preload("res://crystal/crystal_simulation.gd")
@@ -313,7 +312,6 @@ func _test_jump_is_space() -> bool:
 	var next_at := text.find("\n}", jump_at)
 	var jump_block := text.substr(jump_at, next_at - jump_at)
 	if "physical_keycode\":32" not in jump_block and "physical_keycode\":32" not in jump_block.replace(":", "\":"):
-		# File stores `"physical_keycode":32`.
 		if "physical_keycode\":32" not in jump_block and not jump_block.contains("physical_keycode\":32"):
 			pass
 	if not jump_block.contains("physical_keycode\":32") and not jump_block.contains("physical_keycode\":32"):

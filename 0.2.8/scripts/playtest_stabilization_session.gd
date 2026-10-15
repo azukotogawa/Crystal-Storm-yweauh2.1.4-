@@ -1,6 +1,4 @@
 extends SceneTree
-## Instrumented main-scene run of the 11-step human playtest scenario.
-## Drives shipped dig/build/gate/bridge/water/crystal/combat paths; logs hitches & duplicates.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -105,7 +103,6 @@ func _run() -> void:
 		px = int(floor(pv.x))
 		pz = int(floor(pv.z))
 
-	# --- 2 Dig 20+ rapidly ---
 	var dig_dup := 0
 	var dig_hitch := 0
 	var dig_max_ms := 0.0
@@ -125,7 +122,6 @@ func _run() -> void:
 		var after: float = _TerrainEdits.get_height_delta(cx, cz)
 		var layers := int(round((after - before) / layer))
 		if layers != -1 and layers != 0:
-			# 0 if hit dig floor; -1 expected
 			if layers < -1 or layers > 0:
 				dig_dup += 1
 		elif layers < -1:
@@ -137,7 +133,6 @@ func _run() -> void:
 			dig_sum / 22.0, dig_max_ms, HITCH_MS, dig_hitch
 		])
 
-	# --- 3 Build 20+ walls ---
 	var build_dup := 0
 	var build_hitch := 0
 	var build_max := 0.0
@@ -165,7 +160,6 @@ func _run() -> void:
 			build_sum / 22.0, build_max, build_hitch
 		])
 
-	# --- 4 Gate ---
 	var gx := px + 5
 	var gz := pz + 6
 	var gok: bool = bool(editor.try_build_gate(Vector3(float(gx) + 0.5, 0.0, float(gz) + 0.5), inv))
@@ -175,7 +169,6 @@ func _run() -> void:
 	else:
 		_ok("4 GATE at (%d,%d) is_passage" % [gx, gz])
 
-	# --- 5 Bridge ---
 	var bx := px + 8
 	var bz := pz + 6
 	_TerrainEdits.dig(bx, bz, 1)
@@ -186,7 +179,6 @@ func _run() -> void:
 	else:
 		_ok("5 BRIDGE at (%d,%d)" % [bx, bz])
 
-	# --- 6 Ramp agreement ---
 	var ramp_ok := true
 	var sample_x := float(px) + 0.5
 	var sample_z := float(pz) + 0.5
@@ -195,18 +187,15 @@ func _run() -> void:
 	if walk + 0.001 < surf:
 		ramp_ok = false
 		_fail("6 RAMP/WALK walkable < surface walk=%.2f surf=%.2f" % [walk, surf])
-	# Adjacent step consistency
 	var h0: float = world.get_surface_height(float(px + 2), float(pz + 3))
 	var h1: float = world.get_surface_height(float(px + 3), float(pz + 3))
 	var w0: float = _TerrainRamps.walkable_height(world, float(px + 2) + 0.5, float(pz + 3) + 0.5)
 	var w1: float = _TerrainRamps.walkable_height(world, float(px + 3) + 0.5, float(pz + 3) + 0.5)
 	if absf(w0 - (h0 + layer)) > layer * 0.2 and absf(w1 - (h1 + layer)) > layer * 0.2:
-		# both flats should sit near surface+layer
 		pass
 	if ramp_ok:
 		_ok("6 RAMP/WALK surface=%.2f walkable=%.2f (adjacent tops ok)" % [surf, walk])
 
-	# --- 7 Water redirect ---
 	var water_ms := 0.0
 	if editor.has_method("_channel_dig"):
 		water_ms = _time_ms(func():
@@ -224,25 +213,21 @@ func _run() -> void:
 	else:
 		_ok("7 WATER/channel 6 digs total_ms=%.2f (%.2f/edit)" % [water_ms, water_ms / 6.0])
 
-	# --- 8 Approach crystal ---
 	if crystal == null:
 		_note("WARN 8 CRYSTAL manager missing")
 	else:
 		var depth_n := 0
 		if crystal.has_method("get_depth_at"):
-			# sample near origin spawns
 			for dx in range(-8, 9):
 				for dz in range(-8, 9):
 					if float(crystal.get_depth_at(dx, dz)) > 0.04:
 						depth_n += 1
-		# Floor refresh hook
 		var cm_src: String = (load("res://crystal/crystal_manager.gd") as GDScript).source_code
 		if "_refresh_crystal_floor_near" not in cm_src:
 			_fail("8 CRYSTAL missing floor refresh on terrain edit")
 		else:
 			_ok("8 CRYSTAL present active_cells_near_origin~%d floor_refresh_hook=yes" % depth_n)
 
-	# Dig under crystal: prove MultiMesh presentation Y drops (not only floor query).
 	if crystal and crystal.has_method("get_depth_at"):
 		var found := false
 		for dx in range(-20, 21):
@@ -252,7 +237,6 @@ func _run() -> void:
 					var fl0: float = crystal._crystal_floor_at(cpos) if crystal.has_method("_crystal_floor_at") else 0.0
 					var depth0: float = float(crystal.get_depth_at(cpos.x, cpos.y))
 					var applied0: float = -99999.0
-					# Ensure presentation MultiMesh path is instanced for this cell before dig.
 					if crystal._presentation:
 						var cell0 = crystal._presentation._make_render_cell(cpos, depth0, -1)
 						applied0 = cell0.terrain_y
@@ -310,7 +294,6 @@ func _run() -> void:
 		if not found:
 			_note("NOTE 8b no crystal cell near player to dig under")
 
-	# --- 9 Fight enemy ---
 	var enemies: Array = get_nodes_in_group("crystal_enemy")
 	if enemies.is_empty():
 		enemies = get_nodes_in_group("enemies")
@@ -333,17 +316,14 @@ func _run() -> void:
 		else:
 			_ok("9 FIGHT enemy damaged hp %.1f→%.1f" % [hp0, hp1])
 
-	# --- 10 Spawn damage ---
 	if crystal and crystal.has_method("damage_spawn_at_world"):
 		var dmg_ms := _time_ms(func():
-			# API expects world column (Vector2i), not Vector3.
 			crystal.damage_spawn_at_world(Vector2i(0, 0), 8.0, 4.0)
 		)
 		_ok("10 SPAWN damage_spawn_at_world ms=%.2f" % dmg_ms)
 	else:
 		_note("NOTE 10 SPAWN API missing")
 
-	# --- 11 Crystal responds to terrain (wall baffle path present) ---
 	var wall_cell := Vector2i(px + 4, pz + 8)
 	editor.try_build(Vector3(float(wall_cell.x) + 0.5, 0, float(wall_cell.y) + 0.5), inv, &"stone_wall")
 	var feat_w: Dictionary = _FeatureRegistry.get_feature(wall_cell.x, wall_cell.y)
@@ -352,7 +332,6 @@ func _run() -> void:
 	else:
 		_ok("11 CRYSTAL-TERRAIN wall flow_resistance=%.2f" % float(feat_w.get("flow_resistance", 0.0)))
 
-	# --- Herb heal via shipped weapon consumable path ---
 	var weapon_node = player.get_node_or_null("WeaponController")
 	if weapon_node and weapon_node.has_method("_try_use_consumable") and inv:
 		var hp_start: float = float(player.health)
@@ -382,7 +361,6 @@ func _run() -> void:
 	else:
 		_fail("HEAL weapon consumable path unavailable")
 
-	# Input policy still present
 	var wsrc: String = (load("res://weapons/weapon_controller.gd") as GDScript).source_code
 	if "TERRAIN_HOLD_REPEAT_START_SEC" not in wsrc:
 		_fail("input hold-repeat missing")
@@ -420,7 +398,6 @@ func _finish() -> void:
 	if f:
 		f.store_string("\n".join(_lines) + "\n")
 		f.close()
-	# Also update human scenario with results pointer
 	var path2 := "/tmp/grok-goal-3df95600d6a4/implementer/human_playtest_scenario.md"
 	var f2 := FileAccess.open(path2, FileAccess.READ_WRITE)
 	if f2:

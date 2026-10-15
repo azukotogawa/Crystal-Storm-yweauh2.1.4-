@@ -1,16 +1,10 @@
 extends SceneTree
-## Author the Crystal Storm town_hall landmark mesh + albedo atlas.
-##
-## Mesh is in voxel-column units (Y up from unraised ground).
 ## Runtime bind multiplies XZ by voxel_scale; Y stays 1.0 — a WIDE hall
 ## with a pitched roof, not a wall, gate, pillar, or deck.
-##
-## Usage: godot --headless --path . -s assets/structures/town_hall/author_town_hall.gd
 
 const HERE := "res://assets/structures/town_hall"
 const SRC := HERE + "/src"
 
-# Godot OBJ UVs treat v=0 as image top for this importer.
 const UV_WALL := Vector4(0.02, 0.02, 0.48, 0.98)
 const UV_ROOF := Vector4(0.52, 0.02, 0.98, 0.48)
 const UV_WOOD := Vector4(0.52, 0.50, 0.98, 0.74)
@@ -170,7 +164,6 @@ func add_block(center: Vector3, size: Vector3, region: Vector4, uv_shift: Vector
 
 
 func add_pitched_roof() -> void:
-	# Ridge along Z, eaves at ±X. Reads as a house from the iso camera.
 	var y_ridge := 2.42
 	var y_eave := 1.42
 	var x_eave := 0.72
@@ -182,18 +175,14 @@ func add_pitched_roof() -> void:
 	var el1 := Vector3(-x_eave, y_eave, z1)
 	var er0 := Vector3(x_eave, y_eave, z0)
 	var er1 := Vector3(x_eave, y_eave, z1)
-	# Left slope
 	_add_quad(el0, ridge0, ridge1, el1, _remap(0.05, 0.05, UV_ROOF), _remap(0.95, 0.05, UV_ROOF), _remap(0.95, 0.95, UV_ROOF), _remap(0.05, 0.95, UV_ROOF))
-	# Right slope
 	_add_quad(ridge0, er0, er1, ridge1, _remap(0.05, 0.05, UV_ROOF), _remap(0.95, 0.05, UV_ROOF), _remap(0.95, 0.95, UV_ROOF), _remap(0.05, 0.95, UV_ROOF))
-	# Gable walls (plaster triangles) so the ends are not open.
 	var gable_l := Vector3(-0.58, 1.38, z0)
 	var gable_r := Vector3(0.58, 1.38, z0)
 	_add_tri(ridge0, gable_l, gable_r, _remap(0.5, 0.95, UV_WALL), _remap(0.08, 0.15, UV_WALL), _remap(0.92, 0.15, UV_WALL))
 	var gable_l2 := Vector3(-0.58, 1.38, z1)
 	var gable_r2 := Vector3(0.58, 1.38, z1)
 	_add_tri(ridge1, gable_r2, gable_l2, _remap(0.5, 0.95, UV_WALL), _remap(0.92, 0.15, UV_WALL), _remap(0.08, 0.15, UV_WALL))
-	# Overhang lips
 	add_block(Vector3(0.0, y_eave + 0.03, 0.0), Vector3(x_eave * 2.08, 0.05, 1.30), UV_WOOD, Vector2(0.1, 0.2), 0.006, UV_WOOD)
 
 
@@ -202,18 +191,13 @@ func _build_mesh() -> void:
 	_vt.clear()
 	_vn.clear()
 	_f.clear()
-	# Wide plaster body — footprint larger than a wall cell.
 	add_block(Vector3(0.0, 0.70, 0.0), Vector3(1.22, 1.40, 1.08), UV_WALL, Vector2(0.05, 0.1), 0.016, UV_WALL)
-	# Timber sills
 	add_block(Vector3(0.0, 0.04, 0.0), Vector3(1.26, 0.08, 1.12), UV_WOOD, Vector2(0.2, 0.3), 0.006, UV_END)
-	# Door (iso +Z)
 	add_block(Vector3(0.0, 0.38, 0.56), Vector3(0.26, 0.62, 0.08), UV_WOOD, Vector2(0.0, 0.1), 0.008, UV_END)
 	add_block(Vector3(0.0, 0.08, 0.62), Vector3(0.38, 0.08, 0.16), UV_WOOD, Vector2(0.3, 0.2), 0.006, UV_END)
-	# Windows
 	add_block(Vector3(-0.36, 0.88, 0.55), Vector3(0.18, 0.22, 0.05), UV_WOOD, Vector2(0.4, 0.5), 0.004, UV_END)
 	add_block(Vector3(0.36, 0.88, 0.55), Vector3(0.18, 0.22, 0.05), UV_WOOD, Vector2(0.1, 0.6), 0.004, UV_END)
 	add_pitched_roof()
-	# Chimney on the back slope
 	add_block(Vector3(-0.22, 2.05, -0.22), Vector3(0.16, 0.42, 0.16), UV_WALL, Vector2(0.2, 0.7), 0.01, UV_WALL)
 	add_block(Vector3(-0.22, 2.28, -0.22), Vector3(0.20, 0.07, 0.20), UV_WOOD, Vector2(0.0, 0.0), 0.006, UV_END)
 

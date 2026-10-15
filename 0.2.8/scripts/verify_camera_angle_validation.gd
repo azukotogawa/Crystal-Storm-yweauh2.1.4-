@@ -1,5 +1,4 @@
 extends SceneTree
-## Live arbitrary-yaw validation: snap listed angles, dump F4, optional windowed shots.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -90,7 +89,6 @@ func _run() -> void:
 	_ValidationYard.apply_generated_ramps(self, yard.get("cells", {}))
 	if cm.has_method("await_rebuild_idle"):
 		await cm.await_rebuild_idle(90)
-	# One live dig through the editor (world-grid, not camera-relative).
 	var cells: Dictionary = yard.get("cells", {})
 	if editor and cells.has("dig_one"):
 		var d: Vector2i = cells.dig_one
@@ -117,9 +115,6 @@ func _run() -> void:
 		int(floor(float(origin.x) / 16.0) + 1.0) * 16,
 		origin.y + 3
 	)
-	# Coverage reads chunk quads. await_rebuild_idle ignores the stream load
-	# queue, and the yard teleport is only seen on the next _process, so a
-	# fixed sleep can assert while the dig/boundary chunk is still in flight.
 	var watched: Array = _watched_columns(cells, boundary)
 	_look(origin.x + 6, origin.y + 2)
 	await _await_columns_settled(cm, watched, MESH_SETTLE_FRAMES)
@@ -313,8 +308,6 @@ func _watched_columns(cells: Dictionary, boundary: Vector2i) -> Array:
 	return out
 
 
-## Two consecutive settled frames with the same per-chunk generation. A single
-## settled frame can sit in the gap before a deferred follow-up flush.
 func _await_columns_settled(cm, cells: Array, budget: int) -> void:
 	if cm == null or not cm.has_method("columns_mesh_settled") \
 			or not cm.has_method("column_mesh_generation") \

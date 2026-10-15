@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: cardinal ramp walkable height slopes down toward the low neighbor.
 
 
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")

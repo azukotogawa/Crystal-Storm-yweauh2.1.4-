@@ -1,7 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
-// crystal_time is written every frame on the material the crystal mesh draws.
 // A built-in TIME read would pulse without that bind, so the check would miss a stale material.
 uniform sampler2D albedo_tex : source_color, filter_nearest, repeat_disable;
 uniform vec4 albedo_color : source_color = vec4(0.72, 0.28, 1.0, 0.88);

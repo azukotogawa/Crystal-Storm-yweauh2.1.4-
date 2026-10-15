@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: dug strata mesh must not cap at natural height; micro-on must match micro-off.
 
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")

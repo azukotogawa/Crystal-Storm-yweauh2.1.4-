@@ -1,5 +1,4 @@
 extends SceneTree
-## Pitch clamps, legacy iso offset, and the same cell is picked at both pitch limits.
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -99,7 +98,6 @@ func _run() -> void:
 		cam.snap_pitch_degrees(pitch)
 		cam.snap_yaw_degrees(45.0)
 		var origin: Vector3 = player.global_position + cam.get_offset_from_rotation()
-		# Aim through the top face. The orbit position is only the view point.
 		origin = aim + Vector3(0.15, 8.0 + absf(pitch) * 0.05, 0.1)
 		var dir: Vector3 = (aim - origin).normalized()
 		var pick: Dictionary = _ActionTargeting.pick_along_ray(

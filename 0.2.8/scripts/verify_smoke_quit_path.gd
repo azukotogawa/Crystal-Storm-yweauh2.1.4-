@@ -1,5 +1,4 @@
 extends SceneTree
-## Proves smoke emits exactly one terminal marker; forced fail must not print OK.
 
 const ROOT := "res://"
 const WRAPPER := "res://scripts/run_smoke_gameplay.sh"

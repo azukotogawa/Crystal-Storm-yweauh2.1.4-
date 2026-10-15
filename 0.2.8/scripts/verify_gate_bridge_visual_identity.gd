@@ -1,6 +1,4 @@
 extends SceneTree
-## Gate / bridge visual identity: must not resolve to wood_wall.
-## Usage: godot --headless -s scripts/verify_gate_bridge_visual_identity.gd
 
 
 const _FeatureVisualLayer = preload("res://world/feature_visual_layer.gd")
@@ -21,7 +19,6 @@ var _failed: int = 0
 
 
 func _init() -> void:
-	# ChunkManager._ready would otherwise rebuild a missing full-world bake.
 	OS.set_environment("CRYSTALSTORM_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "0")
@@ -54,8 +51,6 @@ func _run() -> void:
 		quit(1)
 
 
-## Core mapping: gate → "gate", bridge → "bridge", wood_wall → "wood_wall".
-## Must fail if gate or bridge collapses to wood_wall (old DIRT tile_override bug).
 func _test_resolve_ids() -> void:
 	var layer = _FeatureVisualLayer.new()
 	root.add_child(layer)
@@ -81,7 +76,6 @@ func _test_resolve_ids() -> void:
 		"is_bridge": false,
 	}
 
-	# Even with DIRT tile_override (gameplay tile for gate/bridge), identity must stay gate/bridge.
 	_FeatureRegistry.set_tile_override(100, 100, _VoxelTypes.DIRT)
 	_FeatureRegistry.set_tile_override(101, 101, _VoxelTypes.DIRT)
 	_FeatureRegistry.set_tile_override(102, 102, _VoxelTypes.DIRT)
@@ -140,7 +134,6 @@ func _test_sizes_distinct() -> void:
 	layer.free()
 
 
-## Multi-part silhouettes must differ so boxes-with-tint cannot pass as distinct.
 func _test_mesh_silhouettes_distinct() -> void:
 	var registry = _GameVisualRegistry.new()
 	var ids: Array[String] = ["gate", "bridge", "wood_wall", "stone_wall", "ruin_pillar", "town_hall"]
@@ -159,12 +152,10 @@ func _test_mesh_silhouettes_distinct() -> void:
 		if sigs.values().has(sig):
 			_fail("silhouette collision: %s matches another structure (%s)" % [id, sig])
 		sigs[id] = sig
-	# Gate must not be a single solid box (passage requires open middle = multi-part).
 	if registry.structure_mesh_parts("gate").size() < 3:
 		_fail("gate must use multi-part arch silhouette (posts+lintel)")
 	if registry.structure_mesh_parts("bridge").size() < 2:
 		_fail("bridge must use deck+rail multi-part silhouette")
-	# Bridge AABB short; gate/wall tall.
 	var gate_aabb := registry.build_structure_array_mesh(registry.structure_mesh_parts("gate")).get_aabb()
 	var bridge_aabb := registry.build_structure_array_mesh(registry.structure_mesh_parts("bridge")).get_aabb()
 	var wall_aabb := registry.build_structure_array_mesh(registry.structure_mesh_parts("wood_wall")).get_aabb()
@@ -242,8 +233,6 @@ func _tex_avg_rgb(tex: Texture2D) -> Vector3:
 		return Vector3.ZERO
 	var sum := Vector3.ZERO
 	var n := 0
-	# These sprites are 48 px with a dark outline. A coarse stride lands only on that
-	# outline, so the average has to visit every opaque pixel.
 	for y in range(0, img.get_height()):
 		for x in range(0, img.get_width()):
 			var c := img.get_pixel(x, y)
@@ -284,7 +273,6 @@ func _test_anchors_and_immediate_refresh() -> void:
 
 	var registry = _GameVisualRegistry.new()
 	root3d.add_child(registry)
-	# Seed building textures into registry cache (skip full perf/bootstrap).
 	var gen := _CrystalTextureGenerator.new()
 	registry._gen = gen
 	registry._initialized = true
@@ -387,7 +375,6 @@ func _test_anchors_and_immediate_refresh() -> void:
 			else:
 				print("OK wood_wall anchor id=%s" % wid)
 
-	# Ruin landmark only at center (edge cell of same ruin must not get a wall-like prop).
 	_FeatureRegistry.register_feature(10, 11, _WorldFeatureTypes.FeatureKind.RUIN, {
 		"center": Vector2i(10, 11),
 		"name": "Test Ruin",
@@ -414,7 +401,6 @@ func _test_anchors_and_immediate_refresh() -> void:
 	else:
 		print("OK ruin edge cell has no prop")
 
-	# Town hall landmark via TOWN_BUILDING at center.
 	_FeatureRegistry.register_feature(14, 14, _WorldFeatureTypes.FeatureKind.TOWN_BUILDING, {
 		"center": Vector2i(14, 14),
 		"name": "Test Town",

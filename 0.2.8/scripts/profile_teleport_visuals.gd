@@ -1,8 +1,4 @@
 extends SceneTree
-## Measure GameVisualRegistry / generate_image across teleports (measure only).
-##
-## Usage:
-##   CRYSTALSTORM_BAKE_RADIUS=2 godot --headless -s scripts/profile_teleport_visuals.gd
 
 
 func _initialize() -> void:
@@ -50,7 +46,6 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# Arm generators after boot so we measure teleport delta only.
 	if reg.has_method("reset_trace_counters"):
 		reg.reset_trace_counters()
 	if gen and gen.has_method("set_gen_trace_enabled"):
@@ -65,7 +60,6 @@ func _run() -> void:
 	var snap0 := _snap(reg, gen)
 	print("[TPVis] baseline after boot: ", JSON.stringify(snap0))
 
-	# Three teleports far enough to force stream
 	var offsets: Array[Vector2] = [
 		Vector2(128, 128),
 		Vector2(-192, 64),
@@ -79,7 +73,6 @@ func _run() -> void:
 			gen.reset_gen_trace()
 		var before := _snap(reg, gen)
 		_teleport(player, world, cm, off)
-		# Allow stream + feature populate frames
 		for _i in 90:
 			await process_frame
 		var after := _snap(reg, gen)
@@ -96,7 +89,6 @@ func _run() -> void:
 		per_tp.append(delta)
 		print("[TPVis] teleport ", off, " delta=", JSON.stringify(delta))
 
-	# Explicit clear_cache to show what regeneration looks like (control)
 	if reg.has_method("reset_trace_counters"):
 		reg.reset_trace_counters()
 	if gen and gen.has_method("reset_gen_trace"):
@@ -113,7 +105,7 @@ func _run() -> void:
 		"teleports": per_tp,
 		"control_full_regen": control,
 		"bundle_key_count_expected": 41,
-		"generate_image_per_full_bundle": 35,  # combat+entity+veg+building; items use generate_item_icon
+		"generate_image_per_full_bundle": 35,
 	}
 	_print_summary(report)
 

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: ridge with low west + high north still emits a ramp (on the north landing), approach keeps terrain.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

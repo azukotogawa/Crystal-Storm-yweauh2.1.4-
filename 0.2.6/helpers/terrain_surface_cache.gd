@@ -1,6 +1,5 @@
 class_name TerrainSurfaceCache
 extends RefCounted
-## Canonical face-only terrain geometry cache. Incremental edits patch O(dirty rect), not full chunk.
 
 const _ChunkSurfaceMeshBuilder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 
@@ -113,7 +112,6 @@ static func patch_region(
 	var needs_merge := incremental_patch_needed(prior, patch_quads, keep_quads)
 
 	if not needs_merge:
-		# Full quad_key covers geometry inputs; existing keys imply identical faces.
 		return prior
 
 	var kept_faces: Array = []

@@ -3,8 +3,6 @@ extends Resource
 
 const _Palette = preload("res://config/crystal_texture_palette.gd")
 
-## Inspector-tunable parameters for CrystalTextureGenerator.
-## Create a .tres from this resource to tune generation without editing code.
 
 @export_group("Global")
 @export var master_seed: int = 424242

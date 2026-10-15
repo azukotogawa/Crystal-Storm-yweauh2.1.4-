@@ -1,6 +1,5 @@
 class_name RelicChoicePanel
 extends Control
-## Pauses the run and offers three relics. Process mode stays on while time is slowed.
 
 const _RelicRegistry = preload("res://relics/relic_registry.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
@@ -13,10 +12,8 @@ const SLOW_SCALE := 0.05
 static var _open: RelicChoicePanel
 static var _pending: Array = []
 ## Pre-modal scale, captured only while no panel is open. A queued offer must not save 0.05.
-## cancel_hit_stop() ends a live dip first so this is the pre-dip scale, not 0.02.
 static var _saved_scale: float = 1.0
 static var _scale_held: bool = false
-## True when this modal is the one that set pause_open.
 static var _modal_paused: bool = false
 
 var _ids: Array[StringName] = []
@@ -54,7 +51,6 @@ static func open(tree: SceneTree, relic_mgr, ids: Array, title: String) -> void:
 	_open = panel
 
 
-## Slots are full. Offer replace for this one relic (no 3-choice roll).
 static func open_replace(tree: SceneTree, relic_mgr, relic_id: StringName, title: String) -> void:
 	if tree == null or relic_id == &"":
 		return
@@ -99,7 +95,6 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if _open == self:
 		_open = null
-	# Scene teardown can free the panel without _close. Restore only when none remain.
 	if not _scale_held:
 		return
 	if _open != null and is_instance_valid(_open):

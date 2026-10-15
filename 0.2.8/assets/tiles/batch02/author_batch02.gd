@@ -1,6 +1,4 @@
 extends SceneTree
-## Author Batch 02 32×32 hue-shift tops into existing Cube.png cells only.
-## Usage: godot --headless --path . -s assets/tiles/batch02/author_batch02.gd
 
 
 const ATLAS_PATH := "res://assets/tiles/Cube.png"
@@ -16,7 +14,6 @@ const SLOTS := {
 	"hills2": Vector2i(1, 3),
 }
 
-# Hue-shifts of Batch 01 GRASSLAND3 / HILLS. Sides stay DIRT / TREE_TRUNK.
 const G1 := Color(0.36, 0.56, 0.20)
 const G1_D := Color(0.24, 0.42, 0.12)
 const G1_L := Color(0.48, 0.64, 0.26)

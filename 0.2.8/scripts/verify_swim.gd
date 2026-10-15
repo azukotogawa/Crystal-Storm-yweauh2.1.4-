@@ -1,7 +1,4 @@
 extends SceneTree
-## Headless: every moving body swims in deep water and wades on a river tile.
-## Dry ground, a cliff, and border ocean stay on the old step.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_swim.gd
 
 const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
@@ -40,7 +37,6 @@ func _run() -> void:
 		_drop_layers(x, 20, 3)
 		_ChannelRegistry.register_channel(x, 20, Vector2i.ZERO, 0.85)
 		_ChannelRegistry.set_runtime_surface_y(x, 20, waterline)
-	# Walls around the trench, taller than a swim step, so the body cannot walk around.
 	for x in range(20, 28):
 		_drop_layers(x, 19, -5)
 		_drop_layers(x, 21, -5)
@@ -55,10 +51,6 @@ func _run() -> void:
 	for x in range(70, 77):
 		_TerrainEdits.set_build_tile_only(x, 70, _VoxelTypes.OCEAN)
 
-	# Shore matches the windowed 4b pool: waterline is the old ground, the
-	# bank is one layer above it, and D at camera yaw 45 walks into the
-	# inside corner. A 1-wide +X trench never hits that lip, so it passed
-	# while the body stayed floating at the real bank.
 	var shore: float = PAD_SURFACE + layer
 	_pad(world, 80, 96, 20, 38)
 	for x in range(84, 91):
@@ -277,8 +269,6 @@ func _test_player(world, layer: float, waterline: float) -> void:
 	chunks.free()
 
 
-## The old check called _soft_follow_ground and _can_initiate_jump directly.
-## In the game, Space is a land jump, so the body leaves the water in one tick.
 class _SwimDriver extends Player:
 	func _ready() -> void:
 		pass
@@ -297,7 +287,6 @@ func _test_player_input(world, layer: float, waterline: float) -> void:
 	player.chunk_manager = chunks
 	player._floor_probe = probe
 	player.world_ready = true
-	# move_right at yaw 0 walks +X along the trench, the same axis as the D key.
 	player.locked_yaw_degrees = 0.0
 	player.set_physics_process(false)
 	player.set_process(false)
@@ -340,7 +329,6 @@ func _test_player_input(world, layer: float, waterline: float) -> void:
 		player._physics_process(1.0 / 60.0)
 		ymax = maxf(ymax, player.voxel_position.y)
 	Input.action_release("jump")
-	# A land jump clears the waterline by several layers. A swim stroke stays in the pool.
 	if ymax < y0 + 0.45:
 		_fail("jump in water did not swim up (%.2f -> %.2f)" % [y0, ymax])
 	elif ymax > waterline + layer * 0.5:
@@ -380,9 +368,6 @@ func _tick_player(player: Player, frames: int) -> void:
 		player._physics_process(1.0 / 60.0)
 
 
-## Idle in the pool must rise off the bed. The same move key must cover less
-## ground than on the pad. Walking (and jump) at the 1-block lip must stand
-## on the bank. Camera yaw 45 is the live D heading.
 func _test_player_shore(world, layer: float, shore: float) -> void:
 	var player := _shore_player(world)
 	var probe: _VoxelFloorProbe = player._floor_probe

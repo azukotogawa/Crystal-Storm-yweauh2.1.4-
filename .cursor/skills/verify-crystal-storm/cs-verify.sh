@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Crystal Storm verification helper (WSL). Usage:
-#   cs-verify.sh doctor              read-only: engine, branch, RAM, other Godot procs
-#   cs-verify.sh quick               import + stability + contracts (the QUICK_CHECK)
-#   cs-verify.sh launch [SEC]        headless boot of res://scenes/main.tscn via the smoke probe
-#   cs-verify.sh feature <name>      drive one mapped feature suite (see features/README.md)
-#   cs-verify.sh cleanup             kill Godot we started, drop run scratch, keep evidence
-# Env: RUN_ID (default timestamp). Evidence: /mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID/
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
@@ -13,7 +6,7 @@ ROOT="$REPO/0.2.8"
 export PATH="/home/cwith/csmerge-bin:$PATH"; hash -r
 export WSLENV="SMOKE_SESSION_SEC${WSLENV:+:$WSLENV}"
 STATE=/tmp/cs-verify; mkdir -p "$STATE"
-if [ "${1:-}" = quick ] && [ -z "${RUN_ID:-}" ]; then RUN_ID="quick-$(date +%Y%m%d-%H%M%S)"  # feeder runs: own dir, no shared state
+if [ "${1:-}" = quick ] && [ -z "${RUN_ID:-}" ]; then RUN_ID="quick-$(date +%Y%m%d-%H%M%S)"
 else RUN_ID="${RUN_ID:-$(cat "$STATE/run_id" 2>/dev/null || date +%Y%m%d-%H%M%S)}"; echo "$RUN_ID" > "$STATE/run_id"; fi
 EVID="/mnt/d/ARCHIVE/CrystalStorm/verify-evidence/$RUN_ID"
 SCRATCH_W="/mnt/d/csmerge/verify-scratch/$RUN_ID"
@@ -28,7 +21,6 @@ declare -A MARK=( [full-map]="All full map toggle tests OK" [water]="All water b
   [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" )
 declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 
-# run_godot <logname> <args...> : runs headless Godot, records pid, writes log+exit to evidence
 run_godot(){ local name="$1"; shift
   { echo "\$ godot $*"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
   godot "$@" >> "$EVID/$name.log" 2>&1 & local pid=$!

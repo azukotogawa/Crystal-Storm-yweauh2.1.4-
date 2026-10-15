@@ -1,5 +1,4 @@
 extends SceneTree
-## Structural proof that existing systems wire the full spawn→win loop.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _GameManager = preload("res://game/game_manager.gd")

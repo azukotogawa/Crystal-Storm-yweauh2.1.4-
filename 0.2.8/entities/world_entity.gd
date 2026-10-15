@@ -359,9 +359,6 @@ func _physics_process(delta: float) -> void:
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
-	# Player.get_voxel_position() is already columns. column_pos() would halve
-	# it, and the old distance compared that to a world position, so a body
-	# standing on the player never reached this branch.
 	var did_attack := false
 	var aim_cell := _aim_cell()
 	if _player and brain.wants_attack(self_cell, aim_cell):
@@ -378,7 +375,6 @@ func _physics_process(delta: float) -> void:
 		profiler.end("entity_physics")
 
 
-## Passive animals standing in crystal harden into a hostile crystal form.
 func advance_crystal_conversion(delta: float, in_crystal: bool) -> void:
 	if _dead or config == null:
 		return
@@ -579,7 +575,6 @@ func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> voi
 	var vis := _active_visual()
 	if vis == null or vis != _voxel_prop:
 		return
-	# Drop a leftover parent squash. The pose is the boxes, not the root scale.
 	if _bob_ready:
 		vis.position.y = _bob_base_y
 		vis.scale = _bob_base_scale

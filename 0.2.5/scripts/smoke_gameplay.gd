@@ -1,6 +1,4 @@
 extends SceneTree
-## Scripted play session: loads production main.tscn and exercises real gameplay paths.
-## Evidence → SCRATCH_PATH (scripted session, not human-hand manual QA).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const SCRATCH_PATH := "/tmp/grok-goal-e8916ce4c6d5/implementer/scripted_smoke_evidence.md"
@@ -95,7 +93,6 @@ func _run() -> void:
 		await _finish(lines, true)
 		return
 
-	# --- Pickaxe via WeaponController (production dig path) ---
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging (WeaponController)")
 	player.set("voxel_position", Vector3(2.5, player.get("voxel_position").y, 4.5))
@@ -140,7 +137,6 @@ func _run() -> void:
 		lines.append("- **Dig FAIL**: WeaponController missing dig API")
 		failed = true
 
-	# --- Entities: EntityManager._spawn_world_entity + registry refresh (production path) ---
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
 	var entity_mgr = get_first_node_in_group("entity_manager")
@@ -189,7 +185,6 @@ func _run() -> void:
 		])
 		failed = true
 
-	# --- Vegetation ---
 	lines.append("")
 	lines.append("## P0 — Vegetation billboards")
 	var visuals = get_first_node_in_group("world_visuals_root")
@@ -211,7 +206,6 @@ func _run() -> void:
 		lines.append("- **Vegetation FAIL**: %d billboards, %d textured." % [veg_stats.total, veg_stats.textured])
 		failed = true
 
-	# --- Chunk streaming ---
 	lines.append("")
 	lines.append("## P0 — Chunk streaming")
 	var chunks_before: int = chunk_manager.chunks.size()
@@ -234,7 +228,6 @@ func _run() -> void:
 		lines.append("- **Streaming FAIL**: chunks %d→%d hole=%s" % [chunks_before, chunks_after, hole])
 		failed = true
 
-	# --- P1 Jump via jump + move input through player physics (not Y teleport) ---
 	lines.append("")
 	lines.append("## P1 — Jump while moving")
 	var probe = player.get("_floor_probe")
@@ -278,7 +271,6 @@ func _run() -> void:
 		lines.append("- **Jump FAIL**: jump input air=%s landed=%s moved=%s." % [air_seen, landed, moved])
 		failed = true
 
-	# --- P1 Ramp / step ---
 	lines.append("")
 	lines.append("## P1 — Ramp collision / terrain transitions")
 	var concave_h := _TerrainRamps.walkable_height_from_entry(
@@ -299,7 +291,6 @@ func _run() -> void:
 			lines.append("- **Ramp FAIL**: floor probe returned non-positive feet height.")
 			failed = true
 
-	# --- P1 Crystal chunk edge ---
 	lines.append("")
 	lines.append("## P1 — Crystal loaded/unloaded chunks")
 	var far_cell := Vector2i(512, 512)

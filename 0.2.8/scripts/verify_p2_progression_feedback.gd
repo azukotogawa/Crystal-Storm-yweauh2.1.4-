@@ -1,5 +1,4 @@
 extends SceneTree
-## P2: absorption unlocks grant relics and game overlay surfaces progression feedback.
 
 
 const _CrystalManager = preload("res://crystal/crystal_manager.gd")

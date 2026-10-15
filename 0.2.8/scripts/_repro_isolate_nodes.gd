@@ -25,7 +25,6 @@ func _go() -> void:
 		"NO_VOXEL_PLAYER_CRYSTAL_VIS":
 			kill = PackedStringArray(["VoxelWorld", "Player", "CrystalManager", "WorldVisuals"])
 		"ONLY_SERVICES":
-			# Keep only config/perf/composition/world - no voxel, player, crystal, features, UI
 			kill = PackedStringArray([
 				"VoxelWorld", "Player", "CrystalManager", "WorldVisuals",
 				"WorldFeatures", "TerrainEditor", "SaveGameService",
@@ -34,7 +33,6 @@ func _go() -> void:
 				"World",
 			])
 		"ONLY_VOXEL":
-			# Strip everything except VoxelWorld path + services needed to boot chunks
 			kill = PackedStringArray([
 				"Player", "CrystalManager", "WorldVisuals",
 				"WorldFeatures", "TerrainEditor", "SaveGameService",
@@ -64,7 +62,6 @@ func _go() -> void:
 	while compose and not bool(compose.get("_boot_done")) and f < 2400:
 		await process_frame
 		f += 1
-		# If no compose or stuck, break early
 		if compose == null:
 			break
 	for _i in 45:

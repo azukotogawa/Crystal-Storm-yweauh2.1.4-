@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless chunk mesh investigation — per-rebuild telemetry + ROI report (no optimizations).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -24,7 +23,6 @@ const REQUIRED_METRICS: Array[String] = [
 ]
 
 const BASELINE_WORKER_AVG_MS := 27.423
-## profile_gameplay.gd: dig phase 30 of 180-frame cycle → ~1 dig / 180 frames.
 const GAMEPLAY_DIG_INTERVAL_FRAMES := 180.0
 
 
@@ -144,7 +142,6 @@ func _scenario_edge_dig(
 		stats["edge_dig"] = {"error": "no edge cell"}
 		return
 	await _perform_dig(terrain, world, chunk_manager, dig_cell)
-	# Committed HEAD terrain uses ring=0; probe ring=1 fan-out as documented adaptive-ring cost.
 	if chunk_manager.has_method("rebuild_region_at_world"):
 		chunk_manager.rebuild_region_at_world(float(dig_cell.x), float(dig_cell.y), 1)
 		if chunk_manager.has_method("flush_rebuild_pending"):

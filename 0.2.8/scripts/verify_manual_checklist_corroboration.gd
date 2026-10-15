@@ -1,5 +1,4 @@
 extends SceneTree
-## Maps manual_verification.md unchecked items to structural runtime proof (NOT human sign-off).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -83,7 +82,6 @@ func _run() -> void:
 		return
 	_stabilize_probe_player(player, world, probe_cell.x, probe_cell.y)
 
-	# Dig carve on dry land (map center is often river).
 	lines.append("## Digging — visible carve")
 	var pick_def := _ItemTypes.get_def("stone_pick")
 	if inv:
@@ -118,7 +116,6 @@ func _run() -> void:
 		push_error("dig carve failed")
 		failed = true
 
-	# Tool-gated highlights (ActionTargeting modes)
 	lines.append("")
 	lines.append("## Highlights — tool-gated modes")
 	_stabilize_probe_player(player, world, dig_wx, dig_wz)
@@ -144,7 +141,6 @@ func _run() -> void:
 		push_error("highlight modes wrong")
 		failed = true
 
-	# Build wall on a separate solid cell near the dig probe.
 	lines.append("")
 	lines.append("## Build — stone wall")
 	var build_cell := _find_solid_probe_cell(
@@ -186,7 +182,6 @@ func _run() -> void:
 		push_error("build wall failed")
 		failed = true
 
-	# Terrain atlas variety
 	lines.append("")
 	lines.append("## Visuals — terrain atlas")
 	var atlas_cells: Dictionary = {}
@@ -219,7 +214,6 @@ func _run() -> void:
 		push_error("atlas variety failed")
 		failed = true
 
-	# Ramps structural
 	lines.append("")
 	lines.append("## Visuals — ramps")
 	var ramp_counts := {FACE_RAMP: 0, FACE_RAMP_CORNER: 0, FACE_RAMP_SIDE: 0}
@@ -231,7 +225,6 @@ func _run() -> void:
 			var fc := int(q.get("face_code", -1))
 			if ramp_counts.has(fc):
 				ramp_counts[fc] += 1
-	# Synthetic L-step proves corner prisms emit (spawn area may have corner=0 at 28% placement).
 	var corner_synth_ok := _synthetic_corner_ramp_ok()
 	if ramp_counts[FACE_RAMP] >= 1 and ramp_counts[FACE_RAMP_SIDE] == 0 and corner_synth_ok:
 		lines.append("PASS ramps cardinal=%d corner=%d concave=%d synth_corner=1" % [
@@ -245,7 +238,6 @@ func _run() -> void:
 		push_error("ramp mesh missing face codes, leftover concave prism, or synthetic corner failed")
 		failed = true
 
-	# Vegetation / entities voxel
 	lines.append("")
 	lines.append("## Visuals — voxel props")
 	var entity_mgr = get_first_node_in_group("entity_manager")

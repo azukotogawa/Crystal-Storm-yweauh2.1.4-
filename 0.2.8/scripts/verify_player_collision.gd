@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: floor probe honors live terrain edits; built walls block or step honestly.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -99,7 +98,6 @@ func _run() -> void:
 		print("OK head clearance on wall top")
 
 	_TerrainEdits.build_wall(wx, wz, _VoxelTypes.STONE)
-	# Approach from true walkable ground beside the column (not a synthetic Y).
 	var ground_beside := Vector3(float(wx) - 0.5, 0.0, float(wz) + 0.5)
 	ground_beside.y = probe.sample_walkable_feet(ground_beside.x, ground_beside.z)
 	var into_from_ground := Vector3(float(wx) + 0.5, ground_beside.y, float(wz) + 0.5)
@@ -109,7 +107,6 @@ func _run() -> void:
 	else:
 		print("OK stacked wall blocks at natural feet")
 
-	# Stack is +2. Drop three layers onto a delta this frame has not cached.
 	var dig_x := float(wx) + 0.5
 	var dig_z := float(wz) + 0.5
 	probe.feet_height_hint = world.get_surface_height(dig_x, dig_z) + layer

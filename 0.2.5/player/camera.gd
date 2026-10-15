@@ -6,7 +6,7 @@ extends Camera3D
 var follow_target: Vector3
 
 @export var distance := 100.0
-@export var height_offset := 101.0   # Fine-tune this for best cube look
+@export var height_offset := 101.0
 
 var orbit_rotation := 0
 var zoom_level := 24.0
@@ -56,7 +56,6 @@ func _process(delta: float):
 	else:
 		global_position = desired_pos
 
-	# Keep fixed isometric rotation
 	rotation_degrees = Vector3(-35.264, 45.0 + orbit_rotation * 90.0, 0.0)
 
 func get_offset_from_rotation() -> Vector3:

@@ -1,10 +1,8 @@
 extends Node
-## Lightweight CPU profiler — shows up in Godot Monitor (Debugger → Monitors)
-## and in the debug panel via get_snapshot().
 
 var enabled: bool = true
 
-var _sections: Dictionary = {}  # name -> {active: int, total_us: int, last_us: int, max_us: int}
+var _sections: Dictionary = {}
 var _frame_us: int = 0
 var _frame_start: int = 0
 var _worker_us: int = 0

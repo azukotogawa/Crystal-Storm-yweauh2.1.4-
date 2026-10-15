@@ -1,7 +1,5 @@
 class_name TooltipText
 extends RefCounted
-## Tooltip copy from ItemDef / ItemTypes and the relic registry. Labels are chrome.
-## Numbers and names come from the defs.
 
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _RelicRegistry = preload("res://relics/relic_registry.gd")

@@ -1,5 +1,4 @@
 extends SceneTree
-## P0 perf contract: terrain edit rebuild scope + MEDIUM-preset latency budget.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -11,7 +10,6 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _TerrainEditor = preload("res://world/terrain_editor.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
-## Isolated interior ring=0 ~320–950ms at MEDIUM; full-suite contention can exceed 1.5s on shared hosts.
 const MAX_REBUILD_WALL_MS := 2000.0
 const MAX_REBUILD_FRAMES := 120
 
@@ -206,7 +204,6 @@ func _run() -> void:
 				% [dig_coord, wall_ms, frames_elapsed, mesh_peak_ms, buffer_peak_ms, chunks_after]
 			)
 
-	# Build on interior column in same chunk (ring=0 baseline; edge band tested elsewhere).
 	var build_cell := _interior_cell_in_chunk(dig_coord, Vector2i(dig_wx, dig_wz))
 	var build_wx := build_cell.x
 	var build_wz := build_cell.y

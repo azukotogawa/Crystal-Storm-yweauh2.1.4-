@@ -1,5 +1,4 @@
 extends SceneTree
-## Windowed probe of frontend → world select → new world → play → INITIAL_STREAM_READY → return.
 
 const FRONTEND := "res://scenes/frontend.tscn"
 const _WorldManager = preload("res://systems/world_manager.gd")
@@ -53,7 +52,6 @@ func _run() -> void:
 	play.emit_signal("pressed")
 	await process_frame
 	var settings: Button = _find_named(fe, "Settings") as Button
-	# After Play we are on world select; Settings is gone. Go back via WorldManager create + list.
 	var new_b: Button = _find_named(fe, "NewWorld") as Button
 	if new_b == null:
 		_done(false, "WORLD SELECT missing New World")
@@ -126,7 +124,6 @@ func _run() -> void:
 		_done(false, "return did not land on frontend")
 		return
 	lines.append("returned to frontend")
-	# Settings from a fresh main if needed
 	if _find_named(fe2, "Settings") == null and fe2.has_method("_show"):
 		fe2._show(fe2.Screen.MAIN)
 		await process_frame

@@ -1,5 +1,4 @@
 extends SceneTree
-## Manifest JSON has the required fields and flags missing generator art.
 
 const _Manifest = preload("res://tools/texture_manifest.gd")
 

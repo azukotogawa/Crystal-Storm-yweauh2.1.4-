@@ -3,9 +3,8 @@ extends RefCounted
 
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 
-## Player-dug water channels: per-cell water level and preferred flow direction.
 
-static var _channels: Dictionary = {}  # Vector2i -> { water_level: float, flow_dir: Vector2i }
+static var _channels: Dictionary = {}
 
 
 static func reset() -> void:

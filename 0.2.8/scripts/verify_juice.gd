@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless checks for M5 juice: settings, hit-stop, shake, flash, particle caps, audio hooks.
 
 
 const _Juice = preload("res://systems/juice.gd")
@@ -160,7 +159,6 @@ func _check_relic_during_hit_stop() -> void:
 	elif absf(Engine.time_scale - 1.0) > 0.01:
 		_fail("relic offer closed onto %.3f, want 1.0" % Engine.time_scale)
 	else:
-		# The original hit-stop timer is still pending. It must not move the scale.
 		var t0 := Time.get_ticks_msec()
 		while Time.get_ticks_msec() - t0 < 800:
 			await process_frame

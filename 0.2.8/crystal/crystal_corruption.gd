@@ -1,6 +1,5 @@
 class_name CrystalCorruption
 extends RefCounted
-## Turns absorbed ground and plants into crystal forms, then scars that heal.
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _PlantableRegistry = preload("res://world/plantable_registry.gd")
@@ -66,8 +65,6 @@ static func hostile_for_animal(kind: String) -> String:
 			return ""
 
 
-## Replace the cell's ground (and plant, when it has one) with a crystal form.
-## Ruins, towns, and player buildings stay in place so they remain explorable.
 static func corrupt_absorbed_cell(pos: Vector2i, tile_id: int, feat: Dictionary) -> bool:
 	_PlantableRegistry.ensure_builtins()
 	if _blocked(feat) or bool(feat.get("corrupt", false)):
@@ -103,7 +100,6 @@ static func corrupt_absorbed_cell(pos: Vector2i, tile_id: int, feat: Dictionary)
 	return true
 
 
-## Broken crystal leaves a scar. The cell remembers what to grow back into.
 static func begin_scar(pos: Vector2i, heal_seconds: float) -> void:
 	var feat := _FeatureRegistry.get_feature(pos.x, pos.y)
 	if _blocked(feat):
@@ -134,7 +130,6 @@ static func begin_scar(pos: Vector2i, heal_seconds: float) -> void:
 		_scar_order.append(pos)
 
 
-## Advance a few scars. Returns cells that finished healing this call.
 static func tick_scars(delta: float, budget: int = 8) -> Array:
 	var healed: Array[Vector2i] = []
 	if _scar_order.is_empty() or budget <= 0 or delta <= 0.0:

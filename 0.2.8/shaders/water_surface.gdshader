@@ -1,6 +1,5 @@
 shader_type spatial;
 
-// Water tops only. Terrain, ramps, and sides stay on ChunkSurfaceMesh.
 // water_time is written on the material the water mesh draws. A built-in TIME
 // read would move even when that bind is missing.
 render_mode unshaded, cull_disabled, depth_draw_opaque;
@@ -16,7 +15,6 @@ global uniform float cutaway_past;
 uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 uniform float water_time = 0.0;
-// Used when the cell has no fluid-sim flow (UV2 is zero).
 uniform vec2 flow_dir = vec2(1.0, 0.0);
 
 #include "res://shaders/atlas_sample.gdshaderinc"

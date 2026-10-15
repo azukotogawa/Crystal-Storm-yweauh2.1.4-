@@ -1,6 +1,4 @@
 extends SceneTree
-## Block faces must not pick up a dark grid from atlas bleeding or tile outlines.
-## Shaders sample mip 0 at inner texel centers. Cube.png tiles have no dark frame.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
@@ -33,7 +31,6 @@ func _srgb_to_linear(channel: float) -> float:
 	return pow((channel + 0.055) / 1.055, 2.4)
 
 
-## Same test as ChunkSurfaceMesh / ChunkRamp. source_color samples are linear.
 func _shader_swaps_texel(px: Color, cutoff: float) -> bool:
 	if cutoff <= 0.0:
 		return false
@@ -99,9 +96,6 @@ func _run() -> void:
 				_fail("%s failed to load" % path)
 				failed = true
 			else:
-				# A drawn material compiles the include. A redefinition prints
-				# SHADER ERROR in the engine log; this script still checks the
-				# material bound.
 				var host := MeshInstance3D.new()
 				var mat := ShaderMaterial.new()
 				mat.shader = shader
@@ -164,10 +158,6 @@ func _run() -> void:
 			failed = true
 		else:
 			print("OK Cube.png tiles have no dark grid lines")
-		# The row test above stays green on this atlas: dark and light texels
-		# share every row, so no row is 20% darker than its neighbor. In the
-		# game the surface shader still replaces the dark texels with one flat
-		# color. That flat field against the texels it keeps is the grid at
 		# ortho 16. Apply the shader's own cutoff to the tile.
 		var cutoff := _dark_cutoff()
 		var worst_cell := Vector2i(-1, -1)
@@ -215,7 +205,6 @@ func _run() -> void:
 				% [worst_cell.x, worst_cell.y, worst_frac * 100.0]
 			)
 
-	# Let the headless renderer compile the bound materials.
 	await process_frame
 	await process_frame
 	if failed:

@@ -1,5 +1,4 @@
 extends SceneTree
-## Unit proof: dig/build wall edits change subsequent crystal spread routing.
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")

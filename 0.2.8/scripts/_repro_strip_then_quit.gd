@@ -14,7 +14,6 @@ func _go() -> void:
 		f+=1
 	for _i in 30:
 		await process_frame
-	# Strip subsystems one by one before quit, logging
 	var names = [
 		"WorldVisuals",
 		"WorldFeatures",
@@ -38,7 +37,6 @@ func _go() -> void:
 		print("[REPRO] freeing ", n)
 		if n == "VoxelWorld":
 			var cm = node.get_node_or_null("ChunkManager")
-			# chunk manager may be child
 			var cmg = get_first_node_in_group("chunk_manager")
 			if cmg and cmg.has_method("release_all_chunks_for_teardown"):
 				cmg.release_all_chunks_for_teardown()

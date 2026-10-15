@@ -1,7 +1,4 @@
 extends SceneTree
-## Boot main.tscn, place gates beside wood/stone walls, capture gameplay-camera shots.
-## Usage: godot --path . -s scripts/verify_gate_visual_capture.gd
-## Do NOT pass --headless (screenshots go black).
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -85,17 +82,14 @@ func _run() -> void:
 	inv.add_item("stone", 40)
 
 	var isolated := Vector2i(px + 2, pz)
-	# Wood line with a gate in the middle
 	var wood_line: Array[Vector2i] = [
 		Vector2i(px + 4, pz), Vector2i(px + 6, pz), Vector2i(px + 7, pz)
 	]
 	var gate_in_wood := Vector2i(px + 5, pz)
-	# Stone line with a gate
 	var stone_line: Array[Vector2i] = [
 		Vector2i(px + 4, pz + 3), Vector2i(px + 6, pz + 3)
 	]
 	var gate_in_stone := Vector2i(px + 5, pz + 3)
-	# Isolated pair of gates (NS run so yaw flips)
 	var ns_gates: Array[Vector2i] = [
 		Vector2i(px + 9, pz), Vector2i(px + 9, pz + 1), Vector2i(px + 9, pz + 2)
 	]

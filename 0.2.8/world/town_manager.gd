@@ -12,7 +12,6 @@ const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 @export var small_town_radius_max: int = 14
 @export var port_radius_min: int = 16
 @export var port_radius_max: int = 22
-## Column-space separation (was tuned for taller legacy height units).
 @export var min_separation: float = 140.0
 
 signal town_registered(town: Dictionary)
@@ -87,7 +86,6 @@ func _place_towns() -> void:
 		farmland_us += int(stamp_parts.get("farmland_us", 0))
 		placed.append(pos)
 		town_registered.emit(_FeatureRegistry.get_towns().back())
-	# Sub-phases (independent samples; town_generation parent still wraps whole generate()).
 	_StartupProfiler.mark("fs/town_site_search", site_us)
 	_StartupProfiler.mark("fs/town_ground_stamp", stamp_us)
 	_StartupProfiler.mark("fs/road_generation", road_us)
@@ -95,7 +93,6 @@ func _place_towns() -> void:
 
 
 func _find_town_site(placed: Array[Vector2i]) -> Vector2i:
-	# Prefer steppe / forest / plains for Living World slice legibility.
 	var preferred: Array[Vector2i] = []
 	var fallback: Array[Vector2i] = []
 	for _attempt in 280:

@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: cardinal ramp back support must not meet another cardinal landing side.
 
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -40,10 +39,10 @@ func _run() -> void:
 	var dir_b := Vector2i(0, -1)
 	_set_high(data, [
 		ramp_a,
-		Vector2i(7, 6), # Ramp A back support.
-		Vector2i(6, 7), # Ramp A side; keeps the approach out of corner classification.
+		Vector2i(7, 6),
+		Vector2i(6, 7),
 		ramp_b,
-		Vector2i(7, 5), # Ramp B side/back support for its alternate local west step.
+		Vector2i(7, 5),
 	], high)
 
 	var valid_a := Vector2i(10, 10)
@@ -53,7 +52,7 @@ func _run() -> void:
 	_set_high(data, [
 		valid_a,
 		valid_b,
-		Vector2i(11, 10), # Shared plateau support, not either ramp's landing.
+		Vector2i(11, 10),
 		Vector2i(10, 9),
 	], high)
 

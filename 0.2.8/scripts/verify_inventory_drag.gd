@@ -1,8 +1,4 @@
 extends SceneTree
-## Headless: inventory and hotbar slots drag, stack, swap, and put back.
-## Drives real mouse press / motion / release through the viewport, with
-## idle frames between them (the previous check fired the whole gesture in
-## one stack, so SlotDrag._process never ran mid-drag).
 
 
 const _Inventory = preload("res://inventory/inventory.gd")
@@ -115,10 +111,6 @@ func _check_plain_slots(inv) -> void:
 
 
 func _check_live_panels(_inv_unused) -> void:
-	# Same order as main.tscn. The bag enters the tree while Player._ready
-	# has not created the inventory yet. A connect that only runs in
-	# enter_tree never sees later stack changes, so the buttons keep the
-	# labels from when the bag was opened.
 	var previous: Node = get_first_node_in_group("player")
 	if previous:
 		previous.queue_free()
@@ -290,9 +282,6 @@ func _button(pos: Vector2, pressed: bool) -> void:
 
 
 func _motion(pos: Vector2, _rel: Vector2) -> void:
-	# Real mouse motion after window stretch often has position without a
-	# matching relative. Godot's built-in drag accumulates relative, so a
-	# check that stuffed relative=20 never saw the live failure.
 	var ev := InputEventMouseMotion.new()
 	ev.position = pos
 	ev.global_position = pos

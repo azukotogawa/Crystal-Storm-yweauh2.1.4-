@@ -1,10 +1,4 @@
 extends SceneTree
-## The scout mesh must change pose when the player actually walks and jumps.
-## verify_move_feel only compares bob_rate constants. _apply_walk_bob only
-## scales the node by a few percent, so the extruded vertices stay put and a
-## playtest still sees a statue. This check drives move_right, sprint, and
-## jump through _physics_process and reads the mesh the window draws.
-## Usage: godot --headless --path 0.2.8 -s res://scripts/verify_player_locomotion.gd
 
 const _Body = preload("res://player/player_body_mesh.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")

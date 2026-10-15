@@ -1,6 +1,4 @@
 extends SceneTree
-## Headless LOW-preset sustained traversal probe (≥20s) for Epic 2 criterion 2.
-## Must produce real stream churn — press/release patterns that never leave the start chunk are invalid.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"

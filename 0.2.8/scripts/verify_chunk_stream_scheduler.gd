@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless: distance-aware stream priority ordering.
 
 
 const _Scheduler = preload("res://helpers/chunk_stream_scheduler.gd")

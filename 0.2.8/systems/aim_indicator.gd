@@ -1,10 +1,6 @@
 class_name AimIndicator
 extends Node3D
-## Where the current item is aimed.
 ## Tools do not draw a second block box: they emit tool_aim_changed for TargetHighlight.
-## Melee draws a ground reticle. Ranged draws a line and an end marker.
-## Reach for a block never passes ActionTargeting.INTERACTION_RANGE.
-## The aim direction is the cursor column, the same one the pick uses.
 
 signal tool_aim_changed(cell: Vector2i, world_pos: Vector3, active: bool)
 
@@ -58,8 +54,6 @@ static func aim_style(item_id: String) -> int:
 	return Style.NONE
 
 
-## Columns. Block and melee marks stay inside INTERACTION_RANGE.
-## A ranged shot uses its authored range; that marker is not a block target.
 static func reach_columns(item_id: String) -> float:
 	var def: Dictionary = _ItemTypes.get_def(item_id)
 	var style := aim_style(item_id)

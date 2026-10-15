@@ -1,7 +1,4 @@
 extends SceneTree
-## Live main.tscn: player-edit → mesh → stream consistency.
-## Drives TerrainEditor try_dig / try_build (not surface-map stamps).
-## Writes {SCRATCH}/edit_mesh_stream.json (or CRYSTALSTORM_EDIT_DUMP).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -103,30 +100,20 @@ func _run() -> void:
 	}
 	print("EDIT_MESH_STREAM origin=%s cells=%s" % [str(origin), str(_cells)])
 
-	# 1. flat break
 	await _op_dig(editor, cm, "flat_break", _cells.flat)
-	# 2. adjacent break
 	await _op_dig(editor, cm, "adjacent_break", _cells.adjacent)
-	# 3. dig under a raised column (place wall, then dig that column)
 	await _op_build(editor, cm, inv, "raised_place", _cells.raised, &"stone_wall")
 	await _op_dig(editor, cm, "dig_under_raised", _cells.raised)
-	# 4. block placement
 	await _op_build(editor, cm, inv, "wall_place", _cells.wall, &"stone_wall")
-	# 5. bridge: trench then place
 	await _op_dig(editor, cm, "bridge_trench", _cells.bridge)
 	await _op_build(editor, cm, inv, "bridge_place", _cells.bridge, &"bridge")
-	# 6. gate
 	await _op_build(editor, cm, inv, "gate_place", _cells.gate, &"gate")
-	# 7. remove/rebuild bridge
 	await _op_remove(editor, cm, feat_layer, "bridge_remove", _cells.bridge)
 	await _op_dig(editor, cm, "bridge_trench2", _cells.bridge)
 	await _op_build(editor, cm, inv, "bridge_rebuild", _cells.bridge, &"bridge")
-	# 8. remove/rebuild gate
 	await _op_remove(editor, cm, feat_layer, "gate_remove", _cells.gate)
 	await _op_build(editor, cm, inv, "gate_rebuild", _cells.gate, &"gate")
-	# 9. chunk-boundary edit
 	await _op_dig(editor, cm, "boundary_break", _cells.boundary)
-	# 10. unload/reload the chunk that holds the wall (persistent overlay)
 	await _op_unload_reload(cm, "unload_reload_wall", _cells.wall)
 
 	_assert_sequence()
@@ -200,7 +187,6 @@ func _op_unload_reload(cm, name: String, cell: Vector2i) -> void:
 		waited += 1
 	if cm.has_method("await_rebuild_idle"):
 		await cm.await_rebuild_idle(120)
-	# Feature visuals populate one chunk per frame after chunk_ready.
 	var feat_layer = get_first_node_in_group("feature_visual_layer")
 	var appeared := 0
 	while appeared < 30:
@@ -332,19 +318,16 @@ func _assert_sequence() -> void:
 	for s_v in _steps:
 		var s: Dictionary = s_v
 		by_op[str(s.op)] = s
-	# Terrain edits: cell + orthogonal neighbors stay mesh-covered.
 	for op in ["flat_break", "adjacent_break", "dig_under_raised", "wall_place", "boundary_break"]:
 		if not by_op.has(op):
 			_fail("missing step %s" % op)
 			continue
 		_assert_covered(by_op[op], true)
-	# Structures keep identity + WorldObject after place/rebuild.
 	for op in ["bridge_place", "bridge_rebuild", "gate_place", "gate_rebuild", "wall_place"]:
 		if not by_op.has(op):
 			_fail("missing step %s" % op)
 			continue
 		_assert_structure(by_op[op])
-	# Remove must drop WorldObject.
 	for op in ["bridge_remove", "gate_remove"]:
 		if not by_op.has(op):
 			_fail("missing step %s" % op)
@@ -356,7 +339,6 @@ func _assert_sequence() -> void:
 			_fail("%s WorldObject still present" % op)
 		else:
 			_ok("%s cleared WorldObject" % op)
-	# Unload/reload overlays + mesh.
 	if by_op.has("unload_reload_wall"):
 		var u: Dictionary = by_op["unload_reload_wall"]
 		if str(u.get("build_id", "")) != "stone_wall":
@@ -365,7 +347,6 @@ func _assert_sequence() -> void:
 			_ok("reload kept stone_wall overlay")
 		_assert_covered(u, false)
 		_assert_structure(u)
-	# Rebuild identity matches first place.
 	if by_op.has("bridge_place") and by_op.has("bridge_rebuild"):
 		var a: Dictionary = by_op["bridge_place"]
 		var b: Dictionary = by_op["bridge_rebuild"]
@@ -394,7 +375,6 @@ func _assert_covered(step: Dictionary, check_neighbors: bool) -> void:
 		var ds := str(d)
 		if ds.begins_with("MESH_HOLE"):
 			holes.append(ds)
-		# Ramp leftover is not this P0; ignore RAMP_VISUAL on edit cells.
 		elif ds.begins_with("RAMP_VISUAL"):
 			continue
 		elif ds.begins_with("HEIGHT") and bool(step.get("has_ramp", false)):
@@ -469,7 +449,6 @@ func _vec_dict(d: Dictionary) -> Dictionary:
 func _find_dry_origin(world, cm) -> Vector2i:
 	if world == null:
 		return Vector2i(8, 8)
-	# The crystal heart is in a corner, so the loaded disk is no longer around (8, 8).
 	var anchors: Array[Vector2i] = []
 	var player = get_first_node_in_group("player")
 	if player != null and "voxel_position" in player:
@@ -501,7 +480,6 @@ func _find_dry_origin(world, cm) -> Vector2i:
 
 
 func _boundary_cell(origin: Vector2i) -> Vector2i:
-	# First column of the next chunk east of origin, same dry row.
 	var SIZE := 16
 	var chunk_x: int = int(floor(float(origin.x + 2) / float(SIZE)))
 	var wx: int = (chunk_x + 1) * SIZE

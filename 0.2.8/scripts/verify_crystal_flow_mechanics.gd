@@ -1,5 +1,4 @@
 extends SceneTree
-## Unit proof: CrystalFluidSim prefers downhill flow and caps uphill frontier inflow.
 
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
@@ -66,7 +65,6 @@ func _init() -> void:
 	else:
 		print("OK depth downhill=%.3f uphill=%.3f (uphill slower)" % [down_depth, up_depth])
 
-	# Uphill inflow cap: empty-cell transfer per tick should not exceed cap.
 	sim.clear()
 	terrain.begin_sim_tick(1)
 	terrain.test_base_heights = _make_height_grid()

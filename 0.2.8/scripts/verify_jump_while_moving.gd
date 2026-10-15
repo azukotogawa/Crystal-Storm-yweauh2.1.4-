@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: moving jump uses expanded min/max floor band (not max-feet-only snap).
 
 
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -10,7 +9,6 @@ func _init() -> void:
 	var base_snap: float = _WorldSettings.get_active().floor_snap_distance()
 	var moving_snap: float = base_snap + layer * 0.45
 
-	# Slope edge: feet at center height while probe max is one layer higher.
 	var center_h := 10.0
 	var min_h := center_h
 	var max_h := center_h + layer * 0.55

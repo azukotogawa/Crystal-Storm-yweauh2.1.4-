@@ -18,7 +18,7 @@ signal militia_requested(town: Dictionary, count: int)
 @export var town_health_max: float = 100.0
 @export var health_damage_per_second: float = 8.0
 
-var _town_states: Dictionary = {}  # Vector2i center -> TownState
+var _town_states: Dictionary = {}
 var _town_health: Dictionary = {}
 var _crystal: CrystalManager
 var _entity_manager: EntityManager

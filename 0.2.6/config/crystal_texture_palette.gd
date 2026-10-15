@@ -1,8 +1,6 @@
 class_name CrystalTexturePalette
 extends Resource
 
-## Color palette for a single texture category variant (crystal, biome, ore, ground).
-## Assign in CrystalTextureGenConfig or load from JSON via TexturePaletteJsonIO.
 
 @export var id: StringName = &"default"
 @export var display_name: String = "Default"

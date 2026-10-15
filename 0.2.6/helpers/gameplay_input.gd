@@ -1,6 +1,5 @@
 class_name GameplayInput
 extends RefCounted
-## Global gate so UI text fields can pause gameplay action polling.
 
 
 static var dev_chat_open := false

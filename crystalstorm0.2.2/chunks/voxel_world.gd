@@ -9,4 +9,4 @@ var manager: ChunkManager
 
 func _ready():
 	manager = ChunkManager.new()
-	add_child(manager)  # Important: Add to tree
+	add_child(manager)

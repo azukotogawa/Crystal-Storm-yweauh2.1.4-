@@ -1,5 +1,4 @@
 extends SceneTree
-## Runs display wrapper; audits log for skeptic-flagged regressions.
 
 const _ProbePaths = preload("res://scripts/probe_paths.gd")
 const WRAPPER := "res://scripts/run_display_session.sh"

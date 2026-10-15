@@ -27,7 +27,6 @@ signal died
 
 var health := 100.0
 
-## Logical column coordinates for X/Z; Y is world height in layer units.
 var voxel_position := Vector3(0.0, 0.0, 0.0)
 
 var sprite_scale_modifier := Vector2.ONE

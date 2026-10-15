@@ -1,6 +1,3 @@
-# debug_drainage_patch.gd
-# PR1 validation: drainage patch build + cross-patch stitch assertions.
-# Run: godot --headless --path . debug_drainage_patch.gd
 extends SceneTree
 
 const TEST_PCX := 104

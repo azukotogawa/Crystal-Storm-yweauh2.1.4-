@@ -1,6 +1,4 @@
 extends SceneTree
-## Held-item kinds, impact-frame timing, pooled poses, aim reach, and hit markers.
-## The held node has to be a 3D mesh. A Sprite3D billboard used to pass on pixel_size.
 
 
 const _ItemAnim = preload("res://systems/item_anim.gd")
@@ -177,7 +175,6 @@ func _check_held_reads() -> void:
 	root.add_child(view)
 	view.show_item("wooden_sword")
 	var icon: Node3D = view.get_node("HeldItem")
-	# pixel_size on a Sprite3D certified a flat billboard. The mesh extent is the size.
 	if icon is SpriteBase3D or _held_mesh_count(icon) < 1:
 		_fail("held sword is a flat sprite, not a 3D mesh")
 	else:

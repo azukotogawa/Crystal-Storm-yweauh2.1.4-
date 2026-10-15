@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Display-window corroboration → display_session_evidence.md (NOT manual_verification.md).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="${DISPLAY_LOG:-/tmp/grok-goal-e8916ce4c6d5/implementer/display_session.log}"

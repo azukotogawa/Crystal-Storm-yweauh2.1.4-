@@ -1,5 +1,4 @@
 extends SceneTree
-## Headless: godot --headless --path . -s res://tools/export_texture_manifest.gd
 
 const _Manifest = preload("res://tools/texture_manifest.gd")
 

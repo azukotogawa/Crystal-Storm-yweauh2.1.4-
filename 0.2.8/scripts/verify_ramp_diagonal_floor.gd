@@ -1,5 +1,4 @@
 extends SceneTree
-## Two-layer L-gap keeps a floor at the gap surface and no diagonal prism.
 
 
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")

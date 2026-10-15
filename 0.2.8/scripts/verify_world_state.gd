@@ -1,7 +1,4 @@
 extends SceneTree
-## Headless: WorldState authority — revisions, façades, immutable snapshots,
-## change stream, save round-trip, rollback, session replace.
-## Usage: godot --headless -s scripts/verify_world_state.gd
 
 const _WorldState = preload("res://world/world_state.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
@@ -35,7 +32,6 @@ func _on_changed(domain: int, revision: int) -> void:
 
 
 func _run() -> void:
-	# Fresh session — no static residue
 	var ws = _WorldState.replace_active()
 	if _WorldState.get_active() != ws:
 		_fail("get_active does not return replace_active session")
@@ -47,7 +43,6 @@ func _run() -> void:
 	var rev0: int = int(ws.revision)
 	var mesh0: int = int(ws.mesh_input_revision())
 
-	# Mutate via public façades (gameplay path)
 	if not _TerrainEdits.dig(3, 4, 1):
 		_fail("TerrainEdits.dig failed")
 		return
@@ -91,7 +86,6 @@ func _run() -> void:
 	if _change_events.is_empty():
 		_fail("change stream produced no events")
 
-	# Immutable full snapshot: mutate after capture must not alter snap
 	var snap: Dictionary = ws.capture_overlay_snapshot()
 	var snap_delta: Dictionary = snap.get("height_delta", {})
 	var key34 := Vector2i(3, 4)
@@ -102,7 +96,6 @@ func _run() -> void:
 	if is_equal_approx(_TerrainEdits.get_height_delta(3, 4), delta_after_dig):
 		_fail("live read should show deeper dig than pre-second-dig snapshot baseline")
 
-	# Mesh overlay region snapshot immutability
 	var mesh_snap: Dictionary = ws.capture_mesh_overlay_snapshot(0, 0, 16, 16)
 	var mesh_stamp: Dictionary = mesh_snap.get("stamp", {})
 	var mesh_h: Dictionary = mesh_snap.get("height_delta", {})
@@ -113,7 +106,6 @@ func _run() -> void:
 	if ws.is_mesh_stamp_current(mesh_stamp):
 		_fail("mesh stamp should be stale after dig")
 
-	# Save façade round-trip (public schema fields)
 	var terrain_blob: Dictionary = _TerrainEdits.to_dict()
 	var feature_blob: Dictionary = _FeatureRegistry.to_dict()
 	var channel_blob: Dictionary = _ChannelRegistry.to_dict()
@@ -121,7 +113,6 @@ func _run() -> void:
 	if not export_blob.has("terrain_edits") or not export_blob.has("features") or not export_blob.has("channels"):
 		_fail("export_save_overlays missing public fields")
 
-	# Session replace clears residue
 	var ws2 = _WorldState.replace_active()
 	if _TerrainEdits.edit_count() != 0:
 		_fail("replace_active left terrain residue")
@@ -130,7 +121,6 @@ func _run() -> void:
 	if _FeatureRegistry.get_tile_override(1, 2) >= 0:
 		_fail("replace_active left feature tile residue")
 
-	# Restore via authority apply_save (SaveGameService path)
 	ws2.apply_save_overlay_dicts(terrain_blob, feature_blob, channel_blob)
 	_FeatureRegistry._invalidate_derived()
 	if not _ChannelRegistry.is_channel(0, 0):
@@ -140,7 +130,6 @@ func _run() -> void:
 	if _TerrainEdits.get_build_tile(5, 5) != _VoxelTypes.STONE:
 		_fail("save apply lost build tile")
 
-	# Rollback via restore_overlay_snapshot
 	var before_rollback: Dictionary = ws2.capture_overlay_snapshot()
 	_TerrainEdits.dig(9, 9, 2)
 	if _TerrainEdits.edit_count() < 1:
@@ -151,7 +140,6 @@ func _run() -> void:
 	if int(before_rollback.get("revision", -1)) != ws2.revision:
 		_fail("rollback should restore revision counters for deterministic replay")
 
-	# Batch: multi-cell digs under one revision advance
 	var rev_before_batch: int = ws2.revision
 	ws2.begin_batch()
 	_TerrainEdits.dig(10, 10, 1)
@@ -162,7 +150,6 @@ func _run() -> void:
 			rev_before_batch, ws2.revision
 		])
 
-	# Deterministic: same payload restores same state
 	var a: Dictionary = ws2.capture_overlay_snapshot()
 	_WorldState.replace_active()
 	_WorldState.get_active().restore_overlay_snapshot(a)
@@ -170,7 +157,6 @@ func _run() -> void:
 	if int(a.get("mesh_input_revision", -2)) != int(b.get("mesh_input_revision", -3)):
 		_fail("deterministic restore mesh_input_revision mismatch")
 	if a.get("height_delta", {}).hash() != b.get("height_delta", {}).hash():
-		# Dictionary.hash may be unstable across key order; compare critical keys
 		pass
 	if int(_WorldState.get_active().height_delta.get(Vector2i(5, 5), 0)) \
 			!= int(a.get("height_delta", {}).get(Vector2i(5, 5), -99)):

@@ -1,6 +1,4 @@
 extends SceneTree
-## Headless: the HUD health bar sits above the hotbar and follows player health.
-## Green above 55%, yellow above 28%, red at or below 28%. Mouse clicks pass through.
 
 
 const _OverlayScene = preload("res://ui/game_overlay.tscn")
@@ -53,7 +51,6 @@ func _run() -> void:
 	player.health = 29.0
 	player.poke()
 	_expect_hp(bar, value_label, 29.0, 100.0, "29 / 100", _yellow(), "just above 28%")
-	# A change that does not emit still shows up on the next HUD frame.
 	player.health = 80.0
 	player.max_health = 100.0
 	await process_frame
@@ -159,7 +156,6 @@ func _check_layout(panel: PanelContainer, bar: ProgressBar) -> void:
 		_fail("health bar is not centered")
 	if panel.anchor_top != 1.0 or panel.anchor_bottom != 1.0:
 		_fail("health bar is not on the bottom edge")
-	# Hotbar top is -76. The bar bottom must stay above that.
 	if panel.offset_bottom > -80.0:
 		_fail("health bar overlaps the hotbar (bottom %s)" % panel.offset_bottom)
 	if panel.offset_top >= panel.offset_bottom:

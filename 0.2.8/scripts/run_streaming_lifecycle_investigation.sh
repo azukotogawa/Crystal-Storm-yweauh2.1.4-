@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Streaming lifecycle investigation — Phase 1 telemetry + stall timeline (no optimizations).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

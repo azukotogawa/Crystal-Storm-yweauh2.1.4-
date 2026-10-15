@@ -1,7 +1,5 @@
 class_name TextureManifest
 extends RefCounted
-## Scans the project for texture slots and writes docs/texture_manifest.json
-## plus docs/TEXTURE_MANIFEST.md. Missing generator art is flagged.
 
 const _SKIP_TEXT := {
 	"res://docs/texture_manifest.json": true,
@@ -167,7 +165,6 @@ static func classify_art(res_path: String) -> String:
 	return "missing"
 
 
-## Batch 1 mirror of an assets/art slot, or the file itself when the slot already lives in art_batch1.
 static func _batch1_record(path: String) -> Dictionary:
 	if path.begins_with("res://assets/art_batch1/"):
 		var own := _image_size(path)
@@ -181,7 +178,6 @@ static func _batch1_record(path: String) -> Dictionary:
 	return {"status": "present", "size": [size.x, size.y]}
 
 
-## Corrupted vegetation is batch-only art. It is a slot of its own, not a second copy of the healthy plant.
 static func _add_corrupted_slots(slots: Array, seen: Dictionary) -> void:
 	var dir_path := "res://assets/art_batch1/vegetation"
 	var dir := DirAccess.open(dir_path)

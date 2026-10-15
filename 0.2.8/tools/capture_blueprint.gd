@@ -1,8 +1,4 @@
 extends SceneTree
-## Windowed blueprint screenshot.
-## Headless prints a skip line and exits 0.
-## godot --path . -s res://tools/capture_blueprint.gd -- --out <path>
-## Optional env: CRYSTALSTORM_BLUEPRINT_OUT
 
 const _Shadow = preload("res://helpers/contact_shadow.gd")
 
@@ -41,7 +37,6 @@ func _run() -> void:
 		push_error("Blueprint capture: player not ready")
 		quit(1)
 		return
-	# The start-region gate can still cover the view after world_ready.
 	var load_ui := _first("loading_screen")
 	if load_ui is CanvasItem:
 		(load_ui as CanvasItem).visible = false
@@ -115,7 +110,6 @@ func _hide_chrome() -> void:
 			(node as CanvasLayer).visible = false
 
 
-## Orthographic iso aimed at the player so the body, nearby props, and terrain share the frame.
 func _aim_at_player(cam: Camera3D, player: Node3D) -> void:
 	if cam == null or player == null:
 		return

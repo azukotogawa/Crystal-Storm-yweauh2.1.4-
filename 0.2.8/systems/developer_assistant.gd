@@ -1,6 +1,5 @@
 class_name DeveloperAssistant
 extends Node
-## In-game dev chat backend: local slash commands + file bridge for external AI (Cursor/Grok).
 
 signal response_ready(text: String)
 

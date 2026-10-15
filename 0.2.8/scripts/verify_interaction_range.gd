@@ -1,5 +1,4 @@
 extends SceneTree
-## Regression: dig/build/remove/place use INPUT_CONTRACT interaction range (8 columns).
 
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 

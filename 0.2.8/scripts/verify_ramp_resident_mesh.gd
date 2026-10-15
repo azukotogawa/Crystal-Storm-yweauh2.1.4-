@@ -1,5 +1,4 @@
 extends SceneTree
-## Live resident path: stamped step survives remesh/flush and FACE_RAMP is on ChunkView.mesh_data.
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const _ActionTargeting = preload("res://player/action_targeting.gd")
@@ -74,7 +73,6 @@ func _run() -> void:
 	for key in cells.keys():
 		dumps_before[key] = _dump_cell(cm, world, cells[key], dirs[key])
 		_check_cell(key, dumps_before[key], "after_stamp")
-	# Rebuild must not drop the wedge (same preserve remesh, then idle).
 	for key in cells.keys():
 		var c: Vector2i = cells[key]
 		cm.remesh_resident_maps_at_world(float(c.x), float(c.y))
@@ -219,7 +217,6 @@ func _dump_cell(cm, world, landing: Vector2i, toward_low: Vector2i) -> Dictionar
 func _find_dry_origin(world, cm) -> Vector2i:
 	if world == null:
 		return Vector2i(8, 8)
-	# The crystal heart is in a corner, so the loaded disk is no longer around (8, 8).
 	for anchor in _loaded_anchors(cm):
 		for oz in range(anchor.y - 16, anchor.y + 17, 4):
 			for ox in range(anchor.x - 16, anchor.x + 17, 4):

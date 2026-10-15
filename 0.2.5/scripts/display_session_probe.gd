@@ -1,6 +1,4 @@
 extends SceneTree
-## Display-session corroboration: production main.tscn in a running window (not --headless).
-## Writes to display_session_evidence.md — NOT manual_verification.md (human-hand only).
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const SCRATCH_PATH := "/tmp/grok-goal-e8916ce4c6d5/implementer/display_session_evidence.md"
@@ -21,7 +19,6 @@ func _init() -> void:
 
 
 func _ensure_texture_generator_autoload() -> void:
-	# SceneTree -s probes may not receive CrystalTextureGenerator from project.godot.
 	if root.get_node_or_null("CrystalTextureGenerator") != null:
 		return
 	var gen := _CrystalTextureGenerator.new()
@@ -85,7 +82,6 @@ func _run() -> void:
 	lines.append("## P0 — Runtime errors/warnings")
 	lines.append("- PASS %s — Bootstrap OK in display window; crystal_manager ready." % stamp)
 
-	# Dig via attack input → WeaponController production path
 	lines.append("")
 	lines.append("## P0 — Pickaxe / digging")
 	player.set("voxel_position", Vector3(2.5, player.get("voxel_position").y, 4.5))
@@ -120,7 +116,6 @@ func _run() -> void:
 		])
 		failed = true
 
-	# Entities
 	lines.append("")
 	lines.append("## P0 — Entity sprites")
 	var entity_mgr = get_first_node_in_group("entity_manager")
@@ -151,7 +146,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Entity FAIL: %d/%d textured at %s." % [stamp, stats2.visible, stats2.total, test_cell])
 		failed = true
 
-	# Vegetation
 	lines.append("")
 	lines.append("## P0 — Vegetation billboards")
 	var visuals = get_first_node_in_group("world_visuals_root")
@@ -173,7 +167,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Vegetation FAIL: %d/%d textured." % [stamp, veg.textured, veg.total])
 		failed = true
 
-	# Chunk streaming
 	lines.append("")
 	lines.append("## P0 — Chunk streaming")
 	var before_chunks: int = chunk_manager.chunks.size()
@@ -196,7 +189,6 @@ func _run() -> void:
 		lines.append("- [ ] %s — Streaming FAIL: %d→%d hole=%s" % [stamp, before_chunks, after_chunks, hole])
 		failed = true
 
-	# P1 — jump via jump + move input through player physics (not Y teleport)
 	lines.append("")
 	lines.append("## P1 — Jump while moving")
 	var start_x: float = float(player.get("voxel_position").x)

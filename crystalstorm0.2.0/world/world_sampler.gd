@@ -1,4 +1,3 @@
-# world_sampler.gd
 class_name WorldSampler
 extends Resource
 
@@ -33,6 +32,6 @@ func get_voxel(wx: int, wy: int, wz: int) -> int:
 	var h = get_height(wx, wy)
 
 	if wz > h:
-		return 0 # AIR
+		return 0
 
-	return 1 # SOLID (replace with biome logic later)
+	return 1

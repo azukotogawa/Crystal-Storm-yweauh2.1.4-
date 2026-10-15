@@ -1,5 +1,4 @@
 extends SceneTree
-## Phase-time dig/build on main scene to locate ≥12ms hitches.
 
 
 const MAIN_SCENE := "res://scenes/main.tscn"
