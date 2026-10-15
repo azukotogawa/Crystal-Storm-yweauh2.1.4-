@@ -1,5 +1,10 @@
 # NOW
 
+> **Before every task, read `studio/VISION.md`** (the Crystal Storm master vision).
+
+## Playtest 2026-10-14 (0.3.0-nocomments)
+Playtest 2026-10-14 (0.3.0-nocomments): Cole called it fantastic. Only issues: art design and sprite rigging. Next priority: character art plus rigging and animation (plan pending Cole's discussion).
+
 ## State
 Foundational terrain/runtime bug pass is complete (ramps, input contract, water indent lids, dig-beside-water replace, feature-tile remesh).
 

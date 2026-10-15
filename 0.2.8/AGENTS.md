@@ -1,5 +1,7 @@
 # Crystalstorm - Godot 4 Project Rules
 
+> **Before every task, read `studio/VISION.md`** (the Crystal Storm master vision).
+
 ## Godot 4 / GDScript Coding Rules
 - You are writing code exclusively for Godot 4.
 - Always use the new Godot 4 signal syntax: `button.pressed.connect(_on_button_pressed)` instead of the old `.connect("pressed", self, "_on_button_pressed")`.
