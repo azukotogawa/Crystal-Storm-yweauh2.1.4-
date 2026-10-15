@@ -65,56 +65,53 @@ func _run() -> void:
 
 func _break_face(folder: String, player: Node3D, editor, world, origin: Vector2i) -> bool:
 	_Items.ensure_builtins()
-	var pick = _Items.get_def("stone_pick")
-	if pick == null:
-		push_error("stone pick missing")
-		return false
-	var saved := int(pick.tool_tier)
-	pick.tool_tier = 3
-	var shape := _Items.break_shape_for("stone_pick")
-	var anchor_col := origin + Vector2i(3, -6)
+	var shape := _Items.break_shape_for("stone_pick", 3)
+	var anchor_col := origin + Vector2i(-8, 6)
 	var anchor := Vector3i(anchor_col.x, _Edits.surface_block_y(world, anchor_col.x, anchor_col.y), anchor_col.y)
 	var aim := Vector3(1, 0, 0)
 	var cells: Array = _Items.break_cells(shape, anchor, aim)
 	var batch: Dictionary = _Edits.dig_cells(cells, editor)
-	pick.tool_tier = saved
 	var dug := int(batch.get("dug_count", 0))
 	print("BREAK_3X3 shape=%s requested=%d dug=%d anchor=%s" % [_Items.break_shape_name(shape), cells.size(), dug, anchor])
 	if shape != _Items.BreakShape.FACE_3X3 or cells.size() != 9 or dug < 3:
 		push_error("3x3 face break dug %d of %d" % [dug, cells.size()])
-		await _shot(folder, "break-3x3-face-missing", player, world, anchor_col + Vector2i(-2, 0))
+		await _shot(folder, "break-3x3-face-missing", player, world, anchor_col + Vector2i(2, 2))
 		return false
-	await _shot(folder, "break-3x3-face", player, world, anchor_col + Vector2i(-3, 0))
+	await _shot(folder, "break-3x3-face", player, world, anchor_col + Vector2i(2, 2))
 	return true
 
 
 func _place_each(folder: String, player: Node3D, editor, world, inventory, origin: Vector2i) -> bool:
-	var cursor := origin + Vector2i(3, 2)
+	var spots: Array[Vector2i] = []
+	for row in 5:
+		for col in 6:
+			spots.append(origin + Vector2i(-6 - col * 6, 8 + row * 5))
+	var used := 0
 	var placed: Array[Vector2i] = []
 	for id in _Blueprints.ids():
 		_Craft.craft(inventory, id)
 		var spot := Vector2i(-99999, -99999)
 		var reason := ""
-		for attempt in 10:
-			var try_at := cursor + Vector2i(attempt * 5, 0)
+		while used < spots.size():
+			var try_at: Vector2i = spots[used]
+			used += 1
 			var pos := Vector3(float(try_at.x) + 0.5, 0.0, float(try_at.y) + 0.5)
 			if editor.try_place_blueprint(pos, inventory, id, 0):
 				spot = try_at
-				cursor = Vector2i(try_at.x + 6, try_at.y)
 				break
 			reason = str(editor.get("last_fail_reason"))
 		var count := int(editor.get("last_place_batch").get("placed_count", 0)) if spot.x > -10000 else 0
 		print("PLACE id=%s at=%s count=%d reason=%s" % [String(id), spot, count, reason])
 		if spot.x < -10000 or count < 1:
 			push_error("place failed %s %s" % [String(id), reason])
-			await _shot(folder, "place-%s-missing" % String(id), player, world, cursor)
+			await _shot(folder, "place-%s-missing" % String(id), player, world, origin)
 			return false
 		placed.append(spot)
-		await _shot(folder, "place-%s" % String(id), player, world, spot + Vector2i(-3, -2))
+		await _shot(folder, "place-%s" % String(id), player, world, spot + Vector2i(2, 2))
 	if placed.is_empty():
 		return false
 	var mid: Vector2i = placed[placed.size() / 2]
-	await _shot(folder, "place-all", player, world, mid + Vector2i(-2, -3))
+	await _shot(folder, "place-all", player, world, mid + Vector2i(3, 3))
 	return true
 
 
@@ -151,11 +148,29 @@ func _shot(folder: String, tag: String, player: Node3D, world, stand: Vector2i) 
 	var ground := 8.0
 	if world != null and world.has_method("get_surface_height"):
 		ground = float(world.get_surface_height(float(stand.x) + 0.5, float(stand.y) + 0.5))
-	player.global_position = _Coords.column_to_world_pos(float(stand.x) + 0.5, ground + 1.2, float(stand.y) + 0.5)
+	if "voxel_position" in player:
+		player.voxel_position = Vector3(float(stand.x) + 0.5, ground + 1.2, float(stand.y) + 0.5)
+	if player.has_method("_sync_global_from_voxel"):
+		player._sync_global_from_voxel()
+	else:
+		player.global_position = _Coords.column_to_world_pos(float(stand.x) + 0.5, ground + 1.2, float(stand.y) + 0.5)
+	if player.has_method("_snap_to_ground"):
+		player._snap_to_ground()
+		if player.has_method("_sync_global_from_voxel"):
+			player._sync_global_from_voxel()
 	if "velocity" in player:
 		player.velocity = Vector3.ZERO
-	for _i in 20:
+	var cam = player.get("camera")
+	if cam != null:
+		cam.set("use_smoothing", false)
+		cam.set("_scroll_lead", Vector3.ZERO)
+		if cam.has_method("get_offset_from_rotation"):
+			cam.set("follow_target", player.global_position)
+			cam.global_position = player.global_position + cam.get_offset_from_rotation()
+	for _i in 12:
 		await process_frame
+		if cam != null and cam.has_method("get_offset_from_rotation"):
+			cam.global_position = player.global_position + cam.get_offset_from_rotation()
 	await RenderingServer.frame_post_draw
 	var img: Image = root.get_viewport().get_texture().get_image()
 	if img == null or img.is_empty():
@@ -166,5 +181,5 @@ func _shot(folder: String, tag: String, player: Node3D, world, stand: Vector2i) 
 	if err != OK:
 		push_error("break structures shot save %s %s" % [tag, str(err)])
 		return false
-	print("SHOT %s" % path)
+	print("SHOT %s col=%s" % [path, _player_column(player)])
 	return true
