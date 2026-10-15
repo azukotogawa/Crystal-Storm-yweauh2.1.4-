@@ -21,6 +21,8 @@ const _AimIndicator = preload("res://systems/aim_indicator.gd")
 const _HitMarkers = preload("res://systems/hit_markers.gd")
 const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
+const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
+const _FeatureRegistry = preload("res://world/feature_registry.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -49,6 +51,10 @@ var _build_hold_sec: float = 0.0
 var _brush_left_held: bool = false
 var _brush_right_held: bool = false
 var place_index: int = 0
+var blueprint_index: int = 0
+var blueprint_quarter: int = 0
+var _blueprint_rotate_held: bool = false
+var _blueprint_cycle_held: bool = false
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
 var _held: _HeldItemView
 var _aim: _AimIndicator
@@ -103,10 +109,12 @@ func _process(delta: float) -> void:
 	if _GameplayInput.blocks_actions():
 		if _aim:
 			_aim.suppress(true)
+		_hide_structure_ghost()
 		if profiler and profiler.has_method("end"):
 			profiler.end("weapon_controller")
 		return
 	_poll_dig_brush_keys()
+	_poll_blueprint_keys()
 
 	# LMB breaks blocks only for the pick and other dig tools.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
@@ -171,6 +179,7 @@ func _process(delta: float) -> void:
 	# Poses and ranged release share this clock. Hammer damage stays on its wind-up frame.
 	_tick_animation_clock(delta)
 	_present_held(delta)
+	_refresh_structure_ghost()
 	if profiler and profiler.has_method("end"):
 		profiler.end("weapon_controller")
 
@@ -807,6 +816,187 @@ func _poll_dig_brush_keys() -> void:
 		_toast("Dig brush %d" % dig_brush_radius())
 	_brush_left_held = left
 	_brush_right_held = right
+
+
+func selected_blueprint_id() -> StringName:
+	var ids := _StructureBlueprints.ids()
+	if ids.is_empty():
+		return &""
+	return ids[posmod(blueprint_index, ids.size())]
+
+
+func rotate_selected_blueprint(steps: int = 1) -> void:
+	blueprint_quarter = posmod(blueprint_quarter + steps, 4)
+
+
+func cycle_selected_blueprint(steps: int = 1) -> void:
+	var ids := _StructureBlueprints.ids()
+	if ids.is_empty():
+		blueprint_index = 0
+		blueprint_quarter = 0
+		return
+	blueprint_index = posmod(blueprint_index + steps, ids.size())
+	blueprint_quarter = 0
+
+
+func preview_selected_blueprint(column: Vector3, world) -> Dictionary:
+	return ghost_preview(selected_blueprint_id(), column, blueprint_quarter, world)
+
+
+static func snap_blueprint_anchor(column: Vector3) -> Vector2i:
+	return Vector2i(floori(column.x), floori(column.z))
+
+
+static func rotate_blueprint_cell(cell: Vector3i, quarter: int) -> Vector3i:
+	var q := posmod(quarter, 4)
+	var x := cell.x
+	var y := cell.y
+	var z := cell.z
+	if q == 1:
+		return Vector3i(z, y, -x)
+	if q == 2:
+		return Vector3i(-x, y, -z)
+	if q == 3:
+		return Vector3i(-z, y, x)
+	return Vector3i(x, y, z)
+
+
+static func ghost_preview(blueprint_id: StringName, column: Vector3, quarter: int, world) -> Dictionary:
+	var anchor := snap_blueprint_anchor(column)
+	var turned := posmod(quarter, 4)
+	var bp := _StructureBlueprints.get_blueprint(blueprint_id)
+	if bp.is_empty():
+		return {
+			"id": String(blueprint_id),
+			"anchor": anchor,
+			"quarter": turned,
+			"valid": false,
+			"cells": [],
+		}
+	var base_y := TerrainEdits.surface_block_y(world, anchor.x, anchor.y) + 1
+	var raw: Array[Dictionary] = []
+	var lows := {}
+	for cell in bp["cells"]:
+		var local := Vector3i(int(cell["x"]), int(cell["y"]), int(cell["z"]))
+		var spun := rotate_blueprint_cell(local, turned)
+		var at := Vector3i(anchor.x + spun.x, base_y + spun.y, anchor.y + spun.z)
+		var key := Vector2i(at.x, at.z)
+		if not lows.has(key) or spun.y < int(lows[key]):
+			lows[key] = spun.y
+		raw.append({"at": at, "local_y": spun.y})
+	var reasons := {}
+	for item in raw:
+		var at: Vector3i = item["at"]
+		var key := Vector2i(at.x, at.z)
+		if int(item["local_y"]) != int(lows[key]):
+			continue
+		reasons[key] = _column_ghost_reason(at, world)
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var cells: Array = []
+	var all_ok := true
+	for item in raw:
+		var at: Vector3i = item["at"]
+		var key := Vector2i(at.x, at.z)
+		var reason := str(reasons.get(key, "blocked"))
+		var ok := reason == "ok"
+		if not ok:
+			all_ok = false
+		cells.append({
+			"at": at,
+			"valid": ok,
+			"reason": reason,
+			"position": Vector3(
+				ws.column_to_world(float(at.x) + 0.5),
+				float(at.y) * layer + layer * 0.5,
+				ws.column_to_world(float(at.z) + 0.5)
+			),
+		})
+	return {
+		"id": String(blueprint_id),
+		"anchor": anchor,
+		"quarter": turned,
+		"valid": all_ok,
+		"cells": cells,
+	}
+
+
+static func _column_ghost_reason(base_cell: Vector3i, world) -> String:
+	if not TerrainEdits.can_edit(base_cell.x, base_cell.z):
+		return "blocked"
+	var ground := TerrainEdits.surface_block_y(world, base_cell.x, base_cell.z)
+	if base_cell.y <= ground:
+		return "blocked"
+	if _column_has_build(base_cell.x, base_cell.z) and base_cell.y <= ground + 1:
+		return "blocked"
+	if base_cell.y > ground + 1:
+		return "unsupported"
+	return "ok"
+
+
+static func _column_has_build(wx: int, wz: int) -> bool:
+	if TerrainEdits.get_build_tile(wx, wz) >= 0:
+		return true
+	var feat := _FeatureRegistry.get_feature(wx, wz)
+	return str(feat.get("build_id", "")).strip_edges() != ""
+
+
+func _poll_blueprint_keys() -> void:
+	if not _StructureBlueprints.LARGE_STRUCTURES:
+		return
+	var turn := Input.is_physical_key_pressed(KEY_Z)
+	if turn and not _blueprint_rotate_held:
+		rotate_selected_blueprint(1)
+	_blueprint_rotate_held = turn
+	var cycle := Input.is_physical_key_pressed(KEY_X)
+	if cycle and not _blueprint_cycle_held:
+		cycle_selected_blueprint(1)
+	_blueprint_cycle_held = cycle
+
+
+func _structure_ghost_wanted() -> bool:
+	if not _StructureBlueprints.LARGE_STRUCTURES or selected_blueprint_id() == &"":
+		return false
+	if _held_has_right_click_ability():
+		return false
+	if _is_build_material():
+		return true
+	if not (Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")):
+		return false
+	if inventory == null and player:
+		inventory = player.inventory
+	if inventory == null or not inventory.has_method("count_item"):
+		return false
+	return int(inventory.count_item("stone")) > 0 or int(inventory.count_item("wood")) > 0
+
+
+func _hide_structure_ghost() -> void:
+	if player == null:
+		return
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl and hl.has_method("hide_structure_ghost"):
+		hl.hide_structure_ghost()
+
+
+func _refresh_structure_ghost() -> void:
+	if player == null:
+		return
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("show_structure_ghost"):
+		return
+	if not _structure_ghost_wanted():
+		hl.hide_structure_ghost()
+		return
+	if world == null and is_inside_tree():
+		world = get_tree().get_first_node_in_group("world")
+	var column := Vector3.ZERO
+	if hl.has_method("get_action_column"):
+		column = hl.get_action_column()
+	if column == Vector3.ZERO:
+		hl.hide_structure_ghost()
+		return
+	var plan := preview_selected_blueprint(column, world)
+	hl.show_structure_ghost(plan.get("cells", []))
 
 
 func get_place_id() -> String:

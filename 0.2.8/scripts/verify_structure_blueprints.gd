@@ -3,6 +3,9 @@ extends SceneTree
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _Registry = preload("res://building/building_registry.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
+const _Weapon = preload("res://weapons/weapon_controller.gd")
+const _Highlight = preload("res://player/target_highlight.gd")
+const _Features = preload("res://world/feature_registry.gd")
 
 var _failed: int = 0
 
@@ -26,6 +29,9 @@ func _run() -> void:
 	_test_segment()
 	_test_corner()
 	_test_unknown()
+	_test_snap_and_rotation()
+	_test_ghost_validity()
+	_test_ghost_uses_build_highlight()
 	if _failed == 0:
 		print("All structure blueprint tests OK")
 		quit(0)
@@ -93,6 +99,170 @@ func _test_unknown() -> void:
 	print("OK only the wall segment and wall corner are blueprinted")
 
 
+func _test_snap_and_rotation() -> void:
+	var snapped := _Weapon.snap_blueprint_anchor(Vector3(3.2, 9.8, -0.01))
+	if snapped != Vector2i(3, -1):
+		_fail("ghost anchor %s did not snap to the grid cell" % snapped)
+		return
+	var edge := _Weapon.snap_blueprint_anchor(Vector3(-0.1, 0.0, 4.0))
+	if edge != Vector2i(-1, 4):
+		_fail("negative ghost anchor %s did not snap down to the cell" % edge)
+		return
+	var cell := Vector3i(2, 1, 0)
+	if _Weapon.rotate_blueprint_cell(cell, 0) != cell:
+		_fail("quarter 0 must keep the cell")
+		return
+	if _Weapon.rotate_blueprint_cell(cell, 1) != Vector3i(0, 1, -2):
+		_fail("quarter 1 must turn the wall 90 degrees")
+		return
+	if _Weapon.rotate_blueprint_cell(cell, 2) != Vector3i(-2, 1, 0):
+		_fail("quarter 2 must turn the wall 180 degrees")
+		return
+	if _Weapon.rotate_blueprint_cell(cell, 3) != Vector3i(0, 1, 2):
+		_fail("quarter 3 must turn the wall 270 degrees")
+		return
+	if _Weapon.rotate_blueprint_cell(cell, 4) != cell:
+		_fail("four quarter turns must restore the cell")
+		return
+	var weapon = _Weapon.new()
+	weapon.rotate_selected_blueprint(1)
+	weapon.rotate_selected_blueprint(1)
+	if weapon.blueprint_quarter != 2:
+		_fail("selected blueprint quarter is %d, want 2" % weapon.blueprint_quarter)
+		weapon.free()
+		return
+	weapon.cycle_selected_blueprint(1)
+	if weapon.selected_blueprint_id() != _Blueprints.WALL_CORNER or weapon.blueprint_quarter != 0:
+		_fail("cycling the blueprint must select the corner and clear the turn")
+		weapon.free()
+		return
+	weapon.free()
+	print("OK ghost snaps to the grid and turns in 90 degree steps")
+
+
+func _test_ghost_validity() -> void:
+	_Edits.reset()
+	_Features.reset()
+	var ground := _FlatGround.new()
+	var column := Vector3(5.4, 0.0, 7.8)
+	var flat: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, column, 0, ground)
+	if flat.get("anchor") != Vector2i(5, 7) or int(flat.get("quarter", -1)) != 0:
+		_fail("flat ghost anchor %s quarter %s" % [flat.get("anchor"), flat.get("quarter")])
+		return
+	if not bool(flat.get("valid", false)) or not _reasons(flat, "ok", 6):
+		_fail("flat wall segment must be valid, got %s" % _reason_map(flat))
+		return
+	var turned: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, column, 1, ground)
+	if not _has_cell(turned, Vector3i(5, 1, 5)) or _has_cell(turned, Vector3i(7, 1, 7)):
+		_fail("quarter turn must swing the segment onto the anchor column, got %s" % _cells_of(turned))
+		return
+	var corner: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_CORNER, column, 1, ground)
+	if _has_cell(corner, Vector3i(6, 1, 6)):
+		_fail("turned corner must keep the inner column empty")
+		return
+	if corner.get("cells", []).size() != 6:
+		_fail("turned corner lost cells")
+		return
+	_Edits.dig(6, 7, 1)
+	var hole: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, column, 0, ground)
+	if bool(hole.get("valid", false)) or not _reason_at(hole, Vector3i(6, 1, 7), "unsupported"):
+		_fail("a dug neighbor must tint unsupported, got %s" % _reason_map(hole))
+		_Edits.reset()
+		return
+	if not _reason_at(hole, Vector3i(5, 1, 7), "ok") or not _reason_at(hole, Vector3i(6, 2, 7), "unsupported"):
+		_fail("only the dug column is unsupported, got %s" % _reason_map(hole))
+		_Edits.reset()
+		return
+	_Edits.reset()
+	_Edits.set_build_tile_only(7, 7, 3)
+	var built: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, column, 0, ground)
+	if bool(built.get("valid", false)) or not _reason_at(built, Vector3i(7, 1, 7), "blocked"):
+		_fail("an existing build tile must tint blocked, got %s" % _reason_map(built))
+		_Edits.reset()
+		return
+	if not _reason_at(built, Vector3i(5, 1, 7), "ok"):
+		_fail("an open column must stay valid beside a blocked one")
+		_Edits.reset()
+		return
+	_Edits.reset()
+	_Features.register_feature(5, 7, 0, {"build_id": "stone_wall"})
+	var occupied: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, column, 0, ground)
+	if not _reason_at(occupied, Vector3i(5, 1, 7), "blocked") or not _reason_at(occupied, Vector3i(5, 2, 7), "blocked"):
+		_fail("a built feature must block that column, got %s" % _reason_map(occupied))
+		_Features.reset()
+		return
+	_Features.reset()
+	var abroad: Dictionary = _Weapon.ghost_preview(_Blueprints.WALL_SEGMENT, Vector3(5000.2, 0.0, 0.2), 0, ground)
+	if bool(abroad.get("valid", false)) or not _reasons(abroad, "blocked", 6):
+		_fail("outside the border the ghost must be blocked, got %s" % _reason_map(abroad))
+		return
+	print("OK ghost validity tints blocked cells and unsupported ground")
+
+
+func _test_ghost_uses_build_highlight() -> void:
+	var good: Color = _Highlight.structure_ghost_tint(true)
+	var bad: Color = _Highlight.structure_ghost_tint(false)
+	if good.g <= 0.75 or good.r >= 0.55:
+		_fail("valid ghost tint %s must match the green build highlight" % good)
+		return
+	if bad.r <= bad.g or bad.r < 0.8:
+		_fail("invalid ghost tint %s must match the blocked build highlight" % bad)
+		return
+	var weapon_src := (_Weapon as GDScript).source_code
+	var highlight_src := (_Highlight as GDScript).source_code
+	if "func ghost_preview" not in weapon_src or "show_structure_ghost" not in weapon_src:
+		_fail("weapon controller must preview the selected blueprint")
+		return
+	if "func show_structure_ghost" not in highlight_src or "structure_ghost_tint" not in highlight_src:
+		_fail("structure ghost must reuse the build highlight tint")
+		return
+	var show_at := highlight_src.find("func show_structure_ghost")
+	var show_end := highlight_src.find("\nfunc ", show_at + 10)
+	var show_body := highlight_src.substr(show_at, maxi(show_end - show_at, 0))
+	if "structure_ghost_tint" not in show_body:
+		_fail("structure ghost marks must take the build highlight tint")
+		return
+	print("OK structure ghost reuses the build highlight tint")
+
+
+func _reasons(plan: Dictionary, reason: String, count: int) -> bool:
+	var cells: Array = plan.get("cells", [])
+	if cells.size() != count:
+		return false
+	for cell in cells:
+		if str(cell.get("reason", "")) != reason:
+			return false
+	return true
+
+
+func _reason_at(plan: Dictionary, at: Vector3i, reason: String) -> bool:
+	for cell in plan.get("cells", []):
+		if cell.get("at") == at:
+			return str(cell.get("reason", "")) == reason
+	return false
+
+
+func _has_cell(plan: Dictionary, at: Vector3i) -> bool:
+	for cell in plan.get("cells", []):
+		if cell.get("at") == at:
+			return true
+	return false
+
+
+func _cells_of(plan: Dictionary) -> Array:
+	var out: Array = []
+	for cell in plan.get("cells", []):
+		out.append(cell.get("at"))
+	return out
+
+
+func _reason_map(plan: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	for cell in plan.get("cells", []):
+		parts.append("%s=%s" % [cell.get("at"), cell.get("reason")])
+	return " ".join(parts)
+
+
 func _expect_box(bp: Dictionary, id: String, w: int, h: int, d: int, count: int) -> bool:
 	if str(bp.get("id", "")) != id:
 		_fail("%s id missing" % id)
@@ -141,3 +311,10 @@ func _expect_cost(bp: Dictionary, wall, occupied: int) -> bool:
 		_fail("%s recipe %s does not match the stone cost" % [bp.get("id", ""), line])
 		return false
 	return true
+
+
+class _FlatGround:
+	extends RefCounted
+
+	func get_surface_height(wx: float, wz: float) -> float:
+		return _Edits.get_height_delta(floori(wx), floori(wz))

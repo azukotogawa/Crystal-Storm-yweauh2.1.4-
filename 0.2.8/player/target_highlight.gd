@@ -52,6 +52,9 @@ const BRUSH_MARK_POOL := 12
 var _brush_marks: Array[MeshInstance3D] = []
 var _brush_key: Vector3i = Vector3i(999999, 999999, -1)
 var _brush_shown: bool = false
+const STRUCTURE_GHOST_POOL := 24
+var _structure_marks: Array[MeshInstance3D] = []
+var _structure_mats: Array[StandardMaterial3D] = []
 
 
 func _ready() -> void:
@@ -63,6 +66,7 @@ func _ready() -> void:
 	_build_mesh()
 	_build_ghost()
 	_build_brush_pool()
+	_build_structure_pool()
 
 
 func _build_mesh() -> void:
@@ -232,6 +236,7 @@ func _process(delta: float) -> void:
 		if _ghost:
 			_ghost.visible = false
 		_hide_brush_marks()
+		hide_structure_ghost()
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
@@ -287,6 +292,7 @@ func _process(delta: float) -> void:
 		if _ghost:
 			_ghost.visible = false
 		_hide_brush_marks()
+		hide_structure_ghost()
 		_display_ready = false
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
@@ -470,6 +476,76 @@ func _highlight_brush_radius() -> int:
 	if weapon and weapon.has_method("dig_brush_radius"):
 		return int(weapon.dig_brush_radius())
 	return 1
+
+
+static func structure_ghost_tint(valid: bool) -> Color:
+	if valid:
+		return Color(0.25, 1.0, 0.4, 0.36)
+	return Color(1.0, 0.15, 0.12, 0.38)
+
+
+func _build_structure_pool() -> void:
+	for _i in STRUCTURE_GHOST_POOL:
+		_add_structure_mark()
+
+
+func _add_structure_mark() -> void:
+	var mark := MeshInstance3D.new()
+	mark.name = "StructureGhost%d" % _structure_marks.size()
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE
+	mark.mesh = box
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
+	mat.render_priority = 126
+	mat.no_depth_test = true
+	mat.emission_enabled = true
+	mat.albedo_color = structure_ghost_tint(true)
+	mat.emission = Color(0.2, 0.95, 0.35)
+	mat.emission_energy_multiplier = 0.45
+	mark.material_override = mat
+	mark.visible = false
+	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mark.sorting_offset = 3.6
+	add_child(mark)
+	_structure_marks.append(mark)
+	_structure_mats.append(mat)
+
+
+func hide_structure_ghost() -> void:
+	for mark in _structure_marks:
+		mark.visible = false
+
+
+func show_structure_ghost(cells: Array) -> void:
+	if cells.is_empty():
+		hide_structure_ghost()
+		return
+	while _structure_marks.size() < cells.size():
+		_add_structure_mark()
+	var ws = _WorldSettings.get_active()
+	var layer: float = ws.layer_height()
+	var scale: float = ws.voxel_scale
+	var box := Vector3(scale * 1.02, layer, scale * 1.02)
+	for i in cells.size():
+		var cell: Dictionary = cells[i]
+		var mark := _structure_marks[i]
+		var mat := _structure_mats[i]
+		var ok := bool(cell.get("valid", false))
+		var tint := structure_ghost_tint(ok)
+		mat.albedo_color = tint
+		if ok:
+			mat.emission = Color(0.2, 0.95, 0.35)
+		else:
+			mat.emission = Color(0.9, 0.1, 0.08)
+		mark.global_position = cell.get("position", Vector3.ZERO)
+		mark.scale = box
+		mark.visible = true
+	for i in range(cells.size(), _structure_marks.size()):
+		_structure_marks[i].visible = false
 
 
 func _build_brush_pool() -> void:
