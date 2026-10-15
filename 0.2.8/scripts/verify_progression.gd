@@ -23,6 +23,7 @@ func _run() -> void:
 	_check_source_wiring()
 	await _check_level_rewards()
 	await _check_live_sources()
+	await _check_xp_hud()
 	if _failed == 0:
 		print("All progression tests OK")
 		quit(0)
@@ -290,6 +291,56 @@ func _check_level_rewards() -> void:
 	root.remove_child(svc)
 	svc.free()
 	print("OK level rewards")
+
+
+func _drop_group(group_name: String) -> void:
+	for node in get_nodes_in_group(group_name):
+		if is_instance_valid(node):
+			node.free()
+
+
+func _check_xp_hud() -> void:
+	for group_name in ["crystal_manager", "game_manager", "player", "living_world_director", "progression_service", "game_overlay"]:
+		_drop_group(group_name)
+	await process_frame
+	var svc := _Progression.new()
+	root.add_child(svc)
+	var packed: PackedScene = load("res://ui/game_overlay.tscn")
+	if packed == null:
+		_fail("game overlay scene missing")
+		svc.queue_free()
+		return
+	var overlay: Node = packed.instantiate()
+	root.add_child(overlay)
+	for _i in 4:
+		await process_frame
+	var bar := overlay.get_node_or_null("XpBar/Row/XpFill") as ProgressBar
+	var level_label := overlay.get_node_or_null("XpBar/Row/XpLevel") as Label
+	var value_label := overlay.get_node_or_null("XpBar/Row/XpValue") as Label
+	if bar == null or level_label == null or value_label == null:
+		_fail("xp bar nodes missing")
+		overlay.queue_free()
+		svc.queue_free()
+		return
+	if int(bar.max_value) != 50 or int(bar.value) != 0 or level_label.text != "Lv 1" or value_label.text != "0 / 50":
+		_fail("xp bar start is %s %s value %s/%s" % [level_label.text, value_label.text, str(bar.value), str(bar.max_value)])
+	svc.add_xp(20)
+	await process_frame
+	if int(bar.value) != 20 or value_label.text != "20 / 50" or level_label.text != "Lv 1":
+		_fail("xp bar after 20 is %s %s" % [level_label.text, value_label.text])
+	svc.add_xp(30)
+	await process_frame
+	var toast := overlay.get_node_or_null("ToastLabel") as Label
+	var need := _Progression.xp_to_advance(2)
+	if level_label.text != "Lv 2" or int(bar.value) != 0 or int(bar.max_value) != need:
+		_fail("level-up bar is %s %s/%s" % [level_label.text, str(bar.value), str(bar.max_value)])
+	if toast == null or not toast.visible or toast.text != "Level up — 2":
+		_fail("level-up toast is %s" % (toast.text if toast else "missing"))
+	else:
+		print("OK xp hud")
+	overlay.queue_free()
+	svc.queue_free()
+	await process_frame
 
 
 class _CrystalStub extends Node:

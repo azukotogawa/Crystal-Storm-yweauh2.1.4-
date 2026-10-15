@@ -73,6 +73,12 @@ func _run() -> void:
 		_fail("relics_taken is %d" % int(win_data.get("relics_taken", 0)))
 	if int(win_data.get("deaths", 0)) != 0:
 		_fail("win deaths is %d" % int(win_data.get("deaths", 0)))
+	if int(win_data.get("level", 0)) < 1:
+		_fail("win level is %s" % str(win_data.get("level", "")))
+	if int(win_data.get("xp", -1)) < 0:
+		_fail("win xp is %s" % str(win_data.get("xp", "")))
+	if int(win_data.get("xp_to_next", 0)) <= 0:
+		_fail("win xp_to_next is %s" % str(win_data.get("xp_to_next", "")))
 	if float(win_data.get("time_sec", 0.0)) < 2.0:
 		_fail("win time_sec is %.3f" % float(win_data.get("time_sec", 0.0)))
 	won.queue_free()
@@ -132,7 +138,7 @@ func _check_panel(panel: Node, title: String) -> void:
 		return
 	var text := body.text
 	var progress_line := "Crystal destroyed:" if _GameConfig.SINGLE_CRYSTAL else "Spawns destroyed:"
-	for needle in [title, "Time:", progress_line, "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
+	for needle in [title, "Level:", "XP:", "Time:", progress_line, "Boss defeated:", "Crystal broken:", "Enemies killed:", "Relics taken:", "Deaths:"]:
 		if not text.contains(needle):
 			_fail("summary text missing %s" % needle)
 	var world_btn := panel.find_child("WorldSelectButton", true, false) as Button

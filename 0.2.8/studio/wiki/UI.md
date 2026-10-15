@@ -65,7 +65,7 @@ The flag is its own key. `Juice` refuses shake, hit-stop, and bob while it is on
 
 `GameManager` counts spawns destroyed, crystal cells broken, enemies killed, relics taken, and deaths on the existing signals. `grant_player_kill` is the kill counter. Time is `Time.get_ticks_msec()` at run start, read when the summary is built. Nothing in `_process` accumulates these stats.
 
-`run_summary()` returns `outcome` (`win`, `loss`, or `playing`), `time_sec`, `spawns_destroyed`, `boss_defeated`, `crystal_broken`, `enemies_killed`, `relics_taken`, `deaths`, `victory_reason`, and `loss_reason`.
+`run_summary()` returns `outcome` (`win`, `loss`, or `playing`), `time_sec`, `spawns_destroyed`, `boss_defeated`, `crystal_broken`, `enemies_killed`, `relics_taken`, `deaths`, `victory_reason`, `loss_reason`, `level`, `xp`, and `xp_to_next`. The panel prints level and `xp / xp_to_next`. During play the HUD XP bar (`XpBar`) shows the same fraction, and a level-up toast reads `Level up — N`.
 
 On win or loss, `ui/game_overlay.gd` keeps the existing victory titles and adds `ui/run_summary_panel.gd` under the panel. World Select calls `return_to_world_select` on the `game` group. New Run calls `restart_run` on `game_manager`.
 

@@ -12,6 +12,7 @@ const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
 const _GameConfig = preload("res://config/game_config.gd")
+const _Progression = preload("res://systems/progression_service.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -65,6 +66,16 @@ var _hp_shown: int = -99999
 var _hp_shown_max: int = -99999
 var _hp_band: int = -1
 var _hp_colorblind: bool = false
+var _xp_panel: PanelContainer = null
+var _xp_bar: ProgressBar = null
+var _xp_level_label: Label = null
+var _xp_value_label: Label = null
+var _xp_fill: StyleBoxFlat = null
+var _xp_service: Node = null
+var _xp_bound: bool = false
+var _xp_shown_level: int = -1
+var _xp_shown: int = -1
+var _xp_shown_need: int = -1
 var _run_summary: _RunSummaryPanel = null
 var _hud_frame: int = -999
 var _hud_skip: bool = false
@@ -110,6 +121,8 @@ func _ready() -> void:
 	_ensure_bake_chip()
 	_ensure_objective_hud()
 	_ensure_player_health_bar()
+	_ensure_xp_bar()
+	_bind_xp_hud()
 	_ThemeBuilder.apply(self)
 	apply_hud_palette(_PlayerSettings.colorblind_palette)
 	_update_player_health()
@@ -568,6 +581,7 @@ func _process(delta: float) -> void:
 	_update_game_hud()
 	_update_objective_hud()
 	_update_player_health()
+	_update_xp_bar()
 	_update_boss_bar()
 	_update_bake_chip()
 	if _GameplayInput.blocks_actions():
@@ -990,6 +1004,136 @@ func _paint_hp_fill(ratio: float) -> void:
 		_hp_panel_style.border_color = border
 
 
+func _ensure_xp_bar() -> void:
+	if _xp_panel != null:
+		return
+	_xp_panel = PanelContainer.new()
+	_xp_panel.name = "XpBar"
+	_xp_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_panel.visible = false
+	_xp_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_xp_panel.offset_left = -130.0
+	_xp_panel.offset_right = 130.0
+	_xp_panel.offset_top = -164.0
+	_xp_panel.offset_bottom = -128.0
+	var panel_style := StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.06, 0.05, 0.1, 0.84)
+	panel_style.border_color = Color(0.62, 0.45, 0.95, 0.9)
+	panel_style.set_border_width_all(1)
+	panel_style.set_content_margin_all(6)
+	_xp_panel.add_theme_stylebox_override("panel", panel_style)
+	var row := HBoxContainer.new()
+	row.name = "Row"
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 8)
+	_xp_panel.add_child(row)
+	_xp_level_label = Label.new()
+	_xp_level_label.name = "XpLevel"
+	_xp_level_label.text = "Lv 1"
+	_xp_level_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_level_label.custom_minimum_size = Vector2(44, 0)
+	_xp_level_label.add_theme_font_size_override("font_size", 14)
+	_xp_level_label.add_theme_color_override("font_color", Color(0.86, 0.78, 1.0))
+	row.add_child(_xp_level_label)
+	_xp_bar = ProgressBar.new()
+	_xp_bar.name = "XpFill"
+	_xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_bar.show_percentage = false
+	_xp_bar.min_value = 0.0
+	_xp_bar.max_value = float(_Progression.xp_to_advance(1))
+	_xp_bar.value = 0.0
+	_xp_bar.custom_minimum_size = Vector2(120, 14)
+	_xp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_xp_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.08, 0.06, 0.1, 1.0)
+	track.set_corner_radius_all(3)
+	_xp_bar.add_theme_stylebox_override("background", track)
+	_xp_fill = StyleBoxFlat.new()
+	_xp_fill.bg_color = _xp_fill_color()
+	_xp_fill.set_corner_radius_all(3)
+	_xp_bar.add_theme_stylebox_override("fill", _xp_fill)
+	row.add_child(_xp_bar)
+	_xp_value_label = Label.new()
+	_xp_value_label.name = "XpValue"
+	_xp_value_label.text = "0 / %d" % _Progression.xp_to_advance(1)
+	_xp_value_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_xp_value_label.custom_minimum_size = Vector2(72, 0)
+	_xp_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_xp_value_label.add_theme_font_size_override("font_size", 14)
+	_xp_value_label.add_theme_color_override("font_color", Color(0.94, 0.92, 1.0))
+	row.add_child(_xp_value_label)
+	add_child(_xp_panel)
+
+
+func _xp_fill_color() -> Color:
+	if _PlayerSettings.colorblind_palette:
+		return Color(0.35, 0.72, 1.0)
+	return Color(0.62, 0.45, 0.95)
+
+
+func _bind_xp_hud() -> void:
+	if _xp_bound and _xp_service != null and is_instance_valid(_xp_service):
+		return
+	var svc = _Progression.get_active()
+	if svc == null and is_inside_tree():
+		svc = get_tree().get_first_node_in_group("progression_service")
+	if svc == null:
+		return
+	if _xp_service != null and is_instance_valid(_xp_service) and _xp_service != svc:
+		if _xp_service.has_signal("xp_gained") and _xp_service.xp_gained.is_connected(_on_xp_gained):
+			_xp_service.xp_gained.disconnect(_on_xp_gained)
+		if _xp_service.has_signal("level_up") and _xp_service.level_up.is_connected(_on_xp_level_up):
+			_xp_service.level_up.disconnect(_on_xp_level_up)
+	_xp_service = svc
+	if svc.has_signal("xp_gained") and not svc.xp_gained.is_connected(_on_xp_gained):
+		svc.xp_gained.connect(_on_xp_gained)
+	if svc.has_signal("level_up") and not svc.level_up.is_connected(_on_xp_level_up):
+		svc.level_up.connect(_on_xp_level_up)
+	_xp_bound = true
+	_apply_xp_bar()
+
+
+func _on_xp_gained(_amount: int, _total: int) -> void:
+	_apply_xp_bar()
+
+
+func _on_xp_level_up(level: int) -> void:
+	_apply_xp_bar()
+	_show_toast("Level up — %d" % level)
+
+
+func _update_xp_bar() -> void:
+	if not _xp_bound or _xp_service == null or not is_instance_valid(_xp_service):
+		_bind_xp_hud()
+		return
+	_apply_xp_bar()
+
+
+func _apply_xp_bar() -> void:
+	_ensure_xp_bar()
+	if _xp_panel == null or _xp_service == null or not is_instance_valid(_xp_service):
+		return
+	if not _Progression.XP_ENABLED:
+		_xp_panel.visible = false
+		return
+	_xp_panel.visible = true
+	var level := int(_xp_service.get("level"))
+	var xp_now := int(_xp_service.get("xp"))
+	var need := maxi(_Progression.xp_to_advance(level), 1)
+	_xp_bar.max_value = float(need)
+	_xp_bar.value = clampf(float(xp_now), 0.0, float(need))
+	if level != _xp_shown_level:
+		_xp_shown_level = level
+		_xp_level_label.text = "Lv %d" % level
+	if xp_now != _xp_shown or need != _xp_shown_need:
+		_xp_shown = xp_now
+		_xp_shown_need = need
+		_xp_value_label.text = "%d / %d" % [xp_now, need]
+	if _xp_fill:
+		_xp_fill.bg_color = _xp_fill_color()
+
+
 func _cached_player() -> Node:
 	if _hud_player != null and is_instance_valid(_hud_player):
 		return _hud_player
@@ -1369,6 +1513,8 @@ func apply_hud_palette(colorblind: bool) -> void:
 		_hp_band = -1
 		if _hp_last_max > 0.0:
 			_paint_hp_fill(clampf(_hp_last / _hp_last_max, 0.0, 1.0))
+	if _xp_fill != null:
+		_xp_fill.bg_color = _xp_fill_color()
 
 
 func _show_run_summary() -> void:

@@ -11,6 +11,7 @@ Foundational terrain/runtime bug pass is complete (ramps, input contract, water 
 Playable-slice focus: **combat fuels the maze** + **wet ground is a readable crystal brake**.
 
 ## This pass
+- XP HUD: bar and level-up toast on the gameplay overlay; run summary prints level and XP
 - Kill grants (stone/herb/wood) — combat buys walls
 - Crystal on water: flattened "wet crawl" clusters + HUD `wet crawl` when the front sits on standing water
 - Bank-to-water toasts as wet-ground routing, not a trench

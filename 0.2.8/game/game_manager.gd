@@ -323,6 +323,14 @@ func run_summary() -> Dictionary:
 		outcome = "win"
 	elif run_state == RunState.LOST:
 		outcome = "loss"
+	var level := 1
+	var xp_now := 0
+	var svc = _Progression.get_active()
+	if svc == null and is_inside_tree():
+		svc = get_tree().get_first_node_in_group("progression_service")
+	if svc:
+		level = maxi(int(svc.level), 1)
+		xp_now = maxi(int(svc.xp), 0)
 	return {
 		"outcome": outcome,
 		"time_sec": elapsed,
@@ -334,6 +342,9 @@ func run_summary() -> Dictionary:
 		"deaths": deaths,
 		"victory_reason": victory_reason,
 		"loss_reason": last_loss_reason,
+		"level": level,
+		"xp": xp_now,
+		"xp_to_next": _Progression.xp_to_advance(level),
 	}
 
 

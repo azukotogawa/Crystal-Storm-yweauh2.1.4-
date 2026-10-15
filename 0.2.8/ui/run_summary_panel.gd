@@ -3,6 +3,7 @@ extends VBoxContainer
 
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _GameConfig = preload("res://config/game_config.gd")
+const _Progression = preload("res://systems/progression_service.gd")
 
 var _body: Label
 var _summary: Dictionary = {}
@@ -54,10 +55,11 @@ static func format_summary(summary: Dictionary) -> String:
 	elif outcome == "loss":
 		title = loss_heading(summary)
 	var boss := "yes" if bool(summary.get("boss_defeated", false)) else "no"
+	var head := "%s\n%s" % [title, _xp_lines(summary)]
 	if _GameConfig.SINGLE_CRYSTAL:
 		var crystal := "yes" if _crystal_destroyed(summary) else "no"
 		return "%s\nTime: %.1fs\nCrystal destroyed: %s\nBoss defeated: %s\nCrystal broken: %d\nEnemies killed: %d\nRelics taken: %d\nDeaths: %d" % [
-			title,
+			head,
 			float(summary.get("time_sec", 0.0)),
 			crystal,
 			boss,
@@ -67,7 +69,7 @@ static func format_summary(summary: Dictionary) -> String:
 			int(summary.get("deaths", 0)),
 		]
 	return "%s\nTime: %.1fs\nSpawns destroyed: %d\nBoss defeated: %s\nCrystal broken: %d\nEnemies killed: %d\nRelics taken: %d\nDeaths: %d" % [
-		title,
+		head,
 		float(summary.get("time_sec", 0.0)),
 		int(summary.get("spawns_destroyed", 0)),
 		boss,
@@ -76,6 +78,26 @@ static func format_summary(summary: Dictionary) -> String:
 		int(summary.get("relics_taken", 0)),
 		int(summary.get("deaths", 0)),
 	]
+
+
+static func _xp_lines(summary: Dictionary) -> String:
+	var level := int(summary.get("level", -1))
+	var xp_now := int(summary.get("xp", -1))
+	if level < 1 or xp_now < 0:
+		var svc = _Progression.get_active()
+		if svc:
+			if level < 1:
+				level = int(svc.level)
+			if xp_now < 0:
+				xp_now = int(svc.xp)
+	if level < 1:
+		level = 1
+	if xp_now < 0:
+		xp_now = 0
+	var need := int(summary.get("xp_to_next", 0))
+	if need <= 0:
+		need = _Progression.xp_to_advance(level)
+	return "Level: %d\nXP: %d / %d" % [level, xp_now, need]
 
 
 static func loss_heading(summary: Dictionary) -> String:
