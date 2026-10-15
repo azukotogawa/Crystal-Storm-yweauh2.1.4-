@@ -1,5 +1,17 @@
 extends SceneTree
 
+const ART_SIZE := Vector2i(32, 48)
+const PARTS := [
+	{"id": "torso", "bone": "Torso", "parent": "Root", "x": 12, "y": 12, "w": 8, "h": 12},
+	{"id": "head", "bone": "Head", "parent": "Torso", "x": 12, "y": 2, "w": 8, "h": 8},
+	{"id": "upper_arm_l", "bone": "UpperArm_L", "parent": "Torso", "x": 8, "y": 12, "w": 4, "h": 4},
+	{"id": "lower_arm_l", "bone": "LowerArm_L", "parent": "UpperArm_L", "x": 8, "y": 16, "w": 4, "h": 4},
+	{"id": "upper_arm_r", "bone": "UpperArm_R", "parent": "Torso", "x": 20, "y": 12, "w": 4, "h": 4},
+	{"id": "lower_arm_r", "bone": "LowerArm_R", "parent": "UpperArm_R", "x": 20, "y": 16, "w": 4, "h": 4},
+	{"id": "leg_l", "bone": "Leg_L", "parent": "Root", "x": 12, "y": 28, "w": 4, "h": 8},
+	{"id": "leg_r", "bone": "Leg_R", "parent": "Root", "x": 16, "y": 28, "w": 4, "h": 8},
+]
+
 
 func _init() -> void:
 	call_deferred("_run")

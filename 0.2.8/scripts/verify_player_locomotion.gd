@@ -189,6 +189,20 @@ func _tick(player: Player, frames: int) -> void:
 
 
 func _verts(mi: MeshInstance3D) -> PackedVector3Array:
+	var skel := mi.get_node_or_null("PlayerRig")
+	if skel == null:
+		return _surface_verts(mi)
+	var all := PackedVector3Array()
+	for att in skel.get_children():
+		for ch in att.get_children():
+			if ch is MeshInstance3D:
+				var part := _surface_verts(ch)
+				for v in part:
+					all.push_back(v)
+	return all
+
+
+func _surface_verts(mi: MeshInstance3D) -> PackedVector3Array:
 	var mesh := mi.mesh as ArrayMesh
 	if mesh == null or mesh.get_surface_count() < 1:
 		return PackedVector3Array()

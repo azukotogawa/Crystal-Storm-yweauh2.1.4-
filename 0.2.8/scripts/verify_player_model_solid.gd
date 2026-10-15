@@ -27,9 +27,16 @@ func _run() -> void:
 	var radius: float = ws.player_radius()
 	var mi := MeshInstance3D.new()
 	_Body.apply_to(mi, height, radius)
-	var mesh := mi.mesh as ArrayMesh
+	var rigged := mi.get_node_or_null("PlayerRig") != null
+	if not _Body.USE_SLAB_BODY and not rigged:
+		push_error("part rig missing while USE_SLAB_BODY is off")
+		failed = true
+	elif rigged and not _rig_bones_ok(mi):
+		push_error("player rig is missing head, torso, arm, or leg bones")
+		failed = true
 	var mat := mi.material_override as StandardMaterial3D
-	if mesh == null or mesh.get_surface_count() < 1:
+	var arrays: Array = _body_arrays(mi)
+	if arrays.is_empty():
 		push_error("player visual has no mesh surface")
 		quit(1)
 		return
@@ -61,7 +68,6 @@ func _run() -> void:
 	if not failed:
 		print("OK material unshaded, cull back, opaque, shadow off")
 
-	var arrays: Array = mesh.surface_get_arrays(0)
 	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
@@ -142,14 +148,22 @@ func _run() -> void:
 			side_n += 1
 		i += 3
 
-	for key in edges.keys():
-		if int(edges[key]) != 2:
-			open_edges += 1
-	if open_edges > 0:
-		push_error("player mesh is not closed: %d edges are not shared by 2 triangles" % open_edges)
-		failed = true
+	if rigged:
+		var open_parts := _open_part_edges(mi)
+		if open_parts > 0:
+			push_error("player part mesh is not closed: %d edges" % open_parts)
+			failed = true
+		else:
+			print("OK closed part shells tris=%d" % tri_count)
 	else:
-		print("OK closed manifold tris=%d" % tri_count)
+		for key in edges.keys():
+			if int(edges[key]) != 2:
+				open_edges += 1
+		if open_edges > 0:
+			push_error("player mesh is not closed: %d edges are not shared by 2 triangles" % open_edges)
+			failed = true
+		else:
+			print("OK closed manifold tris=%d" % tri_count)
 	if bad_wind > 0:
 		push_error("player winding does not match BoxMesh (outside visible under CULL_BACK): %d tris" % bad_wind)
 		failed = true
@@ -227,6 +241,15 @@ func _run() -> void:
 		failed = true
 	else:
 		print("OK boots on the capsule bottom and width matches the collider")
+	if rigged:
+		var slab_built: Dictionary = _Body.build(radius * 2.0, height)
+		var slab_mesh := slab_built["mesh"] as ArrayMesh
+		var slab_box := slab_mesh.get_aabb() if slab_mesh != null else AABB()
+		if slab_mesh == null or slab_box.position.distance_to(aabb.position) > 0.02 or slab_box.size.distance_to(aabb.size) > 0.02:
+			push_error("part rig silhouette drifted from the slab %s vs %s" % [aabb, slab_box])
+			failed = true
+		else:
+			print("OK part rig matches the slab silhouette")
 
 	var player_src_body := FileAccess.get_file_as_string("res://player/player.gd")
 	if player_src_body.find("_body_collision.position.y = capsule.height * 0.5") < 0:
@@ -242,9 +265,9 @@ func _run() -> void:
 	var tall_r := _Body.half_width_for_height(tall_h)
 	var mi_tall := MeshInstance3D.new()
 	_Body.apply_to(mi_tall, tall_h, tall_r)
-	var tall_mesh := mi_tall.mesh as ArrayMesh
-	var tall_box := tall_mesh.get_aabb() if tall_mesh != null else AABB()
-	if tall_mesh == null \
+	var tall_arrays := _body_arrays(mi_tall)
+	var tall_box := _aabb_from_arrays(tall_arrays)
+	if tall_arrays.is_empty() \
 			or absf(mi_tall.position.y - tall_h * 0.5) > 0.001 \
 			or absf(tall_box.position.y + tall_h * 0.5) > 0.02 \
 			or absf(tall_box.size.x - tall_r * 2.0) > 0.04 \
@@ -468,3 +491,110 @@ func _ray_tri(o: Vector3, d: Vector3, v0: Vector3, v1: Vector3, v2: Vector3) -> 
 	if t <= 0.0001:
 		return -1.0
 	return t
+
+
+func _rig_bones_ok(mi: MeshInstance3D) -> bool:
+	var skel := mi.get_node_or_null("PlayerRig") as Skeleton3D
+	if skel == null:
+		return false
+	for bone_name in ["Root", "Torso", "Head", "UpperArm_L", "LowerArm_L", "UpperArm_R", "LowerArm_R", "Leg_L", "Leg_R"]:
+		if skel.find_bone(bone_name) < 0:
+			return false
+	var ids := {}
+	for att in skel.get_children():
+		if att is BoneAttachment3D:
+			ids[str(att.name)] = true
+	for part_id in ["head", "torso", "upper_arm_l", "lower_arm_l", "upper_arm_r", "lower_arm_r", "leg_l", "leg_r"]:
+		if not ids.has(part_id):
+			return false
+	return true
+
+
+func _body_arrays(mi: MeshInstance3D) -> Array:
+	var skel := mi.get_node_or_null("PlayerRig")
+	if skel == null:
+		var mesh := mi.mesh as ArrayMesh
+		if mesh == null or mesh.get_surface_count() < 1:
+			return []
+		return mesh.surface_get_arrays(0)
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
+	for att in skel.get_children():
+		for ch in att.get_children():
+			if not (ch is MeshInstance3D):
+				continue
+			var pm := (ch as MeshInstance3D).mesh as ArrayMesh
+			if pm == null or pm.get_surface_count() < 1:
+				continue
+			var a: Array = pm.surface_get_arrays(0)
+			var base := verts.size()
+			var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var pn: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+			var pc: PackedColorArray = a[Mesh.ARRAY_COLOR]
+			var pi: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+			for v in pv:
+				verts.push_back(v)
+			for nrm in pn:
+				normals.push_back(nrm)
+			for col in pc:
+				colors.push_back(col)
+			for idx in pi:
+				indices.push_back(int(idx) + base)
+	if verts.is_empty():
+		return []
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	return arrays
+
+
+func _aabb_from_arrays(arrays: Array) -> AABB:
+	if arrays.is_empty():
+		return AABB()
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var box := AABB()
+	var have := false
+	for v in verts:
+		if not have:
+			box = AABB(v, Vector3.ZERO)
+			have = true
+		else:
+			box = box.expand(v)
+	return box
+
+
+func _open_part_edges(mi: MeshInstance3D) -> int:
+	var skel := mi.get_node_or_null("PlayerRig")
+	if skel == null:
+		return 0
+	var open := 0
+	for att in skel.get_children():
+		for ch in att.get_children():
+			if not (ch is MeshInstance3D):
+				continue
+			var pm := (ch as MeshInstance3D).mesh as ArrayMesh
+			if pm == null or pm.get_surface_count() < 1:
+				open += 1
+				continue
+			var a: Array = pm.surface_get_arrays(0)
+			var pv: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+			var pi: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+			var edges := {}
+			var i := 0
+			while i + 2 < pi.size():
+				var va: Vector3 = pv[int(pi[i])]
+				var vb: Vector3 = pv[int(pi[i + 1])]
+				var vc: Vector3 = pv[int(pi[i + 2])]
+				_count_edge(edges, va, vb)
+				_count_edge(edges, vb, vc)
+				_count_edge(edges, vc, va)
+				i += 3
+			for key in edges.keys():
+				if int(edges[key]) != 2:
+					open += 1
+	return open

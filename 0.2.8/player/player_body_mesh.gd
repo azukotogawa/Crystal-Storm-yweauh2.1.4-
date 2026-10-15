@@ -6,6 +6,8 @@ const DEPTH_STEPS := 8
 const ALPHA_CUTOFF := 0.5
 const CONTENT_W := 16
 const CONTENT_H := 34
+const USE_SLAB_BODY := false
+const _Author = preload("res://assets/player/author_player.gd")
 
 const _TINT_SIDE := 0.62
 const _TINT_BACK := 0.50
@@ -80,11 +82,27 @@ static func half_width_for_height(body_height: float) -> float:
 
 
 static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
+	_drop_rig(mesh_instance)
+	if USE_SLAB_BODY:
+		_apply_slab(mesh_instance, height, radius)
+	else:
+		_apply_rig(mesh_instance, height, radius)
+
+
+static func _apply_slab(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
 	var built: Dictionary = build(radius * 2.0, height)
 	mesh_instance.mesh = built["mesh"]
 	mesh_instance.material_override = built["material"]
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mesh_instance.position.y = height * 0.5
+
+
+static func _drop_rig(mesh_instance: MeshInstance3D) -> void:
+	var old := mesh_instance.get_node_or_null("PlayerRig")
+	if old == null:
+		return
+	mesh_instance.remove_child(old)
+	old.free()
 
 
 static func make_material() -> StandardMaterial3D:
@@ -175,7 +193,8 @@ static func _shade(texel: Color, n: Vector3) -> Color:
 	return Color(texel.r * k, texel.g * k, texel.b * k, 1.0)
 
 
-static func _extrude(img: Image, width: float, height: float) -> Dictionary:
+static func _extrude(img: Image, width: float, height: float, lim_x: int = -1, lim_y: int = -1, lim_w: int = -1, lim_h: int = -1) -> Dictionary:
+	var use_limit := lim_w > 0 and lim_h > 0
 	var w := img.get_width()
 	var h := img.get_height()
 	var d := DEPTH_STEPS
@@ -193,7 +212,6 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 			var pix := img.get_pixel(ix, iy)
 			if pix.a < ALPHA_CUTOFF:
 				continue
-			opaque += 1
 			if ix < min_ix:
 				min_ix = ix
 			if ix > max_ix:
@@ -202,6 +220,9 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 				min_my = my
 			if my > max_my:
 				max_my = my
+			if use_limit and not _pixel_in(ix, iy, lim_x, lim_y, lim_w, lim_h):
+				continue
+			opaque += 1
 			for iz in d:
 				buf.occupy(ix, my, iz)
 	var span_x := 1
@@ -241,7 +262,76 @@ static func _extrude(img: Image, width: float, height: float) -> Dictionary:
 					buf.emit_quad(Vector3(x0, y0, z1), Vector3(x1, y0, z1), Vector3(x1, y1, z1), Vector3(x0, y1, z1), Vector3(0, 0, 1), _shade(texel, Vector3(0, 0, 1)))
 				if not buf.occ(ix, my, iz - 1):
 					buf.emit_quad(Vector3(x1, y0, z0), Vector3(x0, y0, z0), Vector3(x0, y1, z0), Vector3(x1, y1, z0), Vector3(0, 0, -1), _shade(texel, Vector3(0, 0, -1)))
+	if buf.indices.is_empty():
+		return {"mesh": null, "opaque": opaque, "depth": body_d}
 	return {"mesh": buf.commit(), "opaque": opaque, "depth": body_d}
+
+
+static func _pixel_in(ix: int, iy: int, lim_x: int, lim_y: int, lim_w: int, lim_h: int) -> bool:
+	return ix >= lim_x and iy >= lim_y and ix < lim_x + lim_w and iy < lim_y + lim_h
+
+
+static func _joint_pivot(part_id: String, box: AABB) -> Vector3:
+	var mid := box.position + box.size * 0.5
+	if part_id == "head" or part_id == "torso":
+		return Vector3(mid.x, box.position.y, mid.z)
+	return Vector3(mid.x, box.position.y + box.size.y, mid.z)
+
+
+static func _apply_rig(mesh_instance: MeshInstance3D, height: float, radius: float) -> void:
+	_ensure_wind()
+	var width := radius * 2.0
+	var mat := make_material()
+	mesh_instance.mesh = null
+	mesh_instance.material_override = mat
+	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_instance.position.y = height * 0.5
+	var img := _load_image()
+	if img == null or width <= 0.0 or height <= 0.0:
+		_apply_slab(mesh_instance, height, radius)
+		return
+	var full: Dictionary = _extrude(img, width, height)
+	var skel := Skeleton3D.new()
+	skel.name = "PlayerRig"
+	var root := skel.add_bone("Root")
+	skel.set_bone_rest(root, Transform3D.IDENTITY)
+	var bone_of := {"Root": root}
+	var pivot_of := {"Root": Vector3.ZERO}
+	var covered := 0
+	for part in _Author.PARTS:
+		var extruded: Dictionary = _extrude(img, width, height, int(part["x"]), int(part["y"]), int(part["w"]), int(part["h"]))
+		var mesh: ArrayMesh = extruded["mesh"]
+		if mesh == null or int(extruded["opaque"]) <= 0:
+			continue
+		covered += int(extruded["opaque"])
+		var pivot := _joint_pivot(str(part["id"]), mesh.get_aabb())
+		var bone_name := str(part["bone"])
+		var parent_name := str(part["parent"])
+		var idx := skel.add_bone(bone_name)
+		var parent_pivot: Vector3 = pivot_of[parent_name]
+		skel.set_bone_parent(idx, int(bone_of[parent_name]))
+		skel.set_bone_rest(idx, Transform3D(Basis.IDENTITY, pivot - parent_pivot))
+		bone_of[bone_name] = idx
+		pivot_of[bone_name] = pivot
+		var att := BoneAttachment3D.new()
+		att.name = str(part["id"])
+		att.bone_name = bone_name
+		att.bone_idx = idx
+		skel.add_child(att)
+		var part_mi := MeshInstance3D.new()
+		part_mi.name = "Mesh"
+		part_mi.mesh = mesh
+		part_mi.material_override = mat
+		part_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		part_mi.position = -pivot
+		att.add_child(part_mi)
+	if covered != int(full["opaque"]) or covered <= 0:
+		skel.free()
+		push_error("PlayerBodyMesh: part regions covered %d of %d opaque pixels; using the slab" % [covered, int(full["opaque"])])
+		_apply_slab(mesh_instance, height, radius)
+		return
+	skel.reset_bone_poses()
+	mesh_instance.add_child(skel)
 
 
 static func _fallback_box(width: float, height: float, body_d: float) -> ArrayMesh:
