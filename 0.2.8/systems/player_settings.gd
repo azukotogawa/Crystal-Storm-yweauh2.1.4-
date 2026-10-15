@@ -356,6 +356,10 @@ static func apply_accessibility(tree: SceneTree) -> void:
 	var overlay = tree.get_first_node_in_group("game_overlay")
 	if overlay and overlay.has_method("apply_hud_palette"):
 		overlay.apply_hud_palette(colorblind_palette)
+	for group_name in ["world_entity", "crystal_enemy"]:
+		for node in tree.get_nodes_in_group(group_name):
+			if node.has_method("repaint_creature"):
+				node.repaint_creature()
 
 
 static func _apply_ui_scale_now(tree: SceneTree = null) -> void:

@@ -4,6 +4,8 @@ const _Builder = preload("res://helpers/voxel_creature_builder.gd")
 const _Model = preload("res://helpers/voxel_model_builder.gd")
 const _Pose = preload("res://entities/creature_pose.gd")
 const _Entity = preload("res://entities/world_entity.gd")
+const _Palette = preload("res://ui/crystal_palette.gd")
+const _Enemy = preload("res://entities/crystal_enemy.gd")
 
 var _failed := 0
 
@@ -28,23 +30,31 @@ func _run() -> void:
 		_fail("world entity must keep the sprite and voxel-prop fallback")
 	if not _Builder.USE_PART_RIG:
 		_fail("USE_PART_RIG is off, so boar and deer stay on the old visual")
-	if _Builder.uses_rig(&"rabbit") or _Builder.uses_rig(&"bird"):
+	if _Builder.uses_rig(&"rabbit") or _Builder.uses_rig(&"bird") or _Builder.uses_rig(&"thornling") or _Builder.uses_rig(&"shard_guard"):
 		_fail("unconverted creatures must stay off the part rig")
 	if not _Builder.uses_rig(&"boar") or not _Builder.uses_rig(&"deer"):
 		_fail("boar and deer must use the part rig")
+	for crystal_kind in [&"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast"]:
+		if not _Builder.uses_rig(crystal_kind):
+			_fail("%s must use the part rig" % crystal_kind)
 	if not _Builder.parts_for(&"rabbit").is_empty():
 		_fail("rabbit has no voxel part spec")
 	_check_kind(&"boar")
 	_check_kind(&"deer")
+	_check_kind(&"crystal_mite", true, false, true)
+	_check_kind(&"crystal_stag", true, false, true)
+	_check_kind(&"corrupted_beast", true, false, true)
+	_check_kind(&"crystal_wisp", false, true, true)
 	_check_optional_wing()
 	_check_entities()
+	_check_enemy()
 	_finish()
 
 
-func _check_kind(kind: StringName) -> void:
+func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = false, crystal: bool = false) -> void:
 	var parts: Array = _Builder.parts_for(kind)
-	if not _has_kinds(parts, true, false):
-		_fail("%s spec is not head, body, two legs, and a tail" % kind)
+	if not _has_kinds(parts, want_tail, want_wing):
+		_fail("%s spec is not head, body, two legs, tail=%s wing=%s" % [kind, want_tail, want_wing])
 		return
 	for part in parts:
 		var spec: Dictionary = part
@@ -67,10 +77,15 @@ func _check_kind(kind: StringName) -> void:
 	for clip in ["idle", "walk", "attack"]:
 		if not player.has_animation(clip):
 			_fail("%s missing clip %s" % [kind, clip])
-	for bone_name in ["Body", "Head", "Leg_L", "Leg_R", "Tail"]:
+	for bone_name in ["Body", "Head", "Leg_L", "Leg_R"]:
 		if skel.find_bone(bone_name) < 0:
 			_fail("%s missing bone %s" % [kind, bone_name])
-	if skel.find_bone("Wing_L") >= 0:
+	if want_tail and skel.find_bone("Tail") < 0:
+		_fail("%s missing bone Tail" % kind)
+	if want_wing:
+		if skel.find_bone("Wing_L") < 0:
+			_fail("%s missing a wing" % kind)
+	elif skel.find_bone("Wing_L") >= 0:
 		_fail("%s built a wing it does not have" % kind)
 	var cube := _Builder.cube_edge()
 	var body_mi := _part_mi(skel, "body")
@@ -87,6 +102,7 @@ func _check_kind(kind: StringName) -> void:
 			_fail("%s body casts a shadow" % kind)
 		else:
 			print("OK %s body %s faces %d" % [kind, box.size, _Model.face_count(body)])
+			_check_crystal_body(kind, rig, body_mi, crystal)
 	_Builder.play(rig, "idle", 1.2)
 	var head_y := skel.get_bone_pose_position(skel.find_bone("Head")).y
 	var idle_lift := sin(1.2) * _Pose.IDLE_LIFT
@@ -194,7 +210,7 @@ func _check_entities() -> void:
 		_fail("rabbit lost the capsule fallback")
 	else:
 		print("OK rabbit fallback capsule")
-	for kind in [&"boar", &"deer"]:
+	for kind in [&"boar", &"deer", &"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast"]:
 		var entity := _Entity.new()
 		entity.entity_kind = kind
 		holder.add_child(entity)
@@ -209,6 +225,89 @@ func _check_entities() -> void:
 			_fail("%s kept the capsule beside the rig" % kind)
 		else:
 			print("OK %s entity rig" % kind)
+	holder.free()
+
+
+func _check_crystal_body(kind: StringName, rig: Node3D, body_mi: MeshInstance3D, crystal: bool) -> void:
+	var body_glows := bool(body_mi.get_meta("crystal_glow", false))
+	var glow_n := _glow_count(rig)
+	if not crystal:
+		if body_glows or glow_n > 0:
+			_fail("%s crystal cubes glow" % kind)
+		return
+	var mostly := kind == &"crystal_mite" or kind == &"crystal_wisp"
+	if mostly and not body_glows:
+		_fail("%s body is not crystal" % kind)
+	elif not mostly and body_glows:
+		_fail("%s hide body is emissive" % kind)
+	elif glow_n < 1:
+		_fail("%s has no crystal cubes" % kind)
+	else:
+		var glow_mi := _first_glow(rig)
+		var mat: StandardMaterial3D = null
+		if glow_mi != null:
+			mat = glow_mi.material_override as StandardMaterial3D
+		var want_em := _Palette.mass_emission(_Palette.is_active())
+		var want_al := _Palette.mass_albedo(_Palette.is_active())
+		var got := Color(0, 0, 0) if mat == null else mat.emission
+		if mat == null or not mat.emission_enabled or not _rgb_near(got, want_em):
+			_fail("%s emission %s want %s" % [kind, got, want_em])
+		elif not _mesh_near(glow_mi, want_al):
+			_fail("%s crystal tint is not the palette albedo" % kind)
+		else:
+			print("OK %s crystal glow %d" % [kind, glow_n])
+
+
+func _glow_count(node: Node) -> int:
+	var n := 0
+	if node is MeshInstance3D and bool(node.get_meta("crystal_glow", false)):
+		n = 1
+	for child in node.get_children():
+		n += _glow_count(child)
+	return n
+
+
+func _first_glow(node: Node) -> MeshInstance3D:
+	if node is MeshInstance3D and bool(node.get_meta("crystal_glow", false)):
+		return node as MeshInstance3D
+	for child in node.get_children():
+		var found := _first_glow(child)
+		if found != null:
+			return found
+	return null
+
+
+func _mesh_near(mi: MeshInstance3D, want: Color) -> bool:
+	if mi == null or mi.mesh == null:
+		return false
+	var arrays: Array = mi.mesh.surface_get_arrays(0)
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	if colors.is_empty():
+		return false
+	return _rgb_near(colors[0], want)
+
+
+func _rgb_near(a: Color, b: Color) -> bool:
+	return absf(a.r - b.r) < 0.04 and absf(a.g - b.g) < 0.04 and absf(a.b - b.b) < 0.04
+
+
+func _check_enemy() -> void:
+	var holder := Node.new()
+	root.add_child(holder)
+	var enemy := _Enemy.new()
+	enemy.enemy_id = &"crystal_stag"
+	holder.add_child(enemy)
+	enemy.setup(&"crystal_stag", null, null)
+	var rig := enemy.get_node_or_null("CreatureRig")
+	var anim := enemy.get_node_or_null("CreatureRig/CreatureAnim") as AnimationPlayer
+	if rig == null or not rig.visible:
+		_fail("crystal stag enemy did not spawn a rig")
+	elif anim == null or not anim.has_animation("attack"):
+		_fail("crystal stag enemy rig has no attack clip")
+	elif _glow_count(rig) < 1:
+		_fail("crystal stag enemy rig has no crystal cubes")
+	else:
+		print("OK crystal stag enemy rig")
 	holder.free()
 
 

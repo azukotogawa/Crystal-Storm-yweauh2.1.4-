@@ -7,6 +7,7 @@ const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _EnemySpawnDef = preload("res://config/enemy_spawn_def.gd")
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
+const _VoxelCreature = preload("res://helpers/voxel_creature_builder.gd")
 const _CombatRewards = preload("res://helpers/combat_rewards.gd")
 const _BossBrain = preload("res://entities/boss_brain.gd")
 const _Juice = preload("res://systems/juice.gd")
@@ -41,6 +42,7 @@ var _age: float = 0.0
 var _mesh: MeshInstance3D
 var _sprite: Sprite3D
 var _voxel_prop: Node3D
+var _part_rig: Node3D
 var _bob_phase: float = 0.0
 var _bob_ready: bool = false
 var locomotion_pose: String = "idle"
@@ -128,6 +130,11 @@ func _setup_visual(tint: Color, radius: float = 0.22, height: float = 0.70) -> v
 	if not is_inside_tree():
 		call_deferred("_setup_visual", tint, radius, height)
 		return
+	var look := _visual_lookup_id()
+	if _VoxelCreature.uses_rig(look) and _ensure_part_rig(look):
+		_apply_body_scale()
+		return
+	_drop_part_rig()
 	var registry = get_tree().get_first_node_in_group("game_visual_registry")
 	if registry != null and bool(registry.get("entity_voxel_models_enabled")):
 		_setup_voxel(tint)
@@ -171,6 +178,35 @@ func _visual_lookup_id() -> StringName:
 	if spawn_def:
 		return spawn_def.resolved_visual_id()
 	return enemy_id
+
+
+func _ensure_part_rig(look: StringName) -> bool:
+	var built: Node3D = _VoxelCreature.build(look)
+	if built == null:
+		return false
+	if _sprite:
+		_sprite.visible = false
+	if _mesh:
+		_mesh.visible = false
+	if _voxel_prop:
+		_voxel_prop.visible = false
+	_drop_part_rig()
+	_part_rig = built
+	add_child(_part_rig)
+	return true
+
+
+func _drop_part_rig() -> void:
+	if _part_rig and is_instance_valid(_part_rig):
+		if _part_rig.get_parent() == self:
+			remove_child(_part_rig)
+		_part_rig.free()
+	_part_rig = null
+
+
+func repaint_creature() -> void:
+	if _part_rig and is_instance_valid(_part_rig) and _VoxelCreature.uses_rig(_visual_lookup_id()):
+		_VoxelCreature.repaint(_part_rig)
 
 
 func _setup_voxel(tint: Color) -> void:
@@ -246,6 +282,8 @@ func _apply_body_scale() -> void:
 		s = 1.35
 	else:
 		return
+	if _part_rig and is_instance_valid(_part_rig):
+		_part_rig.scale = Vector3(s, s, s)
 	if _voxel_prop and is_instance_valid(_voxel_prop):
 		_voxel_prop.scale = Vector3(s, s, s)
 	if _sprite and is_instance_valid(_sprite):
@@ -712,6 +750,8 @@ func _detonate() -> void:
 
 
 func _active_visual() -> Node3D:
+	if _part_rig and is_instance_valid(_part_rig) and _part_rig.visible:
+		return _part_rig
 	if _voxel_prop and is_instance_valid(_voxel_prop) and _voxel_prop.visible:
 		return _voxel_prop
 	if _sprite and is_instance_valid(_sprite) and _sprite.visible:
@@ -743,6 +783,9 @@ func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> voi
 	elif locomotion_pose == "attack":
 		rate = 8.0
 	_bob_phase += delta * rate
+	if _part_rig and is_instance_valid(_part_rig) and _part_rig.visible and _VoxelCreature.uses_rig(_visual_lookup_id()):
+		_VoxelCreature.play(_part_rig, locomotion_pose, _bob_phase)
+		return
 	var vis := _active_visual()
 	if vis == null or vis != _voxel_prop:
 		return

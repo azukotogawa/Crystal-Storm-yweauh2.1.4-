@@ -206,6 +206,13 @@ static func make_material() -> StandardMaterial3D:
 	return mat
 
 
+static func make_glow_material(emission: Color) -> StandardMaterial3D:
+	var mat := make_material()
+	mat.emission_enabled = true
+	mat.emission = emission
+	return mat
+
+
 static func attach_on_pivot(parent: Node3D, part_name: String, mesh: ArrayMesh, pivot: Vector3) -> Node3D:
 	if parent == null or mesh == null:
 		return null
@@ -263,11 +270,40 @@ static func _attach_bone(
 	pivot_of_bone: Dictionary,
 	meta: Array
 ) -> bool:
-	var mesh := build_mesh(part.get("cells", []), palette, cube)
-	if mesh == null:
+	var cells: Array = part.get("cells", [])
+	var emit: Array = part.get("emit", [])
+	var solid_cells: Array = []
+	var glow_cells: Array = []
+	if emit.is_empty():
+		solid_cells = cells
+	else:
+		var last := {}
+		var order: Array = []
+		for cell in cells:
+			var packed_cell := _as_cell(cell)
+			if packed_cell.w <= 0:
+				continue
+			var key := Vector3i(packed_cell.x, packed_cell.y, packed_cell.z)
+			if not last.has(key):
+				order.append(key)
+			last[key] = packed_cell.w
+		for key in order:
+			var at: Vector3i = key
+			var mat := int(last[key])
+			var kept := Vector4i(at.x, at.y, at.z, mat)
+			if _listed(emit, mat):
+				glow_cells.append(kept)
+			else:
+				solid_cells.append(kept)
+	var solid: ArrayMesh = build_mesh(solid_cells, palette, cube) if not solid_cells.is_empty() else null
+	var glow: ArrayMesh = build_mesh(glow_cells, palette, cube) if not glow_cells.is_empty() else null
+	if solid == null and glow == null:
 		return false
+	var box := solid.get_aabb() if solid != null else glow.get_aabb()
+	if solid != null and glow != null:
+		box = box.merge(glow.get_aabb())
 	var kind := str(part.get("pivot", "bottom"))
-	var pivot: Vector3 = pivot_of(kind, mesh.get_aabb())
+	var pivot: Vector3 = pivot_of(kind, box)
 	if part.has("pivot_at"):
 		pivot = part["pivot_at"]
 	var parent_name := str(part.get("parent", "Root"))
@@ -283,7 +319,15 @@ static func _attach_bone(
 	att.bone_name = bone_name
 	att.bone_idx = idx
 	skel.add_child(att)
-	att.add_child(_mesh_instance(mesh, -pivot))
+	if solid != null:
+		att.add_child(_mesh_instance(solid, -pivot))
+	if glow != null:
+		var glow_mi := _mesh_instance(glow, -pivot)
+		glow_mi.name = "Mesh" if solid == null else "Glow"
+		var emission: Color = part.get("glow", Color(0.55, 0.18, 0.95))
+		glow_mi.material_override = make_glow_material(emission)
+		glow_mi.set_meta("crystal_glow", true)
+		att.add_child(glow_mi)
 	meta.append({"id": att.name, "bone": bone_name, "pivot": pivot})
 	return true
 
@@ -320,6 +364,13 @@ static func _pack(cells: Array) -> Dictionary:
 		occ[Vector3i(c.x - min_v.x, c.y - min_v.y, c.z - min_v.z)] = c.w
 	var size := Vector3i(max_v.x - min_v.x + 1, max_v.y - min_v.y + 1, max_v.z - min_v.z + 1)
 	return {"occ": occ, "size": size, "origin": min_v}
+
+
+static func _listed(ids: Array, mat: int) -> bool:
+	for id in ids:
+		if int(id) == mat:
+			return true
+	return false
 
 
 static func _as_cell(cell) -> Vector4i:

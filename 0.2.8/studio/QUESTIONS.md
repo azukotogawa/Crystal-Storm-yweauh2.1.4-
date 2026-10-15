@@ -25,3 +25,7 @@ The player rig now builds from `VoxelModelBuilder` on the existing bones. The gr
 ## 2026-10-15 — boar and deer use the player trial cube
 
 Boar and deer are voxel grids on that same trial edge (`player_height / 17` from `VoxelModelBuilder.player_grid_size().y`). They are not a second resolution and they are not `voxel_scale / 8` or `voxel_scale / 16`. The 8-versus-16 choice above is still open. A shorter boar is fewer cubes, not a smaller cube.
+
+## 2026-10-15 — crystal creatures use the same trial cube
+
+Crystal mite, crystal stag, crystal wisp, and corrupted beast use that same trial edge. A mite is fewer cubes, not a smaller cube. This is not a lock of 8 or 16 cubes per terrain block.

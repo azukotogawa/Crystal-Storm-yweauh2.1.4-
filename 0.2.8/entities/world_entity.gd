@@ -200,6 +200,11 @@ func _ensure_part_rig(_tint: Color) -> bool:
 	return true
 
 
+func repaint_creature() -> void:
+	if _part_rig and is_instance_valid(_part_rig) and _VoxelCreature.uses_rig(entity_kind):
+		_VoxelCreature.repaint(_part_rig)
+
+
 func _drop_part_rig() -> void:
 	if _part_rig and is_instance_valid(_part_rig):
 		if _part_rig.get_parent() == self:

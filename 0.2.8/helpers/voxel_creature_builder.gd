@@ -6,6 +6,7 @@ const USE_PART_RIG := true
 const _Model = preload("res://helpers/voxel_model_builder.gd")
 const _Pose = preload("res://entities/creature_pose.gd")
 const _Settings = preload("res://config/world_settings.gd")
+const _Palette = preload("res://ui/crystal_palette.gd")
 
 const _ANIM_LEN := TAU
 const _ANIM_STEPS := 16
@@ -14,7 +15,7 @@ const _ANIM_STEPS := 16
 static func uses_rig(kind: StringName) -> bool:
 	if not USE_PART_RIG:
 		return false
-	return kind == &"boar" or kind == &"deer"
+	return kind == &"boar" or kind == &"deer" or kind == &"crystal_mite" or kind == &"crystal_stag" or kind == &"crystal_wisp" or kind == &"corrupted_beast"
 
 
 static func parts_for(kind: StringName) -> Array:
@@ -22,6 +23,14 @@ static func parts_for(kind: StringName) -> Array:
 		return _boar_parts()
 	if kind == &"deer":
 		return _deer_parts()
+	if kind == &"crystal_mite":
+		return _mite_parts()
+	if kind == &"crystal_stag":
+		return _stag_parts()
+	if kind == &"crystal_wisp":
+		return _wisp_parts()
+	if kind == &"corrupted_beast":
+		return _beast_parts()
 	return []
 
 
@@ -41,6 +50,29 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.86, 0.72, 0.54),
 			Color(0.32, 0.20, 0.12),
 			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"crystal_mite" or kind == &"crystal_wisp":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			_crystal_albedo(),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"crystal_stag":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.72, 0.52, 0.38),
+			Color(0.86, 0.72, 0.54),
+			_crystal_albedo(),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"corrupted_beast":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.48, 0.36, 0.32),
+			Color(0.66, 0.50, 0.42),
+			Color(0.22, 0.14, 0.12),
+			Color(0.08, 0.08, 0.08),
+			_crystal_albedo(),
 		])
 	return PackedColorArray()
 
@@ -69,6 +101,12 @@ static func build_parts(parts: Array, palette: PackedColorArray, cube: float) ->
 	return rig
 
 
+static func repaint(rig: Node3D) -> void:
+	if rig == null:
+		return
+	_repaint_node(rig, _crystal_albedo(), _crystal_glow())
+
+
 static func play(rig: Node3D, pose: String, phase: float) -> void:
 	if rig == null:
 		return
@@ -85,6 +123,12 @@ static func play(rig: Node3D, pose: String, phase: float) -> void:
 	player.seek(fposmod(phase, maxf(length, 0.001)), true)
 	if skel.has_method("force_update_all_bone_transforms"):
 		skel.force_update_all_bone_transforms()
+	for child in skel.get_children():
+		if child is BoneAttachment3D:
+			var att := child as BoneAttachment3D
+			var bone_i := skel.find_bone(att.bone_name)
+			if bone_i >= 0:
+				att.transform = skel.get_bone_global_pose(bone_i)
 
 
 static func _boar_parts() -> Array:
@@ -118,6 +162,143 @@ static func _boar_parts() -> Array:
 		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
 		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
 		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _mite_parts() -> Array:
+	var crystal := 1
+	var dark := 2
+	var body: Array = []
+	_fill(body, 1, 1, 2, 5, 3, 7, crystal)
+	var head: Array = []
+	_fill(head, 2, 3, 0, 4, 5, 3, crystal)
+	_fill(head, 2, 4, 0, 3, 5, 1, dark)
+	_fill(head, 3, 4, 0, 4, 5, 1, dark)
+	var leg_l: Array = []
+	_fill(leg_l, 1, 0, 3, 2, 1, 4, crystal)
+	_fill(leg_l, 1, 0, 5, 2, 1, 6, crystal)
+	var leg_r: Array = []
+	_fill(leg_r, 4, 0, 3, 5, 1, 4, crystal)
+	_fill(leg_r, 4, 0, 5, 5, 1, 6, crystal)
+	var tail: Array = []
+	_fill(tail, 2, 2, 7, 4, 3, 9, crystal)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
+static func _stag_parts() -> Array:
+	var hide := 1
+	var belly := 2
+	var crystal := 3
+	var pupil := 4
+	var body: Array = []
+	_fill(body, 3, 5, 5, 7, 9, 12, hide)
+	_fill(body, 3, 5, 6, 7, 6, 11, belly)
+	_fill(body, 4, 9, 6, 6, 10, 11, crystal)
+	var head: Array = []
+	_fill(head, 3, 8, 1, 7, 12, 5, hide)
+	_fill(head, 4, 8, 0, 6, 10, 2, hide)
+	_fill(head, 3, 10, 1, 4, 11, 3, crystal)
+	_fill(head, 6, 10, 1, 7, 11, 3, crystal)
+	_fill(head, 3, 10, 1, 4, 11, 2, pupil)
+	_fill(head, 6, 10, 1, 7, 11, 2, pupil)
+	_fill(head, 3, 12, 2, 4, 15, 3, crystal)
+	_fill(head, 6, 12, 2, 7, 15, 3, crystal)
+	var leg_l: Array = []
+	_fill(leg_l, 2, 1, 5, 4, 5, 7, hide)
+	_fill(leg_l, 2, 0, 5, 4, 1, 7, pupil)
+	_fill(leg_l, 2, 1, 9, 4, 5, 11, hide)
+	_fill(leg_l, 2, 0, 9, 4, 1, 11, pupil)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 1, 5, 8, 5, 7, hide)
+	_fill(leg_r, 6, 0, 5, 8, 1, 7, pupil)
+	_fill(leg_r, 6, 1, 9, 8, 5, 11, hide)
+	_fill(leg_r, 6, 0, 9, 8, 1, 11, pupil)
+	var tail: Array = []
+	_fill(tail, 4, 8, 12, 6, 9, 14, belly)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
+static func _beast_parts() -> Array:
+	var hide := 1
+	var belly := 2
+	var dark := 3
+	var pupil := 4
+	var crystal := 5
+	var body: Array = []
+	_fill(body, 2, 3, 4, 8, 7, 11, hide)
+	_fill(body, 3, 3, 5, 7, 4, 10, belly)
+	_fill(body, 4, 7, 5, 6, 8, 10, crystal)
+	var head: Array = []
+	_fill(head, 3, 4, 0, 7, 7, 4, hide)
+	_fill(head, 4, 4, 0, 6, 5, 2, dark)
+	_fill(head, 3, 6, 1, 4, 7, 2, pupil)
+	_fill(head, 6, 6, 1, 7, 7, 2, pupil)
+	_fill(head, 3, 3, 0, 4, 4, 2, crystal)
+	_fill(head, 6, 3, 0, 7, 4, 2, crystal)
+	var leg_l: Array = []
+	_fill(leg_l, 1, 1, 4, 3, 3, 6, hide)
+	_fill(leg_l, 1, 0, 4, 3, 1, 6, dark)
+	_fill(leg_l, 1, 1, 8, 3, 3, 10, hide)
+	_fill(leg_l, 1, 0, 8, 3, 1, 10, dark)
+	var leg_r: Array = []
+	_fill(leg_r, 7, 1, 4, 9, 3, 6, hide)
+	_fill(leg_r, 7, 0, 4, 9, 1, 6, dark)
+	_fill(leg_r, 7, 1, 8, 9, 3, 10, hide)
+	_fill(leg_r, 7, 0, 8, 9, 1, 10, dark)
+	var tail: Array = []
+	_fill(tail, 4, 6, 11, 6, 7, 14, hide)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+	]
+
+
+static func _wisp_parts() -> Array:
+	var crystal := 1
+	var dark := 2
+	var body: Array = []
+	_fill(body, 3, 2, 3, 7, 5, 8, crystal)
+	var head: Array = []
+	_fill(head, 3, 5, 1, 7, 8, 4, crystal)
+	_fill(head, 3, 6, 1, 4, 7, 2, dark)
+	_fill(head, 6, 6, 1, 7, 7, 2, dark)
+	_fill(head, 4, 5, 0, 6, 6, 1, dark)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 0, 4, 4, 2, 6, crystal)
+	_fill(leg_l, 3, 0, 6, 4, 2, 8, crystal)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 4, 7, 2, 6, crystal)
+	_fill(leg_r, 6, 0, 6, 7, 2, 8, crystal)
+	var wing_l: Array = []
+	_fill(wing_l, 0, 4, 3, 3, 5, 7, crystal)
+	var wing_r: Array = []
+	_fill(wing_r, 7, 4, 3, 10, 5, 7, crystal)
+	var emit: Array = [crystal]
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit),
+		_part("head", "head", "Head", "Body", "bottom", head, emit),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
+		_part("wing_l", "wing", "Wing_L", "Body", "center", wing_l, emit),
+		_part("wing_r", "wing", "Wing_R", "Body", "center", wing_r, emit),
 	]
 
 
@@ -157,8 +338,8 @@ static func _deer_parts() -> Array:
 	]
 
 
-static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array) -> Dictionary:
-	return {
+static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = []) -> Dictionary:
+	var spec := {
 		"id": id,
 		"kind": kind,
 		"bone": bone,
@@ -166,6 +347,43 @@ static func _part(id: String, kind: String, bone: String, parent: String, pivot:
 		"pivot": pivot,
 		"cells": cells,
 	}
+	if not emit_ids.is_empty():
+		spec["emit"] = emit_ids
+		spec["glow"] = _crystal_glow()
+	return spec
+
+
+static func _crystal_albedo() -> Color:
+	return _Palette.mass_albedo(_Palette.is_active())
+
+
+static func _crystal_glow() -> Color:
+	return _Palette.mass_emission(_Palette.is_active())
+
+
+static func _repaint_node(node: Node, albedo: Color, glow: Color) -> void:
+	if node is MeshInstance3D and bool(node.get_meta("crystal_glow", false)):
+		var mi := node as MeshInstance3D
+		var mesh := mi.mesh as ArrayMesh
+		if mesh != null:
+			mi.mesh = _recolor_mesh(mesh, albedo)
+		var mat := mi.material_override as StandardMaterial3D
+		if mat != null:
+			mat.emission_enabled = true
+			mat.emission = glow
+	for child in node.get_children():
+		_repaint_node(child, albedo, glow)
+
+
+static func _recolor_mesh(mesh: ArrayMesh, albedo: Color) -> ArrayMesh:
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var colors: PackedColorArray = arrays[Mesh.ARRAY_COLOR]
+	for i in colors.size():
+		colors[i] = albedo
+	arrays[Mesh.ARRAY_COLOR] = colors
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return out
 
 
 static func _fill(into: Array, x0: int, y0: int, z0: int, x1: int, y1: int, z1: int, mat: int) -> void:

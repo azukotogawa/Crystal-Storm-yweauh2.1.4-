@@ -192,6 +192,9 @@ func _tick(entity: WorldEntity, frames: int) -> void:
 
 
 func _prop(body: Node) -> Node3D:
+	var rig := body.get_node_or_null("CreatureRig") as Node3D
+	if rig != null and rig.visible:
+		return rig
 	var prop := body.get_node_or_null("VoxelProp") as Node3D
 	if prop == null or not prop.visible:
 		return null
@@ -200,15 +203,18 @@ func _prop(body: Node) -> Node3D:
 
 func _corners(root: Node3D) -> Dictionary:
 	var out := {}
-	for child in root.get_children():
-		if not (child is MeshInstance3D):
-			continue
-		var mi := child as MeshInstance3D
-		var mesh := mi.mesh as BoxMesh
-		var half := mesh.size * 0.5 if mesh else Vector3(0.2, 0.2, 0.2)
-		var corner: Vector3 = mi.transform * Vector3(half.x, -half.y, half.z)
-		out[str(mi.name)] = corner
+	_corner_walk(root, root, out)
 	return out
+
+
+func _corner_walk(root: Node3D, node: Node, out: Dictionary) -> void:
+	if node is MeshInstance3D and node != root:
+		var mi := node as MeshInstance3D
+		var box := mi.get_aabb()
+		var corner: Vector3 = mi.global_transform * (box.position + Vector3(box.size.x, 0.0, box.size.z))
+		out[str(root.get_path_to(mi))] = root.to_local(corner)
+	for child in node.get_children():
+		_corner_walk(root, child, out)
 
 
 func _max_delta(before: Dictionary, after: Dictionary) -> float:
