@@ -11,6 +11,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _PoiScatter = preload("res://world/poi_scatter.gd")
 const _PropScatter = preload("res://world/prop_scatter.gd")
+const _Landmarks = preload("res://world/distant_landmarks.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
@@ -437,7 +438,12 @@ func _make_feature_anchor(wx: int, wz: int, feat: Dictionary) -> Node3D:
 				return null
 			return _make_building_anchor(wx, wz, col_x, col_z, "ruin_pillar", Vector3(1.2, 2.4, 1.2), 0.0)
 		_WorldFeatureTypes.FeatureKind.POI:
-			var poi_anchor := _PoiScatter.build_visual(str(feat.get("poi_kind", "")))
+			var poi_kind := str(feat.get("poi_kind", ""))
+			var poi_anchor: Node3D
+			if bool(feat.get("landmark", false)):
+				poi_anchor = _Landmarks.build_visual(poi_kind)
+			else:
+				poi_anchor = _PoiScatter.build_visual(poi_kind)
 			poi_anchor.position = _anchor_pos(col_x, col_z, 0.0)
 			return poi_anchor
 		_WorldFeatureTypes.FeatureKind.TOWN_BUILDING:
