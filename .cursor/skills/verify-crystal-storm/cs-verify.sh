@@ -70,7 +70,7 @@ convert_movie() {
   local log="$EVID/$name-ffmpeg.log"
   local out_win in_win seq_win wav_win
   out_win=$(win_path "$out")
-  if [ -f "$avi" ]; then
+  if [ -s "$avi" ]; then
     in_win=$(win_path "$avi")
     if ! "$FFMPEG" -y -i "$in_win" -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$out_win" >"$log" 2>&1; then
       echo "RECORD FAIL: ffmpeg could not convert $name.avi (see $log)" >&2
@@ -101,12 +101,18 @@ convert_movie() {
 }
 
 run_godot(){ local name="$1"; shift
-  local extra=()
+  local extra=() args=("$@")
   if [ "$RECORD" = 1 ] && wants_movie_frames "$@"; then
     extra=(--write-movie "$(movie_file_w "$name")" --fixed-fps 30 --disable-vsync)
+    args=()
+    local a
+    for a in "$@"; do
+      [ "$a" = --headless ] && continue
+      args+=("$a")
+    done
   fi
-  { echo "\$ godot ${extra[*]-} $*"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
-  godot "${extra[@]}" "$@" >> "$EVID/$name.log" 2>&1 & local pid=$!
+  { echo "\$ godot ${extra[*]-} ${args[*]}"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
+  godot "${extra[@]}" "${args[@]}" >> "$EVID/$name.log" 2>&1 & local pid=$!
   echo "$pid" >> "$STATE/pids"; wait "$pid"; local rc=$?
   echo "# exit=$rc end=$(date -Is)" >> "$EVID/$name.log"; return $rc; }
 
