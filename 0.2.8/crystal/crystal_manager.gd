@@ -25,6 +25,7 @@ const _RelicChoice = preload("res://relics/relic_choice.gd")
 const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _CrystalPalette = preload("res://ui/crystal_palette.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _GameConfig = preload("res://config/game_config.gd")
 const _SPAWN_RELICS: Array[StringName] = [&"mason_glove", &"flow_anchor", &"crystal_ward"]
 
 
@@ -687,18 +688,19 @@ func _initialize_spawns() -> void:
 	_spawn_ctrl.last_destroyed_label = ""
 	_SpawnPointRegistry.ensure_builtins()
 
-	var origin_def := _spawn_def_for_kind(CrystalTypes.SpawnKind.ORIGIN)
-	var origin_pos := _resolve_origin_spawn_position()
+	var origin_def := _spawn_def_for_placed_crystal()
+	var origin_pos := pick_origin_spawn_cell()
 	var origin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), origin_pos, origin_def)
 	_spawn_points.append(origin)
 	_seed_emitter(origin)
 
-	_add_feature_ruin_spawns()
-	var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
-	for _i in procedural:
-		var ruin_pos := _pick_ruin_spawn_position()
-		_add_ruin_spawn_at(ruin_pos)
-	_add_artifact_spawns()
+	if not _GameConfig.SINGLE_CRYSTAL:
+		_add_feature_ruin_spawns()
+		var procedural := maxi(0, ruin_spawn_count - _count_ruin_spawns())
+		for _i in procedural:
+			var ruin_pos := _pick_ruin_spawn_position()
+			_add_ruin_spawn_at(ruin_pos)
+		_add_artifact_spawns()
 	_sync_spawn_controller()
 	_recalc_stats()
 	call_deferred("refresh_spawn_marker_textures")
@@ -741,6 +743,14 @@ func _add_ruin_spawn_at(ruin_pos: Vector2i) -> void:
 	var ruin := CrystalSpawnPoint.from_def(_alloc_spawn_id(), ruin_pos, ruin_def)
 	_spawn_points.append(ruin)
 	_seed_emitter(ruin)
+
+
+func _spawn_def_for_placed_crystal() -> _SpawnPointDef:
+	if _GameConfig.SINGLE_CRYSTAL:
+		var released = _SpawnPointDef.resolved_crystal()
+		if released != null:
+			return released
+	return _spawn_def_for_kind(CrystalTypes.SpawnKind.ORIGIN)
 
 
 func _spawn_def_for_kind(kind: int) -> _SpawnPointDef:
