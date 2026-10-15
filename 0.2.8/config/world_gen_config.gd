@@ -64,6 +64,12 @@ extends Resource
 @export var bush_density: float = 0.06
 @export var vegetation_scatter_attempts: int = 12000
 
+@export_group("Surface loot")
+@export var surface_vein_chance: float = 0.035
+@export var rare_ore_chance: float = 0.006
+@export var encounter_chance: float = 0.01
+@export var trader_share: float = 0.5
+
 
 static func create_default() -> WorldGenConfig:
 	return WorldGenConfig.new()

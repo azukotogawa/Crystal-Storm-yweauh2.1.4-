@@ -32,6 +32,16 @@ static func ensure_builtins() -> void:
 	villager.crystal_feed_power = 2.0
 	_register(villager)
 
+	var trader := _make(&"wandering_trader", "Wandering Trader", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 4.0, 6.0, 30.0, 0.0)
+	trader.contact_damage = 0.0
+	trader.defend_radius = 0.0
+	trader.feeds_crystal_on_death = false
+	_register(trader)
+	var bandit := _enemy_brain(&"ambush", "Ambush", _EntityBrainConfig.BehaviorProfile.SHARD_GUARD, 7.0, 8.0, 22.0, 6.0)
+	bandit.patrol_radius = 3.0
+	bandit.attack_cooldown = 0.9
+	_register(bandit)
+
 	_register(_enemy_brain(&"crystal_mite", "Crystal Mite", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 10.0, 16.0, 18.0))
 	_register(_enemy_brain(&"farm_bomber", "Farm Bomber", _EntityBrainConfig.BehaviorProfile.SUICIDE_BOMBER, 12.0, 6.0, 28.0, 32.0))
 	_register(_enemy_brain(&"crystal_stag", "Crystal Stag", _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER, 14.0, 22.0, 24.0))

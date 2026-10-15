@@ -148,6 +148,14 @@ const ITEMS: Dictionary = {
 		"stackable": true,
 		"max_stack": MAX_STACK,
 	},
+	"rare_ore": {
+		"name": "Rare Ore",
+		"category": Category.MATERIAL,
+		"stackable": true,
+		"max_stack": MAX_STACK,
+		"visual_id": "crystal_shard",
+		"description": "A rare ore exposed on the surface.",
+	},
 	"herb": {
 		"name": "Herb",
 		"category": Category.CONSUMABLE,

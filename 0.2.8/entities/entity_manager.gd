@@ -7,6 +7,7 @@ const _EntityBrainRegistry = preload("res://entities/entity_brain_registry.gd")
 const _WorldEntity = preload("res://entities/world_entity.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _Wildlife = preload("res://world/wildlife_density.gd")
+const _SurfaceLoot = preload("res://world/surface_loot.gd")
 
 @export var animals_per_biome_chunk: int = 3
 @export var max_entities: int = 128
@@ -426,30 +427,53 @@ func _process(_delta: float) -> void:
 
 func _activate_chunk_entities(coord: Vector2i) -> void:
 	_ensure_town_population_for_chunk(coord)
-	if animals_per_biome_chunk <= 0 or _entities.size() >= max_entities:
+	if animals_per_biome_chunk > 0 and _entities.size() < max_entities:
+		var spawns: Array = _wildlife_order(_FeatureRegistry.get_spawns_in_chunk(coord))
+		var room := _wildlife_room()
+		var used := 0
+		for spawn in spawns:
+			if _entities.size() >= max_entities or used >= room:
+				break
+			var pos: Vector2i = spawn.world_pos
+			var key := Vector2i(pos)
+			if _spawned_cells.has(key):
+				continue
+			if int(spawn.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
+				continue
+			var animal_kind := int(spawn.get("animal_kind", 0))
+			var brain_cfg = _brain_for_animal(animal_kind)
+			var herd_home := pos
+			var share_home := false
+			if spawn.has("herd_home") and spawn.get("herd_home") is Vector2i:
+				herd_home = spawn.get("herd_home")
+				share_home = true
+			_spawn_world_entity(pos.x, pos.y, brain_cfg, pos, _animal_color(animal_kind), herd_home, share_home)
+			_spawned_cells[key] = true
+			used += 1
+	_activate_chunk_encounters(coord)
+
+
+func _activate_chunk_encounters(coord: Vector2i) -> void:
+	if not _SurfaceLoot.ENABLED or _entities.size() >= max_entities:
 		return
-	var spawns: Array = _wildlife_order(_FeatureRegistry.get_spawns_in_chunk(coord))
-	var room := _wildlife_room()
 	var used := 0
-	for spawn in spawns:
-		if _entities.size() >= max_entities or used >= room:
+	for spawn in _FeatureRegistry.get_spawns_in_chunk(coord):
+		if used >= _SurfaceLoot.WAKE_CAP or _entities.size() >= max_entities:
 			return
-		var pos: Vector2i = spawn.world_pos
-		var key := Vector2i(pos)
-		if _spawned_cells.has(key):
+		if int(spawn.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.ENCOUNTER:
 			continue
-		if int(spawn.get("kind", 0)) != _WorldFeatureTypes.FeatureKind.ANIMAL_SPAWN:
-			continue
-		var animal_kind := int(spawn.get("animal_kind", 0))
-		var brain_cfg = _brain_for_animal(animal_kind)
-		var herd_home := pos
-		var share_home := false
-		if spawn.has("herd_home") and spawn.get("herd_home") is Vector2i:
-			herd_home = spawn.get("herd_home")
-			share_home = true
-		_spawn_world_entity(pos.x, pos.y, brain_cfg, pos, _animal_color(animal_kind), herd_home, share_home)
-		_spawned_cells[key] = true
-		used += 1
+		var encounter := str(spawn.get("encounter", ""))
+		var brain_cfg = _EntityBrainRegistry.get_def(_SurfaceLoot.brain_id(encounter))
+		var origin: Vector2i = spawn.get("world_pos", Vector2i.ZERO)
+		var tint := _SurfaceLoot.tint_for(encounter)
+		for cell in _SurfaceLoot.spawn_cells(spawn):
+			if used >= _SurfaceLoot.WAKE_CAP or _entities.size() >= max_entities:
+				return
+			if _spawned_cells.has(cell):
+				continue
+			_spawn_world_entity(cell.x, cell.y, brain_cfg, origin, tint, origin, true)
+			_spawned_cells[cell] = true
+			used += 1
 
 
 func _ensure_town_population_for_chunk(coord: Vector2i) -> void:

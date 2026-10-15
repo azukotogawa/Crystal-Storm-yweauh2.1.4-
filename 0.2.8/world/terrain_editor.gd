@@ -21,6 +21,7 @@ const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 const _StructureCrafting = preload("res://helpers/structure_crafting.gd")
 const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
+const _SurfaceLoot = preload("res://world/surface_loot.gd")
 
 const REBUILD_EDGE_BAND := 1
 
@@ -338,6 +339,9 @@ func _brush_dig_cell(wx: int, wz: int, inventory) -> String:
 func _grant_dig_loot(wx: int, wz: int, inventory) -> bool:
 	if inventory == null or world == null or not inventory.has_method("add_item"):
 		return false
+	var vein_item := _SurfaceLoot.take_drop(wx, wz)
+	if not vein_item.is_empty():
+		return int(inventory.add_item(vein_item, 1)) < 1
 	var tile: int = world.get_tile_type(float(wx), float(wz))
 	var item_id := _loot_item_for_tile(tile)
 	if item_id.is_empty():

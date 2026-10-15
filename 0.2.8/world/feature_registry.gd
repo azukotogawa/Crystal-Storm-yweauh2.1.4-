@@ -395,6 +395,15 @@ static func _ensure_ruin_centers_list() -> void:
 	_ruin_centers_dirty = false
 
 
+static func register_spawn_data(wx: int, wz: int, kind: int, data: Dictionary) -> void:
+	var ws = _ws()
+	var entry := data.duplicate()
+	entry["world_pos"] = Vector2i(wx, wz)
+	entry["kind"] = kind
+	ws.entity_spawns.append(entry)
+	register_feature(wx, wz, kind, entry)
+
+
 static func register_entity_spawn(wx: int, wz: int, kind: int, animal_kind: int = -1) -> void:
 	var ws = _ws()
 	var entry := {

@@ -7,6 +7,7 @@ const _VegetationManager = preload("res://world/vegetation_manager.gd")
 const _EntityManager = preload("res://entities/entity_manager.gd")
 const _RuinManager = preload("res://world/ruin_manager.gd")
 const _PoiScatter = preload("res://world/poi_scatter.gd")
+const _SurfaceLoot = preload("res://world/surface_loot.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 const _StartupTotal = preload("res://systems/startup_total_profiler.gd")
 
@@ -177,6 +178,15 @@ func _seed_content(perf_svc) -> void:
 		_crash_crumb("WorldFeatures._seed_content → PoiScatter.place EXIT")
 	else:
 		_StartupProfiler.mark("fs/poi_scatter", 0)
+
+	if _SurfaceLoot.ENABLED and world != null and not safe_mode:
+		_crash_crumb("WorldFeatures._seed_content → SurfaceLoot.place ENTER")
+		_StartupProfiler.begin("fs/surface_loot")
+		_SurfaceLoot.place(world)
+		_StartupProfiler.end("fs/surface_loot")
+		_crash_crumb("WorldFeatures._seed_content → SurfaceLoot.place EXIT")
+	else:
+		_StartupProfiler.mark("fs/surface_loot", 0)
 
 	var entity_mgr = get_node_or_null("EntityManager")
 	if entity_mgr and not safe_mode:

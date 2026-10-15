@@ -27,7 +27,7 @@ static func parts_for(kind: StringName) -> Array:
 		return _rabbit_parts()
 	if kind == &"bird":
 		return _bird_parts()
-	if kind == &"town_militia":
+	if kind == &"town_militia" or kind == &"wandering_trader":
 		return _militia_parts()
 	if kind == &"crystal_mite":
 		return _mite_parts()
@@ -39,7 +39,7 @@ static func parts_for(kind: StringName) -> Array:
 		return _beast_parts()
 	if kind == &"farm_bomber":
 		return _bomber_parts()
-	if kind == &"thornling":
+	if kind == &"thornling" or kind == &"ambush":
 		return _thornling_parts()
 	if kind == &"shard_guard":
 		return _guard_parts()
@@ -102,7 +102,7 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.90, 0.55, 0.22),
 			Color(0.08, 0.08, 0.08),
 		])
-	if kind == &"town_militia":
+	if kind == &"town_militia" or kind == &"wandering_trader":
 		return PackedColorArray([
 			Color(0, 0, 0),
 			Color(0.35, 0.42, 0.62),
@@ -117,7 +117,7 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.08, 0.08, 0.08),
 			Color(0.95, 0.45, 0.15),
 		])
-	if kind == &"thornling":
+	if kind == &"thornling" or kind == &"ambush":
 		return PackedColorArray([
 			Color(0, 0, 0),
 			Color(0.32, 0.55, 0.28),

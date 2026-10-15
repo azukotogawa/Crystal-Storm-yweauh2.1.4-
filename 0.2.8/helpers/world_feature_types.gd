@@ -11,6 +11,8 @@ enum FeatureKind {
 	ANIMAL_SPAWN,
 	RUIN,
 	POI,
+	VEIN,
+	ENCOUNTER,
 }
 
 enum AnimalKind {
