@@ -10,9 +10,30 @@ EVID_ROOT="${CS_VERIFY_EVID_ROOT:-/mnt/d/ARCHIVE/CrystalStorm/verify-evidence}"
 FFMPEG_PORTABLE="/mnt/c/Users/cwith/pivot/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe"
 RECORD=0
 SHOWCASE_CAPTURE=0
+SHOWCASE_OVERRIDE=0
 FFMPEG=""
 
 record_fail() { echo "RECORD FAIL: $*" >&2; exit 1; }
+
+arm_showcase_override() {
+  [ "$SHOWCASE_CAPTURE" = 1 ] || return 0
+  local cfg="$ROOT/override.cfg"
+  if [ -e "$cfg" ]; then
+    record_fail "refusing to replace existing 0.2.8/override.cfg"
+  fi
+  printf '%s\n' '[display]' '' \
+    'window/size/viewport_width=1280' \
+    'window/size/viewport_height=720' \
+    'window/size/window_width_override=1280' \
+    'window/size/window_height_override=720' > "$cfg"
+  SHOWCASE_OVERRIDE=1
+}
+
+clear_showcase_override() {
+  [ "$SHOWCASE_OVERRIDE" = 1 ] || return 0
+  rm -f "$ROOT/override.cfg"
+  SHOWCASE_OVERRIDE=0
+}
 
 find_ffmpeg() {
   if [ -n "${CS_VERIFY_FFMPEG:-}" ]; then
@@ -308,6 +329,7 @@ run_godot(){ local name="$1"; shift
     extra=(--write-movie "$(movie_file_w "$name")" --fixed-fps 30 --disable-vsync)
     if [ "$SHOWCASE_CAPTURE" = 1 ]; then
       extra+=(--windowed --resolution 1280x720)
+      arm_showcase_override
     fi
     args=()
     local a
@@ -319,6 +341,7 @@ run_godot(){ local name="$1"; shift
   { echo "\$ godot ${extra[*]-} ${args[*]}"; echo "# run_id=$RUN_ID start=$(date -Is)"; } > "$EVID/$name.log"
   godot "${extra[@]}" "${args[@]}" >> "$EVID/$name.log" 2>&1 & local pid=$!
   echo "$pid" >> "$STATE/pids"; wait "$pid"; local rc=$?
+  clear_showcase_override
   echo "# exit=$rc end=$(date -Is)" >> "$EVID/$name.log"; return $rc; }
 
 finish_record() {
@@ -430,6 +453,7 @@ publish_showcase() {
 record_trap() {
   local rc=$?
   trap - EXIT
+  clear_showcase_override
   finish_record "$rc"
   exit $?
 }
