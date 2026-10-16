@@ -10,7 +10,8 @@ const WIN_LIMIT := 90.0
 const WIN_HOLD := 3.0
 const PEST_LIMIT := 18.0
 const PEST_REACH := 4.5
-const HEAL_RATIO := 0.55
+const HEAL_RATIO := 0.78
+const SWORD_REACH := 2.55
 
 var heart = _Crystal.new()
 var caption := ""
@@ -26,6 +27,7 @@ var _pest_age := 0.0
 var _pest_sword := false
 var _pest_wait := 0.0
 var _relic_frames := 0
+var _stand_logged := false
 var _armed := false
 var _clocks := {"crystal": 0.0, "boss": 0.0, "win_screen": 0.0}
 
@@ -44,6 +46,7 @@ func begin(id: String) -> void:
 	_heal_wait = 0.0
 	_relic = 0
 	_relic_frames = 0
+	_stand_logged = false
 	_pest_age = 0.0
 	_pest_sword = false
 	_pest_wait = 0.0
@@ -74,6 +77,15 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	if relic == 2:
 		print("FAIL relic offer stayed open")
 		return "fail"
+	if _needs_herb(player):
+		_use_herb()
+		return ""
+	var seen_hp := _hp(tree)
+	if seen_hp.y > 0.0 and seen_hp.x < seen_hp.y - 0.5:
+		_dropped = true
+	if _bosses(tree).is_empty() and _walk_stand(dt, tree, player):
+		_note_hp()
+		return _status(dt, tree)
 	if _clear_pest(dt, tree, player):
 		return ""
 	_drive(dt, tree, player)
@@ -86,23 +98,26 @@ func _drive(dt: float, tree: SceneTree, player: Node) -> void:
 	var origin := _origin(tree)
 	var hp := _hp(tree)
 	var pos := _xz(player)
-	heart.set_vitals(float(player.health), float(player.max_health))
-	heart.observe_crystal(origin, hp.x, hp.y)
 	var bosses := _bosses(tree)
+	var nav := origin
+	if bosses.is_empty() and _in_sword_range(pos, origin):
+		var toward := origin - pos
+		if toward.length() > 1.5:
+			nav = pos + toward.normalized() * 1.5
+		else:
+			nav = pos
+	heart.set_vitals(float(player.health), float(player.max_health))
+	heart.observe_crystal(nav, hp.x, hp.y)
 	heart.observe_foes(bosses)
 	heart.fight.chip_skills = not bosses.is_empty()
 	var aim := origin + Vector2(0.5, 0.5)
 	if not bosses.is_empty():
 		aim = bosses[0].get("xz", aim)
 	var dist := pos.distance_to(origin)
-	if bosses.is_empty() and dist > _Crystal.ENGAGE_COLUMNS:
+	if bosses.is_empty() and dist > SWORD_REACH + 0.4:
 		heart.fight.bot.extra_held = PackedStringArray(["sprint"])
 	else:
 		heart.fight.bot.extra_held = PackedStringArray()
-	if _needs_herb(player):
-		_use_herb()
-		heart.fight.bot.input.aim_column(player, aim.x, aim.y)
-		return
 	heart.tick(pos, _yaw(player), dt)
 	heart.fight.bot.input.aim_column(player, aim.x, aim.y)
 	if hp.x < hp.y - 0.5:
@@ -156,6 +171,60 @@ func tick_clock(step: float) -> void:
 	_clocks[seg] = float(_clocks.get(seg, 0.0)) + step
 
 
+func _walk_stand(dt: float, tree: SceneTree, player: Node) -> bool:
+	if seg != "crystal":
+		return false
+	var origin := _origin(tree)
+	var pos := _xz(player)
+	var stand := _shallow_stand(tree, origin)
+	var here := _feet_depth(tree, pos)
+	if not _stand_logged:
+		_stand_logged = true
+		print("SHOWCASE stand %.0f,%.0f depth %.2f feet %.2f player %.0f/%.0f" % [
+			stand.x, stand.y, _feet_depth(tree, stand), here,
+			float(player.health), float(player.max_health),
+		])
+	if here < 0.25 and _in_sword_range(pos, origin):
+		return false
+	if pos.distance_to(stand) <= 0.75 and _feet_depth(tree, stand) + 0.05 >= here:
+		return false
+	var bot = heart.fight.bot
+	bot.extra_held = PackedStringArray(["sprint"])
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(stand) > 0.6:
+		bot.set_target(stand)
+	bot.tick(pos, _yaw(player), dt)
+	bot.input.aim_column(player, origin.x + 0.5, origin.y + 0.5)
+	return true
+
+
+func _shallow_stand(tree: SceneTree, origin: Vector2) -> Vector2:
+	var best := origin + Vector2(0.5, 0.5)
+	var best_depth := _feet_depth(tree, best)
+	var ox := int(round(origin.x))
+	var oz := int(round(origin.y))
+	for dx in range(-3, 4):
+		for dz in range(-3, 4):
+			var at := Vector2(float(ox + dx) + 0.5, float(oz + dz) + 0.5)
+			if at.distance_to(origin + Vector2(0.5, 0.5)) > SWORD_REACH:
+				continue
+			var depth := _feet_depth(tree, at)
+			if depth < best_depth - 0.01:
+				best_depth = depth
+				best = at
+	return best
+
+
+func _in_sword_range(pos: Vector2, origin: Vector2) -> bool:
+	return pos.distance_to(origin + Vector2(0.5, 0.5)) <= SWORD_REACH
+
+
+func _feet_depth(tree: SceneTree, at: Vector2) -> float:
+	var crystal = tree.get_first_node_in_group("crystal_manager") if tree != null else null
+	if crystal == null or not crystal.has_method("get_depth_at"):
+		return 0.0
+	return float(crystal.get_depth_at(floori(at.x), floori(at.y)))
+
+
 func _clear_pest(dt: float, tree: SceneTree, player: Node) -> bool:
 	if seg != "crystal" or _pest_age >= PEST_LIMIT:
 		return false
@@ -169,9 +238,6 @@ func _clear_pest(dt: float, tree: SceneTree, player: Node) -> bool:
 	var pos := _xz(player)
 	var bot = heart.fight.bot
 	bot.input.aim_column(player, foe.x, foe.y)
-	if _needs_herb(player):
-		_use_herb()
-		return true
 	if pos.distance_to(foe) > _Crystal.ENGAGE_COLUMNS:
 		_pest_sword = false
 		bot.extra_held = PackedStringArray(["sprint"])
