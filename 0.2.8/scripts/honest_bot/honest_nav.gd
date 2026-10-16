@@ -18,25 +18,33 @@ static func world_delta(input: Vector2, yaw_degrees: float) -> Vector2:
 	return Vector2(input.x * ca + input.y * sa, input.y * ca - input.x * sa)
 
 
+static func face_action(from_xz: Vector2, to_xz: Vector2, yaw_degrees: float) -> String:
+	var offset := to_xz - from_xz
+	if offset.length_squared() <= 0.0001:
+		return ""
+	var facing := world_delta(Vector2(0.0, -1.0), yaw_degrees).normalized()
+	var desired := offset.normalized()
+	var cross := facing.x * desired.y - facing.y * desired.x
+	var dot := facing.dot(desired)
+	if absf(cross) < 0.08 and dot < 0.0:
+		return "rotate_right"
+	if cross < -0.08:
+		return "rotate_right"
+	if cross > 0.08:
+		return "rotate_left"
+	return ""
+
+
 static func choose(from_xz: Vector2, to_xz: Vector2, yaw_degrees: float) -> Dictionary:
 	var offset := to_xz - from_xz
 	if offset.length() <= ARRIVE_COLUMNS:
 		return {"arrived": true, "rotate": "", "move": ""}
 	var facing := world_delta(Vector2(0.0, -1.0), yaw_degrees).normalized()
 	var desired := offset.normalized()
-	var cross := facing.x * desired.y - facing.y * desired.x
-	var dot := facing.dot(desired)
-	var rotate := ""
-	if absf(cross) < 0.08 and dot < 0.0:
-		rotate = "rotate_right"
-	elif cross < -0.08:
-		rotate = "rotate_right"
-	elif cross > 0.08:
-		rotate = "rotate_left"
 	var move := ""
-	if dot >= ALIGN_DOT:
+	if facing.dot(desired) >= ALIGN_DOT:
 		move = "move_forward"
-	return {"arrived": false, "rotate": rotate, "move": move}
+	return {"arrived": false, "rotate": face_action(from_xz, to_xz, yaw_degrees), "move": move}
 
 
 static func stuck_line(pos: Vector2, moved: float, span: float, goal: Vector2) -> String:

@@ -17,6 +17,7 @@ bash $S doctor           # read-only health check
 bash $S quick            # import + stability + contracts  (~15 s) = QUICK_CHECK
 bash $S launch 8         # headless boot of main.tscn + 8 s scripted play (~25 s)
 bash $S bot              # honest-bot navigation on main.tscn (input only)
+bash $S bot-combat      # honest-bot combat: nearest foe, sword, skills, retreat, kills, deaths
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
 bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
@@ -40,6 +41,8 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 ## Honest bot
 
 `bash $S bot` runs `0.2.8/scripts/verify_honest_bot_nav.gd`. The bot under `0.2.8/scripts/honest_bot/` may only call `Input.action_press` / `Input.action_release` and `Input.parse_input_event` (`InputEventAction`). It does not teleport, grant XP, damage the crystal, or write world state. Navigation holds `rotate_left` / `rotate_right` until the camera yaw faces the target, then holds `move_forward`. If that column barely moves it also holds a strafe. After 1.25s with under 0.35 columns of travel it prints a `STUCK nav ...` line, sidesteps, and taps `jump`. Three stuck reports and it gives up on that target. Pass prints `HONEST BOT NAV OK`. A 137/134 exit after that marker is the abrupt probe quit. One line that starts with `FAIL` fails the command.
+
+`bash $S bot-combat` runs `0.2.8/scripts/verify_honest_bot_combat.gd`. The same input driver aims at the nearest sensed foe (`crystal_enemy` columns, or a sense the probe passes in), pulses `hotbar_1` once so the sword is selected, then pulses `attack` and `skill_1` / `skill_2` / `skill_3` while inside 2.4 columns and facing. At 30% health or below it walks away and does not attack. A foe id that disappears prints `KILL <id>`. Health at or below zero prints `DEATH hp ...` once and releases every action. Pass prints `HONEST BOT COMBAT OK` plus at least one `KILL` line and one `DEATH` line. The live sword check is a real `WeaponController` cooldown after `attack`, not a direct damage call.
 
 ## Drive
 

@@ -1,21 +1,26 @@
 extends RefCounted
 
 var _held: Dictionary = {}
-var _pulse := ""
+var _pulses: PackedStringArray = PackedStringArray()
 
 
 func begin_tick() -> void:
-	if _pulse == "":
-		return
-	_send(_pulse, false)
-	if Input.is_action_pressed(_pulse):
-		Input.action_release(_pulse)
-	_pulse = ""
+	for action in _pulses:
+		_send(action, false)
+		if Input.is_action_pressed(action):
+			Input.action_release(action)
+	_pulses = PackedStringArray()
 
 
 func pulse(action: StringName) -> void:
-	_pulse = String(action)
-	_send(_pulse, true)
+	var name := String(action)
+	if name == "":
+		return
+	for existing in _pulses:
+		if existing == name:
+			return
+	_pulses.append(name)
+	_send(name, true)
 
 
 func set_held(actions: PackedStringArray) -> void:
@@ -41,7 +46,12 @@ func release_all() -> void:
 
 
 func is_held(action: String) -> bool:
-	return bool(_held.get(action, false)) or _pulse == action
+	if bool(_held.get(action, false)):
+		return true
+	for existing in _pulses:
+		if existing == action:
+			return true
+	return false
 
 
 func _send(action: String, pressed: bool) -> void:

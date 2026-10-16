@@ -393,6 +393,12 @@ bot)
   if bad "$EVID/honest-bot.log"; then echo "BOT FAIL script rc=$r"; tail -8 "$EVID/honest-bot.log"; exit 1; fi
   if grep -qF "HONEST BOT NAV OK" "$EVID/honest-bot.log" && ! grep -q '^FAIL' "$EVID/honest-bot.log"; then
     echo "BOT OK rc=$r marker='HONEST BOT NAV OK'"; else echo "BOT FAIL rc=$r"; tail -12 "$EVID/honest-bot.log"; exit 1; fi ;;
+bot-combat)
+  run_godot honest-bot-combat --headless --path "$ROOT" -s res://scripts/verify_honest_bot_combat.gd; r=$?
+  grep -E '^(OK|FAIL|KILL|DEATH|KILLS|HONEST)' "$EVID/honest-bot-combat.log" | tr -d '\r'
+  if bad "$EVID/honest-bot-combat.log"; then echo "BOT COMBAT FAIL script rc=$r"; tail -8 "$EVID/honest-bot-combat.log"; exit 1; fi
+  if grep -qF "HONEST BOT COMBAT OK" "$EVID/honest-bot-combat.log" && grep -q '^KILL ' "$EVID/honest-bot-combat.log" && grep -q '^DEATH ' "$EVID/honest-bot-combat.log" && ! grep -q '^FAIL' "$EVID/honest-bot-combat.log"; then
+    echo "BOT COMBAT OK rc=$r marker='HONEST BOT COMBAT OK'"; else echo "BOT COMBAT FAIL rc=$r"; tail -12 "$EVID/honest-bot-combat.log"; exit 1; fi ;;
 telemetry-summary)
   py=""
   if command -v python3 >/dev/null 2>&1; then py=python3
@@ -413,5 +419,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
