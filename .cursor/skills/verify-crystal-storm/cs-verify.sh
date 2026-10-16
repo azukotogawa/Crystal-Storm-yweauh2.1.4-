@@ -432,13 +432,18 @@ bot-showcase)
   if ! grep -qF "HONEST BOT SHOWCASE OK" "$EVID/honest-bot-showcase.log" || grep -q '^FAIL' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL rc=$r"; tail -24 "$EVID/honest-bot-showcase.log"; exit 1
   fi
-  if ! grep -q '^SHOWCASE movement pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE day_night absent' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE NEXT dig_tool' "$EVID/honest-bot-showcase.log"; then
+  if ! grep -q '^SHOWCASE movement pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE day_night absent' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE dig_tool pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE structure_place pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE NEXT combat_crystal_mite' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL markers rc=$r"; exit 1
   fi
+  for kind in wall_segment wall_corner gate stairs small_tower; do
+    if ! grep -q "^SHOWCASE structure ${kind} shown" "$EVID/honest-bot-showcase.log"; then
+      echo "BOT SHOWCASE FAIL missing structure ${kind}"; exit 1
+    fi
+  done
   if [ ! -s "$EVID/chapters.json" ] || [ ! -s "$EVID/chapters.txt" ]; then
     echo "BOT SHOWCASE FAIL missing chapters sidecar"; exit 1
   fi
-  if ! grep -q '^movement ' "$EVID/chapters.txt" || ! grep -q '^day_night ' "$EVID/chapters.txt"; then
+  if ! grep -q '^movement ' "$EVID/chapters.txt" || ! grep -q '^day_night ' "$EVID/chapters.txt" || ! grep -q '^dig_tool ' "$EVID/chapters.txt" || ! grep -q '^structure_place ' "$EVID/chapters.txt" || ! grep -q '^structure_small_tower ' "$EVID/chapters.txt"; then
     echo "BOT SHOWCASE FAIL chapters.txt"; exit 1
   fi
   echo "BOT SHOWCASE OK rc=$r chapters=$EVID/chapters.json" ;;

@@ -1,0 +1,504 @@
+extends RefCounted
+
+const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
+const _Edits = preload("res://world/terrain_edits.gd")
+const _Features = preload("res://world/feature_registry.gd")
+const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+
+const OFFSETS: Array[Vector2i] = [
+	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
+	Vector2i(3, 1), Vector2i(-3, 1), Vector2i(1, 3), Vector2i(1, -3),
+	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 2), Vector2i(2, -4),
+]
+const SHOW_HOLD := 0.35
+const DIG_LIMIT := 8.0
+const PLACE_LIMIT := 22.0
+
+var chapter_label := ""
+var hands: RefCounted
+var player: Node
+var chapters: RefCounted
+var tree: SceneTree
+var mode := ""
+var beat := 0
+var age := 0.0
+var tries := 0
+var aim := Vector2i(999999, 999999)
+var heights: Dictionary = {}
+var tiles: Dictionary = {}
+var shown: Dictionary = {}
+var show_id := ""
+var show_age := 0.0
+var piece_before := 0
+var marked := ""
+var spin := 0
+
+
+func reset(segment: String) -> void:
+	mode = segment
+	beat = 0
+	age = 0.0
+	tries = 0
+	aim = Vector2i(999999, 999999)
+	heights = {}
+	tiles = {}
+	shown = {}
+	show_id = ""
+	show_age = 0.0
+	piece_before = 0
+	marked = ""
+	spin = 0
+	chapter_label = segment
+
+
+func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCounted) -> String:
+	tree = host
+	player = body
+	hands = pad
+	chapters = log
+	if hands != null and hands.has_method("begin_tick"):
+		hands.begin_tick()
+	var dt := step
+	if dt <= 0.0:
+		dt = 1.0 / 60.0
+	age += dt
+	if player == null or hands == null:
+		print("FAIL %s missing player" % mode)
+		return "fail"
+	if mode == "dig_tool":
+		return _dig()
+	if mode == "structure_place":
+		return _place(dt)
+	return "fail"
+
+
+func _dig() -> String:
+	if age > DIG_LIMIT:
+		print("FAIL dig_tool no height drop")
+		return "fail"
+	chapter_label = "dig_tool"
+	if beat == 0:
+		hands.pulse("hotbar_2")
+		beat = 1
+		return ""
+	if beat == 1:
+		aim = _free_cell(0)
+		_look_at(aim)
+		beat = 2
+		return ""
+	if beat == 2:
+		if _spinning(aim) and age < 2.4:
+			_look_at(aim)
+			return ""
+		_stop_move()
+		heights = _height_snap()
+		_look_at(aim)
+		hands.pulse("attack")
+		beat = 3
+		return ""
+	var dug := _dropped()
+	if dug.x < 900000:
+		print("SHOWCASE dig column %d %d" % [dug.x, dug.y])
+		return "pass"
+	tries += 1
+	if tries >= OFFSETS.size():
+		print("FAIL dig_tool swings missed")
+		return "fail"
+	aim = _free_cell(tries)
+	age = minf(age, DIG_LIMIT - 1.0)
+	beat = 2
+	return ""
+
+
+func _place(dt: float) -> String:
+	if age > PLACE_LIMIT:
+		print("FAIL structure_place timed out at beat %d" % beat)
+		return "fail"
+	if beat < 10:
+		return _single_wall()
+	if beat < 20:
+		return _show_types(dt)
+	return _craft_segment()
+
+
+func _single_wall() -> String:
+	chapter_label = "structure_stone_wall"
+	_mark("structure_stone_wall")
+	if beat == 0:
+		hands.pulse("hotbar_5")
+		beat = 1
+		return ""
+	if beat == 1:
+		var weapon := _weapon()
+		if weapon != null and str(weapon.get_place_id()) == "stone_wall":
+			beat = 2
+			return ""
+		if tries > 8:
+			print("FAIL structure place cycle missed stone_wall")
+			return "fail"
+		hands.pulse("place_cycle")
+		tries += 1
+		return ""
+	if beat == 2:
+		tries = 0
+		spin = 0
+		aim = _free_cell(0)
+		tiles = _tile_snap()
+		_look_at(aim)
+		beat = 3
+		return ""
+	if beat == 3:
+		if _spinning(aim) and spin < 120:
+			_look_at(aim)
+			spin += 1
+			return ""
+		_stop_move()
+		_look_at(aim)
+		hands.pulse("build_place")
+		beat = 4
+		return ""
+	if _new_tiles() == 1:
+		print("SHOWCASE structure stone_wall placed")
+		beat = 10
+		tries = 0
+		show_id = ""
+		show_age = 0.0
+		return ""
+	tries += 1
+	if tries > OFFSETS.size():
+		print("FAIL structure stone_wall did not place")
+		return "fail"
+	aim = _free_cell(tries)
+	tiles = _tile_snap()
+	spin = 0
+	beat = 3
+	return ""
+
+
+func _show_types(dt: float) -> String:
+	var ids := _Blueprints.ids()
+	if shown.size() >= ids.size():
+		beat = 20
+		tries = 0
+		return ""
+	if beat == 10:
+		aim = _free_cell(4)
+		_look_at(aim)
+		hands.pulse_key(KEY_X)
+		beat = 11
+		show_age = 0.0
+		return ""
+	var weapon := _weapon()
+	var id := ""
+	if weapon != null and weapon.has_method("selected_blueprint_id"):
+		id = String(weapon.selected_blueprint_id())
+	aim = _free_cell(4)
+	_look_at(aim)
+	if id != "" and id != show_id:
+		show_id = id
+		show_age = 0.0
+	show_age += dt
+	var ghosts := _ghost_count()
+	if id != "" and ghosts > 0 and show_age >= SHOW_HOLD and not shown.has(id):
+		shown[id] = true
+		chapter_label = "structure_%s" % id
+		_mark("structure_%s" % id)
+		print("SHOWCASE structure %s shown" % id)
+		beat = 10
+		return ""
+	if show_age > 1.2:
+		beat = 10
+		show_age = 0.0
+		tries += 1
+		if tries > ids.size() * 3:
+			print("FAIL structure ghost missing %s" % id)
+			return "fail"
+	return ""
+
+
+func _craft_segment() -> String:
+	chapter_label = "structure_place"
+	_mark("structure_place")
+	if beat == 20:
+		var button := _craft_button()
+		if button != null and button.is_visible_in_tree():
+			beat = 21
+			return ""
+		if tries > 90:
+			print("FAIL structure craft button missing")
+			return "fail"
+		if tries % 15 == 0:
+			hands.pulse("inventory_toggle")
+		tries += 1
+		return ""
+	if beat == 21:
+		var button := _craft_button()
+		if button == null or button.disabled:
+			print("FAIL structure craft button blocked")
+			return "fail"
+		var rect := button.get_global_rect()
+		if rect.size.x < 4.0:
+			tries += 1
+			if tries > 120:
+				print("FAIL structure craft button has no size")
+				return "fail"
+			return ""
+		piece_before = _piece_count()
+		hands.click_at(button, rect.position + rect.size * 0.5, true)
+		beat = 22
+		return ""
+	if beat == 22:
+		var button := _craft_button()
+		if button != null:
+			var rect := button.get_global_rect()
+			hands.click_at(button, rect.position + rect.size * 0.5, false)
+		if _piece_count() > piece_before:
+			tries = 0
+			beat = 23
+			return ""
+		tries += 1
+		if tries > 4:
+			print("FAIL structure craft did not land")
+			return "fail"
+		beat = 21
+		return ""
+	if beat == 23:
+		var button := _craft_button()
+		if button != null and button.is_visible_in_tree():
+			hands.pulse("inventory_toggle")
+			return ""
+		var slot := _piece_slot()
+		if slot < 0:
+			print("FAIL structure piece not on the hotbar")
+			return "fail"
+		hands.pulse("hotbar_%d" % (slot + 1))
+		tries = 0
+		spin = 0
+		beat = 24
+		return ""
+	if beat == 24:
+		if not _piece_selected():
+			var slot := _piece_slot()
+			if slot < 0:
+				print("FAIL structure piece left the hotbar")
+				return "fail"
+			hands.pulse("hotbar_%d" % (slot + 1))
+			return ""
+		var got := _cursor_cell()
+		if _segment_ready(got):
+			_stop_move()
+			tiles = _tile_snap()
+			hands.aim_column(player, float(got.x) + 0.5, float(got.y) + 0.5)
+			hands.pulse("build_place")
+			tries = 0
+			beat = 25
+			return ""
+		if spin < 36:
+			var held := PackedStringArray()
+			held.append("move_right" if tries % 2 == 0 else "move_forward")
+			hands.set_held(held)
+			spin += 1
+			return ""
+		spin = 0
+		tries += 1
+		if tries > 8:
+			print("FAIL structure wall_segment cursor %s reason %s" % [_cursor_cell(), _place_reason()])
+			return "fail"
+		return ""
+	if _new_tiles() >= 3:
+		print("SHOWCASE structure wall_segment placed")
+		return "pass"
+	tries += 1
+	if tries > 8:
+		print("FAIL structure wall_segment tiles %d piece %d reason %s" % [_new_tiles(), _piece_count(), _place_reason()])
+		return "fail"
+	spin = 0
+	beat = 24
+	return ""
+
+
+func _mark(feature: String) -> void:
+	if marked == feature:
+		return
+	marked = feature
+	if chapters != null and chapters.has_method("open"):
+		chapters.open(feature)
+
+
+func _weapon() -> Node:
+	if player == null:
+		return null
+	return player.get_node_or_null("WeaponController")
+
+
+func _craft_button() -> Button:
+	if tree == null:
+		return null
+	return tree.root.find_child("Craft_wall_segment", true, false) as Button
+
+
+func _piece_count() -> int:
+	if player == null or player.inventory == null:
+		return 0
+	return int(player.inventory.count_item("wall_segment"))
+
+
+func _piece_selected() -> bool:
+	var weapon := _weapon()
+	if weapon == null or not weapon.has_method("active_blueprint_id"):
+		return false
+	return weapon.active_blueprint_id() == &"wall_segment"
+
+
+func _segment_ready(cell: Vector2i) -> bool:
+	if cell.x > 900000:
+		return false
+	var weapon := _weapon()
+	if weapon == null or not _piece_selected():
+		return false
+	var world = player.get("world")
+	var quarter := int(weapon.get("blueprint_quarter"))
+	var column := Vector3(float(cell.x) + 0.5, 0.0, float(cell.y) + 0.5)
+	var plan: Dictionary = weapon.ghost_preview(&"wall_segment", column, quarter, world)
+	return bool(plan.get("valid", false))
+
+
+func _cursor_cell() -> Vector2i:
+	if player == null:
+		return Vector2i(999999, 999999)
+	var hl := player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return Vector2i(999999, 999999)
+	var col: Vector3 = hl.get_action_column()
+	if col == Vector3.ZERO:
+		return Vector2i(999999, 999999)
+	return Vector2i(floori(col.x), floori(col.z))
+
+
+func _place_reason() -> String:
+	if tree == null:
+		return ""
+	var editor := tree.root.find_child("TerrainEditor", true, false)
+	if editor == null:
+		editor = tree.get_first_node_in_group("terrain_editor")
+	if editor == null:
+		return ""
+	return str(editor.get("last_fail_reason"))
+
+
+func _piece_slot() -> int:
+	if player == null or player.inventory == null:
+		return -1
+	for i in 8:
+		var slot = player.inventory.get_hotbar_item(i)
+		if slot != null and str(slot.id) == "wall_segment":
+			return i
+	return -1
+
+
+func _look_at(cell: Vector2i) -> void:
+	var at := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
+	hands.aim_column(player, at.x, at.y)
+	var spin := _Nav.face_action(_xz(), at, _yaw())
+	if spin == "":
+		_stop_move()
+		return
+	var held := PackedStringArray()
+	held.append(spin)
+	hands.set_held(held)
+
+
+func _stop_move() -> void:
+	hands.set_held(PackedStringArray())
+
+
+func _spinning(cell: Vector2i) -> bool:
+	var at := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
+	return _Nav.face_action(_xz(), at, _yaw()) != ""
+
+
+func _free_cell(start: int) -> Vector2i:
+	var origin := _column()
+	var n := OFFSETS.size()
+	for k in n:
+		var off: Vector2i = OFFSETS[posmod(start + k, n)]
+		var cell := origin + off
+		if not _Edits.can_edit(cell.x, cell.y):
+			continue
+		if _Edits.get_build_tile(cell.x, cell.y) >= 0:
+			continue
+		var feat := _Features.get_feature(cell.x, cell.y)
+		if str(feat.get("build_id", "")) != "":
+			continue
+		return cell
+	return origin + Vector2i(5, 0)
+
+
+func _column() -> Vector2i:
+	var feet: Vector3 = player.voxel_position
+	return Vector2i(floori(feet.x), floori(feet.z))
+
+
+func _xz() -> Vector2:
+	var feet: Vector3 = player.voxel_position
+	return Vector2(feet.x, feet.z)
+
+
+func _yaw() -> float:
+	var cam = player.get("camera")
+	if cam != null and "yaw_degrees" in cam:
+		return float(cam.yaw_degrees)
+	if cam != null and "yaw_target_degrees" in cam:
+		return float(cam.yaw_target_degrees)
+	return 0.0
+
+
+func _height_snap() -> Dictionary:
+	var origin := _column()
+	var snap := {}
+	for dz in range(-8, 9):
+		for dx in range(-8, 9):
+			var cell := Vector2i(origin.x + dx, origin.y + dz)
+			snap[cell] = _Edits.get_height_delta(cell.x, cell.y)
+	return snap
+
+
+func _dropped() -> Vector2i:
+	for key in heights.keys():
+		var cell: Vector2i = key
+		if _Edits.get_height_delta(cell.x, cell.y) < float(heights[cell]) - 0.01:
+			return cell
+	return Vector2i(999999, 999999)
+
+
+func _tile_snap() -> Dictionary:
+	var origin := _column()
+	var snap := {}
+	for dz in range(-8, 9):
+		for dx in range(-8, 9):
+			var cell := Vector2i(origin.x + dx, origin.y + dz)
+			snap[cell] = _Edits.get_build_tile(cell.x, cell.y)
+	return snap
+
+
+func _new_tiles() -> int:
+	var added := 0
+	for key in tiles.keys():
+		var cell: Vector2i = key
+		var now := _Edits.get_build_tile(cell.x, cell.y)
+		if now >= 0 and int(tiles[cell]) < 0:
+			added += 1
+	return added
+
+
+func _ghost_count() -> int:
+	if player == null:
+		return 0
+	var hl := player.get_node_or_null("TargetHighlight")
+	if hl == null:
+		return 0
+	var n := 0
+	for child in hl.get_children():
+		if str(child.name).begins_with("StructureGhost") and bool(child.visible):
+			n += 1
+	return n

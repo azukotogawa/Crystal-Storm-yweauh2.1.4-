@@ -10,6 +10,7 @@ const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _World = preload("res://world/world_state.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
+const _Build = preload("res://scripts/honest_bot/honest_build.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
@@ -24,6 +25,8 @@ const READY: Array[String] = [
 	"movement",
 	"lighting",
 	"day_night",
+	"dig_tool",
+	"structure_place",
 	"density_poi",
 	"density_treasure",
 	"density_landmark",
@@ -58,6 +61,7 @@ var _unstuck_sent := false
 var _detour_face := Vector2.ZERO
 var _face_only := false
 var _face_age := 0.0
+var build = _Build.new()
 
 
 func load_route() -> bool:
@@ -144,6 +148,8 @@ func _open_segment(id: String) -> void:
 		_arm_movement()
 	elif id.begins_with("density_"):
 		_arm_detour(id)
+	elif id == "dig_tool" or id == "structure_place":
+		build.reset(id)
 
 
 func _finish_segment() -> void:
@@ -175,6 +181,8 @@ func _run_segment(step: float) -> void:
 			_tick_lighting()
 		"day_night":
 			_tick_day_night()
+		"dig_tool", "structure_place":
+			_tick_build(step)
 		"density_poi", "density_treasure", "density_landmark":
 			_tick_detour(step)
 		_:
@@ -275,6 +283,12 @@ func _tick_lighting() -> void:
 		return
 	print("FAIL lighting %s" % reason)
 	_seg_status = "fail"
+
+
+func _tick_build(step: float) -> void:
+	var result := build.tick(step, tree, player, hands, chapters)
+	if result != "":
+		_seg_status = result
 
 
 func _tick_day_night() -> void:
@@ -467,7 +481,10 @@ func _paint() -> void:
 	if hud == null or chapters == null:
 		return
 	if hud.has_method("set_readout") and chapters.has_method("format_clock"):
-		hud.set_readout(chapters.format_clock(), _seg)
+		var chapter := _seg
+		if build != null and (_seg == "dig_tool" or _seg == "structure_place") and build.chapter_label != "":
+			chapter = build.chapter_label
+		hud.set_readout(chapters.format_clock(), chapter)
 
 
 func _xz() -> Vector2:

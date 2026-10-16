@@ -5,6 +5,7 @@ const _Route = preload("res://scripts/honest_bot/honest_route.gd")
 const _Walk = preload("res://scripts/honest_bot/honest_traversal.gd")
 const _Chapters = preload("res://scripts/honest_bot/honest_chapters.gd")
 const _Hud = preload("res://scripts/honest_bot/honest_showcase_hud.gd")
+const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
@@ -13,7 +14,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
-const LIVE_FRAMES := 9000
+const LIVE_FRAMES := 24000
 
 var _failed := 0
 
@@ -28,6 +29,7 @@ func _run() -> void:
 	_check_traversal()
 	_check_chapters()
 	_check_sprint_hold()
+	_check_blueprint_key()
 	var hud_ok: bool = await _check_hud()
 	if not hud_ok:
 		_fail("timer label missing")
@@ -69,6 +71,7 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_chapters.gd",
 		"res://scripts/honest_bot/honest_showcase_hud.gd",
 		"res://scripts/honest_bot/honest_showcase.gd",
+		"res://scripts/honest_bot/honest_build.gd",
 	]
 	var joined := ""
 	for path in paths:
@@ -100,15 +103,15 @@ func _check_route() -> void:
 	if names[0] != "boot_tutorial" or names[1] != "movement" or names[2] != "lighting" or names[3] != "day_night":
 		_fail("route prefix %s" % [names[0], names[1], names[2], names[3]])
 		return
-	if show.first_blocked() != "dig_tool":
-		_fail("next segment should be dig_tool, got %s" % show.first_blocked())
+	if show.first_blocked() != "combat_crystal_mite":
+		_fail("next segment should be combat_crystal_mite, got %s" % show.first_blocked())
 		return
 	var want := ["density_poi", "density_treasure", "density_landmark"]
 	for id in want:
 		if not names.has(id):
 			_fail("route missing %s" % id)
 			return
-	_ok("route order stops at dig_tool")
+	_ok("route order stops at combat")
 
 
 func _check_traversal() -> void:
@@ -192,6 +195,18 @@ func _check_sprint_hold() -> void:
 		_fail("already facing north should not rotate")
 		return
 	_ok("sprint holds with the walk")
+
+
+func _check_blueprint_key() -> void:
+	var hands = _Hands.new()
+	hands.pulse_key(KEY_X)
+	var down := Input.is_physical_key_pressed(KEY_X)
+	hands.begin_tick()
+	var up := not Input.is_physical_key_pressed(KEY_X)
+	if not down or not up:
+		_fail("X key pulse down=%s up=%s" % [down, up])
+		return
+	_ok("blueprint key is a press and a release")
 
 
 func _check_hud() -> bool:
@@ -278,6 +293,12 @@ func _check_live() -> void:
 	var text := FileAccess.get_file_as_string("%s/chapters.txt" % _Capture.run_dir())
 	if not text.contains("movement ") or not text.contains("day_night "):
 		_fail("sidecar missing movement or day_night")
+		return
+	if not text.contains("dig_tool ") or not text.contains("structure_place "):
+		_fail("sidecar missing dig or structure")
+		return
+	if not text.contains("structure_wall_segment ") or not text.contains("structure_small_tower "):
+		_fail("sidecar missing a structure type")
 		return
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string("%s/chapters.json" % _Capture.run_dir()))
 	if typeof(parsed) != TYPE_DICTIONARY:
