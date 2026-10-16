@@ -24,6 +24,7 @@ PerfProfiler="*res://systems/perf_profiler.gd"
 FrameBudgetScheduler="*res://systems/frame_budget_scheduler.gd"
 AudioManager="*res://systems/audio_manager.gd"
 TextureBlueprint="*res://systems/texture_blueprint.gd"
+DifficultyTelemetry="*res://systems/difficulty_telemetry.gd"
 
 [audio]
 

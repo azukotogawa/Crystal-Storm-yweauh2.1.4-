@@ -42,6 +42,7 @@ var _body_collision: CollisionShape3D
 
 signal died
 signal health_changed(current: float, maximum: float)
+signal damage_taken(amount: float, source: StringName)
 
 var health := 100.0
 var damage_source_hint: StringName = &"hit"
@@ -1029,6 +1030,7 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 	var defense := get_stat(_StatIds.DEFENSE)
 	amount *= (1.0 - clampf(defense, 0.0, 0.9))
 	health = maxf(health - amount, 0.0)
+	damage_taken.emit(amount, kind)
 	_publish_health()
 	if burst:
 		_hit_iframes = HIT_IFRAMES
