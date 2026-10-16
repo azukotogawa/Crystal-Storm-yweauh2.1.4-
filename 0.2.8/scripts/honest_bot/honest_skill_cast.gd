@@ -2,6 +2,7 @@ extends RefCounted
 
 const _Pad = preload("res://scripts/honest_bot/honest_progress.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 var mode := ""
 var phase := ""
@@ -18,6 +19,9 @@ var walk_goal := Vector2.ZERO
 var walk_armed := false
 var _heal := 0
 var _heal_wait := 0.0
+var _cast_seen := false
+var _gallery := ""
+var _spend := false
 
 
 func begin(segment: String) -> void:
@@ -34,6 +38,9 @@ func begin(segment: String) -> void:
 	walk_armed = false
 	_heal = 0
 	_heal_wait = 0.0
+	_cast_seen = false
+	_gallery = ""
+	_spend = false
 
 
 func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
@@ -41,19 +48,21 @@ func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: Re
 	if dt <= 0.0:
 		dt = 1.0 / 60.0
 	if mode == "xp_level":
-		return _xp(tree)
+		return _xp_beat(dt, tree)
 	if mode == "multiblock_break":
-		return _multi()
+		return _multi_beat(dt, hands)
 	if mode == "skill_passives":
-		return "skipped-no-point"
-	if mode == "skill_quick_wall":
-		return _quick_wall(tree)
+		return _gallery_tick(dt, tree, hands, "miner_passive", _points(tree) >= 1 and not _unlocked(tree, "miner_passive"))
+	if mode == "skill_quick_wall" and _points(tree) < 1 and not _unlocked(tree, "quick_wall"):
+		return _gallery_tick(dt, tree, hands, "quick_wall", false)
 	if phase == "boot":
 		return _boot(tree)
 	if phase == "press":
-		return _press(hands)
+		return _press(dt, hands)
 	if phase == "settle":
 		return _settle(dt, tree)
+	if phase == "pause":
+		return _pause(dt, hands)
 	if phase == "hold":
 		return _hold(dt, player, hands)
 	if phase == "clear":
@@ -62,6 +71,8 @@ func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: Re
 		return _fire(tree, player, hands)
 	if phase == "watch":
 		return _watch(dt, tree, player, hands, origin)
+	if phase == "linger":
+		return _linger(dt)
 	if phase == "walk":
 		return _walk(dt, player, bot, origin)
 	return "fail"
@@ -105,15 +116,22 @@ func _armed_phase() -> String:
 	return "fire"
 
 
-func _press(hands: RefCounted) -> String:
+func _press(dt: float, hands: RefCounted) -> String:
 	hands.begin_tick()
 	if step_i >= steps.size():
 		phase = "settle"
 		watch = 0.0
 		return ""
 	var action := String(steps[step_i])
+	if action == "ui_accept" and watch < _Pace.PRE_PAUSE:
+		hands.set_held(PackedStringArray())
+		watch += dt
+		return ""
+	if not hands.pulse(action):
+		return ""
 	step_i += 1
-	hands.pulse(action)
+	if action == "ui_accept":
+		watch = 0.0
 	return ""
 
 
@@ -125,6 +143,17 @@ func _settle(dt: float, tree: SceneTree) -> String:
 		print("FAIL skill %s did not unlock" % skill_id)
 		return "fail"
 	print("SKILL %s" % skill_id)
+	phase = "pause"
+	watch = 0.0
+	return ""
+
+
+func _pause(dt: float, hands: RefCounted) -> String:
+	hands.begin_tick()
+	hands.set_held(PackedStringArray())
+	watch += dt
+	if watch < _Pace.PRE_PAUSE:
+		return ""
 	phase = _armed_phase()
 	watch = 0.0
 	return ""
@@ -161,9 +190,11 @@ func _fire(tree: SceneTree, player: Node, hands: RefCounted) -> String:
 		heights = _snap(_column(player))
 		slam_tried = true
 	mark = _xz(player)
-	hands.pulse("skill_%d" % [slot + 1])
+	if not hands.pulse("skill_%d" % [slot + 1]):
+		return ""
 	phase = "watch"
 	watch = 0.0
+	_cast_seen = false
 	return ""
 
 
@@ -172,12 +203,14 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 	if mode == "skill_dash":
 		hands.begin_tick()
 		hands.set_held(PackedStringArray())
-		if watch < 0.35:
-			return ""
 		var moved := _xz(player).distance_to(mark)
 		if moved >= 3.2 and _cooled(tree, skill_id):
+			_cast_seen = true
+		if watch < _Pace.RESULT_HOLD:
+			return ""
+		if _cast_seen:
 			print("OK dash slide %.2f" % moved)
-			return "pass"
+			return _begin_linger()
 		if tries < 1:
 			tries += 1
 			walk_armed = false
@@ -186,13 +219,15 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 			return ""
 		print("FAIL dash slide %.2f" % moved)
 		return "fail"
-	if watch < 0.35:
-		return ""
 	if mode == "skill_ground_slam":
 		slam_drops = _drops(heights)
 		if slam_drops >= 2:
+			_cast_seen = true
+		if watch < _Pace.RESULT_HOLD:
+			return ""
+		if _cast_seen:
 			print("OK ground_slam cells %d" % slam_drops)
-			return "pass"
+			return _begin_linger()
 		if tries < 1:
 			tries += 1
 			phase = "walk"
@@ -202,10 +237,27 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 		print("FAIL ground_slam cells %d" % slam_drops)
 		return "fail"
 	if _cooled(tree, skill_id):
+		_cast_seen = true
+	if watch < _Pace.RESULT_HOLD:
+		return ""
+	if _cast_seen:
 		print("OK %s cast" % skill_id)
-		return "pass"
+		return _begin_linger()
 	print("FAIL %s cast" % skill_id)
 	return "fail"
+
+
+func _begin_linger() -> String:
+	phase = "linger"
+	watch = 0.0
+	return ""
+
+
+func _linger(dt: float) -> String:
+	watch += dt
+	if watch < _Pace.SETTLE:
+		return ""
+	return "pass"
 
 
 func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
@@ -213,7 +265,7 @@ func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin:
 	var pos := _xz(player)
 	if not walk_armed and pos.distance_to(origin) >= 18.0 and tries == 0:
 		bot.release()
-		phase = "hold" if mode == "skill_dash" else "fire"
+		phase = "pause"
 		watch = 0.0
 		return ""
 	if _heal_wait <= 0.0 and _ratio(player) < 0.82 and _herbs(player) > 0:
@@ -239,7 +291,7 @@ func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin:
 		return ""
 	bot.release()
 	walk_armed = false
-	phase = "hold" if mode == "skill_dash" else "fire"
+	phase = "pause"
 	watch = 0.0
 	return ""
 
@@ -247,10 +299,11 @@ func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin:
 func _heal_cast(hands: RefCounted) -> void:
 	hands.begin_tick()
 	if _heal == 0:
-		hands.pulse("hotbar_6")
-		_heal = 1
+		if hands.pulse("hotbar_6"):
+			_heal = 1
 		return
-	hands.pulse("build_place")
+	if not hands.pulse("build_place"):
+		return
 	_heal = 0
 	_heal_wait = 0.5
 	print("SHOWCASE herb")
@@ -287,20 +340,119 @@ func _walk(dt: float, player: Node, bot: RefCounted, origin: Vector2) -> String:
 		return ""
 	bot.release()
 	walk_armed = false
-	phase = "fire"
+	phase = "pause"
+	watch = 0.0
 	return ""
 
 
-func _quick_wall(_tree: SceneTree) -> String:
-	return "skipped-no-point"
+func _xp_beat(dt: float, tree: SceneTree) -> String:
+	if phase == "boot":
+		var result := _xp(tree)
+		if result != "pass":
+			return result
+		phase = "result"
+		watch = 0.0
+		return ""
+	watch += dt
+	if phase == "result":
+		if watch < _Pace.RESULT_HOLD:
+			return ""
+		phase = "linger"
+		watch = 0.0
+		return ""
+	return _linger(dt)
 
 
-func _multi() -> String:
-	if slam_drops >= 2:
-		return "pass"
-	if slam_tried:
-		return "fail"
-	return "skipped-no-point"
+func _multi_beat(dt: float, hands: RefCounted) -> String:
+	hands.begin_tick()
+	hands.set_held(PackedStringArray())
+	if phase == "boot":
+		if slam_drops < 2:
+			if slam_tried:
+				return "fail"
+			return "skipped-no-point"
+		phase = "pause"
+		watch = 0.0
+		return ""
+	watch += dt
+	if phase == "pause":
+		if watch < _Pace.PRE_PAUSE:
+			return ""
+		phase = "result"
+		watch = 0.0
+		return ""
+	if phase == "result":
+		if watch < _Pace.RESULT_HOLD:
+			return ""
+		print("OK multiblock cells %d" % slam_drops)
+		return _begin_linger()
+	return _linger(dt)
+
+
+func _gallery_tick(dt: float, tree: SceneTree, hands: RefCounted, skill_name: String, spend: bool) -> String:
+	if _gallery == "":
+		_gallery = skill_name
+		_spend = spend
+		skill_id = skill_name
+		steps = _tour(skill_name, spend)
+		step_i = 0
+		phase = "press"
+		watch = 0.0
+		if steps.is_empty():
+			return "fail"
+	if phase == "press":
+		var pressed := _press(dt, hands)
+		if pressed != "":
+			return pressed
+		if phase == "settle":
+			phase = "pause"
+			watch = 0.0
+		return ""
+	hands.begin_tick()
+	hands.set_held(PackedStringArray())
+	watch += dt
+	if phase == "pause":
+		if watch < _Pace.PRE_PAUSE:
+			return ""
+		phase = "result"
+		watch = 0.0
+		return ""
+	if phase == "result":
+		if watch < _Pace.RESULT_HOLD:
+			return ""
+		if step_i >= steps.size():
+			phase = "close"
+			watch = 0.0
+		return ""
+	if phase == "close":
+		if not hands.pulse("skill_tree"):
+			return ""
+		phase = "linger"
+		watch = 0.0
+		return ""
+	if phase == "linger":
+		if watch < _Pace.SETTLE:
+			return ""
+		if _spend:
+			if not _unlocked(tree, skill_id):
+				print("FAIL skill %s did not unlock" % skill_id)
+				return "fail"
+			print("SKILL %s" % skill_id)
+			return "pass"
+		return "skipped-no-point"
+	return "fail"
+
+
+func _tour(skill_name: String, spend: bool) -> PackedStringArray:
+	var raw := presses(skill_name)
+	var out := PackedStringArray()
+	for action in raw:
+		if not spend and action == "ui_accept":
+			continue
+		out.append(action)
+	if out.size() >= 2 and out[out.size() - 1] == "skill_tree":
+		out.remove_at(out.size() - 1)
+	return out
 
 
 func _xp(tree: SceneTree) -> String:
@@ -324,6 +476,8 @@ func _name_for(segment: String) -> String:
 		return "ground_slam"
 	if segment == "skill_crystal_pulse":
 		return "crystal_pulse"
+	if segment == "skill_quick_wall":
+		return "quick_wall"
 	return ""
 
 

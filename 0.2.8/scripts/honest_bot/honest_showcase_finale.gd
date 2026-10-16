@@ -3,11 +3,12 @@ extends RefCounted
 const _Crystal = preload("res://scripts/honest_bot/honest_crystal.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _Relic = preload("res://ui/relic_choice_panel.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 const CRYSTAL_LIMIT := 150.0
 const BOSS_LIMIT := 120.0
 const WIN_LIMIT := 90.0
-const WIN_HOLD := 3.0
+const WIN_HOLD := 4.0
 const SPACE_COLUMNS := 1.75
 const HEAL_RATIO := 0.78
 const SAFE_DEPTH := 0.22
@@ -32,11 +33,16 @@ var _camp_logged := false
 var _gap := 0.0
 var _boss_wait := 0.0
 var _armed := false
+var _intro := 0.0
+var _exit_age := -1.0
 var _clocks := {"crystal": 0.0, "boss": 0.0, "win_screen": 0.0}
 
 
 func begin(id: String) -> void:
 	seg = id
+	_intro = 0.0
+	_exit_age = -1.0
+	caption = id
 	if id != "crystal" and _armed:
 		return
 	heart = _Crystal.new()
@@ -82,6 +88,13 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	if relic == 2:
 		print("FAIL relic offer stayed open")
 		return "fail"
+	if not _intro_ready(dt, tree, player):
+		return ""
+	if _exit_age >= 0.0:
+		_frame_exit(dt, tree, player)
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
 	_gap = maxf(_gap - dt, 0.0)
 	var origin := _origin(tree)
 	var pos := _xz(player)
@@ -152,13 +165,13 @@ func _status(dt: float, tree: SceneTree) -> String:
 			if not _dropped:
 				print("FAIL crystal line without a swing")
 				return "fail"
-			return "pass"
+			return _hold_exit(dt)
 	elif seg == "boss":
 		if heart.destroyed and heart.boss_kills < 1:
 			print("FAIL heart emptied while the warden lived")
 			return "fail"
 		if heart.boss_kills >= 1 and not heart.fighting_boss:
-			return "pass"
+			return _hold_exit(dt)
 	elif seg == "win_screen":
 		if _victory_ready(tree):
 			heart.release()
@@ -171,6 +184,46 @@ func _status(dt: float, tree: SceneTree) -> String:
 		print("FAIL %s timed out %s" % [seg, heart.summary_line()])
 		return "fail"
 	return ""
+
+
+func _frame_exit(dt: float, tree: SceneTree, player: Node) -> void:
+	var origin := _origin(tree)
+	var pos := _xz(player)
+	var aim := origin + Vector2(0.5, 0.5)
+	var bosses := _bosses(tree)
+	if not bosses.is_empty():
+		aim = bosses[0].get("xz", aim)
+	if _feet_depth(tree, pos) >= SAFE_DEPTH:
+		_goto(dt, player, _camp(tree, origin), aim)
+		return
+	if heart != null:
+		heart.fight.bot.release()
+		heart.fight.bot.input.aim_column(player, aim.x, aim.y)
+
+
+func _intro_ready(dt: float, tree: SceneTree, player: Node) -> bool:
+	if seg == "win_screen" or _intro >= _Pace.PRE_PAUSE:
+		_intro = _Pace.PRE_PAUSE
+		return true
+	_intro += dt
+	var origin := _origin(tree)
+	var aim := origin + Vector2(0.5, 0.5)
+	var bosses := _bosses(tree)
+	if not bosses.is_empty():
+		aim = bosses[0].get("xz", aim)
+	if heart != null:
+		heart.fight.bot.release()
+		heart.fight.bot.input.aim_column(player, aim.x, aim.y)
+	return false
+
+
+func _hold_exit(dt: float) -> String:
+	if _exit_age < 0.0:
+		_exit_age = 0.0
+	_exit_age += dt
+	if _exit_age < _Pace.RESULT_HOLD + _Pace.SETTLE:
+		return ""
+	return "pass"
 
 
 func _at_line() -> bool:
@@ -332,12 +385,11 @@ func _space_from(dt: float, tree: SceneTree, player: Node, crowd: Dictionary) ->
 	bot.tick(pos, _yaw(player), dt)
 	bot.input.aim_column(player, aim.x, aim.y)
 	if not _pest_sword:
-		bot.input.pulse("hotbar_1")
-		_pest_sword = true
+		if bot.input.pulse("hotbar_1"):
+			_pest_sword = true
 		return
 	_pest_wait -= dt
-	if _pest_wait <= 0.0:
-		bot.input.pulse("attack")
+	if _pest_wait <= 0.0 and bot.input.pulse("attack"):
 		_pest_wait = 0.48
 
 
@@ -403,7 +455,8 @@ func _click_relic() -> int:
 		return 1
 	var at := rect.position + rect.size * 0.5
 	var pressed := _relic == 0
-	heart.fight.bot.input.click_at(button, at, pressed)
+	if not heart.fight.bot.input.click_at(button, at, pressed):
+		return 1
 	_relic = 1 if pressed else 0
 	if pressed:
 		print("SHOWCASE relic click")
@@ -424,10 +477,11 @@ func _needs_herb(player: Node) -> bool:
 func _use_herb() -> void:
 	var input = heart.fight.bot.input
 	if _heal == 0:
-		input.pulse("hotbar_6")
-		_heal = 1
+		if input.pulse("hotbar_6"):
+			_heal = 1
 		return
-	input.pulse("build_place")
+	if not input.pulse("build_place"):
+		return
 	_heal = 0
 	_heal_wait = 0.5
 	print("SHOWCASE herb")

@@ -150,15 +150,15 @@ func _strike(player_xz: Vector2, foe: Vector2, yaw: float, step: float) -> void:
 	if rot != "":
 		return
 	if _attack_wait <= 0.0:
-		bot.input.pulse(ATTACK_ACTION)
-		swings += 1
-		_attack_wait = ATTACK_GAP_SEC
-	if chip_skills and _skill_wait <= 0.0:
+		if bot.input.pulse(ATTACK_ACTION):
+			swings += 1
+			_attack_wait = ATTACK_GAP_SEC
+	if chip_skills and _skill_wait <= 0.0 and _attack_wait > 0.0:
 		var skill := SKILL_ACTIONS[_skill_i % SKILL_ACTIONS.size()]
-		bot.input.pulse(skill)
-		skills_used += 1
-		_skill_i += 1
-		_skill_wait = SKILL_GAP_SEC
+		if bot.input.pulse(skill):
+			skills_used += 1
+			_skill_i += 1
+			_skill_wait = SKILL_GAP_SEC
 
 
 func walk_to(goal: Vector2, player_xz: Vector2, yaw: float, step: float) -> void:
@@ -172,6 +172,7 @@ func strike_point(player_xz: Vector2, point: Vector2, yaw: float, step: float) -
 func _tap_sword() -> void:
 	if _sword_sent:
 		return
-	bot.input.pulse(SWORD_ACTION)
+	if not bot.input.pulse(SWORD_ACTION):
+		return
 	_sword_sent = true
 	_sword_delay = 1

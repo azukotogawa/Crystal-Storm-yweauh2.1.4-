@@ -1,5 +1,7 @@
 extends RefCounted
 
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+
 var rows: Array[Dictionary] = []
 var _elapsed := 0.0
 var _open_feature := ""
@@ -33,12 +35,35 @@ static func format_seconds(seconds: float) -> String:
 	return "%d:%05.2f" % [mins, secs]
 
 
-func open(feature: String) -> void:
+func feature() -> String:
+	if not _open:
+		return ""
+	return _open_feature
+
+
+func span() -> float:
+	if not _open:
+		return 0.0
+	return seconds() - _open_start
+
+
+func can_advance() -> bool:
+	if not _open:
+		return true
+	return span() >= _Pace.MIN_CHAPTER
+
+
+func open(feature: String) -> bool:
+	if _open and _open_feature == feature:
+		return true
+	if _open and not can_advance():
+		return false
 	if _open:
 		close()
 	_open_feature = feature
 	_open_start = seconds()
 	_open = true
+	return true
 
 
 func close() -> void:

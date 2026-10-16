@@ -4,15 +4,15 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
 const _Features = preload("res://world/feature_registry.gd")
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 const OFFSETS: Array[Vector2i] = [
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
 	Vector2i(3, 1), Vector2i(-3, 1), Vector2i(1, 3), Vector2i(1, -3),
 	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 2), Vector2i(2, -4),
 ]
-const SHOW_HOLD := 0.35
-const DIG_LIMIT := 8.0
-const PLACE_LIMIT := 22.0
+const DIG_LIMIT := 24.0
+const PLACE_LIMIT := 90.0
 
 var chapter_label := ""
 var hands: RefCounted
@@ -32,6 +32,7 @@ var show_age := 0.0
 var piece_before := 0
 var marked := ""
 var spin := 0
+var step_dt := 0.0
 
 
 func reset(segment: String) -> void:
@@ -62,6 +63,7 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 	if dt <= 0.0:
 		dt = 1.0 / 60.0
 	age += dt
+	step_dt = dt
 	if player == null or hands == null:
 		print("FAIL %s missing player" % mode)
 		return "fail"
@@ -78,36 +80,60 @@ func _dig() -> String:
 		return "fail"
 	chapter_label = "dig_tool"
 	if beat == 0:
-		hands.pulse("hotbar_2")
+		if not hands.pulse("hotbar_2"):
+			return ""
 		beat = 1
 		return ""
 	if beat == 1:
 		aim = _free_cell(0)
 		_look_at(aim)
 		beat = 2
+		show_age = 0.0
 		return ""
 	if beat == 2:
 		if _spinning(aim) and age < 2.4:
 			_look_at(aim)
 			return ""
 		_stop_move()
-		heights = _height_snap()
 		_look_at(aim)
-		hands.pulse("attack")
+		show_age = 0.0
 		beat = 3
 		return ""
-	var dug := _dropped()
-	if dug.x < 900000:
+	if beat == 3:
+		_look_at(aim)
+		show_age += step_dt
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		heights = _height_snap()
+		if not hands.pulse("attack"):
+			return ""
+		show_age = 0.0
+		beat = 4
+		return ""
+	if beat == 4:
+		_look_at(aim)
+		var dug := _dropped()
+		if dug.x >= 900000:
+			tries += 1
+			if tries >= OFFSETS.size():
+				print("FAIL dig_tool swings missed")
+				return "fail"
+			aim = _free_cell(tries)
+			age = minf(age, DIG_LIMIT - 1.0)
+			beat = 2
+			return ""
+		show_age += step_dt
+		if show_age < _Pace.RESULT_HOLD:
+			return ""
 		print("SHOWCASE dig column %d %d" % [dug.x, dug.y])
-		return "pass"
-	tries += 1
-	if tries >= OFFSETS.size():
-		print("FAIL dig_tool swings missed")
-		return "fail"
-	aim = _free_cell(tries)
-	age = minf(age, DIG_LIMIT - 1.0)
-	beat = 2
-	return ""
+		show_age = 0.0
+		beat = 5
+		return ""
+	_look_at(aim)
+	show_age += step_dt
+	if show_age < _Pace.SETTLE:
+		return ""
+	return "pass"
 
 
 func _place(dt: float) -> String:
@@ -123,29 +149,33 @@ func _place(dt: float) -> String:
 
 func _single_wall() -> String:
 	chapter_label = "structure_stone_wall"
-	_mark("structure_stone_wall")
+	if not _mark("structure_stone_wall"):
+		return ""
 	if beat == 0:
-		hands.pulse("hotbar_5")
+		if not hands.pulse("hotbar_5"):
+			return ""
 		beat = 1
 		return ""
 	if beat == 1:
 		var weapon := _weapon()
 		if weapon != null and str(weapon.get_place_id()) == "stone_wall":
 			beat = 2
+			show_age = 0.0
 			return ""
 		if tries > 8:
 			print("FAIL structure place cycle missed stone_wall")
 			return "fail"
-		hands.pulse("place_cycle")
+		if not hands.pulse("place_cycle"):
+			return ""
 		tries += 1
 		return ""
 	if beat == 2:
 		tries = 0
 		spin = 0
 		aim = _free_cell(0)
-		tiles = _tile_snap()
 		_look_at(aim)
 		beat = 3
+		show_age = 0.0
 		return ""
 	if beat == 3:
 		if _spinning(aim) and spin < 120:
@@ -154,24 +184,43 @@ func _single_wall() -> String:
 			return ""
 		_stop_move()
 		_look_at(aim)
-		hands.pulse("build_place")
+		show_age += step_dt
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		tiles = _tile_snap()
+		if not hands.pulse("build_place"):
+			return ""
+		show_age = 0.0
 		beat = 4
 		return ""
-	if _new_tiles() == 1:
+	if beat == 4:
+		_look_at(aim)
+		if _new_tiles() != 1:
+			tries += 1
+			if tries > OFFSETS.size():
+				print("FAIL structure stone_wall did not place")
+				return "fail"
+			aim = _free_cell(tries)
+			tiles = _tile_snap()
+			spin = 0
+			show_age = _Pace.PRE_PAUSE
+			beat = 3
+			return ""
+		show_age += step_dt
+		if show_age < _Pace.RESULT_HOLD:
+			return ""
 		print("SHOWCASE structure stone_wall placed")
-		beat = 10
-		tries = 0
-		show_id = ""
 		show_age = 0.0
+		beat = 5
 		return ""
-	tries += 1
-	if tries > OFFSETS.size():
-		print("FAIL structure stone_wall did not place")
-		return "fail"
-	aim = _free_cell(tries)
-	tiles = _tile_snap()
-	spin = 0
-	beat = 3
+	_look_at(aim)
+	show_age += step_dt
+	if show_age < _Pace.SETTLE:
+		return ""
+	beat = 10
+	tries = 0
+	show_id = ""
+	show_age = 0.0
 	return ""
 
 
@@ -180,55 +229,69 @@ func _show_types(dt: float) -> String:
 	if shown.size() >= ids.size():
 		beat = 20
 		tries = 0
-		return ""
-	if beat == 10:
-		aim = _free_cell(4)
-		_look_at(aim)
-		hands.pulse_key(KEY_X)
-		beat = 11
 		show_age = 0.0
 		return ""
-	var weapon := _weapon()
-	var id := ""
-	if weapon != null and weapon.has_method("selected_blueprint_id"):
-		id = String(weapon.selected_blueprint_id())
+	var want := String(ids[shown.size()])
+	chapter_label = "structure_%s" % want
+	if not _mark(chapter_label):
+		return ""
 	aim = _free_cell(4)
 	_look_at(aim)
-	if id != "" and id != show_id:
-		show_id = id
-		show_age = 0.0
-	show_age += dt
-	var ghosts := _ghost_count()
-	if id != "" and ghosts > 0 and show_age >= SHOW_HOLD and not shown.has(id):
-		shown[id] = true
-		chapter_label = "structure_%s" % id
-		_mark("structure_%s" % id)
-		print("SHOWCASE structure %s shown" % id)
-		beat = 10
+	if beat == 10:
+		show_age += dt
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		beat = 11
 		return ""
-	if show_age > 1.2:
-		beat = 10
-		show_age = 0.0
+	var id := ""
+	var weapon := _weapon()
+	if weapon != null and weapon.has_method("selected_blueprint_id"):
+		id = String(weapon.selected_blueprint_id())
+	if beat == 11:
+		if id == want and _ghost_count() > 0:
+			show_age = 0.0
+			beat = 12
+			return ""
+		if not hands.pulse_key(KEY_X):
+			return ""
 		tries += 1
-		if tries > ids.size() * 3:
-			print("FAIL structure ghost missing %s" % id)
+		if tries > ids.size() * 4:
+			print("FAIL structure ghost missing %s" % want)
 			return "fail"
+		return ""
+	if beat == 12:
+		show_age += dt
+		if show_age < _Pace.RESULT_HOLD:
+			return ""
+		show_age = 0.0
+		beat = 13
+		return ""
+	show_age += dt
+	if show_age < _Pace.SETTLE:
+		return ""
+	shown[want] = true
+	print("SHOWCASE structure %s shown" % want)
+	beat = 10
+	tries = 0
+	show_age = 0.0
 	return ""
 
 
 func _craft_segment() -> String:
 	chapter_label = "structure_place"
-	_mark("structure_place")
+	if not _mark("structure_place"):
+		return ""
 	if beat == 20:
 		var button := _craft_button()
 		if button != null and button.is_visible_in_tree():
 			beat = 21
+			show_age = 0.0
 			return ""
 		if tries > 90:
 			print("FAIL structure craft button missing")
 			return "fail"
-		if tries % 15 == 0:
-			hands.pulse("inventory_toggle")
+		if tries % 15 == 0 and not hands.pulse("inventory_toggle"):
+			return ""
 		tries += 1
 		return ""
 	if beat == 21:
@@ -243,17 +306,24 @@ func _craft_segment() -> String:
 				print("FAIL structure craft button has no size")
 				return "fail"
 			return ""
+		if show_age < _Pace.PRE_PAUSE:
+			show_age += step_dt
+			return ""
 		piece_before = _piece_count()
-		hands.click_at(button, rect.position + rect.size * 0.5, true)
+		if not hands.click_at(button, rect.position + rect.size * 0.5, true):
+			return ""
+		show_age = 0.0
 		beat = 22
 		return ""
 	if beat == 22:
 		var button := _craft_button()
 		if button != null:
 			var rect := button.get_global_rect()
-			hands.click_at(button, rect.position + rect.size * 0.5, false)
+			if not hands.click_at(button, rect.position + rect.size * 0.5, false):
+				return ""
 		if _piece_count() > piece_before:
 			tries = 0
+			show_age = 0.0
 			beat = 23
 			return ""
 		tries += 1
@@ -264,16 +334,22 @@ func _craft_segment() -> String:
 		return ""
 	if beat == 23:
 		var button := _craft_button()
+		if show_age < _Pace.RESULT_HOLD:
+			show_age += step_dt
+			return ""
 		if button != null and button.is_visible_in_tree():
-			hands.pulse("inventory_toggle")
+			if not hands.pulse("inventory_toggle"):
+				return ""
 			return ""
 		var slot := _piece_slot()
 		if slot < 0:
 			print("FAIL structure piece not on the hotbar")
 			return "fail"
-		hands.pulse("hotbar_%d" % (slot + 1))
+		if not hands.pulse("hotbar_%d" % (slot + 1)):
+			return ""
 		tries = 0
 		spin = 0
+		show_age = 0.0
 		beat = 24
 		return ""
 	if beat == 24:
@@ -282,15 +358,21 @@ func _craft_segment() -> String:
 			if slot < 0:
 				print("FAIL structure piece left the hotbar")
 				return "fail"
-			hands.pulse("hotbar_%d" % (slot + 1))
+			if not hands.pulse("hotbar_%d" % (slot + 1)):
+				return ""
 			return ""
 		var got := _cursor_cell()
 		if _segment_ready(got):
 			_stop_move()
 			tiles = _tile_snap()
 			hands.aim_column(player, float(got.x) + 0.5, float(got.y) + 0.5)
-			hands.pulse("build_place")
+			if show_age < _Pace.PRE_PAUSE:
+				show_age += step_dt
+				return ""
+			if not hands.pulse("build_place"):
+				return ""
 			tries = 0
+			show_age = 0.0
 			beat = 25
 			return ""
 		if spin < 36:
@@ -306,6 +388,10 @@ func _craft_segment() -> String:
 			return "fail"
 		return ""
 	if _new_tiles() >= 3:
+		if show_age < _Pace.RESULT_HOLD + _Pace.SETTLE:
+			show_age += step_dt
+			_look_at(_cursor_cell())
+			return ""
 		print("SHOWCASE structure wall_segment placed")
 		return "pass"
 	tries += 1
@@ -317,12 +403,14 @@ func _craft_segment() -> String:
 	return ""
 
 
-func _mark(feature: String) -> void:
+func _mark(feature: String) -> bool:
 	if marked == feature:
-		return
-	marked = feature
+		return true
 	if chapters != null and chapters.has_method("open"):
-		chapters.open(feature)
+		if not bool(chapters.open(feature)):
+			return false
+	marked = feature
+	return true
 
 
 func _weapon() -> Node:

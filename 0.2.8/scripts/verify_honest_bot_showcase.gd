@@ -13,6 +13,7 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Capture = preload("res://helpers/probe_capture.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
@@ -57,9 +58,16 @@ func _run() -> void:
 	_check_blueprint_key()
 	_check_roster()
 	_check_skill_pad()
+	_check_pace()
 	var hud_ok: bool = await _check_hud()
 	if not hud_ok:
 		_fail("timer label missing")
+	if OS.get_environment("CRYSTALSTORM_SHOWCASE_UNIT") == "1":
+		if _failed == 0:
+			_ProbeExit.finish_tree(self, 0, "HONEST BOT SHOWCASE UNIT OK")
+		else:
+			_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+		return
 	if _failed == 0:
 		await _check_live()
 	if _failed == 0:
@@ -103,6 +111,7 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_fight.gd",
 		"res://scripts/honest_bot/honest_skill_cast.gd",
 		"res://scripts/honest_bot/honest_showcase_finale.gd",
+		"res://scripts/honest_bot/honest_pace.gd",
 		"res://scripts/honest_bot/honest_crystal.gd",
 	]
 	var joined := ""
@@ -239,6 +248,26 @@ func _check_chapters() -> void:
 		_fail("clock %s" % log.format_clock())
 		return
 	_ok("chapters list feature start end")
+
+
+func _check_pace() -> void:
+	if _Pace.short_feature("movement 0.000 3.500\n") != "movement":
+		_fail("a 3.5s chapter should fail the rerun")
+		return
+	if _Pace.short_feature("movement 1.000 5.000\nskill_dash 5.000 9.200\n") != "":
+		_fail("chapters at 4s should pass")
+		return
+	if _Pace.short_feature("bow_shot 10.000 13.999\ncrystal 14.000 20.000\n") != "bow_shot":
+		_fail("short bow chapter should be named")
+		return
+	var hands = _Hands.new()
+	var fault := _Pace.gap_fault(hands)
+	hands.begin_tick()
+	hands.release_all()
+	if fault != "":
+		_fail("human gap %s" % fault)
+		return
+	_ok("chapter span and human gap")
 
 
 func _check_sprint_hold() -> void:
@@ -478,6 +507,10 @@ func _check_live() -> void:
 		return
 	if not text.contains("crystal ") or not text.contains("boss ") or not text.contains("win_screen "):
 		_fail("sidecar missing crystal, boss, or win")
+		return
+	var short := _Pace.short_feature(text)
+	if short != "":
+		_fail("chapter %s under 4s" % short)
 		return
 	print("SHOWCASE elapsed %.2f" % log.seconds())
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string("%s/chapters.json" % _Capture.run_dir()))

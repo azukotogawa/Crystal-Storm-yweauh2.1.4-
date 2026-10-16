@@ -5,6 +5,7 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const THREAT_COLUMNS := 14.0
 
 var bot = _Bot.new()
@@ -25,6 +26,8 @@ var _heal_wait := 0.0
 var _dead := false
 var _approach_limit := -1.0
 var _alive: Dictionary = {}
+var bow_phase := "off"
+var _bow_age := 0.0
 
 
 func release() -> void:
@@ -50,6 +53,8 @@ func reset() -> void:
 	_dead = false
 	_approach_limit = -1.0
 	_alive = {}
+	bow_phase = "off"
+	_bow_age = 0.0
 	bot.extra_held = PackedStringArray()
 
 
@@ -133,8 +138,8 @@ func _approach(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> Str
 
 func _recover(pos: Vector2, origin: Vector2) -> void:
 	if not _unstuck:
-		bot.input.pulse("unstuck")
-		_unstuck = true
+		if bot.input.pulse("unstuck"):
+			_unstuck = true
 		return
 	_unstuck = false
 	bot.set_target(_Roster.pool_goal(pos, origin, _Roster.POOL_STAND))
@@ -200,10 +205,11 @@ func _heal_or_leave(dt: float, player: Node, foe: Vector2) -> String:
 	if _herbs(player) <= 0 or _heal_wait > 0.0:
 		return ""
 	if _heal == 0:
-		bot.input.pulse("hotbar_6")
-		_heal = 1
+		if bot.input.pulse("hotbar_6"):
+			_heal = 1
 		return ""
-	bot.input.pulse("build_place")
+	if not bot.input.pulse("build_place"):
+		return ""
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false
@@ -245,40 +251,67 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	bot.input.aim_column(player, foe.x, foe.y)
 	if rot != "":
 		return
-	if kind == "crystal_mite" and _bow < 4:
-		_bow_beat(dt)
+	if kind == "crystal_mite" and bow_phase != "off":
+		if bow_phase == "wait":
+			return
+		if bow_phase == "run":
+			_bow_beat(dt)
+			return
+	if kind == "crystal_mite" and _bow == 0 and bow_phase == "off":
+		bow_phase = "wait"
 		return
 	if not _sword:
-		bot.input.pulse("hotbar_1")
-		_sword = true
+		if bot.input.pulse("hotbar_1"):
+			_sword = true
 		return
 	_attack_wait -= dt
 	if _attack_wait > 0.0:
 		return
-	bot.input.pulse("attack")
+	if bot.input.pulse("attack"):
+		_attack_wait = 0.48
+
+
+func arm_bow() -> void:
+	bow_phase = "run"
+	_bow = 1
+	_bow_age = 0.0
+
+
+func finish_bow() -> void:
+	bow_phase = "off"
+	_bow = 4
+	_sword = false
 	_attack_wait = 0.48
 
 
 func _bow_beat(dt: float) -> void:
-	_attack_wait = maxf(_attack_wait - dt, 0.0)
-	if _bow == 0:
-		bot.input.pulse("hotbar_1")
-		_bow = 1
-		return
 	if _bow == 1:
-		bot.input.pulse("attack")
+		if not bot.input.pulse("hotbar_3"):
+			return
 		_bow = 2
-		_attack_wait = 0.48
-		return
-	if _attack_wait > 0.0:
+		_bow_age = 0.0
 		return
 	if _bow == 2:
-		bot.input.pulse("hotbar_3")
+		_bow_age += dt
+		if _bow_age < _Pace.PRE_PAUSE:
+			return
+		if not bot.input.pulse("attack"):
+			return
+		print("SHOWCASE bow attack")
 		_bow = 3
+		_bow_age = 0.0
 		return
-	bot.input.pulse("attack")
-	print("SHOWCASE bow attack")
-	_bow = 4
+	if _bow == 3:
+		_bow_age += dt
+		if _bow_age < _Pace.RESULT_HOLD:
+			return
+		_bow = 4
+		_bow_age = 0.0
+		return
+	_bow_age += dt
+	if _bow_age < _Pace.SETTLE:
+		return
+	bow_phase = "done"
 	_sword = false
 	_attack_wait = 0.48
 
@@ -298,10 +331,11 @@ func _hold_pool(dt: float, player: Node, origin: Vector2) -> void:
 
 func _heal_idle() -> void:
 	if _heal == 0:
-		bot.input.pulse("hotbar_6")
-		_heal = 1
+		if bot.input.pulse("hotbar_6"):
+			_heal = 1
 		return
-	bot.input.pulse("build_place")
+	if not bot.input.pulse("build_place"):
+		return
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false

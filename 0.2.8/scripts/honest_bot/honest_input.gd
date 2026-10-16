@@ -1,10 +1,18 @@
 extends RefCounted
 
 const _Aim = preload("res://player/action_targeting.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
+var pace_presses := false
+var _since_press := 1.0
 var _held: Dictionary = {}
 var _pulses: PackedStringArray = PackedStringArray()
 var _keys: Array[int] = []
+
+
+func advance_pace(delta: float) -> void:
+	if delta > 0.0:
+		_since_press += delta
 
 
 func begin_tick() -> void:
@@ -18,15 +26,18 @@ func begin_tick() -> void:
 	_keys.clear()
 
 
-func pulse(action: StringName) -> void:
+func pulse(action: StringName) -> bool:
 	var name := String(action)
 	if name == "":
-		return
+		return false
 	for existing in _pulses:
 		if existing == name:
-			return
+			return true
+	if not _press_slot():
+		return false
 	_pulses.append(name)
 	_send(name, true)
+	return true
 
 
 func set_held(actions: PackedStringArray) -> void:
@@ -60,14 +71,17 @@ func is_held(action: String) -> bool:
 	return false
 
 
-func pulse_key(code: int) -> void:
+func pulse_key(code: int) -> bool:
 	if code == 0:
-		return
+		return false
 	for existing in _keys:
 		if existing == code:
-			return
+			return true
+	if not _press_slot():
+		return false
 	_keys.append(code)
 	_send_key(code, true)
+	return true
 
 
 func aim_column(body: Node, col_x: float, col_z: float) -> void:
@@ -86,20 +100,32 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 	vp.push_input(motion, true)
 
 
-func click_at(node: Node, at: Vector2, pressed: bool) -> void:
+func click_at(node: Node, at: Vector2, pressed: bool) -> bool:
 	if node == null:
-		return
+		return false
 	var vp := node.get_viewport()
 	if vp == null:
-		return
+		return false
 	if not _on_view(vp, at):
-		return
+		return false
+	if not _press_slot():
+		return false
 	vp.warp_mouse(at)
 	var ev := InputEventMouseButton.new()
 	ev.button_index = MOUSE_BUTTON_LEFT
 	ev.pressed = pressed
 	_point(ev, at)
 	vp.push_input(ev, true)
+	return true
+
+
+func _press_slot() -> bool:
+	if not pace_presses:
+		return true
+	if _since_press + 0.0001 < _Pace.GAP:
+		return false
+	_since_press = 0.0
+	return true
 
 
 func _send(action: String, pressed: bool) -> void:

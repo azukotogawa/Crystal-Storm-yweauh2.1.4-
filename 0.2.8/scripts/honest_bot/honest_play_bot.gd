@@ -14,6 +14,7 @@ var _recover_left := 0.0
 var _strafe := "move_left"
 var extra_held: PackedStringArray = PackedStringArray()
 var stuck_limit := 0
+var _jump_due := false
 
 
 func set_target(column_xz: Vector2) -> void:
@@ -23,6 +24,7 @@ func set_target(column_xz: Vector2) -> void:
 	gave_up = false
 	stuck_lines = PackedStringArray()
 	_recover_left = 0.0
+	_jump_due = false
 	watch.reset()
 
 
@@ -32,6 +34,8 @@ func release() -> void:
 
 func tick(player_xz: Vector2, yaw_degrees: float, delta: float) -> void:
 	input.begin_tick()
+	if _jump_due and input.pulse(&"jump"):
+		_jump_due = false
 	if not has_target or arrived or gave_up:
 		input.release_all()
 		return
@@ -55,7 +59,9 @@ func tick(player_xz: Vector2, yaw_degrees: float, delta: float) -> void:
 		return
 	_start_recover()
 	input.set_held(_recover_actions())
-	input.pulse(&"jump")
+	_jump_due = true
+	if input.pulse(&"jump"):
+		_jump_due = false
 
 
 func _actions(plan: Dictionary, step: float) -> PackedStringArray:

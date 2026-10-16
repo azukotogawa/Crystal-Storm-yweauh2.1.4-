@@ -16,11 +16,12 @@ const _Build = preload("res://scripts/honest_bot/honest_build.gd")
 const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
 const MOVE_LIMIT := 22.0
-const LIGHT_HOLD := 0.75
+const LIGHT_HOLD := 4.0
 const BOOT_LIMIT := 8.0
 const FACE_LIMIT := 2.5
 const PICKUP_LIMIT := 8.0
@@ -96,6 +97,9 @@ var _ruins_before := 0
 var _chain: Dictionary = {}
 var _chain_ready := false
 var _lights_noted := false
+var _hold_status := ""
+var _pose := ""
+var _pose_age := 0.0
 var build = _Build.new()
 var fight = _Fight.new()
 var caster = _Cast.new()
@@ -132,16 +136,24 @@ func tick(delta: float) -> bool:
 	if step <= 0.0:
 		step = 1.0 / 60.0
 	_advance_clock(step)
+	_arm_pace(step)
 	if _seg == "":
 		if not _pull_next():
 			finished = true
 			_paint()
 			return true
 	_seg_age += step
-	_run_segment(step)
-	_paint()
-	if _seg_status != "":
+	if _hold_status == "":
+		_sync_bow()
+		_run_segment(step)
+		if _seg_status != "":
+			_hold_status = _seg_status
+			_seg_status = ""
+	elif _chapter_ready():
+		_seg_status = _hold_status
+		_hold_status = ""
 		_finish_segment()
+	_paint()
 	return finished
 
 
@@ -185,6 +197,9 @@ func _open_segment(id: String) -> void:
 	_pickup_age = 0.0
 	_detour_label = ""
 	_detour_resumes = 0
+	_pose = ""
+	_pose_age = 0.0
+	_hold_status = ""
 	_move_armed = false
 	bot.stuck_limit = 0
 	bot.extra_held = PackedStringArray()
@@ -194,7 +209,10 @@ func _open_segment(id: String) -> void:
 		_arm_detour(id)
 		return
 	if chapters != null and chapters.has_method("open"):
-		chapters.open(id)
+		var feature := id
+		if id == "structure_place":
+			feature = "structure_stone_wall"
+		chapters.open(feature)
 	if id == "movement":
 		_arm_movement()
 	elif id == "dig_tool" or id == "structure_place":
@@ -279,16 +297,16 @@ func _tick_boot() -> void:
 
 func _pulse_pause() -> void:
 	if _boot_step == 0:
-		hands.pulse("pause")
-		_boot_step = 1
+		if hands.pulse("pause"):
+			_boot_step = 1
 		return
 	if _boot_step == 1:
 		hands.begin_tick()
 		_boot_step = 2
 		return
 	if _boot_step == 2:
-		hands.pulse("pause")
-		_boot_step = 3
+		if hands.pulse("pause"):
+			_boot_step = 3
 		return
 	if _boot_step == 3:
 		hands.begin_tick()
@@ -332,8 +350,8 @@ func _tick_movement(step: float) -> void:
 	if state == Player.State.JUMPING or state == Player.State.FALLING:
 		_left_ground = true
 	if not _jump_sent and not wet and moved >= 1.0 and _grounded(state):
-		bot.input.pulse("jump")
-		_jump_sent = true
+		if bot.input.pulse("jump"):
+			_jump_sent = true
 	if moved >= MOVE_COLUMNS and _left_ground and _sprint_seen:
 		print("OK movement columns %.2f jump true sprint true" % moved)
 		_seg_status = "pass"
@@ -436,7 +454,7 @@ func _tick_detour(step: float) -> void:
 	var pos := _xz()
 	if _face_only:
 		_face_age += step
-		_tick_face(pos)
+		_tick_face(pos, step)
 		return
 	var extras := PackedStringArray()
 	if _submerged():
@@ -459,16 +477,52 @@ func _tick_detour(step: float) -> void:
 		_seg_status = "fail"
 
 
-func _tick_face(pos: Vector2) -> void:
-	var rotate := _Nav.face_action(pos, _detour_face, _yaw())
+func _tick_face(pos: Vector2, step: float) -> void:
 	hands.begin_tick()
-	if rotate == "" or _face_age >= FACE_LIMIT:
-		hands.release_all()
-		_after_face()
+	if _pose == "":
+		_pose = "pause"
+		_pose_age = 0.0
+	if _pose == "pause":
+		hands.set_held(PackedStringArray())
+		_pose_age += step
+		if _pose_age < _Pace.PRE_PAUSE:
+			return
+		_pose = "turn"
+		_face_age = 0.0
 		return
-	var held := PackedStringArray()
-	held.append(rotate)
-	hands.set_held(held)
+	if _pose == "turn":
+		var rotate := _Nav.face_action(pos, _detour_face, _yaw())
+		if rotate != "" and _face_age < FACE_LIMIT:
+			var held := PackedStringArray()
+			held.append(rotate)
+			hands.set_held(held)
+			return
+		hands.release_all()
+		_pose = "result"
+		_pose_age = 0.0
+		_pickup_age = 0.0
+		return
+	if _pose == "result":
+		_pose_age += step
+		var found := true
+		if _seg == "density_treasure":
+			_pickup_age += step
+			found = _ruin_count() > _ruins_before
+			if not found and _pickup_age < PICKUP_LIMIT:
+				return
+		if _pose_age < _Pace.RESULT_HOLD:
+			return
+		if _seg == "density_landmark":
+			_note_glow()
+		if _seg == "density_treasure":
+			print("SHOWCASE treasure pickup %s" % ("pass" if found else "miss"))
+		_pose = "settle"
+		_pose_age = 0.0
+		return
+	_pose_age += step
+	if _pose_age < _Pace.SETTLE:
+		return
+	_seg_status = "pass"
 
 
 func _begin_face() -> void:
@@ -482,16 +536,6 @@ func _detour_gap(id: String) -> float:
 	if id == "density_landmark":
 		return _Walk.LANDMARK_STAND
 	return 0.0
-
-
-func _after_face() -> void:
-	if _seg == "density_treasure":
-		_pickup_wait = true
-		_pickup_age = 0.0
-		return
-	if _seg == "density_landmark":
-		_note_glow()
-	_seg_status = "pass"
 
 
 func _tick_pickup(step: float) -> void:
@@ -530,6 +574,41 @@ func _density_id(tag: String) -> String:
 func _open_chapter(feature: String) -> void:
 	if chapters != null and chapters.has_method("open"):
 		chapters.open(feature)
+
+
+func _arm_pace(step: float) -> void:
+	_pace_one(hands, step)
+	_pace_one(bot.input, step)
+	if fight != null:
+		_pace_one(fight.bot.input, step)
+	if finale != null and finale.heart != null and finale.heart.fight != null:
+		_pace_one(finale.heart.fight.bot.input, step)
+
+
+func _pace_one(pad: RefCounted, step: float) -> void:
+	if pad == null:
+		return
+	pad.pace_presses = true
+	if pad.has_method("advance_pace"):
+		pad.advance_pace(step)
+
+
+func _chapter_ready() -> bool:
+	if chapters != null and chapters.has_method("can_advance"):
+		return bool(chapters.can_advance())
+	return _seg_age + 0.001 >= _Pace.MIN_CHAPTER
+
+
+func _sync_bow() -> void:
+	if fight == null or chapters == null or _seg != "combat_crystal_mite":
+		return
+	if fight.bow_phase == "wait":
+		if chapters.open("bow_shot"):
+			fight.arm_bow()
+		return
+	if fight.bow_phase == "done":
+		if chapters.open("combat_crystal_mite"):
+			fight.finish_bow()
 
 
 func _note_lights() -> void:
@@ -680,8 +759,9 @@ func _tutorial_open() -> bool:
 func _pulse_unstuck() -> void:
 	if _unstuck_sent:
 		return
+	if not bot.input.pulse("unstuck"):
+		return
 	_unstuck_sent = true
-	bot.input.pulse("unstuck")
 
 
 func _submerged() -> bool:
@@ -719,6 +799,8 @@ func _paint() -> void:
 			chapter = _detour_label
 		elif finale != null and (_seg == "crystal" or _seg == "boss" or _seg == "win_screen") and finale.caption != "":
 			chapter = finale.caption
+		if chapters.has_method("feature") and chapters.feature() == "bow_shot":
+			chapter = "bow_shot"
 		hud.set_readout(chapters.format_clock(), chapter)
 
 

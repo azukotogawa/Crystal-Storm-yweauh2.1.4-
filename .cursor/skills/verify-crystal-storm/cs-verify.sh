@@ -694,6 +694,11 @@ showcase|bot-showcase)
   if ! grep -q '^crystal ' "$EVID/chapters.txt" || ! grep -q '^boss ' "$EVID/chapters.txt" || ! grep -q '^win_screen ' "$EVID/chapters.txt"; then
     echo "BOT SHOWCASE FAIL finale chapters"; exit 1
   fi
+  short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
+  if [ -n "$short" ]; then
+    echo "BOT SHOWCASE FAIL chapter $short under 4s"
+    exit 1
+  fi
   echo "BOT SHOWCASE OK rc=$r chapters=$EVID/chapters.json" ;;
 telemetry-summary)
   py=""
