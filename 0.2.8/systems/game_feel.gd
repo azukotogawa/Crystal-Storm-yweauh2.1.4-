@@ -139,14 +139,16 @@ func _begin_emphasis(scale: float, seconds: float) -> void:
 		return
 	if _PlayerSettings.reduce_motion:
 		return
-	if absf(Engine.time_scale - 1.0) > 0.02:
-		return
 	var tree := get_tree()
 	if tree == null or tree.paused:
 		return
+	var holding := _emphasis_token > 0 and absf(Engine.time_scale - _emphasis_dip) <= 0.02
+	if not holding and absf(Engine.time_scale - 1.0) > 0.02:
+		return
 	_emphasis_token += 1
 	var token := _emphasis_token
-	_saved_scale = Engine.time_scale
+	if not holding:
+		_saved_scale = Engine.time_scale
 	_emphasis_dip = scale
 	Engine.time_scale = scale
 	var timer := tree.create_timer(seconds, true, false, true)

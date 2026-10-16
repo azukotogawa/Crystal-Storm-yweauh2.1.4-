@@ -13,6 +13,8 @@ const _RunSummaryPanel = preload("res://ui/run_summary_panel.gd")
 const _WorldBakeService = preload("res://world/world_bake_service.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _Progression = preload("res://systems/progression_service.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _Passives = preload("res://player/skill_passives.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -27,6 +29,10 @@ var _unlocked_enemies: Array[StringName] = []
 var _equipped_relic_names: Array[String] = []
 var _toast: Label = null
 var _toast_timer: float = 0.0
+var _toast_beat: String = ""
+var _skills_bound: bool = false
+var _stage_bound: bool = false
+var _stage_seen: Dictionary = {}
 var _living_world = null
 var _current_biome: String = ""
 var _opening_toast_shown: bool = false
@@ -99,7 +105,7 @@ func _ready() -> void:
 	_panel.visible = false
 	_ensure_toast()
 	_game_manager = get_tree().get_first_node_in_group("game_manager")
-	_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	_claim_crystal()
 	if _game_manager:
 		_game_manager.phase_changed.connect(_on_phase_changed)
 		_game_manager.run_state_changed.connect(_on_run_state_changed)
@@ -318,17 +324,8 @@ func _ensure_toast() -> void:
 	_toast = Label.new()
 	_toast.name = "ToastLabel"
 	_toast.visible = false
-	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast.anchor_left = 0.5
-	_toast.anchor_right = 0.5
-	_toast.anchor_top = 0.12
-	_toast.anchor_bottom = 0.12
-	_toast.offset_left = -280.0
-	_toast.offset_right = 280.0
-	_toast.offset_top = 0.0
-	_toast.offset_bottom = 28.0
-	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	add_child(_toast)
+	_place_toast()
 
 
 func _bind_living_world() -> void:
@@ -343,6 +340,8 @@ func _bind_living_world() -> void:
 		_living_world.ruin_expedition_completed.connect(_on_ruin_expedition)
 	if _living_world.has_signal("biome_first_visited") and not _living_world.biome_first_visited.is_connected(_on_biome_first_visit):
 		_living_world.biome_first_visited.connect(_on_biome_first_visit)
+	if _living_world.has_signal("landmark_discovered") and not _living_world.landmark_discovered.is_connected(_on_landmark_discovered):
+		_living_world.landmark_discovered.connect(_on_landmark_discovered)
 	if _living_world.has_signal("town_militia_called") and not _living_world.town_militia_called.is_connected(_on_militia_toast):
 		_living_world.town_militia_called.connect(_on_militia_toast)
 	if _living_world.has_signal("town_rallied") and not _living_world.town_rallied.is_connected(_on_town_rallied):
@@ -382,7 +381,11 @@ func _on_ruin_expedition(result: Dictionary) -> void:
 	var lore := str(result.get("lore", ""))
 	if lore != "":
 		parts.append(lore)
-	_show_toast(" · ".join(parts))
+	var line := " · ".join(parts)
+	if bool(result.get("treasure_site", false)):
+		_show_beat("treasure", line)
+	else:
+		_show_toast(line)
 	_update_game_hud()
 
 
@@ -407,8 +410,7 @@ func _on_town_threat_changed(town_name: String, state_label: String, _center: Ve
 func _bind_progression() -> void:
 	if _progression_bound:
 		return
-	if _crystal == null:
-		_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	_claim_crystal()
 	if _crystal and _crystal.evolution and _crystal.evolution.has_signal("enemy_unlocked"):
 		if not _crystal.evolution.enemy_unlocked.is_connected(_on_enemy_unlocked):
 			_crystal.evolution.enemy_unlocked.connect(_on_enemy_unlocked)
@@ -455,7 +457,7 @@ func _on_relic_equipped(relic_id: StringName) -> void:
 	var name: String = def.display_name if def else str(relic_id)
 	if name not in _equipped_relic_names:
 		_equipped_relic_names.append(name)
-	_show_toast("Relic equipped: %s" % name)
+	_show_beat("relic", "Relic equipped: %s" % name)
 	_update_game_hud()
 
 
@@ -471,13 +473,56 @@ func _banner_seconds() -> float:
 	return seconds
 
 
+func _place_toast() -> void:
+	if _toast == null:
+		return
+	_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_toast.offset_left = -220.0
+	_toast.offset_right = 220.0
+	_toast.offset_top = 200.0
+	_toast.offset_bottom = 236.0
+	_toast.grow_horizontal = Control.GROW_DIRECTION_BOTH
+
+
 func _show_toast(text: String) -> void:
 	_ensure_toast()
 	if _toast == null:
 		return
+	_place_toast()
+	_toast_beat = ""
 	_toast.text = text
 	_toast.visible = true
 	_toast_timer = _banner_seconds()
+
+
+func _show_beat(beat_id: String, text: String) -> void:
+	_ensure_toast()
+	if _toast == null:
+		return
+	_place_toast()
+	_toast_beat = beat_id
+	_toast.text = text
+	_toast.visible = true
+	_toast_timer = _beat_seconds(beat_id)
+	if not is_inside_tree():
+		return
+	var feel := get_node_or_null("/root/GameFeel")
+	if feel != null and feel.has_method("play_beat"):
+		feel.play_beat(beat_id)
+
+
+func _beat_seconds(beat_id: String) -> float:
+	if not is_inside_tree():
+		return 2.5
+	var feel := get_node_or_null("/root/GameFeel")
+	if feel == null or not feel.has_method("banner_seconds"):
+		return 2.5
+	var seconds := float(feel.banner_seconds(beat_id))
+	if seconds <= 0.0:
+		return 2.5
+	return seconds
 
 
 func _on_spawn_destroyed(_spawn) -> void:
@@ -533,7 +578,7 @@ func _note_boss_warning(active: bool) -> void:
 	if not _GameConfig.SINGLE_CRYSTAL or not active or _boss_warned:
 		return
 	_boss_warned = true
-	_show_toast("Boss warning — a warden guards the crystal")
+	_show_beat("boss_spawn", "Boss warning — a warden guards the crystal")
 
 
 func _update_map_temp_label() -> void:
@@ -589,10 +634,12 @@ func _process(delta: float) -> void:
 		_phase_label.modulate = _phase_label_base_mod
 	if not _progression_bound:
 		_bind_progression()
+	if not _skills_bound:
+		_bind_skills()
 	if _game_manager == null:
 		_game_manager = get_tree().get_first_node_in_group("game_manager")
-	if _crystal == null:
-		_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	_claim_crystal()
+	_bind_crystal_beats()
 	_update_game_hud()
 	_update_objective_hud()
 	_update_player_health()
@@ -775,6 +822,14 @@ func _is_fight_item(item_id: String) -> bool:
 	if category == _ItemTypes.Category.ARMOR:
 		return true
 	return category == _ItemTypes.Category.WEAPON and int(def.get("weapon_kind", -1)) != _ItemTypes.WeaponKind.DIG
+
+
+func _win_banner() -> String:
+	if _GameConfig.SINGLE_CRYSTAL and _victory_reason() != "boss":
+		return "Victory — the crystal was destroyed"
+	if _victory_reason() == "boss":
+		return "Victory — the warden fell"
+	return "Victory — the crystal shattered"
 
 
 func _victory_reason() -> String:
@@ -1115,7 +1170,99 @@ func _on_xp_gained(_amount: int, _total: int) -> void:
 
 func _on_xp_level_up(level: int) -> void:
 	_apply_xp_bar()
-	_show_toast("Level up — %d" % level)
+	_show_beat("level_up", "Level up — %d" % level)
+
+
+func _bind_skills() -> void:
+	if _skills_bound:
+		return
+	var skills = get_tree().get_first_node_in_group("skill_service")
+	if skills == null:
+		return
+	if skills.has_signal("skill_unlocked") and not skills.skill_unlocked.is_connected(_on_skill_unlocked_beat):
+		skills.skill_unlocked.connect(_on_skill_unlocked_beat)
+	_skills_bound = true
+
+
+func _on_skill_unlocked_beat(skill_id: StringName) -> void:
+	_show_beat("skill_unlock", "Skill unlocked — %s" % _skill_banner_name(skill_id))
+
+
+func _skill_banner_name(skill_id: StringName) -> String:
+	match skill_id:
+		_Passives.FIGHTER:
+			return "Tough"
+		_Passives.MINER:
+			return "Quick Mine"
+		_Passives.BUILDER:
+			return "Sturdy"
+		&"dash":
+			return "Dash"
+		&"ground_slam":
+			return "Ground Slam"
+		&"crystal_pulse":
+			return "Crystal Pulse"
+		&"quick_wall":
+			return "Quick Wall"
+		_:
+			return str(skill_id).replace("_", " ")
+
+
+func _claim_crystal() -> void:
+	if _crystal != null:
+		return
+	var found = get_tree().get_first_node_in_group("crystal_manager")
+	if found is CrystalManager:
+		_crystal = found
+
+
+func _bind_crystal_beats() -> void:
+	if _stage_bound:
+		return
+	var crystal = _crystal
+	if crystal == null and is_inside_tree():
+		crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_signal("spawn_damaged"):
+		return
+	if not crystal.spawn_damaged.is_connected(_on_crystal_stage):
+		crystal.spawn_damaged.connect(_on_crystal_stage)
+	_stage_bound = true
+
+
+func _on_crystal_stage(spawn, amount: float) -> void:
+	if not _is_crystal_heart(spawn):
+		return
+	var max_hp := float(spawn.max_health)
+	if max_hp <= 0.0:
+		return
+	var after := float(spawn.health)
+	var before := after + amount
+	var lowest := -1
+	for ratio in [0.75, 0.50, 0.25]:
+		var mark := int(round(ratio * 100.0))
+		if _stage_seen.has(mark):
+			continue
+		var line: float = max_hp * float(ratio)
+		if before > line + 0.001 and after <= line + 0.001:
+			_stage_seen[mark] = true
+			lowest = mark
+	if lowest < 0:
+		return
+	_show_beat("crystal_damage_stage", "Crystal cracked — %d%%" % lowest)
+
+
+func _is_crystal_heart(spawn) -> bool:
+	if spawn == null:
+		return false
+	if _GameConfig.SINGLE_CRYSTAL:
+		return true
+	if bool(spawn.get("is_boss")):
+		return true
+	return int(spawn.get("kind")) == _CrystalTypes.SpawnKind.ORIGIN
+
+
+func _on_landmark_discovered(landmark_name: String) -> void:
+	_show_beat("landmark_discovery", "Landmark — %s" % landmark_name)
 
 
 func _update_xp_bar() -> void:
@@ -1485,6 +1632,7 @@ static func loss_panel_lines(reason: String) -> PackedStringArray:
 func _on_run_state_changed(new_state: int) -> void:
 	_panel.visible = true
 	if new_state == _GameManager.RunState.WON:
+		_show_beat("win", _win_banner())
 		if _GameConfig.SINGLE_CRYSTAL and _victory_reason() != "boss":
 			_title.text = "Victory — Crystal Destroyed"
 			_subtitle.text = "You destroyed the crystal.\nPress R to restart."

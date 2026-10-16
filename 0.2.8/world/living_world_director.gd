@@ -14,6 +14,9 @@ signal town_rallied(town_name: String, center: Vector2i, militia: int, health_re
 signal town_threat_changed(town_name: String, state_label: String, center: Vector2i)
 signal biome_changed(biome_name: String)
 signal biome_first_visited(biome_name: String, gift_item: String, gift_count: int)
+signal landmark_discovered(landmark_name: String)
+
+const LANDMARK_DISCOVER_RADIUS := 14.0
 
 @export var ruin_discover_radius: float = 10.0
 @export var ruin_power_bonus: float = 6.0
@@ -31,6 +34,7 @@ var _crystal: CrystalManager
 var _town_defense: Node
 var _entity_manager: Node
 var _discovered_ruins: Dictionary = {}
+var _seen_landmarks: Dictionary = {}
 var _rallied_towns: Dictionary = {}
 var _visited_biomes: Dictionary = {}
 var _last_biome: String = ""
@@ -54,7 +58,9 @@ func _bind() -> void:
 		return
 	_player = get_tree().get_first_node_in_group("player")
 	_world = get_tree().get_first_node_in_group("world")
-	_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	var found_crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if found_crystal is CrystalManager:
+		_crystal = found_crystal
 	_town_defense = get_tree().get_first_node_in_group("town_defense_manager")
 	_entity_manager = get_tree().get_first_node_in_group("entity_manager")
 	if _town_defense and _town_defense.has_signal("militia_requested"):
@@ -116,6 +122,36 @@ func _budgeted_ruin_scan() -> void:
 		try_discover_at_player_column()
 
 
+func try_discover_landmarks() -> String:
+	if _player == null:
+		return ""
+	var col := _player_column()
+	var reach := int(ceil(LANDMARK_DISCOVER_RADIUS))
+	var best_name := ""
+	var best_d := LANDMARK_DISCOVER_RADIUS + 1.0
+	var best_cell := Vector2i(2147483647, 0)
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var dist := Vector2(float(dx), float(dz)).length()
+			if dist > LANDMARK_DISCOVER_RADIUS:
+				continue
+			var cell := Vector2i(col.x + dx, col.y + dz)
+			if _seen_landmarks.has(cell):
+				continue
+			var feat: Dictionary = _FeatureRegistry.get_feature(cell.x, cell.y)
+			if not bool(feat.get("landmark", false)):
+				continue
+			if dist < best_d:
+				best_d = dist
+				best_cell = cell
+				best_name = str(feat.get("name", "Landmark"))
+	if best_name == "":
+		return ""
+	_seen_landmarks[best_cell] = true
+	landmark_discovered.emit(best_name)
+	return best_name
+
+
 func get_player_biome_name() -> String:
 	return _last_biome
 
@@ -147,6 +183,7 @@ func _poll_biome() -> void:
 		_last_biome = name
 		biome_changed.emit(name)
 	_try_first_biome_visit(name)
+	try_discover_landmarks()
 
 
 func _try_first_biome_visit(biome_name: String) -> void:
@@ -219,6 +256,7 @@ func discover_ruin_at(center: Vector2i) -> Dictionary:
 		"relic_id": str(relic_id),
 		"guardians": guardians,
 		"lore": lore,
+		"treasure_site": bool(feat.get("treasure_site", false)),
 		"discovered_count": _discovered_ruins.size(),
 	}
 	ruin_discovered.emit(ruin_name, center, ruin_power_bonus)
