@@ -131,6 +131,7 @@ func tick(delta: float) -> bool:
 	var step := delta
 	if step <= 0.0:
 		step = 1.0 / 60.0
+	_advance_clock(step)
 	if _seg == "":
 		if not _pull_next():
 			finished = true
@@ -700,6 +701,11 @@ func _submerged() -> bool:
 
 func _grounded(state: int) -> bool:
 	return state == Player.State.IDLE or state == Player.State.RUNNING
+
+
+func _advance_clock(step: float) -> void:
+	if chapters != null and chapters.has_method("advance"):
+		chapters.advance(step)
 
 
 func _paint() -> void:

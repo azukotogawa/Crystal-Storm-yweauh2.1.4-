@@ -10,8 +10,8 @@ var _chapter: Label
 func _ready() -> void:
 	layer = 90
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	_clock = _label(16.0)
-	_chapter = _label(52.0)
+	_clock = _corner_label(false)
+	_chapter = _corner_label(true)
 	_apply()
 
 
@@ -29,13 +29,22 @@ func _apply() -> void:
 		_chapter.text = chapter_text
 
 
-func _label(y: float) -> Label:
+func _corner_label(on_right: bool) -> Label:
 	var label := Label.new()
-	label.set_position(Vector2(16.0, y))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", 28)
 	label.add_theme_color_override("font_color", Color(1, 1, 1))
 	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
 	label.add_theme_constant_override("outline_size", 8)
+	if on_right:
+		label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+		label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		label.offset_left = -520.0
+		label.offset_right = -16.0
+		label.offset_top = 16.0
+		label.offset_bottom = 56.0
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	else:
+		label.set_position(Vector2(16.0, 184.0))
 	add_child(label)
 	return label

@@ -209,7 +209,9 @@ func _check_traversal() -> void:
 func _check_chapters() -> void:
 	var log = _Chapters.new()
 	log.begin()
+	log.advance(1.25)
 	log.open("movement")
+	log.advance(0.40)
 	log.close()
 	var body: String = log.text_body()
 	if not body.begins_with("movement "):
@@ -218,6 +220,12 @@ func _check_chapters() -> void:
 	var parts := body.split(" ", false)
 	if parts.size() < 3:
 		_fail("chapter text needs feature start end")
+		return
+	if absf(float(parts[1]) - 1.25) > 0.001 or absf(float(parts[2]) - 1.65) > 0.001:
+		_fail("chapter clock %s" % body)
+		return
+	if absf(log.seconds() - 1.65) > 0.001:
+		_fail("clock drifted from engine time")
 		return
 	var payload: Dictionary = log.payload()
 	var rows: Array = payload.get("chapters", [])
@@ -364,6 +372,16 @@ func _check_hud() -> bool:
 		layer.queue_free()
 		return false
 	if layer.get_child_count() < 2:
+		layer.queue_free()
+		return false
+	var chapter := layer.get_child(1) as Label
+	var placed := false
+	if chapter != null:
+		var rect := chapter.get_global_rect()
+		placed = rect.position.x >= 360.0
+		if rect.size.x < 1.0:
+			placed = chapter.anchor_left >= 0.99 and chapter.anchor_right >= 0.99
+	if not placed:
 		layer.queue_free()
 		return false
 	layer.queue_free()

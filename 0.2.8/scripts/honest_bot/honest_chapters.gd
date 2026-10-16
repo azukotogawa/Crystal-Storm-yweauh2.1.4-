@@ -1,20 +1,25 @@
 extends RefCounted
 
 var rows: Array[Dictionary] = []
-var _t0 := 0
+var _elapsed := 0.0
 var _open_feature := ""
 var _open_start := 0.0
 var _open := false
 
 
 func begin() -> void:
-	_t0 = Time.get_ticks_msec()
+	_elapsed = 0.0
 	rows.clear()
 	_open = false
 
 
+func advance(delta: float) -> void:
+	if delta > 0.0:
+		_elapsed += delta
+
+
 func seconds() -> float:
-	return float(Time.get_ticks_msec() - _t0) / 1000.0
+	return _elapsed
 
 
 func format_clock() -> String:
