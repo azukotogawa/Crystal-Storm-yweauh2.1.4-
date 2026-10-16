@@ -405,6 +405,12 @@ bot-progress)
   if bad "$EVID/honest-bot-progress.log"; then echo "BOT PROGRESS FAIL script rc=$r"; tail -8 "$EVID/honest-bot-progress.log"; exit 1; fi
   if grep -qF "HONEST BOT PROGRESS OK" "$EVID/honest-bot-progress.log" && grep -q '^LEVEL ' "$EVID/honest-bot-progress.log" && grep -q '^SKILL ' "$EVID/honest-bot-progress.log" && grep -q '^XP_RATE ' "$EVID/honest-bot-progress.log" && ! grep -q '^FAIL' "$EVID/honest-bot-progress.log"; then
     echo "BOT PROGRESS OK rc=$r marker='HONEST BOT PROGRESS OK'"; else echo "BOT PROGRESS FAIL rc=$r"; tail -20 "$EVID/honest-bot-progress.log"; exit 1; fi ;;
+bot-crystal)
+  run_godot honest-bot-crystal --headless --path "$ROOT" -s res://scripts/verify_honest_bot_crystal.gd; r=$?
+  grep -E '^(OK|FAIL|STOP|ORIGIN|START|CRYSTAL|BOSS|KILL|STUCK|HONEST)' "$EVID/honest-bot-crystal.log" | tr -d '\r'
+  if bad "$EVID/honest-bot-crystal.log"; then echo "BOT CRYSTAL FAIL script rc=$r"; tail -8 "$EVID/honest-bot-crystal.log"; exit 1; fi
+  if grep -qF "HONEST BOT CRYSTAL OK" "$EVID/honest-bot-crystal.log" && grep -q '^CRYSTAL DESTROYED' "$EVID/honest-bot-crystal.log" && grep -q '^BOSS SPAWN ' "$EVID/honest-bot-crystal.log" && grep -q '^BOSS KILL' "$EVID/honest-bot-crystal.log" && ! grep -q '^FAIL' "$EVID/honest-bot-crystal.log"; then
+    echo "BOT CRYSTAL OK rc=$r marker='HONEST BOT CRYSTAL OK'"; else echo "BOT CRYSTAL FAIL rc=$r"; tail -20 "$EVID/honest-bot-crystal.log"; exit 1; fi ;;
 telemetry-summary)
   py=""
   if command -v python3 >/dev/null 2>&1; then py=python3
@@ -425,5 +431,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
