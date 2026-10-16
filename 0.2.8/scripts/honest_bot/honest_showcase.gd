@@ -15,6 +15,7 @@ const _Water = preload("res://helpers/water_locomotion.gd")
 const _Build = preload("res://scripts/honest_bot/honest_build.gd")
 const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
+const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
@@ -51,6 +52,9 @@ const READY: Array[String] = [
 	"skill_crystal_pulse",
 	"skill_quick_wall",
 	"skill_passives",
+	"crystal",
+	"boss",
+	"win_screen",
 ]
 
 var bot = _Bot.new()
@@ -95,6 +99,7 @@ var _lights_noted := false
 var build = _Build.new()
 var fight = _Fight.new()
 var caster = _Cast.new()
+var finale = _Finale.new()
 
 
 func load_route() -> bool:
@@ -141,7 +146,8 @@ func tick(delta: float) -> bool:
 
 func _pull_next() -> bool:
 	if player != null and float(player.get("health")) <= 0.0:
-		print("SHOWCASE NEXT crystal")
+		print("FAIL showcase died")
+		failed = true
 		return false
 	while _cursor < ids.size():
 		var id := String(ids[_cursor])
@@ -200,10 +206,13 @@ func _open_segment(id: String) -> void:
 			_seg_status = "fail"
 			return
 		caster.begin(id)
+	elif id == "crystal" or id == "boss" or id == "win_screen":
+		finale.begin(id)
 
 
 func _finish_segment() -> void:
 	var status := _seg_status
+	var stop := status == "fail" and (_seg == "crystal" or _seg == "boss" or _seg == "win_screen")
 	if status == "fail":
 		failed = true
 	if chapters != null and chapters.has_method("close"):
@@ -217,6 +226,9 @@ func _finish_segment() -> void:
 	bot.release()
 	hands.release_all()
 	fight.release()
+	if stop:
+		finale.release()
+		finished = true
 	_seg = ""
 	_seg_status = ""
 
@@ -243,6 +255,8 @@ func _run_segment(step: float) -> void:
 			_tick_kind()
 		"xp_level", "skill_dash", "skill_ground_slam", "multiblock_break", "skill_crystal_pulse", "skill_quick_wall", "skill_passives":
 			_tick_cast(step)
+		"crystal", "boss", "win_screen":
+			_tick_finale(step)
 		_:
 			_seg_status = "fail"
 
@@ -358,6 +372,16 @@ func _tick_hunt(step: float) -> void:
 func _tick_kind() -> void:
 	var kind := _seg.trim_prefix("combat_")
 	_seg_status = fight.outcome(kind)
+
+
+func _tick_finale(step: float) -> void:
+	if finale == null:
+		print("FAIL finale missing")
+		_seg_status = "fail"
+		return
+	var result := finale.tick(step, tree, player)
+	if result != "":
+		_seg_status = result
 
 
 func _tick_cast(step: float) -> void:
@@ -687,6 +711,8 @@ func _paint() -> void:
 			chapter = build.chapter_label
 		elif _detour_label != "":
 			chapter = _detour_label
+		elif finale != null and (_seg == "crystal" or _seg == "boss" or _seg == "win_screen") and finale.caption != "":
+			chapter = finale.caption
 		hud.set_readout(chapters.format_clock(), chapter)
 
 

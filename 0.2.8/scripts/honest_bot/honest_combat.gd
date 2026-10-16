@@ -29,6 +29,7 @@ var _sword_delay := 0
 var _attack_wait := 0.0
 var _skill_wait := 0.0
 var _skill_i := 0
+var chip_skills := true
 
 
 func release() -> void:
@@ -152,7 +153,7 @@ func _strike(player_xz: Vector2, foe: Vector2, yaw: float, step: float) -> void:
 		bot.input.pulse(ATTACK_ACTION)
 		swings += 1
 		_attack_wait = ATTACK_GAP_SEC
-	if _skill_wait <= 0.0:
+	if chip_skills and _skill_wait <= 0.0:
 		var skill := SKILL_ACTIONS[_skill_i % SKILL_ACTIONS.size()]
 		bot.input.pulse(skill)
 		skills_used += 1

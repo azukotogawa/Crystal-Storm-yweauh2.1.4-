@@ -79,6 +79,8 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_roster.gd",
 		"res://scripts/honest_bot/honest_fight.gd",
 		"res://scripts/honest_bot/honest_skill_cast.gd",
+		"res://scripts/honest_bot/honest_showcase_finale.gd",
+		"res://scripts/honest_bot/honest_crystal.gd",
 	]
 	var joined := ""
 	for path in paths:
@@ -110,15 +112,15 @@ func _check_route() -> void:
 	if names[0] != "boot_tutorial" or names[1] != "movement" or names[2] != "lighting" or names[3] != "day_night":
 		_fail("route prefix %s" % [names[0], names[1], names[2], names[3]])
 		return
-	if show.first_blocked() != "crystal":
-		_fail("next segment should be crystal, got %s" % show.first_blocked())
+	if show.first_blocked() != "":
+		_fail("route should play through the win, blocked at %s" % show.first_blocked())
 		return
-	var want := ["density_poi", "density_treasure", "density_landmark", "combat_crystal_mite", "skill_ground_slam", "skill_dash"]
+	var want := ["density_poi", "density_treasure", "density_landmark", "combat_crystal_mite", "skill_ground_slam", "skill_dash", "crystal", "boss", "win_screen"]
 	for id in want:
 		if not names.has(id):
 			_fail("route missing %s" % id)
 			return
-	_ok("route order stops at crystal")
+	_ok("route order plays through the win")
 
 
 func _check_traversal() -> void:
@@ -429,9 +431,13 @@ func _check_live() -> void:
 	if not text.contains("skill_dash ") or not text.contains("skill_ground_slam "):
 		_fail("sidecar missing a skill chapter")
 		return
+	if not text.contains("crystal ") or not text.contains("boss ") or not text.contains("win_screen "):
+		_fail("sidecar missing crystal, boss, or win")
+		return
+	print("SHOWCASE elapsed %.2f" % log.seconds())
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string("%s/chapters.json" % _Capture.run_dir()))
 	if typeof(parsed) != TYPE_DICTIONARY:
 		_fail("chapters json did not parse")
 		return
 	if _failed == 0:
-		_ok("live movement slice")
+		_ok("live showcase through the win")
