@@ -10,6 +10,8 @@ const TOGGLE_KEY := 75
 
 var _points: Label
 var _buttons: Dictionary = {}
+var _focus_col := 0
+var _focus_row := 0
 
 
 func _ready() -> void:
@@ -29,17 +31,18 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventAction:
+		_on_action(event as InputEventAction)
+		return
 	if not event is InputEventKey:
 		return
 	var key := event as InputEventKey
 	if not key.pressed or key.echo or not _is_toggle(key):
 		return
-	if _GameplayInput.pause_open or _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.map_open:
+	if _blocked():
 		return
 	toggle()
-	var vp := get_viewport()
-	if vp:
-		vp.set_input_as_handled()
+	_mark_handled()
 
 
 func toggle() -> void:
@@ -58,6 +61,9 @@ func open() -> void:
 		get_tree().paused = true
 	_bind_skills()
 	_refresh()
+	_focus_col = 0
+	_focus_row = 0
+	_paint_focus()
 
 
 func close() -> void:
@@ -147,6 +153,90 @@ func _column(parent: Node, tree: StringName, title: String) -> void:
 		button.pressed.connect(_on_skill_pressed.bind(skill_id))
 		col.add_child(button)
 		_buttons[skill_id] = button
+
+
+func _on_action(act: InputEventAction) -> void:
+	if not act.pressed or act.is_echo():
+		return
+	var action_name := String(act.action)
+	if action_name == TOGGLE_ACTION:
+		if _blocked():
+			return
+		toggle()
+		_mark_handled()
+		return
+	if not visible:
+		return
+	if action_name == "ui_accept":
+		_press_focus()
+		_mark_handled()
+	elif action_name == "ui_left":
+		_shift_focus(-1, 0)
+		_mark_handled()
+	elif action_name == "ui_right":
+		_shift_focus(1, 0)
+		_mark_handled()
+	elif action_name == "ui_up":
+		_shift_focus(0, -1)
+		_mark_handled()
+	elif action_name == "ui_down":
+		_shift_focus(0, 1)
+		_mark_handled()
+
+
+func _blocked() -> bool:
+	return _GameplayInput.pause_open or _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.map_open
+
+
+func _mark_handled() -> void:
+	var vp := get_viewport()
+	if vp:
+		vp.set_input_as_handled()
+
+
+func _columns() -> Array:
+	var cols: Array = []
+	cols.append(_ids(_Skills.TREE_FIGHTER))
+	cols.append(_ids(_Skills.TREE_MINER))
+	cols.append(_ids(_Skills.TREE_BUILDER))
+	return cols
+
+
+func _shift_focus(col_delta: int, row_delta: int) -> void:
+	var cols := _columns()
+	if cols.is_empty():
+		return
+	_focus_col = clampi(_focus_col + col_delta, 0, cols.size() - 1)
+	var rows: Array = cols[_focus_col]
+	if rows.is_empty():
+		return
+	_focus_row = clampi(_focus_row + row_delta, 0, rows.size() - 1)
+	_paint_focus()
+
+
+func _press_focus() -> void:
+	var cols := _columns()
+	if _focus_col < 0 or _focus_col >= cols.size():
+		return
+	var rows: Array = cols[_focus_col]
+	if _focus_row < 0 or _focus_row >= rows.size():
+		return
+	_on_skill_pressed(rows[_focus_row])
+
+
+func _paint_focus() -> void:
+	var cols := _columns()
+	var selected: StringName = &""
+	if _focus_col >= 0 and _focus_col < cols.size():
+		var rows: Array = cols[_focus_col]
+		if _focus_row >= 0 and _focus_row < rows.size():
+			selected = rows[_focus_row]
+	for skill_id in _buttons.keys():
+		var button: Button = _buttons[skill_id]
+		if skill_id == selected:
+			button.modulate = Color(1.0, 0.92, 0.55)
+		else:
+			button.modulate = Color(1, 1, 1)
 
 
 func _on_skill_pressed(skill_id: StringName) -> void:
