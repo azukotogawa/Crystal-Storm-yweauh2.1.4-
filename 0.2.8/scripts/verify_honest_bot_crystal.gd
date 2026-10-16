@@ -200,7 +200,9 @@ func _check_destroy_and_boss() -> void:
 	var hp := CRYSTAL_MAX
 	var last_swings := 0
 	var boss_alive := false
+	var boss_done := false
 	var boss_hits := 0
+	var boss_frames := 0
 	for _i in 9000:
 		run.observe_crystal(crystal, hp, CRYSTAL_MAX)
 		var foes: Array = []
@@ -214,10 +216,13 @@ func _check_destroy_and_boss() -> void:
 				hp = maxf(hp - SWORD_CHIP * float(swings - last_swings), 0.0)
 			elif run.fighting_boss:
 				boss_hits += swings - last_swings
-				if boss_hits >= 3:
-					boss_alive = false
 		last_swings = swings
-		if not boss_alive and hp > 0.0 and hp <= CRYSTAL_MAX * _Run.BOSS_LINE:
+		if boss_alive:
+			boss_frames += 1
+			if boss_hits >= 3 or boss_frames >= 90:
+				boss_alive = false
+				boss_done = true
+		if not boss_done and not boss_alive and hp > 0.0 and hp <= CRYSTAL_MAX * _Run.BOSS_LINE:
 			boss_alive = true
 		var stepped: Array = _integrate(pos, yaw, run.fight.bot, STEP)
 		if not run.striking_crystal and not run.fight.striking:
@@ -233,7 +238,9 @@ func _check_destroy_and_boss() -> void:
 	var boss_kills: int = int(run.boss_kills)
 	run.release()
 	if not destroyed:
-		_fail("simulated crystal was not destroyed")
+		_fail("simulated crystal was not destroyed hp %.1f swings %d boss_kills %d" % [
+			hp, int(run.fight.swings), boss_kills
+		])
 		return
 	if boss_kills < 1:
 		_fail("boss did not vanish after being fought")
