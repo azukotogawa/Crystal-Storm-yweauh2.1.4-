@@ -142,6 +142,9 @@ func _recover(pos: Vector2, origin: Vector2) -> void:
 
 func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
+	if _level >= _Roster.LEVEL_GOAL and _ratio(player) < 0.55 and _herbs(player) <= 0:
+		bot.release()
+		return _mite_result()
 	var rows := _sense(tree)
 	var goal := _level < _Roster.LEVEL_GOAL
 	var choice: Dictionary = _Roster.pick(rows, pos, _Roster.SCAN_COLUMNS, killed, goal)
@@ -216,7 +219,7 @@ func _back_off(dt: float, player: Node, pos: Vector2, foe: Vector2) -> void:
 	var goal := pos + away * 4.0
 	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.5:
 		bot.set_target(goal)
-	bot.extra_held = PackedStringArray()
+	bot.extra_held = PackedStringArray(["sprint"])
 	bot.tick(pos, _yaw(player), dt)
 	bot.input.aim_column(player, foe.x, foe.y)
 

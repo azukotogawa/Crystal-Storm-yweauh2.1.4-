@@ -8,8 +8,7 @@ const CRYSTAL_LIMIT := 150.0
 const BOSS_LIMIT := 120.0
 const WIN_LIMIT := 90.0
 const WIN_HOLD := 3.0
-const PEST_LIMIT := 18.0
-const PEST_REACH := 4.5
+const SPACE_COLUMNS := 1.75
 const HEAL_RATIO := 0.78
 const SWORD_REACH := 2.55
 
@@ -23,7 +22,6 @@ var _hold := 0.0
 var _heal := 0
 var _heal_wait := 0.0
 var _relic := 0
-var _pest_age := 0.0
 var _pest_sword := false
 var _pest_wait := 0.0
 var _relic_frames := 0
@@ -47,7 +45,6 @@ func begin(id: String) -> void:
 	_relic = 0
 	_relic_frames = 0
 	_stand_logged = false
-	_pest_age = 0.0
 	_pest_sword = false
 	_pest_wait = 0.0
 	caption = id
@@ -83,11 +80,15 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	var seen_hp := _hp(tree)
 	if seen_hp.y > 0.0 and seen_hp.x < seen_hp.y - 0.5:
 		_dropped = true
+	var crowd := _close_crowd(tree, player)
+	if not crowd.is_empty():
+		_space_from(dt, tree, player, crowd)
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
 	if _bosses(tree).is_empty() and _walk_stand(dt, tree, player):
 		_note_hp()
 		return _status(dt, tree)
-	if _clear_pest(dt, tree, player):
-		return ""
 	_drive(dt, tree, player)
 	_drain()
 	_note_hp()
@@ -225,37 +226,87 @@ func _feet_depth(tree: SceneTree, at: Vector2) -> float:
 	return float(crystal.get_depth_at(floori(at.x), floori(at.y)))
 
 
-func _clear_pest(dt: float, tree: SceneTree, player: Node) -> bool:
-	if seg != "crystal" or _pest_age >= PEST_LIMIT:
-		return false
-	if not _bosses(tree).is_empty():
-		return false
-	var pest := _nearest_pest(tree, _xz(player))
-	if pest.is_empty():
-		return false
-	_pest_age += dt
-	var foe: Vector2 = pest.get("xz", Vector2.ZERO)
+func _close_crowd(tree: SceneTree, player: Node) -> Dictionary:
 	var pos := _xz(player)
+	var bosses := _bosses(tree)
+	if not bosses.is_empty():
+		var boss_xz: Vector2 = bosses[0].get("xz", pos)
+		if pos.distance_to(boss_xz) < SPACE_COLUMNS:
+			return {"xz": boss_xz, "boss": true}
+		return {}
+	var pest := _nearest_pest(tree, pos)
+	if pest.is_empty():
+		return {}
+	var foe: Vector2 = pest.get("xz", pos)
+	if pos.distance_to(foe) < SPACE_COLUMNS:
+		return {"xz": foe, "boss": false}
+	return {}
+
+
+func _space_from(dt: float, tree: SceneTree, player: Node, crowd: Dictionary) -> void:
+	var origin := _origin(tree)
+	var pos := _xz(player)
+	var threat: Vector2 = crowd.get("xz", pos)
+	var aim := origin + Vector2(0.5, 0.5)
+	if bool(crowd.get("boss", false)):
+		aim = threat
+	_watch(tree, player, origin)
+	var goal := _space_goal(tree, pos, origin, threat)
 	var bot = heart.fight.bot
-	bot.input.aim_column(player, foe.x, foe.y)
-	if pos.distance_to(foe) > _Crystal.ENGAGE_COLUMNS:
-		_pest_sword = false
-		bot.extra_held = PackedStringArray(["sprint"])
-		if not bot.has_target or bot.gave_up or bot.target.distance_to(foe) > 0.6:
-			bot.set_target(foe)
-		bot.tick(pos, _yaw(player), dt)
-		bot.input.aim_column(player, foe.x, foe.y)
-		return true
-	bot.release()
+	bot.extra_held = PackedStringArray(["sprint"])
+	if not bot.has_target or bot.gave_up or bot.arrived or bot.target.distance_to(goal) > 0.8:
+		bot.set_target(goal)
+	bot.tick(pos, _yaw(player), dt)
+	bot.input.aim_column(player, aim.x, aim.y)
 	if not _pest_sword:
 		bot.input.pulse("hotbar_1")
 		_pest_sword = true
-		return true
+		return
 	_pest_wait -= dt
 	if _pest_wait <= 0.0:
 		bot.input.pulse("attack")
 		_pest_wait = 0.48
-	return true
+
+
+func _space_goal(tree: SceneTree, pos: Vector2, origin: Vector2, threat: Vector2) -> Vector2:
+	var away := pos - threat
+	if away.length() < 0.05:
+		away = pos - (origin + Vector2(0.5, 0.5))
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var tangent := Vector2(-away.y, away.x)
+	var center := origin + Vector2(0.5, 0.5)
+	var best := pos + away * 3.0
+	var best_score := -9999.0
+	for sign in [-1.0, 1.0]:
+		var cand := pos + away * 2.2 + tangent * sign * 2.2
+		var to_heart := cand - center
+		if to_heart.length() > SWORD_REACH:
+			cand = center + to_heart.normalized() * (SWORD_REACH - 0.15)
+		var gap := cand.distance_to(threat)
+		var score := gap - _feet_depth(tree, cand) * 6.0
+		if score > best_score:
+			best_score = score
+			best = cand
+	return best
+
+
+func _watch(tree: SceneTree, player: Node, origin: Vector2) -> void:
+	var hp := _hp(tree)
+	var pos := _xz(player)
+	heart.set_vitals(float(player.health), float(player.max_health))
+	var nav := origin
+	if _bosses(tree).is_empty() and _in_sword_range(pos, origin):
+		var toward := origin - pos
+		if toward.length() > 1.5:
+			nav = pos + toward.normalized() * 1.5
+	heart.observe_crystal(nav, hp.x, hp.y)
+	var bosses := _bosses(tree)
+	heart.observe_foes(bosses)
+	heart.fight.chip_skills = not bosses.is_empty()
+	if hp.x < hp.y - 0.5:
+		_dropped = true
 
 
 func _click_relic() -> int:
@@ -356,7 +407,7 @@ func _victory_ready(tree: SceneTree) -> bool:
 
 func _nearest_pest(tree: SceneTree, pos: Vector2) -> Dictionary:
 	var best: Dictionary = {}
-	var best_d := PEST_REACH
+	var best_d := SPACE_COLUMNS
 	for node in tree.get_nodes_in_group("crystal_enemy"):
 		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
 			continue
