@@ -651,6 +651,13 @@ bot-run)
   grep -m1 '^Result:' "$EVID/bot-report.md" | tr -d '\r' ;;
 showcase|bot-showcase)
   run_godot honest-bot-showcase --headless --path "$ROOT" -s res://scripts/verify_honest_bot_showcase.gd; r=$?
+  if [ -s "$EVID/chapters.txt" ]; then
+    short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
+    if [ -n "$short" ]; then
+      echo "BOT SHOWCASE FAIL chapter $short under 4s"
+      exit 1
+    fi
+  fi
   grep -E '^(OK|FAIL|SHOWCASE|CHAPTERS|STUCK|HONEST|KILL|LEVEL|SKILL|DEATH|BOSS|CRYSTAL)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
   if bad "$EVID/honest-bot-showcase.log"; then echo "BOT SHOWCASE FAIL script rc=$r"; tail -8 "$EVID/honest-bot-showcase.log"; exit 1; fi
   if ! grep -qF "HONEST BOT SHOWCASE OK" "$EVID/honest-bot-showcase.log" || grep -q '^FAIL' "$EVID/honest-bot-showcase.log"; then
@@ -693,11 +700,6 @@ showcase|bot-showcase)
   fi
   if ! grep -q '^crystal ' "$EVID/chapters.txt" || ! grep -q '^boss ' "$EVID/chapters.txt" || ! grep -q '^win_screen ' "$EVID/chapters.txt"; then
     echo "BOT SHOWCASE FAIL finale chapters"; exit 1
-  fi
-  short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
-  if [ -n "$short" ]; then
-    echo "BOT SHOWCASE FAIL chapter $short under 4s"
-    exit 1
   fi
   echo "BOT SHOWCASE OK rc=$r chapters=$EVID/chapters.json" ;;
 telemetry-summary)

@@ -13,6 +13,7 @@ const _World = preload("res://world/world_state.gd")
 const THREAT_COLUMNS := 14.0
 const HEAL_RATIO := 0.55
 const AIM_WAIT := 0.35
+const SITE_STAND := 6.0
 
 var bot = _Bot.new()
 var killed: Dictionary = {}
@@ -268,7 +269,7 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 			sites = _Walk.treasure_sites(world.feature_cells)
 		var site := _Farm.next_site(pos, sites, _done, _visits)
 		if not site.is_empty():
-			_arm_site(site)
+			_arm_site(site, tree)
 	if _site_key != "":
 		return _tick_site(dt, tree, player, pos)
 	_quiet += dt
@@ -276,12 +277,12 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	return ""
 
 
-func _arm_site(site: Dictionary) -> void:
+func _arm_site(site: Dictionary, tree: SceneTree) -> void:
 	_site_key = str(site.get("key", ""))
 	_site_at = site.get("xz", Vector2.ZERO)
 	_site_age = 0.0
 	_site_limit = _Walk.leg_limit(float(site.get("distance", 0.0)))
-	_site_mark = -1
+	_site_mark = _ruin_count(tree)
 	_site_inside = 0.0
 	_site_opened = false
 	_site_noted = false
@@ -296,10 +297,9 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 	if _Hazard.burning(tree, pos):
 		_exit_hazard(dt, tree, player, _site_at, _site_at)
 		return ""
-	if pos.distance_to(_site_at) > 9.0:
-		_site_mark = -1
+	if pos.distance_to(_site_at) > SITE_STAND:
 		_site_inside = 0.0
-		var plan: Dictionary = _Walk.approach(pos, _site_at, 6.0)
+		var plan: Dictionary = _Walk.approach(pos, _site_at, SITE_STAND)
 		var goal: Vector2 = plan.get("goal", _site_at)
 		if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 2.0:
 			if bot.gave_up and _site_resumes < 4 and _site_age < _site_limit:
