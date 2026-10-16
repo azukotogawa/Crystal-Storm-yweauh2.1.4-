@@ -322,8 +322,9 @@ func _check_live_crystal() -> void:
 		print(line)
 	for line in run.lines:
 		print(line)
-	print("STOP live reach remaining %.2f gained %.2f stuck %d at %.2f,%.2f toward %.2f,%.2f hp %.1f/%.1f" % [
-		remaining, gained, stuck_n, end.x, end.y, origin_xz.x, origin_xz.y, hp_now.x, hp_now.y
+	print("STOP live reach remaining %.2f gained %.2f stuck %d at %.2f,%.2f toward %.2f,%.2f hp %.1f/%.1f swings %d striking %s" % [
+		remaining, gained, stuck_n, end.x, end.y, origin_xz.x, origin_xz.y, hp_now.x, hp_now.y,
+		int(run.fight.swings), run.striking_crystal
 	])
 	print(run.summary_line())
 	run.release()
