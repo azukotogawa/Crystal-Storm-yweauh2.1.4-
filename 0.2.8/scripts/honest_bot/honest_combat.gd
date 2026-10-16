@@ -160,6 +160,14 @@ func _strike(player_xz: Vector2, foe: Vector2, yaw: float, step: float) -> void:
 		_skill_wait = SKILL_GAP_SEC
 
 
+func walk_to(goal: Vector2, player_xz: Vector2, yaw: float, step: float) -> void:
+	_walk_toward(goal, player_xz, yaw, step)
+
+
+func strike_point(player_xz: Vector2, point: Vector2, yaw: float, step: float) -> void:
+	_strike(player_xz, point, yaw, step)
+
+
 func _tap_sword() -> void:
 	if _sword_sent:
 		return
