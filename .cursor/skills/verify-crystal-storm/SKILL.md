@@ -17,6 +17,7 @@ bash $S doctor           # read-only health check
 bash $S quick            # import + stability + contracts  (~15 s) = QUICK_CHECK
 bash $S launch 8         # headless boot of main.tscn + 8 s scripted play (~25 s)
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
+bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
 bash $S cleanup          # kill only our Godot pids, delete scratch, KEEP evidence
 ```
@@ -55,6 +56,10 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 ## Cleanup
 
 `bash $S cleanup` kills only pids listed in `/tmp/cs-verify/pids`, deletes `/mnt/d/csmerge/verify-scratch/$RUN_ID`, and forgets the run id. It never touches evidence, never kills by name, never touches `0.2.8/.godot/`, and never touches other agents' Godot or the `grok` CLI. Run it after every attempt, failed ones too. Killing the WSL wrapper pid may leave a Windows `Godot.exe`; if `doctor` still counts one after cleanup, report it instead of `taskkill /IM`.
+
+## Telemetry summary
+
+`bash $S telemetry-summary <session.json|dir> [more...]` reads one or more `DifficultyTelemetry` session files (`user://telemetry/<session_id>.json`, or the copy under a verify-evidence run). It does not start Godot. It prints player deaths, the top damage dealt by source, damage taken by source, the kill-weighted average time-to-kill (and the mean per enemy type), and XP per minute (`gained * 60000 / elapsed_msec`, summed across files). A directory argument includes every `*.json` in that directory. `python3 0.2.8/tools/telemetry_summary.py --self-test` writes a throwaway session and checks those numbers (`TELEMETRY SUMMARY OK`).
 
 ## Helpers
 
