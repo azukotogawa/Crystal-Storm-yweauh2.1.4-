@@ -114,11 +114,12 @@ func _drive(dt: float, tree: SceneTree, player: Node) -> void:
 	var bosses := _bosses(tree)
 	var nav := origin
 	if bosses.is_empty() and _in_sword_range(pos, origin):
+		nav = pos
 		var toward := origin - pos
-		if toward.length() > 1.5:
-			nav = pos + toward.normalized() * 1.5
-		else:
-			nav = pos
+		if toward.length() > 1.6:
+			var step_in := pos + toward.normalized() * 0.8
+			if _feet_depth(tree, step_in) < SAFE_DEPTH:
+				nav = step_in
 	heart.set_vitals(float(player.health), float(player.max_health))
 	heart.observe_crystal(nav, hp.x, hp.y)
 	heart.observe_foes(bosses)
@@ -187,6 +188,13 @@ func tick_clock(step: float) -> void:
 func _swing_heart(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2, deep: bool) -> void:
 	var pad := _shallow_stand(tree, origin)
 	var aim := origin + Vector2(0.5, 0.5)
+	if deep and (_gap > 0.0 or _needs_herb(player)):
+		_goto(dt, player, _camp(tree, origin), aim)
+		return
+	if deep:
+		_drive(dt, tree, player)
+		_gap = SWING_GAP
+		return
 	if _feet_depth(tree, pad) < SAFE_DEPTH:
 		if pos.distance_to(pad) > 0.7:
 			_goto(dt, player, pad, aim)
