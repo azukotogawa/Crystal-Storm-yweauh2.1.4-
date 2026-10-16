@@ -223,12 +223,12 @@ func _multi() -> String:
 
 
 func _xp(tree: SceneTree) -> String:
-	var node := _progress(tree)
+	var node = _progress(tree)
 	if node == null:
 		print("FAIL xp missing progression")
 		return "fail"
-	var level := int(node.level)
-	var amount := int(node.xp)
+	var level := int(node.get("level"))
+	var amount := int(node.get("xp"))
 	print("LEVEL %d xp %d" % [level, amount])
 	if level >= 2:
 		return "pass"

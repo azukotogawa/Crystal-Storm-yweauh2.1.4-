@@ -196,8 +196,7 @@ func _open_segment(id: String) -> void:
 		fight.reset()
 	elif id == "xp_level" or id.begins_with("skill_") or id == "multiblock_break":
 		if caster == null:
-			caster = _Cast.new()
-		if caster == null:
+			print("FAIL skill cast missing")
 			_seg_status = "fail"
 			return
 		caster.begin(id)
@@ -362,6 +361,10 @@ func _tick_kind() -> void:
 
 
 func _tick_cast(step: float) -> void:
+	if caster == null:
+		print("FAIL skill cast missing")
+		_seg_status = "fail"
+		return
 	var result := caster.tick(step, tree, player, hands, bot, origin)
 	if result != "":
 		_seg_status = result
