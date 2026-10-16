@@ -59,10 +59,15 @@ func _refresh() -> void:
 	var pos := _world_position(player)
 	var column := _column(player, pos)
 	var chunk := _chunk_for(column)
-	_text = "FPS %d\npos %.2f %.2f %.2f\nchunk %d %d" % [
+	var crystal := _crystal_progress()
+	_text = "FPS %d\npos %.2f %.2f %.2f\nchunk %d %d\n%s\n%s\n%s\n%s" % [
 		Engine.get_frames_per_second(),
 		pos.x, pos.y, pos.z,
 		chunk.x, chunk.y,
+		_crystal_line(crystal),
+		_boss_line(crystal),
+		_xp_line(),
+		_enemy_line(),
 	]
 	_readout.text = _text
 
@@ -93,3 +98,84 @@ func _chunk_for(column: Vector2i) -> Vector2i:
 		int(floor(float(column.x) / float(size))),
 		int(floor(float(column.y) / float(size)))
 	)
+
+
+func _crystal_progress() -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {}
+	var crystal := tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_spawn_progress"):
+		return {}
+	var progress: Variant = crystal.get_spawn_progress()
+	if progress is Dictionary:
+		return progress
+	return {}
+
+
+func _crystal_line(progress: Dictionary) -> String:
+	if progress.is_empty() or not progress.has("crystal_health"):
+		return "crystal —"
+	var health := int(round(float(progress.get("crystal_health", 0.0))))
+	var maximum := int(round(float(progress.get("crystal_max_health", 0.0))))
+	return "crystal %d/%d" % [health, maximum]
+
+
+func _boss_line(progress: Dictionary) -> String:
+	if progress.is_empty():
+		return "boss —"
+	return "boss %s" % _boss_state(progress)
+
+
+func _boss_state(progress: Dictionary) -> String:
+	if bool(progress.get("warden_alive", false)):
+		return "warden"
+	if bool(progress.get("boss_spawned", false)):
+		return "spawned"
+	if bool(progress.get("boss_sealed", false)):
+		return "sealed"
+	if bool(progress.get("boss_active", false)):
+		return "active"
+	return "none"
+
+
+func _xp_line() -> String:
+	var progress := _progression()
+	if progress == null:
+		return "xp —"
+	return "xp %d lv %d" % [int(progress.get("xp")), int(progress.get("level"))]
+
+
+func _progression() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	var service := tree.get_first_node_in_group("progression_service")
+	if service == null:
+		return null
+	if service.get("xp") == null or service.get("level") == null:
+		return null
+	return service
+
+
+func _enemy_line() -> String:
+	var count := _enemy_count()
+	if count < 0:
+		return "enemies —"
+	return "enemies %d" % count
+
+
+func _enemy_count() -> int:
+	var tree := get_tree()
+	if tree == null:
+		return -1
+	var spawner := tree.get_first_node_in_group("crystal_enemy_spawner")
+	if spawner != null and spawner.has_method("get_active_count"):
+		return int(spawner.get_active_count())
+	if tree.get_node_count_in_group("crystal_enemy") == 0 and spawner == null:
+		return -1
+	var alive := 0
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if is_instance_valid(node):
+			alive += 1
+	return alive
