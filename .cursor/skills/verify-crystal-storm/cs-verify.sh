@@ -425,6 +425,23 @@ bot-run)
   if [ ${#jsons[@]} -eq 0 ]; then echo "BOT RUN FAIL no telemetry json in $EVID/telemetry"; exit 1; fi
   echo "BOT RUN OK rc=$r report=$EVID/bot-report.md telemetry=${jsons[0]}"
   grep -m1 '^Result:' "$EVID/bot-report.md" | tr -d '\r' ;;
+bot-showcase)
+  run_godot honest-bot-showcase --headless --path "$ROOT" -s res://scripts/verify_honest_bot_showcase.gd; r=$?
+  grep -E '^(OK|FAIL|SHOWCASE|CHAPTERS|STUCK|HONEST)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
+  if bad "$EVID/honest-bot-showcase.log"; then echo "BOT SHOWCASE FAIL script rc=$r"; tail -8 "$EVID/honest-bot-showcase.log"; exit 1; fi
+  if ! grep -qF "HONEST BOT SHOWCASE OK" "$EVID/honest-bot-showcase.log" || grep -q '^FAIL' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL rc=$r"; tail -24 "$EVID/honest-bot-showcase.log"; exit 1
+  fi
+  if ! grep -q '^SHOWCASE movement pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE day_night absent' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE NEXT dig_tool' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL markers rc=$r"; exit 1
+  fi
+  if [ ! -s "$EVID/chapters.json" ] || [ ! -s "$EVID/chapters.txt" ]; then
+    echo "BOT SHOWCASE FAIL missing chapters sidecar"; exit 1
+  fi
+  if ! grep -q '^movement ' "$EVID/chapters.txt" || ! grep -q '^day_night ' "$EVID/chapters.txt"; then
+    echo "BOT SHOWCASE FAIL chapters.txt"; exit 1
+  fi
+  echo "BOT SHOWCASE OK rc=$r chapters=$EVID/chapters.json" ;;
 telemetry-summary)
   py=""
   if command -v python3 >/dev/null 2>&1; then py=python3
@@ -445,5 +462,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac

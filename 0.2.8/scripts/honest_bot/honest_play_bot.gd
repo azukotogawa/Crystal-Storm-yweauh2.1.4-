@@ -12,6 +12,7 @@ var gave_up := false
 var stuck_lines: PackedStringArray = PackedStringArray()
 var _recover_left := 0.0
 var _strafe := "move_left"
+var extra_held: PackedStringArray = PackedStringArray()
 
 
 func set_target(column_xz: Vector2) -> void:
@@ -68,6 +69,11 @@ func _actions(plan: Dictionary, step: float) -> PackedStringArray:
 		out.append(move)
 	if move == "move_forward" and watch.should_nudge():
 		out.append(_strafe)
+	for name in extra_held:
+		var extra := String(name)
+		if extra == "" or _listed(out, extra):
+			continue
+		out.append(extra)
 	return out
 
 
@@ -80,6 +86,13 @@ func _recover_actions() -> PackedStringArray:
 func _start_recover() -> void:
 	_strafe = "move_right" if _strafe == "move_left" else "move_left"
 	_recover_left = _Nav.RECOVER_SEC
+
+
+func _listed(names: PackedStringArray, name: String) -> bool:
+	for existing in names:
+		if existing == name:
+			return true
+	return false
 
 
 func _moving() -> bool:

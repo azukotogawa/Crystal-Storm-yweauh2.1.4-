@@ -21,6 +21,7 @@ bash $S bot-combat      # honest-bot combat: nearest foe, sword, skills, retreat
 bash $S bot-progress    # honest-bot progression: kill XP, skill choice, telemetry XP rate
 bash $S bot-crystal     # honest-bot crystal: walk to the crystal, attack, fight the boss
 bash $S bot-run         # one live session: boot, nav, combat, progress, crystal; writes bot-report.md
+bash $S bot-showcase    # honest-bot showcase: movement slice of ROUTE.md, timer, chapters sidecar
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
 bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
@@ -52,6 +53,8 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 `bash $S bot-crystal` runs `0.2.8/scripts/verify_honest_bot_crystal.gd`. The same input driver walks to the observed crystal column, pulses `hotbar_1` then `attack` (and skills) inside 2.4 columns, and fights a `boss-` foe before it finishes the crystal. Crystal HP is observed, never written. A vanished boss id prints `BOSS KILL`. Observed HP at or below zero prints `CRYSTAL DESTROYED`. Pass prints `HONEST BOT CRYSTAL OK` plus `CRYSTAL DESTROYED`, `BOSS SPAWN`, and `BOSS KILL`. The live boot of `main.tscn` walks toward `get_origin_cell()`, attacks for 8s after it is inside 2.4 columns, and prints `STOP live reach remaining ...` at the exact column if the crystal is not destroyed. One line that starts with `FAIL` fails the command.
 
 `bash $S bot-run` runs `0.2.8/scripts/verify_honest_bot_run.gd` on one boot of `main.tscn`. Phases are boot, nav, combat, crystal, then progress. Each prints `PHASE <name> reached|failed|not-reached ...`. The script writes `<run>/bot-report.md` (every phase, and `Result: failed at ...` for the first failed phase) and flushes `DifficultyTelemetry` into `<run>/telemetry/*.json`. No enemy in range, or no skill point after the crystal attempt, is `not-reached` rather than a failed fight or spend. A failed phase is recorded in the report and does not by itself fail the command. Pass prints `HONEST BOT RUN DONE` and `BOT RUN OK`, with the report and at least one telemetry JSON present, and no line starting with `FAIL`. `bash $S record bot-run` is the windowed movie of that same session (mp4 plus `contact-sheet.png` in the run folder).
+
+`bash $S bot-showcase` runs `0.2.8/scripts/verify_honest_bot_showcase.gd`. The same input driver plays `0.2.8/docs/showcase/ROUTE.md` in order and stops at the first segment that is not ready yet. This slice plays `boot_tutorial`, `movement` (sprint, at least 8 columns, one jump), `lighting` (locked sun and the shadow light, held in frame), and `day_night` (`absent`). Traversal (`density_poi`, `density_treasure`, `density_landmark`) is ready but sits after `dig_tool`, so the smoke prints `SHOWCASE NEXT dig_tool` and does not walk those detours. An on-screen label shows the run timer and the current chapter. The run writes `chapters.json` and `chapters.txt` (feature, start time, end time) into the evidence folder, which is the same folder as a recording. Pass prints `HONEST BOT SHOWCASE OK`. One line that starts with `FAIL` fails the command.
 
 ## Drive
 
