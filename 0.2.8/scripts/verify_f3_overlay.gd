@@ -47,6 +47,9 @@ func _run() -> void:
 
 	var panel_script: GDScript = load("res://ui/debug_panel.gd") as GDScript
 	var panel: Node = panel_script.new()
+	var heavy_label := Label.new()
+	heavy_label.name = "DebugLabel"
+	panel.add_child(heavy_label)
 	panel.visible = false
 	root.add_child(panel)
 	var coord_script: GDScript = load("res://systems/dev_tools_coordinator.gd") as GDScript
