@@ -22,6 +22,7 @@ bash $S bot-progress    # honest-bot progression: kill XP, skill choice, telemet
 bash $S bot-crystal     # honest-bot crystal: walk to the crystal, attack, fight the boss
 bash $S bot-run         # one live session: boot, nav, combat, progress, crystal; writes bot-report.md
 bash $S bot-showcase    # honest-bot showcase: movement slice of ROUTE.md, timer, chapters sidecar
+bash $S record showcase # windowed >=1280x720 movie of that run, chapters, contact sheet
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
 bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
@@ -62,7 +63,9 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 
 ## Record
 
-`bash $S record <mode...>` wraps any existing subcommand (`quick`, `launch [SEC]`, `feature <name>`). It sets `RUN_ID` to `<YYYYMMDD-HHMMSS>-<mode>` (spaces become dashes), drops `--headless` so the GPU can capture frames (a Godot window opens), runs that mode with `--write-movie` / `--fixed-fps 30` / `--disable-vsync`, then converts each AVI (or PNG sequence) to mp4 with the portable ffmpeg at `C:\Users\cwith\pivot\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe`. Output is `D:\ARCHIVE\CrystalStorm\verify-evidence\<run-id>\*.mp4` plus `contact-sheet.png` in that same folder: a grid of evenly spaced frames from those mp4s (up to 16), each stamped with its timestamp when Arial is available. Several movies share one sheet, and each cell is labeled with the movie name. Import is not recorded (no frame loop). Missing ffmpeg, a missing evidence directory, or a failed contact sheet prints `RECORD FAIL:` and exits 1. Success prints `RECORD OK`, the mp4 paths, and the contact-sheet path.
+`bash $S record showcase` runs the same honest showcase with a window of at least 1280x720 (`--resolution 1280x720` and the showcase viewport). The on-screen timer and chapter label are in the frames. After a passing run it copies `showcase-speedrun.mp4`, `contact-sheet.png`, `chapters.json`, and `chapters.txt` to `verify-evidence/showcase/`, and copies the mp4 to `D:\LATEST\CrystalStorm\showcase-speedrun.mp4`. Chapter times are also muxed into the mp4 when ffmpeg can do that without re-encoding.
+
+`bash $S record <mode...>` wraps any existing subcommand (`quick`, `launch [SEC]`, `feature <name>`, `showcase`). It sets `RUN_ID` to `<YYYYMMDD-HHMMSS>-<mode>` (spaces become dashes), drops `--headless` so the GPU can capture frames (a Godot window opens), runs that mode with `--write-movie` / `--fixed-fps 30` / `--disable-vsync`, then converts each AVI (or PNG sequence) to mp4 with the portable ffmpeg at `C:\Users\cwith\pivot\ffmpeg\ffmpeg-9.0.2-essentials_build\bin\ffmpeg.exe`. Output is `D:\ARCHIVE\CrystalStorm\verify-evidence\<run-id>\*.mp4` plus `contact-sheet.png` in that same folder: a grid of evenly spaced frames from those mp4s (up to 16), each stamped with its timestamp when Arial is available. Several movies share one sheet, and each cell is labeled with the movie name. Import is not recorded (no frame loop). Missing ffmpeg, a missing evidence directory, or a failed contact sheet prints `RECORD FAIL:` and exits 1. Success prints `RECORD OK`, the mp4 paths, and the contact-sheet path.
 
 ## Evidence
 

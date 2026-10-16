@@ -21,11 +21,34 @@ const LIVE_FRAMES := 180000
 var _failed := 0
 
 
+func _initialize() -> void:
+	_prepare_capture()
+
+
 func _init() -> void:
 	call_deferred("_run")
 
 
+func _prepare_capture() -> void:
+	if OS.get_environment("CRYSTALSTORM_SHOWCASE_CAPTURE") != "1":
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	var size := Vector2i(1280, 720)
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	DisplayServer.window_set_size(size)
+	if root != null:
+		root.size = size
+
+
 func _run() -> void:
+	_prepare_capture()
+	if OS.get_environment("CRYSTALSTORM_SHOWCASE_SIZE_PROBE") == "1":
+		await process_frame
+		_prepare_capture()
+		print("SHOWCASE capture %d %d" % [int(root.size.x), int(root.size.y)])
+		quit(0)
+		return
 	_check_sources()
 	_check_route()
 	_check_traversal()
@@ -357,6 +380,7 @@ func _check_live() -> void:
 		return
 	var game: Node = packed.instantiate()
 	root.add_child(game)
+	_prepare_capture()
 	var compose = game.get_node_or_null("CompositionRoot")
 	var frames := 0
 	while frames < 2400:
@@ -367,6 +391,9 @@ func _check_live() -> void:
 	if compose == null or int(compose.stage) < compose.Stage.INITIAL_STREAM_READY:
 		_fail("start region not ready")
 		return
+	_prepare_capture()
+	if OS.get_environment("CRYSTALSTORM_SHOWCASE_CAPTURE") == "1":
+		print("SHOWCASE capture %d %d" % [int(root.size.x), int(root.size.y)])
 	for _w in 120:
 		await process_frame
 		if not _GI.blocks_actions():

@@ -9,6 +9,7 @@ STATE=/tmp/cs-verify; mkdir -p "$STATE"
 EVID_ROOT="${CS_VERIFY_EVID_ROOT:-/mnt/d/ARCHIVE/CrystalStorm/verify-evidence}"
 FFMPEG_PORTABLE="/mnt/c/Users/cwith/pivot/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe"
 RECORD=0
+SHOWCASE_CAPTURE=0
 FFMPEG=""
 
 record_fail() { echo "RECORD FAIL: $*" >&2; exit 1; }
@@ -35,6 +36,7 @@ if [ "$cmd" = record ]; then
   [ $# -ge 1 ] || record_fail "usage: record <mode...>  (example: record feature dig)"
   slug=$(printf '%s' "$*" | tr -s '[:space:]' '-' | tr -cd 'A-Za-z0-9._-')
   [ -n "$slug" ] || record_fail "empty mode"
+  [ "$slug" = showcase ] && SHOWCASE_CAPTURE=1
   RUN_ID="$(date +%Y%m%d-%H%M%S)-$slug"
   echo "$RUN_ID" > "$STATE/run_id"
   cmd="${1:-}"; shift || true
@@ -109,6 +111,16 @@ ffprobe_bin() {
   if [ -f "$d/ffprobe.exe" ]; then echo "$d/ffprobe.exe"; return 0; fi
   if [ -f "$d/ffprobe" ]; then echo "$d/ffprobe"; return 0; fi
   return 1
+}
+
+video_size() {
+  local in_win="$1" probe line
+  probe=$(ffprobe_bin) || return 1
+  line=$("$probe" -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x "$in_win" 2>/dev/null | tr -d '\r')
+  case "$line" in
+    ''|N/A|x) return 1 ;;
+  esac
+  echo "$line"
 }
 
 video_frame_count() {
@@ -294,6 +306,9 @@ run_godot(){ local name="$1"; shift
   local extra=() args=("$@")
   if [ "$RECORD" = 1 ] && wants_movie_frames "$@"; then
     extra=(--write-movie "$(movie_file_w "$name")" --fixed-fps 30 --disable-vsync)
+    if [ "$SHOWCASE_CAPTURE" = 1 ]; then
+      extra+=(--windowed --resolution 1280x720)
+    fi
     args=()
     local a
     for a in "$@"; do
@@ -333,14 +348,83 @@ finish_record() {
     echo "RECORD FAIL rc=$rc evidence=$EVID"
     return "$rc"
   fi
+  local primary="" dims w h published
+  if [ "$SHOWCASE_CAPTURE" = 1 ]; then
+    primary=$(showcase_mp4 "${mp4s[@]}")
+    dims=$(video_size "$(win_path "$primary")") || { echo "RECORD FAIL: ffprobe size of $primary" >&2; return 1; }
+    w=${dims%x*}
+    h=${dims#*x}
+    if [ "$w" -lt 1280 ] || [ "$h" -lt 720 ]; then
+      echo "RECORD FAIL: capture ${w}x${h} is below 1280x720" >&2
+      return 1
+    fi
+    echo "SHOWCASE capture ${w}x${h}"
+  fi
   if ! write_contact_sheet "${mp4s[@]}"; then
     echo "RECORD FAIL: contact sheet (see $EVID/contact-sheet-ffmpeg.log)" >&2
     return 1
+  fi
+  if [ "$SHOWCASE_CAPTURE" = 1 ]; then
+    published=$(attach_showcase_chapters "$primary" "$EVID/chapters.txt")
+    publish_showcase "$published" || return 1
   fi
   echo "RECORD OK evidence=$EVID"
   printf '%s\n' "${mp4s[@]}"
   echo "$EVID/contact-sheet.png"
   return 0
+}
+
+showcase_mp4() {
+  local f
+  for f in "$@"; do
+    [ "$(basename "$f")" = honest-bot-showcase.mp4 ] && { echo "$f"; return 0; }
+  done
+  echo "$1"
+}
+
+attach_showcase_chapters() {
+  local mp4="$1" txt="$2" meta="$EVID/chapters.ffmeta" tmp="$EVID/showcase-chaptered.mp4"
+  if [ ! -s "$txt" ]; then
+    echo "$mp4"
+    return 0
+  fi
+  awk 'NF >= 3 {
+    s = int($2 * 1000 + 0.5)
+    e = int($3 * 1000 + 0.5)
+    if (e <= s) e = s + 1
+    printf "[CHAPTER]\nTIMEBASE=1/1000\nSTART=%d\nEND=%d\ntitle=%s\n\n", s, e, $1
+  }' "$txt" > "$EVID/chapters.ffmeta.body"
+  if [ ! -s "$EVID/chapters.ffmeta.body" ]; then
+    echo "$mp4"
+    return 0
+  fi
+  { echo ";FFMETADATA1"; cat "$EVID/chapters.ffmeta.body"; } > "$meta"
+  if "$FFMPEG" -y -i "$(win_path "$mp4")" -i "$(win_path "$meta")" -map 0 -map_metadata 1 -c copy -movflags +faststart "$(win_path "$tmp")" >>"$EVID/chapters-ffmpeg.log" 2>&1 && [ -s "$tmp" ]; then
+    echo "$tmp"
+    return 0
+  fi
+  echo "SHOWCASE chapters metadata skipped (see $EVID/chapters-ffmpeg.log)" >&2
+  echo "$mp4"
+}
+
+publish_showcase() {
+  local mp4="$1"
+  local dest="$EVID_ROOT/showcase"
+  local latest="/mnt/d/LATEST/CrystalStorm"
+  mkdir -p "$dest" "$latest" || return 1
+  cp -f "$mp4" "$dest/showcase-speedrun.mp4" || return 1
+  cp -f "$EVID/contact-sheet.png" "$dest/contact-sheet.png" || return 1
+  if [ -s "$EVID/chapters.json" ]; then cp -f "$EVID/chapters.json" "$dest/chapters.json" || return 1; fi
+  if [ -s "$EVID/chapters.txt" ]; then cp -f "$EVID/chapters.txt" "$dest/chapters.txt" || return 1; fi
+  if [ ! -s "$dest/chapters.json" ] || [ ! -s "$dest/chapters.txt" ]; then
+    echo "RECORD FAIL: showcase chapters sidecar missing" >&2
+    return 1
+  fi
+  cp -f "$dest/showcase-speedrun.mp4" "$latest/showcase-speedrun.mp4" || return 1
+  echo "SHOWCASE mp4=$dest/showcase-speedrun.mp4"
+  echo "SHOWCASE sheet=$dest/contact-sheet.png"
+  echo "SHOWCASE chapters=$dest/chapters.json"
+  echo "SHOWCASE latest=$latest/showcase-speedrun.mp4"
 }
 
 record_trap() {
@@ -359,6 +443,7 @@ declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 bad(){ grep -qE 'SCRIPT ERROR|Parse Error|Failed to load script' "$1"; }
 
 [ "$cmd" = quick ] && rmdir "$SCRATCH_W" 2>/dev/null
+[ "$SHOWCASE_CAPTURE" = 1 ] && export CRYSTALSTORM_SHOWCASE_CAPTURE=1
 [ "$RECORD" = 1 ] && trap record_trap EXIT
 case "$cmd" in
 doctor)
@@ -425,7 +510,7 @@ bot-run)
   if [ ${#jsons[@]} -eq 0 ]; then echo "BOT RUN FAIL no telemetry json in $EVID/telemetry"; exit 1; fi
   echo "BOT RUN OK rc=$r report=$EVID/bot-report.md telemetry=${jsons[0]}"
   grep -m1 '^Result:' "$EVID/bot-report.md" | tr -d '\r' ;;
-bot-showcase)
+showcase|bot-showcase)
   run_godot honest-bot-showcase --headless --path "$ROOT" -s res://scripts/verify_honest_bot_showcase.gd; r=$?
   grep -E '^(OK|FAIL|SHOWCASE|CHAPTERS|STUCK|HONEST|KILL|LEVEL|SKILL|DEATH|BOSS|CRYSTAL)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
   if bad "$EVID/honest-bot-showcase.log"; then echo "BOT SHOWCASE FAIL script rc=$r"; tail -8 "$EVID/honest-bot-showcase.log"; exit 1; fi
@@ -491,5 +576,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
