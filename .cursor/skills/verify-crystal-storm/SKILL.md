@@ -20,6 +20,7 @@ bash $S bot              # honest-bot navigation on main.tscn (input only)
 bash $S bot-combat      # honest-bot combat: nearest foe, sword, skills, retreat, kills, deaths
 bash $S bot-progress    # honest-bot progression: kill XP, skill choice, telemetry XP rate
 bash $S bot-crystal     # honest-bot crystal: walk to the crystal, attack, fight the boss
+bash $S bot-run         # one live session: boot, nav, combat, progress, crystal; writes bot-report.md
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
 bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
@@ -49,6 +50,8 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 `bash $S bot-progress` runs `0.2.8/scripts/verify_honest_bot_progress.gd`. The same input driver levels only from kill tiers (`ProgressionService.xp_for_kill` and `xp_to_advance`). Mine, place, ruin, crystal, and non-hostile kills do not add XP and do not open the tree. A spare skill point pulses `skill_tree`, moves with `ui_down` / `ui_right`, and pulses `ui_accept` on the real skill-tree panel. The XP line is `DifficultyTelemetry.xp_snapshot()`, not a second timer. Pass prints `HONEST BOT PROGRESS OK` plus a `LEVEL` line, a `SKILL` line, and an `XP_RATE` line. One line that starts with `FAIL` fails the command. This part does not boot `main.tscn`.
 
 `bash $S bot-crystal` runs `0.2.8/scripts/verify_honest_bot_crystal.gd`. The same input driver walks to the observed crystal column, pulses `hotbar_1` then `attack` (and skills) inside 2.4 columns, and fights a `boss-` foe before it finishes the crystal. Crystal HP is observed, never written. A vanished boss id prints `BOSS KILL`. Observed HP at or below zero prints `CRYSTAL DESTROYED`. Pass prints `HONEST BOT CRYSTAL OK` plus `CRYSTAL DESTROYED`, `BOSS SPAWN`, and `BOSS KILL`. The live boot of `main.tscn` walks toward `get_origin_cell()`, attacks for 8s after it is inside 2.4 columns, and prints `STOP live reach remaining ...` at the exact column if the crystal is not destroyed. One line that starts with `FAIL` fails the command.
+
+`bash $S bot-run` runs `0.2.8/scripts/verify_honest_bot_run.gd` on one boot of `main.tscn`. Phases are boot, nav, combat, progress, then crystal. Each prints `PHASE <name> reached|failed|not-reached ...`. The script writes `<run>/bot-report.md` (phases and the first place a phase did not reach) and flushes `DifficultyTelemetry` into `<run>/telemetry/*.json`. A phase that does not reach is recorded in the report; it does not by itself fail the command. Pass prints `HONEST BOT RUN DONE` and `BOT RUN OK`, with the report and at least one telemetry JSON present, and no line starting with `FAIL`. `bash $S record bot-run` is the windowed movie of that same session (mp4 plus `contact-sheet.png` in the run folder).
 
 ## Drive
 

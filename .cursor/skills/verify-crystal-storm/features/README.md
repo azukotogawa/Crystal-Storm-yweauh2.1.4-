@@ -35,6 +35,7 @@ H1 title, one paragraph of user-visible behavior, then exactly `Sub-features`, `
 - [Honest bot navigation](./honest-bot.md): walk toward a column using only mapped actions (`bot`).
 - [Honest bot progression](./honest-bot-progress.md): level from kills and spend the point with the skill tree (`bot-progress`).
 - [Honest bot crystal](./honest-bot-crystal.md): walk to the crystal, attack it, and fight the boss (`bot-crystal`).
+- [Honest bot recorded run](./honest-bot-run.md): one live session through boot, nav, combat, progress, and crystal (`bot-run`, `record bot-run`).
 - [Full map toggle](./full-map.md): M opens/closes the fullscreen map and blocks actions (`full-map`).
 - [Dig terrain](./dig.md): pickaxe lowers a column (`dig`, plus smoke Dig line).
 - [Water flow](./water-flow.md): breaking into a gap floods the whole connected hole (`water`).
