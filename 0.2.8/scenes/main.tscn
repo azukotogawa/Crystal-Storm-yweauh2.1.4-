@@ -209,6 +209,7 @@ mouse_filter = 2
 script = ExtResource("17_map")
 
 [node name="DebugPanel" type="Control" parent="CanvasLayer" unique_id=2121095323]
+visible = false
 layout_mode = 3
 anchors_preset = 0
 offset_right = 40.0

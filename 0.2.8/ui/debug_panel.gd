@@ -40,8 +40,9 @@ func apply_performance_config(cfg: _PerformanceQualityConfig) -> void:
 		return
 	_panel_enabled = bool(cfg.debug_panel_enabled)
 	_debug_update_every = maxi(int(cfg.debug_update_every), 4)
-	visible = _panel_enabled
-	set_process(_panel_enabled)
+	if not _panel_enabled:
+		visible = false
+	set_process(visible and _panel_enabled)
 	_place_away_from_minimap()
 
 

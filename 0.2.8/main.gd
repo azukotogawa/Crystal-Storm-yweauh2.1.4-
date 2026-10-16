@@ -56,7 +56,19 @@ func _ensure_live_inspector() -> void:
 		tree.name = "SkillTree"
 		tree.set_script(load("res://ui/skill_tree_panel.gd"))
 		add_child(tree)
+	_ensure_f3_overlay()
 	_ensure_dev_input_actions()
+
+
+func _ensure_f3_overlay() -> void:
+	if get_node_or_null("F3Overlay") != null:
+		return
+	var packed := load("res://scenes/f3_overlay.tscn") as PackedScene
+	if packed == null:
+		return
+	var overlay := packed.instantiate()
+	overlay.name = "F3Overlay"
+	add_child(overlay)
 
 
 func _ensure_dev_input_actions() -> void:

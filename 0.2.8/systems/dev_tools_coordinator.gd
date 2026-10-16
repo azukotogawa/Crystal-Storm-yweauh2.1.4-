@@ -26,17 +26,37 @@ func _unhandled_input(event: InputEvent) -> void:
 func toggle_debug_overlay() -> bool:
 	if _dev_overlay_blocked():
 		return is_debug_overlay_visible()
-	var panel: Node = get_tree().get_first_node_in_group("debug_panel")
+	var compact := _compact_overlay()
+	if compact and compact.has_method("toggle_overlay"):
+		return bool(compact.toggle_overlay())
+	var panel := _debug_panel()
 	if panel and panel.has_method("toggle_overlay"):
 		return bool(panel.toggle_overlay())
 	return false
 
 
 func is_debug_overlay_visible() -> bool:
-	var panel: Node = get_tree().get_first_node_in_group("debug_panel")
+	var compact := _compact_overlay()
+	if compact and compact.has_method("is_overlay_visible"):
+		return bool(compact.is_overlay_visible())
+	var panel := _debug_panel()
 	if panel and panel.has_method("is_overlay_visible"):
 		return bool(panel.is_overlay_visible())
 	return false
+
+
+func _compact_overlay() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	return tree.get_first_node_in_group("f3_overlay")
+
+
+func _debug_panel() -> Node:
+	var tree := get_tree()
+	if tree == null:
+		return null
+	return tree.get_first_node_in_group("debug_panel")
 
 
 func write_bug_report() -> Dictionary:
