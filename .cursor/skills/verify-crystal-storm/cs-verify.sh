@@ -678,6 +678,12 @@ showcase|bot-showcase)
   if ! grep -q '^SKILL ground_slam' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_ground_slam pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE multiblock_break pass' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL slam rc=$r"; exit 1
   fi
+  if ! grep -q '^SHOWCASE STAMP bow_shot ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE STAMP skill_ground_slam ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE STAMP multiblock_break ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE STAMP skill_crystal_pulse ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE STAMP skill_quick_wall ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE STAMP skill_passives ' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL stamps rc=$r"; exit 1
+  fi
+  if ! grep -q '^SKILL crystal_pulse' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_crystal_pulse pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SKILL quick_wall' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_quick_wall pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SKILL miner_passive' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_passives pass' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL skill show rc=$r"; exit 1
+  fi
   if ! grep -q '^SHOWCASE crystal hp ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE crystal pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^BOSS SPAWN ' "$EVID/honest-bot-showcase.log" || ! grep -q '^BOSS KILL' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE boss pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^CRYSTAL DESTROYED' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE win_screen pass' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL crystal rc=$r"; exit 1
   fi

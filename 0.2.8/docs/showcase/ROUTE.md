@@ -113,7 +113,7 @@ The landmark stop chosen with segment 7 (`rock_spire`, `ruined_tower`, or `cryst
 
 ### 10. `combat`
 
-Do not walk onto the heart yet. Farm until level 3 (191 XP earned) before any crystal-segment swing. The already opened chain treasure is not opened again.
+Do not walk onto the heart yet. Farm until level 3 (191 XP earned) before any heart swing. After that mite, the bow shot, and level 3, keep going until level 6 (five skill points) by breaking crystal mass with the stone pick. Aim only at cells at least 3.6 columns from the origin, and stand off the burn. That chips the film for XP and does not count as a heart swing. The already opened chain treasure is not opened again.
 
 Seek a living non-mite crystal enemy inside 220 columns before another mite. Also fight rabbits, deer, boar, and birds that are already in range. Town militia and villagers are not targets. If nothing fresh is close, open up to four more treasure sites inside 1500 columns: stand inside the ruin radius, wait for the director to discover the chest, then fight the guardians. After those sites, or once level 3 is in hand and one mite is dead, hold the safe ring outside the burn for a short look at whatever the pool has spawned. The first mite still takes one bow shot after the mite chapter has been up for 4 seconds.
 
@@ -141,9 +141,9 @@ Pass: log `SKILL ground_slam`, and more than one cell in that 3×3 lost height.
 
 ### 14. `skill_rest`
 
-Only with points already in hand. Do not farm for them. Third point: `skill_tree`, `ui_accept`, `skill_tree` (crystal pulse, `skill_3`), then pulse `skill_3` on the pool (16 damage in 4 columns, crystal flow ×0.4 for 4 s). A fourth point would be quick wall: `skill_tree`, `ui_right`, `ui_right`, `ui_down`, `ui_accept`, `skill_tree`, but only if a slot is free; otherwise status `skipped-no-point`. Passives (`fighter_passive`, `miner_passive`, `builder_passive`) use the same pad from their cells and do not take a slot. Leave them if the point is better spent on pulse.
+Level 6 has the points. Crystal pulse walks to a dry ring about 8 columns off the heart, pauses, and casts so the pool stays in frame. Quick wall casts on that same ground. If the three slots are full, the tree unequips dash first, then unlocks quick wall into the free slot. The wall has to appear. One turn and a retry if the first facing is blocked. Passives open the miner node, spend the last point, and hold the tree on Quick Mine until the caption shows it is on. Each of those beats logs `SHOWCASE STAMP` with the on-screen clock.
 
-Pass: each of `crystal_pulse`, `quick_wall`, and the three passives is `pass` or `skipped-no-point`.
+Pass: `crystal_pulse`, `quick_wall`, and `miner_passive` are `pass`, not skipped.
 
 ### 15. `crystal`
 
@@ -195,9 +195,9 @@ The bot rewrites `status` in place. `pending` means not played yet. Order is the
     {"id": "skill_dash", "segment": 12, "required": true, "actions": ["skill_tree", "ui_down", "ui_accept", "skill_tree", "move_forward", "skill_1"], "pass": "SKILL dash and a slide", "status": "pending"},
     {"id": "skill_ground_slam", "segment": 13, "required": true, "actions": ["skill_tree", "ui_right", "ui_accept", "skill_tree", "skill_2"], "pass": "SKILL ground_slam and a 3x3 dig", "status": "pending"},
     {"id": "multiblock_break", "segment": 13, "required": true, "actions": ["skill_2"], "pass": "same 3x3; the stone pick stays single", "status": "pending"},
-    {"id": "skill_crystal_pulse", "segment": 14, "required": false, "actions": ["skill_tree", "ui_accept", "skill_tree", "skill_3"], "pass": "SKILL crystal_pulse or skipped-no-point", "status": "pending"},
-    {"id": "skill_quick_wall", "segment": 14, "required": false, "actions": ["skill_tree", "ui_right", "ui_right", "ui_down", "ui_accept", "skill_tree"], "pass": "placed a segment or skipped-no-point", "status": "pending"},
-    {"id": "skill_passives", "segment": 14, "required": false, "actions": ["skill_tree", "ui_accept"], "pass": "unlocked or skipped-no-point", "status": "pending"},
+    {"id": "skill_crystal_pulse", "segment": 14, "required": true, "actions": ["skill_tree", "ui_accept", "skill_tree", "skill_3"], "pass": "SKILL crystal_pulse on the dry ring", "status": "pending"},
+    {"id": "skill_quick_wall", "segment": 14, "required": true, "actions": ["skill_tree", "ui_right", "ui_right", "ui_down", "ui_accept", "skill_tree"], "pass": "placed a segment after freeing a slot", "status": "pending"},
+    {"id": "skill_passives", "segment": 14, "required": true, "actions": ["skill_tree", "ui_accept"], "pass": "miner_passive unlocked on the tree", "status": "pending"},
     {"id": "crystal", "segment": 15, "required": true, "actions": ["hotbar_1", "attack"], "mouse": "origin column", "pass": "heart <= 125 from swings", "status": "pending"},
     {"id": "boss", "segment": 16, "required": true, "actions": ["hotbar_1", "attack", "skill_1", "skill_2"], "pass": "BOSS SPAWN and BOSS KILL while the heart remains", "status": "pending"},
     {"id": "win_screen", "segment": 17, "required": true, "actions": ["hotbar_1", "attack"], "pass": "Victory — Crystal Destroyed, then hold", "status": "pending"}

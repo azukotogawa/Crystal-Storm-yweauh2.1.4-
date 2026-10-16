@@ -98,6 +98,7 @@ var _ruins_before := 0
 var _chain: Dictionary = {}
 var _chain_ready := false
 var _lights_noted := false
+var _bow_stamped := false
 var _hold_status := ""
 var _pose := ""
 var _pose_age := 0.0
@@ -417,7 +418,7 @@ func _tick_cast(step: float) -> void:
 		print("FAIL skill cast missing")
 		_seg_status = "fail"
 		return
-	var result := caster.tick(step, tree, player, hands, bot, origin)
+	var result := caster.tick(step, tree, player, hands, bot, origin, chapters)
 	if result != "":
 		_seg_status = result
 
@@ -615,6 +616,9 @@ func _sync_bow() -> void:
 		if chapters.open("bow_shot"):
 			fight.arm_bow()
 		return
+	if fight.bow_logged and not _bow_stamped:
+		_bow_stamped = true
+		print("SHOWCASE STAMP bow_shot %s" % chapters.format_clock())
 	if fight.bow_phase == "done":
 		if chapters.open("combat_crystal_mite"):
 			fight.finish_bow()

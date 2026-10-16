@@ -1,10 +1,15 @@
 extends RefCounted
 
 const XP_READY := 191
+const DEMO_LEVEL := 6
+const HEART_GAP := 3.6
+const CHIP_DEPTH_MIN := 0.05
+const CHIP_DEPTH_MAX := 2.3
 const SITE_CAP := 4
 const SITE_REACH := 1500.0
 const SEEK_COLUMNS := 220.0
-const FARM_LIMIT := 720.0
+const FARM_LIMIT := 900.0
+const CHIP_LIMIT := 480.0
 const WILD: PackedStringArray = ["rabbit", "deer", "boar", "bird"]
 
 
@@ -20,6 +25,16 @@ static func earned(level: int, remainder: int) -> int:
 
 static func ready(level: int, remainder: int) -> bool:
 	return level >= 3 and earned(level, remainder) >= XP_READY
+
+
+static func demo_ready(level: int) -> bool:
+	return level >= DEMO_LEVEL
+
+
+static func chip_cell_ok(cell: Vector2, origin: Vector2, depth: float) -> bool:
+	if cell.distance_to(origin) < HEART_GAP:
+		return false
+	return depth >= CHIP_DEPTH_MIN and depth <= CHIP_DEPTH_MAX
 
 
 static func site_key(at: Vector2) -> String:

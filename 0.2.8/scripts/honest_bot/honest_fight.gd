@@ -11,6 +11,7 @@ const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 const _Walk = preload("res://scripts/honest_bot/honest_traversal.gd")
 const _World = preload("res://world/world_state.gd")
 const THREAT_COLUMNS := 14.0
+const CHIP_LEASH := 2.6
 const HEAL_RATIO := 0.55
 const AIM_WAIT := 0.35
 const SITE_STAND := 6.0
@@ -36,7 +37,16 @@ var _dead := false
 var _approach_limit := -1.0
 var _alive: Dictionary = {}
 var bow_phase := "off"
+var bow_logged := false
 var _bow_age := 0.0
+var _pick := false
+var _chip_cell := Vector2.INF
+var _chip_swings := 0
+var _chip_xp := -1
+var _chip_noted := false
+var _heart_at := -1.0
+var _chip_gap := _Farm.HEART_GAP
+var _chip_age := 0.0
 var _aim_wait := 0.0
 var _bound: Array = []
 var _skipped: Dictionary = {}
@@ -93,7 +103,16 @@ func reset() -> void:
 	_approach_limit = -1.0
 	_alive = {}
 	bow_phase = "off"
+	bow_logged = false
 	_bow_age = 0.0
+	_pick = false
+	_chip_cell = Vector2.INF
+	_chip_swings = 0
+	_chip_xp = -1
+	_chip_noted = false
+	_heart_at = -1.0
+	_chip_gap = _Farm.HEART_GAP
+	_chip_age = 0.0
 	_aim_wait = 0.0
 	_skipped = {}
 	_foe_age = 0.0
@@ -198,22 +217,35 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_demo = ""
 		return ""
 	var ready := _Farm.ready(_level, _xp)
+	var demo := _Farm.demo_ready(_level)
 	var need_mite := int(killed.get("crystal_mite", 0)) <= 0
-	var choice: Dictionary = _Roster.pick(rows, pos, _Roster.SCAN_COLUMNS, killed, not ready or need_mite)
-	if choice.is_empty():
-		choice = _Farm.pick_seek(rows, pos, killed, _Farm.SEEK_COLUMNS, _skipped, true)
-	if not choice.is_empty():
-		_quiet = 0.0
-		return _fight(dt, tree, player, choice, origin)
-	if not ready or need_mite or not _bow_clear():
+	var farming := not ready or need_mite or not _bow_clear()
+	if farming:
+		var choice: Dictionary = _Roster.pick(rows, pos, _Roster.SCAN_COLUMNS, killed, true)
+		if choice.is_empty():
+			choice = _Farm.pick_seek(rows, pos, killed, _Farm.SEEK_COLUMNS, _skipped, true)
+		if choice.is_empty():
+			choice = _Farm.pick_seek(rows, pos, killed, 48.0, _skipped, false)
+		if not choice.is_empty():
+			_quiet = 0.0
+			return _fight(dt, tree, player, choice, origin)
 		if age >= _Farm.FARM_LIMIT:
 			print("FAIL farm short level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
 			bot.release()
 			return "fail"
-		var near := _Farm.pick_seek(rows, pos, killed, 48.0, _skipped, false)
-		if _site_key == "" and not near.is_empty() and _visits >= _Farm.SITE_CAP:
-			return _fight(dt, tree, player, near, origin)
 		return _seek_xp(dt, tree, player, origin, pos)
+	if not demo:
+		_chip_age += dt
+		if _chip_age >= _Farm.CHIP_LIMIT:
+			print("FAIL farm short of skill points level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
+			bot.release()
+			return "fail"
+		var threat: Dictionary = _Farm.pick_seek(rows, pos, killed, CHIP_LEASH, _skipped, false)
+		if not threat.is_empty():
+			_pick = false
+			_quiet = 0.0
+			return _fight(dt, tree, player, threat, origin)
+		return _chip(dt, tree, player, origin)
 	if not _pool_done:
 		_pool_visit += dt
 		_hold_pool(dt, tree, player, origin)
@@ -237,6 +269,146 @@ func _mite_result() -> String:
 
 func _bow_clear() -> bool:
 	return bow_phase == "off" or bow_phase == "done"
+
+
+func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
+	var pos := _xz(player)
+	if not _chip_noted:
+		_chip_noted = true
+		_heart_at = _heart_hp(tree)
+		print("SHOWCASE mass chip level %d earned %d heart %.0f" % [_level, _Farm.earned(_level, _xp), _heart_at])
+	if _Hazard.burning(tree, pos):
+		_exit_hazard(dt, tree, player, origin, origin)
+		return ""
+	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
+		_back_off(dt, player, pos, origin)
+		_heal_idle()
+		return ""
+	var heart := _heart_hp(tree)
+	if _heart_at >= 0.0 and heart >= 0.0 and _heart_at - heart > 8.0:
+		_chip_gap = maxf(_chip_gap, 8.0)
+		_heart_at = heart
+		_chip_cell = Vector2.INF
+		print("SHOWCASE mass chip widen gap %.1f heart %.0f" % [_chip_gap, heart])
+	if _chip_cell != Vector2.INF and not _Farm.chip_cell_ok(_chip_cell, origin, _depth(tree, _chip_cell)):
+		_chip_cell = Vector2.INF
+	if _chip_cell == Vector2.INF:
+		_chip_cell = _find_mass(tree, pos, origin)
+		_chip_swings = 0
+		_chip_xp = _xp
+	if _chip_xp >= 0 and _xp > _chip_xp:
+		_chip_xp = _xp
+		_chip_swings = 0
+		_chip_cell = Vector2.INF
+	if _chip_cell == Vector2.INF:
+		var closer := pos
+		if pos.distance_to(origin) > 10.0:
+			var away := pos - origin
+			closer = origin + away.normalized() * 10.0
+		else:
+			closer = _Hazard.leave_goal(tree, pos, origin)
+		if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(closer) > 1.5:
+			bot.set_target(closer)
+		bot.extra_held = PackedStringArray(["sprint"])
+		bot.tick(pos, _yaw(player), dt)
+		return ""
+	var stand := _chip_stand(tree, _chip_cell, pos)
+	if stand == Vector2.INF:
+		_chip_cell = Vector2.INF
+		return ""
+	if pos.distance_to(stand) > 0.7:
+		if not bot.has_target or bot.gave_up or bot.target.distance_to(stand) > 0.75:
+			bot.set_target(stand)
+		var extras := PackedStringArray()
+		if pos.distance_to(stand) > 6.0:
+			extras.append("sprint")
+		bot.extra_held = extras
+		bot.tick(pos, _yaw(player), dt)
+		return ""
+	bot.release()
+	bot.input.begin_tick()
+	bot.input.aim_column(player, _chip_cell.x, _chip_cell.y)
+	if not _aim_on_foe(player, _chip_cell):
+		_aim_wait += dt
+		if _aim_wait < AIM_WAIT:
+			return ""
+	else:
+		_aim_wait = 0.0
+	if not _pick:
+		if bot.input.pulse("hotbar_2"):
+			_pick = true
+		return ""
+	_attack_wait -= dt
+	if _attack_wait > 0.0:
+		return ""
+	if not bot.input.pulse("attack"):
+		return ""
+	_attack_wait = 0.35
+	_chip_swings += 1
+	if _xp > _chip_xp:
+		_chip_xp = _xp
+		_chip_swings = 0
+		_chip_cell = Vector2.INF
+		return ""
+	if _chip_swings >= 8:
+		_chip_cell = Vector2.INF
+		_chip_swings = 0
+		_pick = false
+	return ""
+
+
+func _find_mass(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := 1.0e9
+	var ox := floori(pos.x)
+	var oz := floori(pos.y)
+	for dz in range(-10, 11):
+		for dx in range(-10, 11):
+			var at := Vector2(float(ox + dx) + 0.5, float(oz + dz) + 0.5)
+			if not _Farm.chip_cell_ok(at, origin, _depth(tree, at)):
+				continue
+			if at.distance_to(origin) < _chip_gap:
+				continue
+			if _chip_stand(tree, at, pos) == Vector2.INF:
+				continue
+			var dist := pos.distance_to(at)
+			if dist < best_d:
+				best_d = dist
+				best = at
+	return best
+
+
+func _chip_stand(tree: SceneTree, cell: Vector2, pos: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := 1.0e9
+	var cx := floori(cell.x)
+	var cz := floori(cell.y)
+	for dz in range(-3, 4):
+		for dx in range(-3, 4):
+			var at := Vector2(float(cx + dx) + 0.5, float(cz + dz) + 0.5)
+			if at.distance_to(cell) > 2.4 or at.distance_to(cell) < 1.15:
+				continue
+			if _Hazard.burning(tree, at):
+				continue
+			var walk := at.distance_to(pos)
+			if walk < best_d:
+				best_d = walk
+				best = at
+	return best
+
+
+func _depth(tree: SceneTree, at: Vector2) -> float:
+	return _Hazard.depth_at(tree, at)
+
+
+func _heart_hp(tree: SceneTree) -> float:
+	if tree == null:
+		return -1.0
+	var crystal := tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_spawn_progress"):
+		return -1.0
+	var prog: Dictionary = crystal.get_spawn_progress()
+	return float(prog.get("crystal_health", -1.0))
 
 
 func _note_down() -> void:
@@ -522,6 +694,7 @@ func _bow_beat(dt: float) -> void:
 		if not bot.input.pulse("attack"):
 			return
 		print("SHOWCASE bow attack")
+		bow_logged = true
 		_bow = 3
 		_bow_age = 0.0
 		return

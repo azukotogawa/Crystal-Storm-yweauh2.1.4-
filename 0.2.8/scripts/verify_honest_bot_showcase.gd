@@ -394,6 +394,18 @@ func _check_farm() -> void:
 	if not _Farm.ready(3, 0) or _Farm.earned(3, 0) < _Farm.XP_READY:
 		_fail("level 3 should be at least %d earned %d" % [_Farm.XP_READY, _Farm.earned(3, 0)])
 		return
+	if _Farm.demo_ready(5) or not _Farm.demo_ready(6):
+		_fail("skill demos need level %d" % _Farm.DEMO_LEVEL)
+		return
+	if _Farm.chip_cell_ok(Vector2(1.5, 0.5), Vector2.ZERO, 0.4):
+		_fail("a heart-side crystal cell must not be chipped")
+		return
+	if not _Farm.chip_cell_ok(Vector2(6.5, 0.5), Vector2.ZERO, 0.4):
+		_fail("a far shallow crystal cell should be chipped")
+		return
+	if _Farm.chip_cell_ok(Vector2(6.5, 0.5), Vector2.ZERO, 0.01):
+		_fail("an empty cell should not be chipped")
+		return
 	var sites: Array = [
 		{"xz": Vector2(10, 0)},
 		{"xz": Vector2(400, 0)},
@@ -432,7 +444,7 @@ func _check_farm() -> void:
 
 func _check_skill_pad() -> void:
 	var skills = load("res://systems/skill_service.gd").new()
-	for skill_name in ["dash", "ground_slam", "crystal_pulse"]:
+	for skill_name in ["dash", "ground_slam", "crystal_pulse", "quick_wall", "miner_passive"]:
 		var got: PackedStringArray = _Cast.presses(skill_name)
 		var want := _pad_for(skills, skill_name)
 		if want.is_empty() or got != want:
