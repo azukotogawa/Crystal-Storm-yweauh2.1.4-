@@ -33,6 +33,7 @@ H1 title, one paragraph of user-visible behavior, then exactly `Sub-features`, `
 
 - [Boot and play session](./boot-and-play.md): menu to world, dig, combat, jump, streaming (`launch`).
 - [Honest bot navigation](./honest-bot.md): walk toward a column using only mapped actions (`bot`).
+- [Honest bot progression](./honest-bot-progress.md): level from kills and spend the point with the skill tree (`bot-progress`).
 - [Full map toggle](./full-map.md): M opens/closes the fullscreen map and blocks actions (`full-map`).
 - [Dig terrain](./dig.md): pickaxe lowers a column (`dig`, plus smoke Dig line).
 - [Water flow](./water-flow.md): breaking into a gap floods the whole connected hole (`water`).

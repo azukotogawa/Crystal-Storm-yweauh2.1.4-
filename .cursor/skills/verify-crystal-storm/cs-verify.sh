@@ -399,6 +399,12 @@ bot-combat)
   if bad "$EVID/honest-bot-combat.log"; then echo "BOT COMBAT FAIL script rc=$r"; tail -8 "$EVID/honest-bot-combat.log"; exit 1; fi
   if grep -qF "HONEST BOT COMBAT OK" "$EVID/honest-bot-combat.log" && grep -q '^KILL ' "$EVID/honest-bot-combat.log" && grep -q '^DEATH ' "$EVID/honest-bot-combat.log" && ! grep -q '^FAIL' "$EVID/honest-bot-combat.log"; then
     echo "BOT COMBAT OK rc=$r marker='HONEST BOT COMBAT OK'"; else echo "BOT COMBAT FAIL rc=$r"; tail -12 "$EVID/honest-bot-combat.log"; exit 1; fi ;;
+bot-progress)
+  run_godot honest-bot-progress --headless --path "$ROOT" -s res://scripts/verify_honest_bot_progress.gd; r=$?
+  grep -E '^(OK|FAIL|LEVEL|SKILL|XP_RATE|SKIP|KILL|HONEST)' "$EVID/honest-bot-progress.log" | tr -d '\r'
+  if bad "$EVID/honest-bot-progress.log"; then echo "BOT PROGRESS FAIL script rc=$r"; tail -8 "$EVID/honest-bot-progress.log"; exit 1; fi
+  if grep -qF "HONEST BOT PROGRESS OK" "$EVID/honest-bot-progress.log" && grep -q '^LEVEL ' "$EVID/honest-bot-progress.log" && grep -q '^SKILL ' "$EVID/honest-bot-progress.log" && grep -q '^XP_RATE ' "$EVID/honest-bot-progress.log" && ! grep -q '^FAIL' "$EVID/honest-bot-progress.log"; then
+    echo "BOT PROGRESS OK rc=$r marker='HONEST BOT PROGRESS OK'"; else echo "BOT PROGRESS FAIL rc=$r"; tail -20 "$EVID/honest-bot-progress.log"; exit 1; fi ;;
 telemetry-summary)
   py=""
   if command -v python3 >/dev/null 2>&1; then py=python3
@@ -419,5 +425,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
