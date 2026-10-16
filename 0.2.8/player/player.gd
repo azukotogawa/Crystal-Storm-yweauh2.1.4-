@@ -20,6 +20,7 @@ const _Dash = preload("res://player/dash_skill.gd")
 const _Slam = preload("res://player/ground_slam_skill.gd")
 const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 const _Wall = preload("res://player/quick_wall_skill.gd")
+const _SkillFeel = preload("res://player/skill_feel_cast.gd")
 const _Passives = preload("res://player/skill_passives.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
@@ -60,6 +61,7 @@ var _dash_invuln: float = 0.0
 var _dash_dir: Vector2 = Vector2.ZERO
 var _wish_xz: Vector2 = Vector2.ZERO
 var _dash_bound: bool = false
+var _skill_feel = _SkillFeel.new()
 
 var voxel_position := Vector3(0.0, 0.0, 0.0)
 var _move_vel_xz: Vector2 = Vector2.ZERO
@@ -366,6 +368,7 @@ func _process(_delta: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	_bind_dash()
+	_tick_skill_feel(delta)
 	_tick_dash_invuln(delta)
 	if not world_ready:
 		return
@@ -1091,25 +1094,57 @@ func begin_dash(dir: Vector2) -> bool:
 	return true
 
 
-func _on_skill_activated(slot: int, skill_id: StringName) -> void:
-	if skill_id == _Wall.SKILL_ID:
-		if not bool(cast_quick_wall().get("placed", false)):
-			var skills = _skill_service()
-			if skills != null and skills.has_method("release_cooldown"):
-				skills.release_cooldown(slot)
-		return
-	if skill_id == _Slam.SKILL_ID:
+func _tick_skill_feel(delta: float) -> void:
+	_skill_feel.advance(self, delta)
+
+
+func finish_skill_feel() -> void:
+	var guard := 0
+	while _skill_feel.busy() and guard < 480:
+		_skill_feel.advance(self, 1.0 / 60.0)
+		guard += 1
+
+
+func release_skill_slot(slot: int) -> void:
+	var skills = _skill_service()
+	if skills != null and skills.has_method("release_cooldown"):
+		skills.release_cooldown(slot)
+
+
+func resolve_skill_feel(id: String, wish_xz: Vector2, face: Vector2) -> bool:
+	if _GameplayInput.blocks_actions():
+		return false
+	if id == String(_Wall.SKILL_ID):
+		var placed := bool(cast_quick_wall().get("placed", false))
+		if not placed:
+			release_skill_slot(_skill_feel.slot)
+		return placed
+	if id == String(_Slam.SKILL_ID):
 		cast_ground_slam()
-		return
-	if skill_id == _Pulse.SKILL_ID:
+		return true
+	if id == String(_Pulse.SKILL_ID):
 		cast_crystal_pulse()
-		return
-	if skill_id != _Dash.SKILL_ID:
+		return true
+	if id == String(_Dash.SKILL_ID):
+		return begin_dash(_Dash.direction(wish_xz, face))
+	return false
+
+
+func _on_skill_activated(slot: int, skill_id: StringName) -> void:
+	var id := String(skill_id)
+	if not _skill_feel.known(id):
 		return
 	if _GameplayInput.blocks_actions():
+		if skill_id == _Wall.SKILL_ID:
+			release_skill_slot(slot)
+		return
+	if not _skill_feel.accepts():
+		release_skill_slot(slot)
 		return
 	var facing := rotate_input_to_world(Vector2(0.0, -1.0), locked_yaw_degrees)
-	begin_dash(_Dash.direction(_wish_xz, facing))
+	if _skill_feel.begin(self, slot, id, _wish_xz, facing):
+		return
+	resolve_skill_feel(id, _wish_xz, facing)
 
 
 func cast_ground_slam(extra: Array = []) -> Dictionary:

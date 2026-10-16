@@ -344,7 +344,18 @@ func _check_dash() -> void:
 		_drop(pair)
 		player.free()
 		return
-	if not skills.try_activate(0) or player._dash_dir.y < 0.9 or absf(player._dash_left - dash.DISTANCE) > 0.001:
+	if not skills.try_activate(0):
+		_fail("activating dash did not start")
+		_drop(pair)
+		player.free()
+		return
+	if player._dash_left > 0.0:
+		_fail("dash moved before its telegraph")
+		_drop(pair)
+		player.free()
+		return
+	player.finish_skill_feel()
+	if player._dash_dir.y < 0.9 or absf(player._dash_left - dash.DISTANCE) > 0.001:
 		_fail("activating dash did not aim the burst along the wish")
 		_drop(pair)
 		player.free()
@@ -396,6 +407,7 @@ func _check_dash() -> void:
 	player._dash_invuln = 0.0
 	player.locked_yaw_degrees = 0.0
 	player._on_skill_activated(0, &"dash")
+	player.finish_skill_feel()
 	if player._dash_dir.y > -0.9 or absf(player._dash_dir.x) > 0.1:
 		_fail("an idle dash should face the camera forward, got %s" % player._dash_dir)
 		_drop(pair)
@@ -405,6 +417,7 @@ func _check_dash() -> void:
 	player._dash_left = 0.0
 	player._dash_invuln = 0.0
 	player._on_skill_activated(0, &"dash")
+	player.finish_skill_feel()
 	_GameplayInput.pause_open = false
 	if player._dash_left > 0.0:
 		_fail("pause started a dash")
@@ -537,6 +550,7 @@ func _check_ground_slam() -> void:
 		_fail("equipped ground slam did not activate into the break")
 		_cleanup_slam(pair, player, skills, edits)
 		return
+	player.finish_skill_feel()
 	if absf(edits.get_height_delta(4, 4) - (-layer)) > 0.001:
 		_fail("activating ground slam did not break the player's column")
 		_cleanup_slam(pair, player, skills, edits)
@@ -666,6 +680,7 @@ func _check_crystal_pulse() -> void:
 		_fail("equipped crystal pulse did not activate")
 		_cleanup_pulse(pair, player, skills, pulse)
 		return
+	player.finish_skill_feel()
 	if absf(skills.cooldown_left(0) - pulse.COOLDOWN) > 0.001:
 		_fail("crystal pulse cooldown did not start at its own length")
 		_cleanup_pulse(pair, player, skills, pulse)
@@ -828,12 +843,18 @@ func _check_quick_wall() -> void:
 		_fail("equipped quick wall did not activate")
 		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
 		return
+	player.finish_skill_feel()
 	if skills.cooldown_left(0) > 0.001 or short.count_item(wall.material_id()) != half - 1 or absf(edits.get_height_delta(4, 3)) > 0.001:
 		_fail("a short stack still placed or kept the cooldown")
 		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
 		return
 	short.add_item(wall.material_id(), 1)
-	if not skills.try_activate(0) or short.count_item(wall.material_id()) != 0:
+	if not skills.try_activate(0):
+		_fail("activating quick wall did not start")
+		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
+		return
+	player.finish_skill_feel()
+	if short.count_item(wall.material_id()) != 0:
 		_fail("activating quick wall did not place the segment, reason %s" % editor.last_fail_reason)
 		_cleanup_wall(pair, player, skills, editor, chunks, edits, features, integrity)
 		return

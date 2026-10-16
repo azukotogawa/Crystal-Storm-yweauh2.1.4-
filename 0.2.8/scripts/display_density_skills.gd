@@ -222,7 +222,7 @@ func _use_skills(folder: String, player: Node3D, world, skills, home: Vector2i) 
 	if not skills.try_activate(0):
 		push_error("dash did not activate")
 		return false
-	for _i in 30:
+	for _i in 45:
 		await process_frame
 	var after := _player_column(player)
 	var moved := Vector2(after).distance_to(Vector2(before))
@@ -242,7 +242,7 @@ func _use_skills(folder: String, player: Node3D, world, skills, home: Vector2i) 
 	if not skills.try_activate(1):
 		push_error("ground slam did not activate")
 		return false
-	for _i in 8:
+	for _i in 36:
 		await process_frame
 	var dig_after: float = _Edits.get_height_delta(stand.x, stand.y)
 	print("SKILL ground_slam col=%s delta %.3f -> %.3f" % [stand, dig_before, dig_after])
@@ -255,7 +255,7 @@ func _use_skills(folder: String, player: Node3D, world, skills, home: Vector2i) 
 	if not skills.try_activate(2):
 		push_error("crystal pulse did not activate")
 		return false
-	for _i in 6:
+	for _i in 30:
 		await process_frame
 	var zones: int = _Pulse._zones.size()
 	print("SKILL crystal_pulse zones=%d cd=%.2f" % [zones, skills.cooldown_left(2)])
@@ -282,7 +282,7 @@ func _use_skills(folder: String, player: Node3D, world, skills, home: Vector2i) 
 	if not skills.try_activate(2):
 		push_error("quick wall did not activate")
 		return false
-	for _i in 8:
+	for _i in 30:
 		await process_frame
 	var placed := _wall_near(feet)
 	var editor = get_first_node_in_group("terrain_editor")
