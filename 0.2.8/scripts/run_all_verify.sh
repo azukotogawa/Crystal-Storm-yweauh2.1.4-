@@ -111,6 +111,7 @@ SUITES=(
 	"res://scripts/verify_progression.gd"
 	"res://scripts/verify_skills.gd"
 	"res://scripts/verify_skill_feel.gd"
+	"res://scripts/verify_action_spacing.gd"
 	"res://scripts/verify_item_icons.gd"
 	"res://scripts/verify_entity_nav_perf.gd"
 	"res://scripts/verify_swim.gd"

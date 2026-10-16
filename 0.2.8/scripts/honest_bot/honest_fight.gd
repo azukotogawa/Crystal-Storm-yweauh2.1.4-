@@ -355,7 +355,7 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		return ""
 	if not bot.input.pulse("attack"):
 		return ""
-	_attack_wait = 0.35
+	_attack_wait = _Pace.action_span("multi_block_break") + 0.05
 	_chip_swings += 1
 	if _xp > _chip_xp:
 		_chip_xp = _xp

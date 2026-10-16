@@ -21,6 +21,15 @@ static func short_feature(body: String) -> String:
 	return ""
 
 
+static func action_span(id: String) -> float:
+	var loaded = load("res://config/default_game_feel.tres")
+	if loaded != null and loaded.has_method("action"):
+		var row: Dictionary = loaded.action(id)
+		if not row.is_empty():
+			return float(row["telegraph_sec"]) + float(row["recovery_sec"])
+	return 0.4
+
+
 static func gap_fault(hands: RefCounted) -> String:
 	if hands == null:
 		return "no input"

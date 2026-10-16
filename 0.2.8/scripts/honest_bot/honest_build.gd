@@ -33,6 +33,7 @@ var piece_before := 0
 var marked := ""
 var spin := 0
 var step_dt := 0.0
+var miss_age := 0.0
 
 
 func reset(segment: String) -> void:
@@ -46,6 +47,7 @@ func reset(segment: String) -> void:
 	shown = {}
 	show_id = ""
 	show_age = 0.0
+	miss_age = 0.0
 	piece_before = 0
 	marked = ""
 	spin = 0
@@ -116,7 +118,7 @@ func _dig() -> String:
 		show_age += step_dt
 		var dug := _dropped()
 		if dug.x >= 900000:
-			if show_age < 0.5:
+			if show_age < maxf(0.5, _Pace.action_span("multi_block_break") + 0.15):
 				return ""
 			_stop_move()
 			tries += 1
@@ -220,6 +222,10 @@ func _single_wall() -> String:
 	if beat == 4:
 		_look_at(aim)
 		if _new_tiles() != 1:
+			miss_age += step_dt
+			if miss_age < _place_wind():
+				return ""
+			miss_age = 0.0
 			tries += 1
 			if tries > OFFSETS.size():
 				print("FAIL structure stone_wall did not place")
@@ -230,6 +236,7 @@ func _single_wall() -> String:
 			show_age = _Pace.PRE_PAUSE
 			beat = 3
 			return ""
+		miss_age = 0.0
 		show_age += step_dt
 		if show_age < _Pace.RESULT_HOLD:
 			return ""
@@ -506,6 +513,10 @@ func _piece_slot() -> int:
 		if slot != null and str(slot.id) == "wall_segment":
 			return i
 	return -1
+
+
+func _place_wind() -> float:
+	return _Pace.action_span("building_placement") + 0.05
 
 
 func _look_at(cell: Vector2i, extra: PackedStringArray = PackedStringArray()) -> void:

@@ -229,6 +229,16 @@ func _check_blueprint_live(editor, world, player, feat_layer) -> void:
 		weapon.set_active_hotbar_index(0)
 	hl._action_column = Vector3(float(anchor.x) + 0.5, 0.0, float(anchor.y) + 0.5)
 	weapon._try_place_selected()
+	var guard := 0
+	while guard < 90:
+		var early: Dictionary = {}
+		if "last_place_batch" in editor:
+			early = editor.last_place_batch
+		if int(early.get("placed_count", 0)) >= 6:
+			break
+		if player.has_method("_tick_skill_feel"):
+			player._tick_skill_feel(1.0 / 60.0)
+		guard += 1
 	await process_frame
 	var batch: Dictionary = editor.last_place_batch
 	var placed := int(batch.get("placed_count", 0))

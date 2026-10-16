@@ -372,7 +372,7 @@ func _carve_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: 
 		return
 	if not bot.input.pulse("attack"):
 		return
-	_gap = CARVE_GAP
+	_gap = maxf(CARVE_GAP, _Pace.action_span("multi_block_break") + 0.02)
 	if not _Hazard.burning(tree, _carve):
 		_carve = Vector2.INF
 		_carve_pick = false
