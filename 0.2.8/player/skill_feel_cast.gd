@@ -2,6 +2,7 @@ class_name SkillFeelCast
 extends RefCounted
 
 const _Config = preload("res://config/game_feel_config.gd")
+const _Gate = preload("res://player/action_resolve_gate.gd")
 const _Settings = preload("res://systems/player_settings.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
@@ -29,8 +30,14 @@ var _sparks: CPUParticles3D
 var _tint := Color(1, 1, 1, 0.6)
 
 
+func pacing_blocks() -> bool:
+	return state == STATE_WIND or recover_left > 0.0
+
+
 func accepts() -> bool:
-	return state != STATE_WIND and recover_left <= 0.0
+	if pacing_blocks():
+		return false
+	return not _Gate.blocked(self)
 
 
 func busy() -> bool:
@@ -47,6 +54,8 @@ func begin(player: Node, slot_i: int, id: String, wish_xz: Vector2, face: Vector
 	var row: Dictionary = _row(player, id)
 	if row.is_empty():
 		return false
+	if not _Gate.claim(self, id):
+		return false
 	_clear_visuals()
 	state = STATE_WIND
 	skill_id = id
@@ -54,7 +63,7 @@ func begin(player: Node, slot_i: int, id: String, wish_xz: Vector2, face: Vector
 	wish = wish_xz
 	facing = face
 	landed = false
-	wind_sec = float(row["telegraph_sec"])
+	wind_sec = _Gate.wind_for(id, float(row["telegraph_sec"]))
 	linger_sec = float(row["linger_sec"])
 	recover_sec = float(row["recovery_sec"])
 	wind_left = wind_sec
@@ -96,6 +105,7 @@ func _land(player: Node) -> void:
 	state = STATE_LIVE
 	wind_left = 0.0
 	landed = false
+	_Gate.mark(skill_id)
 	if player.has_method("resolve_skill_feel"):
 		landed = bool(player.resolve_skill_feel(skill_id, wish, facing))
 	if landed:

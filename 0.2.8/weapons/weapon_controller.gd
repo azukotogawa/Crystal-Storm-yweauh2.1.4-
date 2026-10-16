@@ -23,6 +23,7 @@ const _BlockBreakFx = preload("res://systems/block_break_fx.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
+const _ToolFeel = preload("res://player/tool_feel_cast.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -68,6 +69,12 @@ var _shown_item: String = ""
 var _clock_damage_elapsed: float = -1.0
 var _present_bound: bool = false
 var _crack_fill: float = 0.0
+var _tool_feel = _ToolFeel.new()
+var _feel_item := ""
+var _feel_def: Dictionary = {}
+var _feel_target := Vector3.ZERO
+var _feel_resolving := false
+var _feel_hit_entities := false
 
 
 func _ready() -> void:
@@ -277,7 +284,7 @@ func _try_dig_tool() -> void:
 	var anchor := _dig_anchor_cell(reach)
 	_last_break_cells = break_cells_for(item_id, anchor, aim)
 	_listed_break = ItemTypes.MULTI_BLOCK_BREAK
-	_do_dig_attack(item_id, def)
+	_offer_tool_action("multi_block_break", item_id, def)
 
 
 func break_cells_for(item_id: String, anchor: Vector3i, aim: Vector3) -> Array[Vector3i]:
@@ -382,6 +389,10 @@ func _try_attack() -> void:
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
 	if kind == ItemTypes.WeaponKind.DIG:
 		_do_dig_attack(item_id, def)
+		return
+	var feel_id := _configured_attack_id(item_id, def)
+	if feel_id != "":
+		_offer_tool_action(feel_id, item_id, def)
 		return
 
 	_cooldown_timer = float(def.get("cooldown", 0.5))
@@ -775,7 +786,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
 
-	if Input.is_action_just_pressed("attack"):
+	if Input.is_action_just_pressed("attack") or (_feel_resolving and _feel_hit_entities):
 		var origin := _attack_origin(0.45)
 		var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
 		var melee_targets := _CombatHitResolver.query_melee(
@@ -1074,25 +1085,29 @@ func get_place_label() -> String:
 	return _PlaceableCatalog.display_name(get_place_id())
 
 
-func _try_place_selected() -> void:
+func _try_place_selected() -> bool:
 	if _held_has_right_click_ability():
-		return
+		return false
 	if _cooldown_timer > 0.0 or player == null:
-		return
+		return false
 	if inventory == null and player:
 		inventory = player.inventory
 	if _terrain_editor == null:
 		_bind_terrain_editor()
 	if _terrain_editor == null:
-		return
+		return false
 	var game_manager := get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
-		return
-	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
+		return false
+	var target := _feel_target if _feel_resolving and _feel_target != Vector3.ZERO else _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
 	if target == Vector3.ZERO:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
-		return
+		return false
+	if not _feel_resolving:
+		_feel_target = target
+		_offer_tool_action("building_placement", get_place_id(), {})
+		return false
 	var place_id: String = get_place_id()
 	var built_id := StringName(place_id)
 	var ok := false
@@ -1126,6 +1141,7 @@ func _try_place_selected() -> void:
 	else:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
+	return ok
 
 
 func _try_build_wall() -> void:
@@ -1331,12 +1347,92 @@ func _tick_animation_clock(delta: float) -> bool:
 	return fired
 
 
+func _configured_attack_id(item_id: String, def: Dictionary) -> String:
+	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
+	if kind == ItemTypes.WeaponKind.RANGED and item_id.find("bow") >= 0:
+		return "bow_shot"
+	if kind != ItemTypes.WeaponKind.MELEE or item_id.find("sword") < 0:
+		return ""
+	if bool(def.get("thrust", false)) or int(def.get("splash", 0)) > 0:
+		return ""
+	return "sword_swing"
+
+
+func _tool_press_edge() -> bool:
+	return Input.is_action_just_pressed("attack") \
+		or Input.is_action_just_pressed("build_place") \
+		or Input.is_action_just_pressed("interact")
+
+
+func _offer_tool_action(action_id: String, item_id: String, def: Dictionary) -> void:
+	_feel_item = item_id
+	_feel_def = def.duplicate()
+	var entity_hit := action_id == "multi_block_break" and _tool_press_edge()
+	if not _tool_feel.accepts():
+		if _tool_press_edge():
+			_feel_hit_entities = entity_hit
+			_tool_feel.remember(action_id)
+		return
+	if not _tool_feel.try_begin(self, action_id):
+		_feel_hit_entities = entity_hit
+		_tool_feel.remember(action_id)
+		return
+	_feel_hit_entities = entity_hit
+	_arm_accepted_tool(action_id)
+
+
+func _arm_accepted_tool(action_id: String) -> void:
+	if action_id == "sword_swing" or action_id == "bow_shot":
+		_cooldown_timer = float(_feel_def.get("cooldown", 0.5))
+		_sync_impact_pose(_feel_item)
+	elif action_id == "multi_block_break":
+		_sync_impact_pose(_feel_item)
+
+
+func advance_tool_feel(delta: float) -> void:
+	_tool_feel.advance(self, delta)
+
+
+func on_tool_buffer_open(action_id: String) -> void:
+	if not _tool_feel.try_begin(self, action_id):
+		_tool_feel.remember(action_id)
+		return
+	_arm_accepted_tool(action_id)
+
+
+func resolve_tool_feel(action_id: String) -> bool:
+	_feel_resolving = true
+	var landed := true
+	if action_id == "sword_swing":
+		_do_melee_attack(_feel_item, _feel_def)
+	elif action_id == "bow_shot":
+		_do_ranged_attack(_feel_item, _feel_def)
+	elif action_id == "multi_block_break":
+		_listed_break = true
+		_do_dig_attack(_feel_item, _feel_def)
+	elif action_id == "building_placement":
+		landed = _try_place_selected()
+	_feel_resolving = false
+	_feel_hit_entities = false
+	_feel_target = Vector3.ZERO
+	return landed
+
+
+func release_tool_feel(action_id: String) -> void:
+	if action_id == "sword_swing" or action_id == "bow_shot":
+		_cooldown_timer = 0.0
+	if action_id == "multi_block_break":
+		_listed_break = false
+	_feel_target = Vector3.ZERO
+
+
 func _cancel_pending_strike() -> void:
 	_pending_mode = -1
 	_pending_item = ""
 	_pending_def = {}
 	_playback = null
 	_shown_item = ""
+	_tool_feel.abort_wind(self)
 
 
 func _sync_impact_pose(item_id: String) -> void:

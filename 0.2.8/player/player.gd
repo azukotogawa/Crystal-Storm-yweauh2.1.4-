@@ -21,6 +21,7 @@ const _Slam = preload("res://player/ground_slam_skill.gd")
 const _Pulse = preload("res://player/crystal_pulse_skill.gd")
 const _Wall = preload("res://player/quick_wall_skill.gd")
 const _SkillFeel = preload("res://player/skill_feel_cast.gd")
+const _ActionGate = preload("res://player/action_resolve_gate.gd")
 const _Passives = preload("res://player/skill_passives.gd")
 const _Locomotion = preload("res://player/player_locomotion_anim.gd")
 
@@ -1095,7 +1096,11 @@ func begin_dash(dir: Vector2) -> bool:
 
 
 func _tick_skill_feel(delta: float) -> void:
+	_ActionGate.advance(delta)
 	_skill_feel.advance(self, delta)
+	var weapon := get_node_or_null("WeaponController")
+	if weapon != null and weapon.has_method("advance_tool_feel"):
+		weapon.advance_tool_feel(delta)
 
 
 func finish_skill_feel() -> void:
