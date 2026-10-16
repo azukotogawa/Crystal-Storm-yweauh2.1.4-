@@ -5,6 +5,7 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
+const THREAT_COLUMNS := 14.0
 
 var bot = _Bot.new()
 var killed: Dictionary = {}
@@ -74,11 +75,11 @@ func tick(step: float, tree: SceneTree, player: Node, origin: Vector2) -> String
 		return "fail"
 	_watch_level(tree)
 	if _phase == "approach":
-		return _approach(dt, player, origin)
+		return _approach(dt, tree, player, origin)
 	return _hunt(dt, tree, player, origin)
 
 
-func _approach(dt: float, player: Node, origin: Vector2) -> String:
+func _approach(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
 	if _approach_limit < 0.0:
 		var trip := pos.distance_to(origin)
@@ -93,14 +94,34 @@ func _approach(dt: float, player: Node, origin: Vector2) -> String:
 	if bot.gave_up:
 		_recover(pos, origin)
 		return ""
+	var threat := _nearest_foe(tree, pos)
+	var threatened := not threat.is_empty() and float(threat.get("dist", 99.0)) < THREAT_COLUMNS
+	if not threatened and _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
+		_heal_idle()
+		return ""
 	var goal := _Roster.pool_goal(pos, origin, _Roster.POOL_STAND)
-	if not bot.has_target or bot.target.distance_to(goal) > 2.0:
-		bot.set_target(goal)
 	var extras := PackedStringArray()
-	if pos.distance_to(goal) > 6.0:
+	if threatened:
+		var foe: Vector2 = threat.get("xz", pos)
+		var away := pos - foe
+		if away.length_squared() < 0.04:
+			away = Vector2(1.0, 0.0)
+		else:
+			away = away.normalized()
+		var home := origin - pos
+		if home.length_squared() < 0.04:
+			home = away
+		else:
+			home = home.normalized()
+		goal = pos + away * 6.0 + home * 4.0
+		extras.append("sprint")
+		extras.append("move_left" if fmod(age, 1.2) < 0.6 else "move_right")
+	elif pos.distance_to(goal) > 6.0:
 		extras.append("sprint")
 	if _submerged(player):
 		extras.append("jump")
+	if not bot.has_target or bot.target.distance_to(goal) > 2.0:
+		bot.set_target(goal)
 	bot.extra_held = extras
 	bot.tick(pos, _yaw(player), dt)
 	return ""
@@ -275,6 +296,29 @@ func _heal_idle() -> void:
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false
+
+
+func _nearest_foe(tree: SceneTree, pos: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	if tree == null:
+		return best
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var kind := str(node.get("enemy_id"))
+		if kind == "" or kind == "origin_warden":
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		var xz := Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
+		var dist := pos.distance_to(xz)
+		if dist < best_d:
+			best_d = dist
+			best = {"xz": xz, "dist": dist}
+	return best
 
 
 func _sense(tree: SceneTree) -> Array:

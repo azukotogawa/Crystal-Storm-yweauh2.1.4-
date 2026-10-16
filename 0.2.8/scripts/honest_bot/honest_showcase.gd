@@ -140,6 +140,9 @@ func tick(delta: float) -> bool:
 
 
 func _pull_next() -> bool:
+	if player != null and float(player.get("health")) <= 0.0:
+		print("SHOWCASE NEXT crystal")
+		return false
 	while _cursor < ids.size():
 		var id := String(ids[_cursor])
 		_cursor += 1
@@ -192,6 +195,11 @@ func _open_segment(id: String) -> void:
 	elif id == "combat_crystal_mite":
 		fight.reset()
 	elif id == "xp_level" or id.begins_with("skill_") or id == "multiblock_break":
+		if caster == null:
+			caster = _Cast.new()
+		if caster == null:
+			_seg_status = "fail"
+			return
 		caster.begin(id)
 
 
