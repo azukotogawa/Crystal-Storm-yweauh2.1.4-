@@ -22,7 +22,7 @@ A showcase driver has to aim the mouse. That is still a player input. It is not 
 
 - Fresh world. No seed shopping. Spawn and the origin come from the live game (`get_origin_cell` on the last run was `952,-952`).
 - Navigation is the existing one: hold `rotate_left` or `rotate_right` until the camera faces the column, then hold `move_forward`. Strafe when progress stalls. After 1.25 s and under 0.35 columns, print `STUCK nav`, sidestep, and tap `jump`. Three stuck lines and that target is abandoned (`unstuck` once, then skip).
-- Do not path the whole continent. Detours are capped below.
+- Do not path the whole continent. Density legs are capped at 1500 columns, which reaches the near ring and skips the far side.
 - Fight retreat stays the combat bot’s rule: at or under 30% health, walk away and stop attacking. `hotbar_6` then `build_place` uses the herb (right-click use). One death fails the run.
 - Tick the JSON checklist at the bottom as each segment ends. Print `SHOWCASE <id> <status>` with `status` one of `pass`, `fail`, `absent`, `too-far`, `skipped-no-point`.
 
@@ -83,7 +83,7 @@ Pass: player shadow is on screen under that sun. No extra travel.
 
 ### 4. `day_night`
 
-There is no day clock, dusk, or night. Do not wait, and do not spin the light to fake one.
+There is no day clock, dusk, night, or torch (`OmniLight3D` / `SpotLight3D`). Do not wait, and do not spin the light or drop its energy to fake one. Print `SHOWCASE night absent` and `SHOWCASE torch absent` (or `pass` if a later build actually has them). A crystal-glow landmark is emission on the mesh, logged later as `SHOWCASE glow`, not a torch.
 
 Pass status: `absent`.
 
@@ -101,15 +101,15 @@ Pass: a wall segment exists, and the place granted structure XP (12).
 
 ### 7. `density_poi`
 
-From the player, read placed POIs (`poi_kind` of `camp`, `abandoned_dig`, `crystal_grove`, `shrine`; names Hunter Camp, Abandoned Dig, Crystal Grove, Shrine). Walk to the nearest if it is within 48 columns. Stand on it so the props are in frame. There is no `poi_discovered` emit in the live director, so do not expect the 20 XP. If the nearest is farther than 48, status `too-far`.
+Read placed POIs (`poi_kind` of `camp`, `abandoned_dig`, `crystal_grove`, `shrine`). Together with segments 8 and 9, pick one of each kind on the shortest walk that still does poi, then treasure, then landmark. Consider only the 8 nearest of each kind. A leg longer than 1500 columns is `too-far` and is not walked (that is the far side of the map, not the ring near the origin). Sprint. Hold `jump` only while a deep channel is underfoot. Stand on the POI so the props are in frame. There is no `poi_discovered` emit in the live director, so do not expect the 20 XP.
 
 ### 8. `density_treasure`
 
-Nearest feature with `treasure_site` true, same 48-column cap. Walk inside `ruin_discover_radius` (10). Discovery pays 25 XP and is worth taking when it is inside the cap. Status `too-far` otherwise. Do not open a chest by writing inventory; walking into range is the player action.
+The treasure stop chosen with segment 7. Walk inside `ruin_discover_radius` (10) and wait for the director's own scan. Discovery pays 25 XP. Do not call `discover_ruin_at` and do not write the chest into inventory. Status `too-far` when that leg was over 1500.
 
 ### 9. `density_landmark`
 
-Nearest landmark (`landmark` true, kind `rock_spire`, `ruined_tower`, or `crystal_glow`). Same 48-column cap. Stop where the mesh is readable at ortho size 16 (they are built to clear half of that view). Yaw until it is in frame. Status `too-far` otherwise.
+The landmark stop chosen with segment 7 (`rock_spire`, `ruined_tower`, or `crystal_glow`). Stop about 12 columns out so the mesh clears half of ortho size 16. Yaw until it is in frame. If it is a crystal glow and the mesh emission is in range, print `SHOWCASE glow pass`; otherwise `SHOWCASE glow absent`. Status `too-far` when that leg was over 1500.
 
 ### 10. `combat`
 
@@ -178,9 +178,9 @@ The bot rewrites `status` in place. `pending` means not played yet. Order is the
     {"id": "day_night", "segment": 4, "required": true, "actions": [], "pass": "no clock exists", "status": "pending"},
     {"id": "dig_tool", "segment": 5, "required": true, "actions": ["hotbar_2", "attack"], "pass": "stone pick removed a single surface cell", "status": "pending"},
     {"id": "structure_place", "segment": 6, "required": true, "actions": ["inventory_toggle", "mouse:Craft_wall_segment", "hotbar_7", "build_place"], "pass": "wall_segment placed", "status": "pending"},
-    {"id": "density_poi", "segment": 7, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "stood on camp, abandoned_dig, crystal_grove, or shrine within 48 columns", "status": "pending"},
-    {"id": "density_treasure", "segment": 8, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "inside 10 columns of a treasure_site, or too-far", "status": "pending"},
-    {"id": "density_landmark", "segment": 9, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "rock_spire, ruined_tower, or crystal_glow in frame within 48 columns, or too-far", "status": "pending"},
+    {"id": "density_poi", "segment": 7, "required": true, "actions": ["sprint", "move_forward", "rotate_left", "rotate_right"], "pass": "stood on the chain's camp, abandoned_dig, crystal_grove, or shrine, or too-far", "status": "pending"},
+    {"id": "density_treasure", "segment": 8, "required": true, "actions": ["sprint", "move_forward", "rotate_left", "rotate_right"], "pass": "inside 10 columns of the chain's treasure_site and the director discovered it, or too-far", "status": "pending"},
+    {"id": "density_landmark", "segment": 9, "required": true, "actions": ["sprint", "move_forward", "rotate_left", "rotate_right"], "pass": "chain landmark in frame, glow logged, or too-far", "status": "pending"},
     {"id": "combat_crystal_mite", "segment": 10, "required": true, "actions": ["hotbar_1", "attack", "hotbar_3", "attack"], "pass": "KILL crystal_mite after the pool scan, or absent", "status": "pending"},
     {"id": "combat_farm_bomber", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
     {"id": "combat_crystal_stag", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},

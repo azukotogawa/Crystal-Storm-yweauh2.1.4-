@@ -158,6 +158,26 @@ func _check_traversal() -> void:
 	if bool(here.get("walk", true)):
 		_fail("inside the treasure radius should only turn")
 		return
+	var chain: Array = _Walk.exploration_chain(Vector2.ZERO, near)
+	if chain.size() != 3:
+		_fail("chain should be poi, treasure, landmark")
+		return
+	if str(chain[0].get("poi_kind", "")) != "camp" or str(chain[0].get("status", "")) != "walk":
+		_fail("chain should start at the camp, got %s" % chain[0])
+		return
+	if str(chain[1].get("tag", "")) != "treasure" or str(chain[2].get("poi_kind", "")) != "rock_spire":
+		_fail("chain order %s" % chain)
+		return
+	var far_only := {
+		Vector2i(0, 2000): {"center": Vector2i(0, 2000), "poi_kind": "shrine", "poi": true},
+	}
+	var skipped: Array = _Walk.exploration_chain(Vector2.ZERO, far_only)
+	if skipped.is_empty() or str(skipped[0].get("status", "")) != "too-far":
+		_fail("a far-side poi should stay too-far, got %s" % skipped)
+		return
+	if absf(_Walk.leg_limit(80.0) - 22.0) > 0.01:
+		_fail("leg limit for 80 columns should be 22s, got %.2f" % _Walk.leg_limit(80.0))
+		return
 	_ok("traversal cap and stand-off")
 
 
@@ -357,6 +377,9 @@ func _check_live() -> void:
 	var text := FileAccess.get_file_as_string("%s/chapters.txt" % _Capture.run_dir())
 	if not text.contains("movement ") or not text.contains("day_night "):
 		_fail("sidecar missing movement or day_night")
+		return
+	if not text.contains("density_poi") or not text.contains("density_treasure") or not text.contains("density_landmark"):
+		_fail("sidecar missing a density visit")
 		return
 	if not text.contains("dig_tool ") or not text.contains("structure_place "):
 		_fail("sidecar missing dig or structure")

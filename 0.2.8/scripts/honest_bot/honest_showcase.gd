@@ -6,6 +6,8 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Sun = preload("res://helpers/terrain_lighting.gd")
+const _Marks = preload("res://world/distant_landmarks.gd")
+const _Coords = preload("res://helpers/world_visual_coords.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _World = preload("res://world/world_state.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
@@ -19,8 +21,10 @@ const MOVE_COLUMNS := 8.0
 const MOVE_LIMIT := 22.0
 const LIGHT_HOLD := 0.75
 const BOOT_LIMIT := 8.0
-const DETOUR_LIMIT := 28.0
 const FACE_LIMIT := 2.5
+const PICKUP_LIMIT := 8.0
+const DETOUR_STUCK := 12
+const DETOUR_RESUMES := 6
 
 const READY: Array[String] = [
 	"boot_tutorial",
@@ -76,8 +80,18 @@ var _swim_hold := false
 var _swim_release := false
 var _unstuck_sent := false
 var _detour_face := Vector2.ZERO
+var _detour_goal := Vector2.ZERO
+var _detour_label := ""
+var _detour_limit := 20.0
+var _detour_resumes := 0
 var _face_only := false
 var _face_age := 0.0
+var _pickup_wait := false
+var _pickup_age := 0.0
+var _ruins_before := 0
+var _chain: Dictionary = {}
+var _chain_ready := false
+var _lights_noted := false
 var build = _Build.new()
 var fight = _Fight.new()
 var caster = _Cast.new()
@@ -157,16 +171,22 @@ func _open_segment(id: String) -> void:
 	_unstuck_sent = false
 	_face_only = false
 	_face_age = 0.0
+	_pickup_wait = false
+	_pickup_age = 0.0
+	_detour_label = ""
+	_detour_resumes = 0
 	_move_armed = false
+	bot.stuck_limit = 0
 	bot.extra_held = PackedStringArray()
 	bot.release()
 	hands.release_all()
+	if id.begins_with("density_"):
+		_arm_detour(id)
+		return
 	if chapters != null and chapters.has_method("open"):
 		chapters.open(id)
 	if id == "movement":
 		_arm_movement()
-	elif id.begins_with("density_"):
-		_arm_detour(id)
 	elif id == "dig_tool" or id == "structure_place":
 		build.reset(id)
 	elif id == "combat_crystal_mite":
@@ -186,6 +206,7 @@ func _finish_segment() -> void:
 		print(line)
 	bot.stuck_lines = PackedStringArray()
 	bot.extra_held = PackedStringArray()
+	bot.stuck_limit = 0
 	bot.release()
 	hands.release_all()
 	fight.release()
@@ -343,36 +364,60 @@ func _tick_day_night() -> void:
 		print("FAIL day_night clock exists")
 		_seg_status = "fail"
 		return
+	_note_lights()
 	_seg_status = "absent"
 
 
 func _arm_detour(id: String) -> void:
-	var choice := _detour_choice(id, _xz())
+	_ensure_chain()
+	var choice: Dictionary = _chain.get(id, {})
+	var kind := str(choice.get("poi_kind", ""))
+	_detour_label = id if kind == "" else "%s %s" % [id, kind]
+	_open_chapter(_detour_label.replace(" ", "_"))
 	if str(choice.get("status", "")) != "walk":
+		print("OK %s too-far dist %.1f" % [id, float(choice.get("distance", -1.0))])
 		_seg_status = "too-far"
 		return
 	var center: Vector2 = choice.get("xz", Vector2.ZERO)
 	var gap := _detour_gap(id)
 	var plan: Dictionary = _Walk.approach(_xz(), center, gap)
 	_detour_face = center
+	_detour_goal = plan.get("goal", center)
+	_detour_limit = _Walk.leg_limit(float(choice.get("distance", 0.0)))
+	_ruins_before = _ruin_count()
+	bot.stuck_limit = DETOUR_STUCK
+	print("OK %s %s dist %.1f limit %.0f" % [id, kind if kind != "" else "site", float(choice.get("distance", 0.0)), _detour_limit])
 	if not bool(plan.get("walk", false)):
 		_begin_face()
 		return
-	bot.set_target(plan.get("goal", center))
+	bot.set_target(_detour_goal)
 
 
 func _tick_detour(step: float) -> void:
+	if _pickup_wait:
+		_tick_pickup(step)
+		return
 	var pos := _xz()
 	if _face_only:
 		_face_age += step
 		_tick_face(pos)
 		return
+	var extras := PackedStringArray()
+	if _submerged():
+		extras.append("jump")
+	else:
+		extras.append("sprint")
+	bot.extra_held = extras
 	bot.tick(pos, _yaw(), step)
 	if bot.arrived:
 		bot.release()
 		_begin_face()
 		return
-	if bot.gave_up or _seg_age >= DETOUR_LIMIT:
+	if bot.gave_up and _detour_resumes < DETOUR_RESUMES and _seg_age < _detour_limit:
+		_detour_resumes += 1
+		bot.set_target(_detour_goal)
+		return
+	if bot.gave_up or _seg_age >= _detour_limit:
 		_pulse_unstuck()
 		print("FAIL %s detour" % _seg)
 		_seg_status = "fail"
@@ -383,7 +428,7 @@ func _tick_face(pos: Vector2) -> void:
 	hands.begin_tick()
 	if rotate == "" or _face_age >= FACE_LIMIT:
 		hands.release_all()
-		_seg_status = "pass"
+		_after_face()
 		return
 	var held := PackedStringArray()
 	held.append(rotate)
@@ -395,24 +440,122 @@ func _begin_face() -> void:
 	_face_age = 0.0
 
 
-func _detour_choice(id: String, from_xz: Vector2) -> Dictionary:
-	var cells: Dictionary = _World.get_active().feature_cells
-	match id:
-		"density_poi":
-			return _Walk.poi_choice(from_xz, cells)
-		"density_treasure":
-			return _Walk.treasure_choice(from_xz, cells)
-		"density_landmark":
-			return _Walk.landmark_choice(from_xz, cells)
-	return {"status": "too-far", "xz": Vector2.ZERO}
-
-
 func _detour_gap(id: String) -> float:
 	if id == "density_treasure":
-		return _Walk.TREASURE_RADIUS - 1.0
+		return 6.0
 	if id == "density_landmark":
 		return _Walk.LANDMARK_STAND
 	return 0.0
+
+
+func _after_face() -> void:
+	if _seg == "density_treasure":
+		_pickup_wait = true
+		_pickup_age = 0.0
+		return
+	if _seg == "density_landmark":
+		_note_glow()
+	_seg_status = "pass"
+
+
+func _tick_pickup(step: float) -> void:
+	_pickup_age += step
+	var found := _ruin_count() > _ruins_before
+	if not found and _pickup_age < PICKUP_LIMIT:
+		return
+	print("SHOWCASE treasure pickup %s" % ("pass" if found else "miss"))
+	_seg_status = "pass"
+
+
+func _ensure_chain() -> void:
+	if _chain_ready:
+		return
+	_chain_ready = true
+	var cells: Dictionary = _World.get_active().feature_cells
+	for leg_v in _Walk.exploration_chain(_xz(), cells):
+		var leg: Dictionary = leg_v
+		var id := _density_id(str(leg.get("tag", "")))
+		if id == "":
+			continue
+		_chain[id] = leg
+
+
+func _density_id(tag: String) -> String:
+	match tag:
+		"poi":
+			return "density_poi"
+		"treasure":
+			return "density_treasure"
+		"landmark":
+			return "density_landmark"
+	return ""
+
+
+func _open_chapter(feature: String) -> void:
+	if chapters != null and chapters.has_method("open"):
+		chapters.open(feature)
+
+
+func _note_lights() -> void:
+	if _lights_noted:
+		return
+	_lights_noted = true
+	print("SHOWCASE night %s" % ("pass" if _night_on() else "absent"))
+	print("SHOWCASE torch %s" % ("pass" if _torch_on() else "absent"))
+
+
+func _note_glow() -> void:
+	print("SHOWCASE glow %s" % ("pass" if _glow_near() else "absent"))
+
+
+func _night_on() -> bool:
+	if not _has_day_clock():
+		return false
+	var light := _sun_light()
+	return light != null and light.light_energy < 0.35
+
+
+func _torch_on() -> bool:
+	if tree == null:
+		return false
+	for node in tree.root.find_children("*", "OmniLight3D", true, false):
+		var omni := node as OmniLight3D
+		if omni.visible and omni.light_energy > 0.05:
+			return true
+	for node in tree.root.find_children("*", "SpotLight3D", true, false):
+		var spot := node as SpotLight3D
+		if spot.visible and spot.light_energy > 0.05:
+			return true
+	return false
+
+
+func _glow_near() -> bool:
+	if tree == null:
+		return false
+	var layer := tree.get_first_node_in_group("feature_visual_layer")
+	if layer == null:
+		return false
+	var pending: Array = [layer]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		if node is Node3D and str(node.get_meta("landmark_kind", "")) == "crystal_glow":
+			var at := (node as Node3D).global_position
+			var scale := maxf(_Coords.voxel_scale(), 0.001)
+			var col := Vector2(at.x, at.z) / scale
+			if col.distance_to(_xz()) <= 24.0 and _Marks.glow_energy(node as Node3D) > 0.5:
+				return true
+		for child in node.get_children():
+			pending.append(child)
+	return false
+
+
+func _ruin_count() -> int:
+	if tree == null:
+		return 0
+	var director := tree.get_first_node_in_group("living_world_director")
+	if director != null and director.has_method("get_discovered_ruin_count"):
+		return int(director.get_discovered_ruin_count())
+	return 0
 
 
 func _lighting_reason() -> String:
@@ -531,6 +674,8 @@ func _paint() -> void:
 		var chapter := _seg
 		if build != null and (_seg == "dig_tool" or _seg == "structure_place") and build.chapter_label != "":
 			chapter = build.chapter_label
+		elif _detour_label != "":
+			chapter = _detour_label
 		hud.set_readout(chapters.format_clock(), chapter)
 
 

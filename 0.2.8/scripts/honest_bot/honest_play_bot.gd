@@ -13,6 +13,7 @@ var stuck_lines: PackedStringArray = PackedStringArray()
 var _recover_left := 0.0
 var _strafe := "move_left"
 var extra_held: PackedStringArray = PackedStringArray()
+var stuck_limit := 0
 
 
 func set_target(column_xz: Vector2) -> void:
@@ -47,7 +48,8 @@ func tick(player_xz: Vector2, yaw_degrees: float, delta: float) -> void:
 	if not watch.sample(player_xz, step):
 		return
 	stuck_lines.append(_Nav.stuck_line(player_xz, watch.last_moved, watch.last_span, target))
-	if stuck_lines.size() >= _Nav.MAX_STUCK_REPORTS:
+	var limit := stuck_limit if stuck_limit > 0 else _Nav.MAX_STUCK_REPORTS
+	if stuck_lines.size() >= limit:
 		gave_up = true
 		input.release_all()
 		return
