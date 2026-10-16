@@ -104,16 +104,21 @@ func _dig() -> String:
 		show_age += step_dt
 		if show_age < _Pace.PRE_PAUSE:
 			return ""
-		heights = _height_snap()
-		if not hands.pulse("attack"):
+		if not _column_aimed(aim) and show_age < _Pace.PRE_PAUSE + 0.6:
 			return ""
+		heights = _height_snap()
+		_look_at(aim, PackedStringArray(["attack"]))
 		show_age = 0.0
 		beat = 4
 		return ""
 	if beat == 4:
-		_look_at(aim)
+		_look_at(aim, PackedStringArray(["attack"]))
+		show_age += step_dt
 		var dug := _dropped()
 		if dug.x >= 900000:
+			if show_age < 0.5:
+				return ""
+			_stop_move()
 			tries += 1
 			if tries >= OFFSETS.size():
 				print("FAIL dig_tool swings missed")
@@ -122,18 +127,37 @@ func _dig() -> String:
 			age = minf(age, DIG_LIMIT - 1.0)
 			beat = 2
 			return ""
+		_stop_move()
+		show_age = 0.0
+		beat = 5
+		return ""
+	if beat == 5:
+		_look_at(aim)
+		var dug_hold := _dropped()
 		show_age += step_dt
 		if show_age < _Pace.RESULT_HOLD:
 			return ""
-		print("SHOWCASE dig column %d %d" % [dug.x, dug.y])
+		print("SHOWCASE dig column %d %d" % [dug_hold.x, dug_hold.y])
 		show_age = 0.0
-		beat = 5
+		beat = 6
 		return ""
 	_look_at(aim)
 	show_age += step_dt
 	if show_age < _Pace.SETTLE:
 		return ""
 	return "pass"
+
+
+func _column_aimed(cell: Vector2i) -> bool:
+	if player == null:
+		return false
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return true
+	var shared: Vector3 = hl.get_action_column()
+	if shared == Vector3.ZERO:
+		return true
+	return floori(shared.x) == cell.x and floori(shared.z) == cell.y
 
 
 func _place(dt: float) -> String:
@@ -484,15 +508,15 @@ func _piece_slot() -> int:
 	return -1
 
 
-func _look_at(cell: Vector2i) -> void:
+func _look_at(cell: Vector2i, extra: PackedStringArray = PackedStringArray()) -> void:
 	var at := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
 	hands.aim_column(player, at.x, at.y)
-	var spin := _Nav.face_action(_xz(), at, _yaw())
-	if spin == "":
-		_stop_move()
-		return
 	var held := PackedStringArray()
-	held.append(spin)
+	for action in extra:
+		held.append(action)
+	var spin := _Nav.face_action(_xz(), at, _yaw())
+	if spin != "":
+		held.append(spin)
 	hands.set_held(held)
 
 
