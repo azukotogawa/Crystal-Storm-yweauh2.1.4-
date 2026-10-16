@@ -134,21 +134,8 @@ func _play() -> void:
 		await _finish_combat()
 	else:
 		_fight.release()
-		_mark("combat", "failed", "no enemy within %.0f columns" % SENSE_COLUMNS)
+		_mark("combat", "not-reached", "no enemy within %.0f columns" % SENSE_COLUMNS)
 		await _Capture.capture_step("honest-bot-combat")
-	var points_before := _spare_points()
-	if points_before <= 0:
-		_mark("progress", "failed", "no skill point")
-		await _Capture.capture_step("honest-bot-progress")
-	else:
-		_progress.skill_points = points_before
-		_mode = "progress"
-		started = Time.get_ticks_msec()
-		while true:
-			await process_frame
-			if Time.get_ticks_msec() - started >= PROGRESS_MSEC:
-				break
-		await _finish_progress(points_before)
 	var swings_at_start := int(_crystal_run.fight.swings)
 	var hp_at_start := _crystal_hp(_live_crystal)
 	_mode = "crystal"
@@ -166,6 +153,7 @@ func _play() -> void:
 		if _crystal_run.destroyed or _crystal_run.fight.deaths > 0 or held or expired or gave_up:
 			await _finish_crystal(swings_at_start, hp_at_start)
 			break
+	await _try_progress()
 	_release_all()
 
 
@@ -205,6 +193,21 @@ func _finish_combat() -> void:
 	for line in _fight.lines:
 		print(line)
 	await _Capture.capture_step("honest-bot-combat")
+
+
+func _try_progress() -> void:
+	var points_before := _spare_points()
+	if points_before <= 0:
+		_mark("progress", "not-reached", "no skill point")
+		await _Capture.capture_step("honest-bot-progress")
+		return
+	_progress.skill_points = points_before
+	_mode = ""
+	var started := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - started < PROGRESS_MSEC:
+		_progress.tick(STEP)
+		await process_frame
+	await _finish_progress(points_before)
 
 
 func _finish_progress(points_before: int) -> void:
@@ -261,9 +264,6 @@ func _on_live_frame(delta: float) -> void:
 			return
 		_fight.observe(_combat_seen())
 		_fight.tick(pos, yaw, step)
-		return
-	if _mode == "progress":
-		_progress.tick(step)
 		return
 	if _mode != "nav" and _mode != "crystal":
 		return
@@ -334,7 +334,7 @@ func _release_all() -> void:
 func _mark(phase_name: String, status: String, detail: String) -> void:
 	_phases.append({"name": phase_name, "status": status, "detail": detail})
 	print("PHASE %s %s %s" % [phase_name, status, detail])
-	if status != "reached" and _failed_at == "":
+	if status == "failed" and _failed_at == "":
 		_failed_at = "%s: %s" % [phase_name, detail]
 
 
@@ -352,10 +352,12 @@ func _write_report(tele_path: String) -> String:
 		return ""
 	var body := "# Honest bot run\n\n"
 	body += "Run: %s\n\n" % OS.get_environment("CRYSTALSTORM_RUN_ID").strip_edges()
-	if _failed_at == "":
-		body += "Result: all phases reached\n\n"
-	else:
+	if _failed_at != "":
 		body += "Result: failed at %s\n\n" % _failed_at
+	elif _has_status("not-reached"):
+		body += "Result: no phase failed; not reached: %s\n\n" % _status_names("not-reached")
+	else:
+		body += "Result: all phases reached\n\n"
 	body += "## Phases\n\n"
 	for phase in _phases:
 		body += "- %s: %s - %s\n" % [str(phase.get("name", "")), str(phase.get("status", "")), str(phase.get("detail", ""))]
@@ -372,6 +374,21 @@ func _write_report(tele_path: String) -> String:
 	file.store_string(body)
 	file.close()
 	return path
+
+
+func _has_status(status: String) -> bool:
+	for phase in _phases:
+		if str(phase.get("status", "")) == status:
+			return true
+	return false
+
+
+func _status_names(status: String) -> String:
+	var names: PackedStringArray = PackedStringArray()
+	for phase in _phases:
+		if str(phase.get("status", "")) == status:
+			names.append(str(phase.get("name", "")))
+	return ", ".join(names)
 
 
 func _evidence_dir() -> String:

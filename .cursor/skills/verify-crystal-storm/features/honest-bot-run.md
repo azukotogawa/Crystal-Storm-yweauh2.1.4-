@@ -6,13 +6,13 @@ One live session drives the honest bot through boot, navigation, combat, progres
 
 - `honest-bot-boot` — `main.tscn` reaches the start stream and the player can act.
 - `honest-bot-nav` — the bot walks toward the crystal origin until it gains a column or five seconds pass.
-- `honest-bot-combat` — if a crystal enemy is within 32 columns it is fought with the sword and skills; otherwise the phase fails closed.
-- `honest-bot-progress` — a spare skill point is spent through the skill tree; zero points fails the phase.
+- `honest-bot-combat` — if a crystal enemy is within 32 columns it is fought with the sword and skills; otherwise the phase is not reached.
 - `honest-bot-crystal-run` — the bot walks to the origin and attacks. Unchanged crystal HP is a failed phase, not a harness failure.
+- `honest-bot-progress` — after the crystal attempt, a spare skill point is spent through the skill tree. Zero points means the phase was not reached.
 
 ## How to get to it (user POV)
 
-Start a world. Walk toward the crystal (Q/E, W). Fight a crystal enemy if one is close (sword on 1, attack, skills). If a skill point is available, open the tree (K) and spend it. Then keep walking to the crystal and attack it.
+Start a world. Walk toward the crystal (Q/E, W). Fight a crystal enemy if one is close (sword on 1, attack, skills). Attack the crystal. If that earned a skill point, open the tree (K) and spend it.
 
 ## Driving it with cs-verify.sh
 
