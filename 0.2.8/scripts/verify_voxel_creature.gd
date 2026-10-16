@@ -6,6 +6,9 @@ const _Pose = preload("res://entities/creature_pose.gd")
 const _Entity = preload("res://entities/world_entity.gd")
 const _Palette = preload("res://ui/crystal_palette.gd")
 const _Enemy = preload("res://entities/crystal_enemy.gd")
+const _MiteLook = preload("res://config/crystal_mite_look.gd")
+const _Spawns = preload("res://entities/enemy_spawn_registry.gd")
+const _Settings = preload("res://config/world_settings.gd")
 
 var _failed := 0
 
@@ -50,6 +53,7 @@ func _run() -> void:
 	_check_optional_wing()
 	_check_entities()
 	_check_enemy()
+	_check_mite_readability()
 	_finish()
 
 
@@ -133,6 +137,8 @@ func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = fal
 		_fail("%s attack left the leg at rest" % kind)
 	else:
 		print("OK %s attack lunge %.3f" % [kind, lunge])
+	if kind == &"crystal_mite":
+		_check_mite_rig(rig)
 	rig.free()
 
 
@@ -243,6 +249,10 @@ func _check_crystal_body(kind: StringName, rig: Node3D, body_mi: MeshInstance3D,
 			mat = glow_mi.material_override as StandardMaterial3D
 		var want_em := _Palette.mass_emission(_Palette.is_active())
 		var want_al := _Palette.mass_albedo(_Palette.is_active())
+		if kind == &"crystal_mite":
+			var look = _MiteLook.load_active()
+			want_em = look.emission_color(_Palette.is_active())
+			want_al = look.albedo_color(_Palette.is_active())
 		var got := Color(0, 0, 0) if mat == null else mat.emission
 		if mat == null or not mat.emission_enabled or not _rgb_near(got, want_em):
 			_fail("%s emission %s want %s" % [kind, got, want_em])
@@ -314,6 +324,106 @@ func _check_enemy() -> void:
 			_fail("%s enemy kept a voxel prop beside the rig" % kind)
 		else:
 			print("OK %s enemy rig" % kind)
+	holder.free()
+
+
+func _check_mite_rig(rig: Node3D) -> void:
+	var look = _MiteLook.load_active()
+	if look.visual_scale < 1.9 or look.visual_scale > 2.1:
+		_fail("mite visual scale %.2f is not about 2" % look.visual_scale)
+	elif not rig.scale.is_equal_approx(Vector3(look.visual_scale, look.visual_scale, look.visual_scale)):
+		_fail("mite rig scale %s != look %.2f" % [rig.scale, look.visual_scale])
+	elif not bool(rig.get_meta("mite_look", false)):
+		_fail("mite rig is missing its look mark")
+	else:
+		var mat := _first_glow(rig).material_override as StandardMaterial3D
+		var energy := 0.0 if mat == null else mat.emission_energy_multiplier
+		if mat == null or absf(energy - look.energy(_Palette.is_active())) > 0.02:
+			_fail("mite emission energy %.2f" % energy)
+		elif not _mite_has_spikes():
+			_fail("mite silhouette has no spikes")
+		else:
+			var purple := _Palette.mass_albedo(false)
+			var bush := Color(0.18, 0.42, 0.16)
+			if _rgb_near(look.albedo, purple) or _rgb_near(look.albedo, bush):
+				_fail("mite albedo still matches the ground or the bushes")
+			else:
+				_Builder.repaint(rig)
+				var again := _first_glow(rig).material_override as StandardMaterial3D
+				if again == null or not _rgb_near(again.emission, look.emission_color(_Palette.is_active())):
+					_fail("repaint replaced the mite color")
+				else:
+					print("OK mite scale %.2f energy %.2f" % [look.visual_scale, energy])
+
+
+func _mite_has_spikes() -> bool:
+	var tall := false
+	var side := false
+	var point := false
+	for part in _Builder.parts_for(&"crystal_mite"):
+		for cell in (part as Dictionary).get("cells", []):
+			if not (cell is Vector4i):
+				continue
+			var at := cell as Vector4i
+			if at.y >= 6:
+				tall = true
+			if at.x <= 0 or at.x >= 5:
+				side = true
+			if at.z >= 11:
+				point = true
+	return tall and side and point
+
+
+func _check_mite_readability() -> void:
+	_Spawns.reset()
+	_Spawns.ensure_builtins()
+	var def = _Spawns.get_def(&"crystal_mite")
+	if def == null:
+		_fail("crystal mite spawn def missing")
+		return
+	if not is_equal_approx(def.hit_radius, 0.32) or not is_equal_approx(def.max_health, 24.0):
+		_fail("mite hit radius %.3f or health %.1f changed" % [def.hit_radius, def.max_health])
+		return
+	if not is_equal_approx(def.contact_damage, 22.0) or not is_equal_approx(def.move_speed, 10.0):
+		_fail("mite damage or speed changed")
+		return
+	if not is_equal_approx(def.mesh_radius, 0.22) or not is_equal_approx(def.mesh_height, 0.70):
+		_fail("mite mesh hit size changed")
+		return
+	var holder := Node.new()
+	root.add_child(holder)
+	var enemy := _Enemy.new()
+	enemy.enemy_id = &"crystal_mite"
+	holder.add_child(enemy)
+	enemy.setup(&"crystal_mite", null, def)
+	var look = _MiteLook.load_active()
+	var rig := enemy.get_node_or_null("CreatureRig") as Node3D
+	var want_r: float = float(def.hit_radius) * float(_Settings.get_active().voxel_scale)
+	if rig == null or not enemy.scale.is_equal_approx(Vector3.ONE):
+		_fail("mite combat body was scaled")
+	elif not rig.scale.is_equal_approx(Vector3(look.visual_scale, look.visual_scale, look.visual_scale)):
+		_fail("spawned mite visual scale %s" % rig.scale)
+	elif not is_equal_approx(enemy.get_combat_radius(), want_r):
+		_fail("mite combat radius %.3f want %.3f" % [enemy.get_combat_radius(), want_r])
+	elif not is_equal_approx(enemy.max_health, 24.0) or not is_equal_approx(enemy.contact_damage, 22.0):
+		_fail("spawned mite stats changed")
+	else:
+		print("OK mite hitbox %.3f health %.0f" % [enemy.get_combat_radius(), enemy.max_health])
+	var warden_def = _Spawns.get_def(&"origin_warden")
+	var warden := _Enemy.new()
+	warden.enemy_id = &"origin_warden"
+	holder.add_child(warden)
+	warden.setup(&"origin_warden", null, warden_def)
+	var warden_rig := warden.get_node_or_null("CreatureRig") as Node3D
+	var warden_r: float = float(warden_def.hit_radius) * float(_Settings.get_active().voxel_scale)
+	if warden_rig == null or not warden.scale.is_equal_approx(Vector3.ONE):
+		_fail("warden body scale changed")
+	elif not is_equal_approx(warden_rig.scale.x, 1.65):
+		_fail("warden visual scale %.2f" % warden_rig.scale.x)
+	elif not is_equal_approx(warden.get_combat_radius(), warden_r):
+		_fail("warden combat radius changed")
+	else:
+		print("OK warden visual stays %.2f" % warden_rig.scale.x)
 	holder.free()
 
 

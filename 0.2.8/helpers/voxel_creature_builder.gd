@@ -7,6 +7,7 @@ const _Model = preload("res://helpers/voxel_model_builder.gd")
 const _Pose = preload("res://entities/creature_pose.gd")
 const _Settings = preload("res://config/world_settings.gd")
 const _Palette = preload("res://ui/crystal_palette.gd")
+const _MiteLook = preload("res://config/crystal_mite_look.gd")
 
 const _ANIM_LEN := TAU
 const _ANIM_STEPS := 16
@@ -63,7 +64,13 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.32, 0.20, 0.12),
 			Color(0.08, 0.08, 0.08),
 		])
-	if kind == &"crystal_mite" or kind == &"crystal_wisp":
+	if kind == &"crystal_mite":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			_mite_albedo(),
+			Color(0.05, 0.08, 0.10),
+		])
+	if kind == &"crystal_wisp":
 		return PackedColorArray([
 			Color(0, 0, 0),
 			_crystal_albedo(),
@@ -136,7 +143,10 @@ static func cube_edge() -> float:
 
 
 static func build(kind: StringName) -> Node3D:
-	return build_parts(parts_for(kind), palette_for(kind), cube_edge())
+	var rig := build_parts(parts_for(kind), palette_for(kind), cube_edge())
+	if rig != null and kind == &"crystal_mite":
+		_fit_mite(rig)
+	return rig
 
 
 static func build_parts(parts: Array, palette: PackedColorArray, cube: float) -> Node3D:
@@ -153,6 +163,12 @@ static func build_parts(parts: Array, palette: PackedColorArray, cube: float) ->
 
 static func repaint(rig: Node3D) -> void:
 	if rig == null:
+		return
+	if bool(rig.get_meta("mite_look", false)):
+		var look = _MiteLook.load_active()
+		var colorblind := _Palette.is_active()
+		_repaint_node(rig, look.albedo_color(colorblind), look.emission_color(colorblind))
+		_paint_mite_energy(rig, look.energy(colorblind))
 		return
 	_repaint_node(rig, _crystal_albedo(), _crystal_glow())
 
@@ -218,10 +234,19 @@ static func _boar_parts() -> Array:
 static func _mite_parts() -> Array:
 	var crystal := 1
 	var dark := 2
+	var glow := _mite_emission()
 	var body: Array = []
 	_fill(body, 1, 1, 2, 5, 3, 7, crystal)
+	_fill(body, 0, 2, 4, 1, 5, 5, crystal)
+	_fill(body, 5, 2, 4, 6, 5, 5, crystal)
+	_fill(body, 2, 3, 3, 3, 7, 4, crystal)
+	_fill(body, 3, 3, 5, 4, 6, 6, crystal)
 	var head: Array = []
 	_fill(head, 2, 3, 0, 4, 5, 3, crystal)
+	_fill(head, 1, 3, 0, 2, 4, 2, crystal)
+	_fill(head, 4, 3, 0, 5, 4, 2, crystal)
+	_fill(head, 2, 5, 1, 3, 8, 2, crystal)
+	_fill(head, 3, 5, 1, 4, 8, 2, crystal)
 	_fill(head, 2, 4, 0, 3, 5, 1, dark)
 	_fill(head, 3, 4, 0, 4, 5, 1, dark)
 	var leg_l: Array = []
@@ -232,13 +257,15 @@ static func _mite_parts() -> Array:
 	_fill(leg_r, 4, 0, 5, 5, 1, 6, crystal)
 	var tail: Array = []
 	_fill(tail, 2, 2, 7, 4, 3, 9, crystal)
+	_fill(tail, 2, 3, 8, 3, 6, 9, crystal)
+	_fill(tail, 3, 2, 9, 4, 4, 12, crystal)
 	var emit: Array = [crystal]
 	return [
-		_part("body", "body", "Body", "Root", "bottom", body, emit),
-		_part("head", "head", "Head", "Body", "bottom", head, emit),
-		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit),
-		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
-		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
+		_part("body", "body", "Body", "Root", "bottom", body, emit, glow),
+		_part("head", "head", "Head", "Body", "bottom", head, emit, glow),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit, glow),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit, glow),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit, glow),
 	]
 
 
@@ -573,7 +600,7 @@ static func _guard_parts() -> Array:
 	]
 
 
-static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = []) -> Dictionary:
+static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = [], glow_color: Color = Color(-1, -1, -1)) -> Dictionary:
 	var spec := {
 		"id": id,
 		"kind": kind,
@@ -584,8 +611,33 @@ static func _part(id: String, kind: String, bone: String, parent: String, pivot:
 	}
 	if not emit_ids.is_empty():
 		spec["emit"] = emit_ids
-		spec["glow"] = _crystal_glow()
+		spec["glow"] = _crystal_glow() if glow_color.r < 0.0 else glow_color
 	return spec
+
+
+static func _fit_mite(rig: Node3D) -> void:
+	var look = _MiteLook.load_active()
+	var scale: float = float(look.visual_scale)
+	rig.scale = Vector3(scale, scale, scale)
+	rig.set_meta("mite_look", true)
+	_paint_mite_energy(rig, look.energy(_Palette.is_active()))
+
+
+static func _mite_albedo() -> Color:
+	return _MiteLook.load_active().albedo_color(_Palette.is_active())
+
+
+static func _mite_emission() -> Color:
+	return _MiteLook.load_active().emission_color(_Palette.is_active())
+
+
+static func _paint_mite_energy(node: Node, energy: float) -> void:
+	if node is MeshInstance3D and bool(node.get_meta("crystal_glow", false)):
+		var mat := (node as MeshInstance3D).material_override as StandardMaterial3D
+		if mat != null:
+			mat.emission_energy_multiplier = energy
+	for child in node.get_children():
+		_paint_mite_energy(child, energy)
 
 
 static func _crystal_albedo() -> Color:
