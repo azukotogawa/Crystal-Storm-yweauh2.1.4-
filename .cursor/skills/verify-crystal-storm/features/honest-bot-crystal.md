@@ -20,4 +20,4 @@ Pass: the log contains `HONEST BOT CRYSTAL OK`, a line `CRYSTAL DESTROYED`, a li
 
 ## Gotchas
 
-The live origin sits at a world corner (~950 columns). A 12s probe cannot walk there, so live destroy is not required. The `STOP live reach remaining ... at x,z toward ox,oz` line is the exact stop. Simulated HP drops only while the bot is striking and the probe observes a new swing; the bot does not call `damage_spawn`. Headless runs do not write a step png.
+The live origin is near the player spawn on this seed (about 56 columns). The probe walks toward `get_origin_cell()`, then keeps attacking for 8s after it is inside 2.4 columns. If crystal HP stays full, `STOP live reach remaining ... hp 500/500` is the exact stop. Simulated HP drops only while the bot is striking and the probe observes a new swing; the bot does not call `damage_spawn`. Headless runs do not write a step png.

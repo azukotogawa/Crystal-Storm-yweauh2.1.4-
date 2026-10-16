@@ -297,9 +297,18 @@ func _check_live_crystal() -> void:
 	_live_crystal = crystal
 	_live_run = run
 	var t0 := Time.get_ticks_msec()
-	while Time.get_ticks_msec() - t0 < 12000:
+	var close_ms := 0
+	while Time.get_ticks_msec() - t0 < 22000:
 		await process_frame
-		if run.destroyed or run.fight.deaths > 0 or run.fight.bot.gave_up:
+		if run.destroyed or run.fight.deaths > 0:
+			break
+		var now_rem := _xz(player).distance_to(origin_xz)
+		if now_rem <= _Run.ENGAGE_COLUMNS:
+			if close_ms == 0:
+				close_ms = Time.get_ticks_msec()
+			elif Time.get_ticks_msec() - close_ms >= 8000:
+				break
+		if run.fight.bot.gave_up and close_ms == 0:
 			break
 	_live_player = null
 	_live_run = null
