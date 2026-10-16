@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CrystalGroundLook" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/crystal_ground_look.gd" id="1_look"]
+
+[resource]
+script = ExtResource("1_look")
+atlas_path = "res://assets/tiles/Cube.png"
+atlas_columns = 7
+atlas_rows = 10
+ground_col = 6
+ground_row = 3
+stone_col = 0
+stone_row = 4
+crystal_col = 6
+crystal_row = 2
+emission_energy = 0.42
+albedo_tint = 0.28
+show_debug_markers = false
+spawn_fallback_path = "res://assets/art/crystal/amethyst.png"

@@ -5,6 +5,9 @@ const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _Voxels = preload("res://helpers/voxel_types.gd")
+const _GroundLook = preload("res://config/crystal_ground_look.gd")
+
+static var _atlas_tex: Texture2D
 
 static var ENABLED: bool = true
 
@@ -166,16 +169,48 @@ static func _box(spec: Dictionary) -> MeshInstance3D:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	var mat := StandardMaterial3D.new()
 	var color: Color = spec.get("color", Color.WHITE)
-	mat.albedo_color = color
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	mat.roughness = 0.9
 	mat.metallic = 0.0
-	if bool(spec.get("glow", false)):
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	var look := _GroundLook.load_active()
+	var glow := bool(spec.get("glow", false))
+	var cell := _cell_texture(
+		look.crystal_col if glow else look.stone_col,
+		look.crystal_row if glow else look.stone_row
+	)
+	if cell != null:
+		mat.albedo_texture = cell
+		mat.albedo_color = Color.WHITE
+	else:
+		mat.albedo_color = color
+	if glow:
 		mat.emission_enabled = true
 		mat.emission = color
 		mat.emission_energy_multiplier = float(spec.get("energy", 2.8))
 	mi.material_override = mat
 	return mi
+
+
+static func _atlas() -> Texture2D:
+	if _atlas_tex == null:
+		_atlas_tex = load(_GroundLook.load_active().atlas_path) as Texture2D
+	return _atlas_tex
+
+
+static func _cell_texture(col: int, row: int) -> Texture2D:
+	var base := _atlas()
+	if base == null:
+		return null
+	var look := _GroundLook.load_active()
+	var cols := maxi(look.atlas_columns, 1)
+	var rows := maxi(look.atlas_rows, 1)
+	var cell_w := float(base.get_width()) / float(cols)
+	var cell_h := float(base.get_height()) / float(rows)
+	var atlas := AtlasTexture.new()
+	atlas.atlas = base
+	atlas.region = Rect2(float(col) * cell_w, float(row) * cell_h, cell_w, cell_h)
+	return atlas
 
 
 static func _accept(proposed: Array[Dictionary]) -> Array[Dictionary]:

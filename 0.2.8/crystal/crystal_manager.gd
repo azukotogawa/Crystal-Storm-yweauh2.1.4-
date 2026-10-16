@@ -24,6 +24,7 @@ const _CrystalCorruption = preload("res://crystal/crystal_corruption.gd")
 const _RelicChoice = preload("res://relics/relic_choice.gd")
 const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _CrystalGroundLook = preload("res://config/crystal_ground_look.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
@@ -639,11 +640,8 @@ func _setup_materials() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = shader
 	_paint_crystal_mass(mat, _PlayerSettings.colorblind_palette)
-	mat.set_shader_parameter("emission_energy", 2.15)
 	mat.set_shader_parameter("crystal_time", 0.0)
-	var facet := load("res://assets/art/crystal/facet.png") as Texture2D
-	if facet != null:
-		mat.set_shader_parameter("albedo_tex", facet)
+	_apply_ground_look(mat)
 	_crystal_material = mat
 
 	_marker_material = StandardMaterial3D.new()
@@ -657,6 +655,17 @@ func _setup_materials() -> void:
 func apply_color_palette(colorblind: bool) -> void:
 	if _crystal_material:
 		_paint_crystal_mass(_crystal_material, colorblind)
+
+
+func _apply_ground_look(mat: ShaderMaterial) -> void:
+	var look := _CrystalGroundLook.load_active()
+	mat.set_shader_parameter("emission_energy", look.emission_energy)
+	mat.set_shader_parameter("albedo_tint", look.albedo_tint)
+	mat.set_shader_parameter("atlas_grid", Vector2(float(look.atlas_columns), float(look.atlas_rows)))
+	mat.set_shader_parameter("ground_cell", Vector2(float(look.ground_col), float(look.ground_row)))
+	var atlas := load(look.atlas_path) as Texture2D
+	if atlas != null:
+		mat.set_shader_parameter("texture_atlas", atlas)
 
 
 func _paint_crystal_mass(mat: Material, colorblind: bool) -> void:
@@ -1958,6 +1967,11 @@ func _refresh_spawn_markers() -> void:
 				else:
 					marker.texture = tex
 		if not has_tex:
+			var fallback := load(_CrystalGroundLook.load_active().spawn_fallback_path) as Texture2D
+			if fallback != null:
+				has_tex = true
+				marker.texture = fallback
+		if not has_tex and _CrystalGroundLook.load_active().debug_markers_allowed():
 			if _marker_material:
 				marker.material_override = _marker_material.duplicate()
 			var prism := MeshInstance3D.new()
