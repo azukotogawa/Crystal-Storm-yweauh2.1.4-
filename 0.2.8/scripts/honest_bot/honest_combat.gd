@@ -38,6 +38,10 @@ func release() -> void:
 	bot.release()
 
 
+func reset_weapon() -> void:
+	_sword_sent = false
+
+
 func summary_line() -> String:
 	return "KILLS %d DEATHS %d" % [kills, deaths]
 

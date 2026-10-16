@@ -3,6 +3,8 @@ extends RefCounted
 const BURN_DEPTH := 0.25
 const CLEAR_DEPTH := 0.12
 const HIT_COLUMNS := 2.05
+const SWORD_RANGE := 2.8
+const PAD_MIN := 1.2
 
 
 static func depth_at(tree: SceneTree, at: Vector2) -> float:
@@ -83,3 +85,41 @@ static func strike_stand(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2
 
 static func accepts_kill(kind: String, player_killed: bool) -> bool:
 	return player_killed and kind != "" and kind != "origin_warden"
+
+
+static func sword_pad(tree: SceneTree, origin: Vector2) -> Vector2:
+	var center := origin + Vector2(0.5, 0.5)
+	var best := Vector2.INF
+	var best_score := -1.0e9
+	for dx in range(-5, 6):
+		for dz in range(-5, 6):
+			var at := Vector2(origin.x + float(dx) + 0.5, origin.y + float(dz) + 0.5)
+			var dist := at.distance_to(center)
+			if dist > SWORD_RANGE or dist < PAD_MIN:
+				continue
+			if burning(tree, at):
+				continue
+			var depth := depth_at(tree, at)
+			var score := (BURN_DEPTH - depth) * 8.0 - absf(dist - 2.05) * 0.6
+			if score > best_score:
+				best_score = score
+				best = at
+	return best
+
+
+static func rim_carve(tree: SceneTree, origin: Vector2) -> Vector2:
+	var center := origin + Vector2(0.5, 0.5)
+	var best := Vector2.INF
+	var best_d := 1.0e9
+	for dx in range(-5, 6):
+		for dz in range(-5, 6):
+			var at := Vector2(origin.x + float(dx) + 0.5, origin.y + float(dz) + 0.5)
+			var dist := at.distance_to(center)
+			if dist > SWORD_RANGE or dist < PAD_MIN:
+				continue
+			if not burning(tree, at):
+				continue
+			if dist < best_d:
+				best_d = dist
+				best = at
+	return best

@@ -67,6 +67,7 @@ var _site_resumes := 0
 var _pool_visit := 0.0
 var _pool_done := false
 var _done: Dictionary = {}
+var _chip_skip: Dictionary = {}
 
 
 func release() -> void:
@@ -132,6 +133,7 @@ func reset() -> void:
 	_pool_visit = 0.0
 	_pool_done = false
 	_done = {}
+	_chip_skip = {}
 	bot.extra_held = PackedStringArray()
 
 
@@ -291,6 +293,8 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		_chip_cell = Vector2.INF
 		print("SHOWCASE mass chip widen gap %.1f heart %.0f" % [_chip_gap, heart])
 	if _chip_cell != Vector2.INF and not _Farm.chip_cell_ok(_chip_cell, origin, _depth(tree, _chip_cell)):
+		_drop_chip()
+	if _chip_cell != Vector2.INF and _chip_skip.has(_Farm.site_key(_chip_cell)):
 		_chip_cell = Vector2.INF
 	if _chip_cell == Vector2.INF:
 		_chip_cell = _find_mass(tree, pos, origin)
@@ -305,6 +309,11 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if pos.distance_to(origin) > 10.0:
 			var away := pos - origin
 			closer = origin + away.normalized() * 10.0
+			if bot.gave_up:
+				var side := Vector2(-away.y, away.x)
+				if side.length() < 0.05:
+					side = Vector2(1.0, 0.0)
+				closer = closer + side.normalized() * 6.0
 		else:
 			closer = _Hazard.leave_goal(tree, pos, origin)
 		if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(closer) > 1.5:
@@ -314,9 +323,12 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		return ""
 	var stand := _chip_stand(tree, _chip_cell, pos)
 	if stand == Vector2.INF:
-		_chip_cell = Vector2.INF
+		_skip_chip(_chip_cell)
 		return ""
 	if pos.distance_to(stand) > 0.7:
+		if bot.gave_up and bot.target.distance_to(stand) <= 0.75:
+			_skip_chip(_chip_cell)
+			return ""
 		if not bot.has_target or bot.gave_up or bot.target.distance_to(stand) > 0.75:
 			bot.set_target(stand)
 		var extras := PackedStringArray()
@@ -351,20 +363,27 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		_chip_cell = Vector2.INF
 		return ""
 	if _chip_swings >= 8:
-		_chip_cell = Vector2.INF
-		_chip_swings = 0
-		_pick = false
+		_skip_chip(_chip_cell)
 	return ""
 
 
 func _find_mass(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
+	var found := _scan_mass(tree, pos, origin, floori(pos.x), floori(pos.y), 12)
+	if found != Vector2.INF:
+		return found
+	if pos.distance_to(origin) <= 28.0:
+		return _scan_mass(tree, pos, origin, floori(origin.x), floori(origin.y), 14)
+	return Vector2.INF
+
+
+func _scan_mass(tree: SceneTree, pos: Vector2, origin: Vector2, ox: int, oz: int, reach: int) -> Vector2:
 	var best := Vector2.INF
 	var best_d := 1.0e9
-	var ox := floori(pos.x)
-	var oz := floori(pos.y)
-	for dz in range(-10, 11):
-		for dx in range(-10, 11):
+	for dz in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
 			var at := Vector2(float(ox + dx) + 0.5, float(oz + dz) + 0.5)
+			if _chip_skip.has(_Farm.site_key(at)):
+				continue
 			if not _Farm.chip_cell_ok(at, origin, _depth(tree, at)):
 				continue
 			if at.distance_to(origin) < _chip_gap:
@@ -376,6 +395,18 @@ func _find_mass(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
 				best_d = dist
 				best = at
 	return best
+
+
+func _skip_chip(cell: Vector2) -> void:
+	_chip_skip[_Farm.site_key(cell)] = true
+	_chip_cell = Vector2.INF
+	_chip_swings = 0
+	_pick = false
+
+
+func _drop_chip() -> void:
+	_chip_cell = Vector2.INF
+	_chip_swings = 0
 
 
 func _chip_stand(tree: SceneTree, cell: Vector2, pos: Vector2) -> Vector2:

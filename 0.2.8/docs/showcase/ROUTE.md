@@ -159,7 +159,7 @@ Pass: `BOSS SPAWN` then `BOSS KILL`.
 
 ### 17. `win_screen`
 
-Sword the origin cell until the heart is 0. Stop attacking. The overlay title is `Victory — Crystal Destroyed`, the subtitle is `You destroyed the crystal.` and `Press R to restart.`, and the run summary says the crystal was destroyed. Do not press restart, `quick_load`, or quit. Hold about 3 seconds so the screen is on the recording.
+Sword the origin cell until the heart is 0. Stop attacking. The overlay title is `Victory — Crystal Destroyed`, the subtitle is `You destroyed the crystal.` and `Press R to restart.`, and the run summary says the crystal was destroyed. Do not press restart, `quick_load`, or quit. Hold about 5 seconds so the screen is on the recording.
 
 Pass: phase victory, `victory_reason` crystal, that title visible. Log `CRYSTAL DESTROYED`.
 

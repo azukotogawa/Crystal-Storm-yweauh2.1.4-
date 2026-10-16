@@ -16,6 +16,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
+const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
@@ -300,6 +301,19 @@ func _check_hazard() -> void:
 		return
 	if _Hazard.BURN_DEPTH < 0.25 or _Hazard.HIT_COLUMNS > 2.2:
 		_fail("burn line or sword reach drifted")
+		return
+	var pad := _Hazard.sword_pad(null, Vector2.ZERO)
+	if pad == Vector2.INF or pad.distance_to(Vector2(0.5, 0.5)) > _Hazard.SWORD_RANGE + 0.01:
+		_fail("dry sword pad %s" % pad)
+		return
+	if pad.distance_to(Vector2(0.5, 0.5)) < _Hazard.PAD_MIN - 0.01:
+		_fail("sword pad too close %s" % pad)
+		return
+	if _Hazard.rim_carve(null, Vector2.ZERO) != Vector2.INF:
+		_fail("an empty disk should not carve")
+		return
+	if _Finale.WIN_HOLD < 4.99:
+		_fail("win hold should stay on screen for 5s")
 		return
 	_ok("hazard escape and player kills")
 
