@@ -22,6 +22,8 @@ var _unstuck := false
 var _heal := 0
 var _heal_wait := 0.0
 var _dead := false
+var _approach_limit := -1.0
+var _alive: Dictionary = {}
 
 
 func release() -> void:
@@ -45,6 +47,8 @@ func reset() -> void:
 	_heal = 0
 	_heal_wait = 0.0
 	_dead = false
+	_approach_limit = -1.0
+	_alive = {}
 	bot.extra_held = PackedStringArray()
 
 
@@ -76,7 +80,10 @@ func tick(step: float, tree: SceneTree, player: Node, origin: Vector2) -> String
 
 func _approach(dt: float, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
-	if pos.distance_to(origin) <= _Roster.POOL_STAND or age >= _Roster.APPROACH_LIMIT:
+	if _approach_limit < 0.0:
+		var trip := pos.distance_to(origin)
+		_approach_limit = clampf(trip / 8.0 + 12.0, _Roster.APPROACH_LIMIT, 180.0)
+	if pos.distance_to(origin) <= _Roster.POOL_STAND or age >= _approach_limit:
 		_phase = "hunt"
 		_quiet = 0.0
 		age = 0.0
@@ -142,7 +149,6 @@ func _fight(dt: float, player: Node, choice: Dictionary) -> String:
 		_attack_wait = 0.0
 		if _bow > 0 and _bow < 4:
 			_bow = 0
-	seen[kind] = true
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
 	if _ratio(player) <= 0.30:
@@ -199,6 +205,7 @@ func _close_in(dt: float, player: Node, foe: Vector2, dist: float) -> void:
 
 
 func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) -> void:
+	seen[kind] = true
 	bot.input.begin_tick()
 	var held := PackedStringArray()
 	var rot := _Nav.face_action(pos, foe, _yaw(player))
@@ -272,6 +279,7 @@ func _heal_idle() -> void:
 
 func _sense(tree: SceneTree) -> Array:
 	var rows: Array = []
+	var still := {}
 	for node in tree.get_nodes_in_group("crystal_enemy"):
 		if not is_instance_valid(node):
 			continue
@@ -282,6 +290,7 @@ func _sense(tree: SceneTree) -> Array:
 		if float(node.get("health")) <= 0.0:
 			_count_kill(iid, kind)
 			continue
+		still[iid] = kind
 		var body := node as Node3D
 		if body == null:
 			continue
@@ -291,6 +300,11 @@ func _sense(tree: SceneTree) -> Array:
 			"kind": kind,
 			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
 		})
+	for iid in _alive.keys():
+		if still.has(iid):
+			continue
+		_count_kill(str(iid), str(_alive[iid]))
+	_alive = still
 	return rows
 
 

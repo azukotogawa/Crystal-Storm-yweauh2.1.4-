@@ -251,6 +251,14 @@ func _check_roster() -> void:
 	if str(next.get("kind", "")) != "crystal_stag":
 		_fail("unkilled stag should beat a repeat mite, got %s" % next)
 		return
+	var nearer_stag: Array = [
+		{"id": "stag", "kind": "crystal_stag", "xz": Vector2(3.0, 0.0)},
+		{"id": "mite", "kind": "crystal_mite", "xz": Vector2(0.0, 18.0)},
+	]
+	var mite_first: Dictionary = _Roster.pick(nearer_stag, Vector2.ZERO, _Roster.SCAN_COLUMNS, {}, true)
+	if str(mite_first.get("kind", "")) != "crystal_mite":
+		_fail("the first mite comes before a closer stag, got %s" % mite_first)
+		return
 	var far: Dictionary = _Roster.pick(rows, Vector2.ZERO, _Roster.SCAN_COLUMNS, {"crystal_mite": 1, "crystal_stag": 1}, false)
 	if str(far.get("id", "")) != "":
 		_fail("mite outside the scan should be ignored, got %s" % far)

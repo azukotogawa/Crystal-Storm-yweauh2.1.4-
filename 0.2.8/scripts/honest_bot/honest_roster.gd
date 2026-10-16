@@ -36,13 +36,18 @@ static func pick(rows: Array, from_xz: Vector2, radius: float, killed: Dictionar
 		var dist := from_xz.distance_to(xz)
 		if dist > radius:
 			continue
-		if not killed.has(kind):
+		if kind == "crystal_mite" and not killed.has(kind) and dist < mite_d:
+			mite = row
+			mite_d = dist
+		elif not killed.has(kind):
 			if dist < fresh_d:
 				fresh = row
 				fresh_d = dist
 		elif grind_mite and kind == "crystal_mite" and dist < mite_d:
 			mite = row
 			mite_d = dist
+	if not killed.has("crystal_mite") and not mite.is_empty():
+		return mite
 	if not fresh.is_empty():
 		return fresh
 	return mite
