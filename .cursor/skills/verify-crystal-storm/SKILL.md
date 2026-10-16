@@ -16,6 +16,7 @@ export RUN_ID=my-check-$(date +%H%M%S)   # optional; groups evidence for one run
 bash $S doctor           # read-only health check
 bash $S quick            # import + stability + contracts  (~15 s) = QUICK_CHECK
 bash $S launch 8         # headless boot of main.tscn + 8 s scripted play (~25 s)
+bash $S bot              # honest-bot navigation on main.tscn (input only)
 bash $S feature full-map # drive one mapped feature (names in features/README.md)
 bash $S telemetry-summary path/to/session.json  # deaths, damage sources, avg time-to-kill, XP rate
 bash $S record launch 2  # same as any mode, plus Godot --write-movie and an mp4
@@ -35,6 +36,10 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 ## Doctor
 
 `bash $S doctor` (read-only, ~1 s). Requires `OK godot wrapper`, `OK engine 4.7…`, `OK project 4.7`, then `DOCTOR OK`. It also prints branch/HEAD, `MemAvailable` and a count of Godot-like processes. The laptop has 7 GB RAM: if available memory is under ~2 GB or another agent's Godot is running, wait instead of stacking a second instance. Instances are isolated by `RUN_ID` scratch dirs, but `--import` writes the shared `0.2.8/.godot/` cache, so do not run two imports at once.
+
+## Honest bot
+
+`bash $S bot` runs `0.2.8/scripts/verify_honest_bot_nav.gd`. The bot under `0.2.8/scripts/honest_bot/` may only call `Input.action_press` / `Input.action_release` and `Input.parse_input_event` (`InputEventAction`). It does not teleport, grant XP, damage the crystal, or write world state. Navigation holds `rotate_left` / `rotate_right` until the camera yaw faces the target, then holds `move_forward`. If that column barely moves it also holds a strafe. After 1.25s with under 0.35 columns of travel it prints a `STUCK nav ...` line, sidesteps, and taps `jump`. Three stuck reports and it gives up on that target. Pass prints `HONEST BOT NAV OK`. A 137/134 exit after that marker is the abrupt probe quit. One line that starts with `FAIL` fails the command.
 
 ## Drive
 

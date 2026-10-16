@@ -387,6 +387,12 @@ launch)
   cp -f "$SCRATCH_W/scripted_smoke_evidence.md" "$EVID/" 2>/dev/null
   grep -E '^\- \*\*[A-Za-z ]+ (OK|FAIL)\*\*' "$EVID/scripted_smoke_evidence.md" 2>/dev/null
   if [ $r -eq 0 ]; then echo "LAUNCH OK (SMOKE GAMEPLAY OK)"; else echo "LAUNCH FAIL rc=$r"; grep -m3 -E 'FAIL' "$EVID/smoke.log"; exit 1; fi ;;
+bot)
+  run_godot honest-bot --headless --path "$ROOT" -s res://scripts/verify_honest_bot_nav.gd; r=$?
+  grep -E '^(OK|FAIL|STUCK|HONEST)' "$EVID/honest-bot.log" | tr -d '\r'
+  if bad "$EVID/honest-bot.log"; then echo "BOT FAIL script rc=$r"; tail -8 "$EVID/honest-bot.log"; exit 1; fi
+  if grep -qF "HONEST BOT NAV OK" "$EVID/honest-bot.log" && ! grep -q '^FAIL' "$EVID/honest-bot.log"; then
+    echo "BOT OK rc=$r marker='HONEST BOT NAV OK'"; else echo "BOT FAIL rc=$r"; tail -12 "$EVID/honest-bot.log"; exit 1; fi ;;
 telemetry-summary)
   py=""
   if command -v python3 >/dev/null 2>&1; then py=python3
@@ -407,5 +413,5 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
