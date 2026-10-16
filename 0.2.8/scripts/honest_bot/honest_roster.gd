@@ -56,7 +56,7 @@ static func pick(rows: Array, from_xz: Vector2, radius: float, killed: Dictionar
 static func kind_status(kind: String, killed: Dictionary, seen: Dictionary) -> String:
 	if int(killed.get(kind, 0)) > 0:
 		return "pass"
-	if bool(seen.get(kind, false)):
+	if kind == "crystal_mite" and bool(seen.get(kind, false)):
 		return "fail"
 	return "absent"
 

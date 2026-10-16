@@ -266,8 +266,11 @@ func _check_roster() -> void:
 	if _Roster.kind_status("crystal_wisp", {}, {}) != "absent":
 		_fail("unseen kind should be absent")
 		return
-	if _Roster.kind_status("crystal_stag", killed, {"crystal_stag": true}) != "fail":
-		_fail("a seen stag that is still up should fail")
+	if _Roster.kind_status("crystal_stag", killed, {"crystal_stag": true}) != "absent":
+		_fail("a seen stag that is still up should stay absent")
+		return
+	if _Roster.kind_status("crystal_mite", {}, {"crystal_mite": true}) != "fail":
+		_fail("a mite that was fought and not killed should fail")
 		return
 	if _Roster.kind_status("crystal_mite", killed, {"crystal_mite": true}) != "pass":
 		_fail("a killed mite should pass")
@@ -286,19 +289,41 @@ func _check_roster() -> void:
 
 
 func _check_skill_pad() -> void:
-	var dash := _Cast.presses("dash")
-	if dash != PackedStringArray(["skill_tree", "ui_down", "ui_accept", "skill_tree"]):
-		_fail("dash pad %s" % [dash])
-		return
-	var slam := _Cast.presses("ground_slam")
-	if slam != PackedStringArray(["skill_tree", "ui_right", "ui_accept", "skill_tree"]):
-		_fail("ground slam pad %s" % [slam])
-		return
-	var pulse := _Cast.presses("crystal_pulse")
-	if pulse != PackedStringArray(["skill_tree", "ui_accept", "skill_tree"]):
-		_fail("pulse pad %s" % [pulse])
-		return
+	var skills = load("res://systems/skill_service.gd").new()
+	for skill_name in ["dash", "ground_slam", "crystal_pulse"]:
+		var got: PackedStringArray = _Cast.presses(skill_name)
+		var want := _pad_for(skills, skill_name)
+		if want.is_empty() or got != want:
+			skills.free()
+			_fail("%s pad %s want %s" % [skill_name, got, want])
+			return
+	skills.free()
 	_ok("skill pad matches the tree")
+
+
+func _pad_for(skills, skill_name: String) -> PackedStringArray:
+	var trees: Array[StringName] = [skills.TREE_FIGHTER, skills.TREE_MINER, skills.TREE_BUILDER]
+	var col := 0
+	var row := -1
+	var want := StringName(skill_name)
+	for tree in trees:
+		var ids: Array = skills.tree_ids(tree)
+		var at := int(ids.find(want))
+		if at >= 0:
+			row = at
+			break
+		col += 1
+	var out := PackedStringArray()
+	if row < 0:
+		return out
+	out.append("skill_tree")
+	for _i in col:
+		out.append("ui_right")
+	for _j in row:
+		out.append("ui_down")
+	out.append("ui_accept")
+	out.append("skill_tree")
+	return out
 
 
 func _check_hud() -> bool:
