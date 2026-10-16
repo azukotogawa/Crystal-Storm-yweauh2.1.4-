@@ -11,6 +11,8 @@ const _World = preload("res://world/world_state.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 const _Build = preload("res://scripts/honest_bot/honest_build.gd")
+const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
+const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
@@ -30,6 +32,21 @@ const READY: Array[String] = [
 	"density_poi",
 	"density_treasure",
 	"density_landmark",
+	"combat_crystal_mite",
+	"combat_farm_bomber",
+	"combat_crystal_stag",
+	"combat_thornling",
+	"combat_corrupted_beast",
+	"combat_crystal_wisp",
+	"combat_shard_guard",
+	"combat_spawn_elite",
+	"xp_level",
+	"skill_dash",
+	"skill_ground_slam",
+	"multiblock_break",
+	"skill_crystal_pulse",
+	"skill_quick_wall",
+	"skill_passives",
 ]
 
 var bot = _Bot.new()
@@ -62,6 +79,8 @@ var _detour_face := Vector2.ZERO
 var _face_only := false
 var _face_age := 0.0
 var build = _Build.new()
+var fight = _Fight.new()
+var caster = _Cast.new()
 
 
 func load_route() -> bool:
@@ -150,6 +169,10 @@ func _open_segment(id: String) -> void:
 		_arm_detour(id)
 	elif id == "dig_tool" or id == "structure_place":
 		build.reset(id)
+	elif id == "combat_crystal_mite":
+		fight.reset()
+	elif id == "xp_level" or id.begins_with("skill_") or id == "multiblock_break":
+		caster.begin(id)
 
 
 func _finish_segment() -> void:
@@ -165,6 +188,7 @@ func _finish_segment() -> void:
 	bot.extra_held = PackedStringArray()
 	bot.release()
 	hands.release_all()
+	fight.release()
 	_seg = ""
 	_seg_status = ""
 
@@ -185,6 +209,12 @@ func _run_segment(step: float) -> void:
 			_tick_build(step)
 		"density_poi", "density_treasure", "density_landmark":
 			_tick_detour(step)
+		"combat_crystal_mite":
+			_tick_hunt(step)
+		"combat_farm_bomber", "combat_crystal_stag", "combat_thornling", "combat_corrupted_beast", "combat_crystal_wisp", "combat_shard_guard", "combat_spawn_elite":
+			_tick_kind()
+		"xp_level", "skill_dash", "skill_ground_slam", "multiblock_break", "skill_crystal_pulse", "skill_quick_wall", "skill_passives":
+			_tick_cast(step)
 		_:
 			_seg_status = "fail"
 
@@ -287,6 +317,23 @@ func _tick_lighting() -> void:
 
 func _tick_build(step: float) -> void:
 	var result := build.tick(step, tree, player, hands, chapters)
+	if result != "":
+		_seg_status = result
+
+
+func _tick_hunt(step: float) -> void:
+	var result := fight.tick(step, tree, player, origin)
+	if result != "":
+		_seg_status = result
+
+
+func _tick_kind() -> void:
+	var kind := _seg.trim_prefix("combat_")
+	_seg_status = fight.outcome(kind)
+
+
+func _tick_cast(step: float) -> void:
+	var result := caster.tick(step, tree, player, hands, bot, origin)
 	if result != "":
 		_seg_status = result
 

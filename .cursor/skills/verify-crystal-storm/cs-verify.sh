@@ -427,13 +427,22 @@ bot-run)
   grep -m1 '^Result:' "$EVID/bot-report.md" | tr -d '\r' ;;
 bot-showcase)
   run_godot honest-bot-showcase --headless --path "$ROOT" -s res://scripts/verify_honest_bot_showcase.gd; r=$?
-  grep -E '^(OK|FAIL|SHOWCASE|CHAPTERS|STUCK|HONEST)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
+  grep -E '^(OK|FAIL|SHOWCASE|CHAPTERS|STUCK|HONEST|KILL|LEVEL|SKILL|DEATH)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
   if bad "$EVID/honest-bot-showcase.log"; then echo "BOT SHOWCASE FAIL script rc=$r"; tail -8 "$EVID/honest-bot-showcase.log"; exit 1; fi
   if ! grep -qF "HONEST BOT SHOWCASE OK" "$EVID/honest-bot-showcase.log" || grep -q '^FAIL' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL rc=$r"; tail -24 "$EVID/honest-bot-showcase.log"; exit 1
   fi
-  if ! grep -q '^SHOWCASE movement pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE day_night absent' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE dig_tool pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE structure_place pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE NEXT combat_crystal_mite' "$EVID/honest-bot-showcase.log"; then
+  if ! grep -q '^SHOWCASE movement pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE day_night absent' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE dig_tool pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE structure_place pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE NEXT crystal' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL markers rc=$r"; exit 1
+  fi
+  if ! grep -q '^SHOWCASE combat_crystal_mite pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^KILL crystal_mite' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE bow attack' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL combat rc=$r"; exit 1
+  fi
+  if ! grep -q '^SHOWCASE xp_level pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^LEVEL ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SKILL dash' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_dash pass' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL progress rc=$r"; exit 1
+  fi
+  if ! grep -q '^SKILL ground_slam' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_ground_slam pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE multiblock_break pass' "$EVID/honest-bot-showcase.log"; then
+    echo "BOT SHOWCASE FAIL slam rc=$r"; exit 1
   fi
   for kind in wall_segment wall_corner gate stairs small_tower; do
     if ! grep -q "^SHOWCASE structure ${kind} shown" "$EVID/honest-bot-showcase.log"; then
@@ -445,6 +454,9 @@ bot-showcase)
   fi
   if ! grep -q '^movement ' "$EVID/chapters.txt" || ! grep -q '^day_night ' "$EVID/chapters.txt" || ! grep -q '^dig_tool ' "$EVID/chapters.txt" || ! grep -q '^structure_place ' "$EVID/chapters.txt" || ! grep -q '^structure_small_tower ' "$EVID/chapters.txt"; then
     echo "BOT SHOWCASE FAIL chapters.txt"; exit 1
+  fi
+  if ! grep -q '^combat_crystal_mite ' "$EVID/chapters.txt" || ! grep -q '^combat_spawn_elite ' "$EVID/chapters.txt" || ! grep -q '^skill_dash ' "$EVID/chapters.txt" || ! grep -q '^skill_ground_slam ' "$EVID/chapters.txt"; then
+    echo "BOT SHOWCASE FAIL combat chapters"; exit 1
   fi
   echo "BOT SHOWCASE OK rc=$r chapters=$EVID/chapters.json" ;;
 telemetry-summary)

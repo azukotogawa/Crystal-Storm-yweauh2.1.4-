@@ -5,6 +5,8 @@ const _Route = preload("res://scripts/honest_bot/honest_route.gd")
 const _Walk = preload("res://scripts/honest_bot/honest_traversal.gd")
 const _Chapters = preload("res://scripts/honest_bot/honest_chapters.gd")
 const _Hud = preload("res://scripts/honest_bot/honest_showcase_hud.gd")
+const _Roster = preload("res://scripts/honest_bot/honest_roster.gd")
+const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
@@ -14,7 +16,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
-const LIVE_FRAMES := 24000
+const LIVE_FRAMES := 180000
 
 var _failed := 0
 
@@ -30,6 +32,8 @@ func _run() -> void:
 	_check_chapters()
 	_check_sprint_hold()
 	_check_blueprint_key()
+	_check_roster()
+	_check_skill_pad()
 	var hud_ok: bool = await _check_hud()
 	if not hud_ok:
 		_fail("timer label missing")
@@ -72,6 +76,9 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_showcase_hud.gd",
 		"res://scripts/honest_bot/honest_showcase.gd",
 		"res://scripts/honest_bot/honest_build.gd",
+		"res://scripts/honest_bot/honest_roster.gd",
+		"res://scripts/honest_bot/honest_fight.gd",
+		"res://scripts/honest_bot/honest_skill_cast.gd",
 	]
 	var joined := ""
 	for path in paths:
@@ -103,15 +110,15 @@ func _check_route() -> void:
 	if names[0] != "boot_tutorial" or names[1] != "movement" or names[2] != "lighting" or names[3] != "day_night":
 		_fail("route prefix %s" % [names[0], names[1], names[2], names[3]])
 		return
-	if show.first_blocked() != "combat_crystal_mite":
-		_fail("next segment should be combat_crystal_mite, got %s" % show.first_blocked())
+	if show.first_blocked() != "crystal":
+		_fail("next segment should be crystal, got %s" % show.first_blocked())
 		return
-	var want := ["density_poi", "density_treasure", "density_landmark"]
+	var want := ["density_poi", "density_treasure", "density_landmark", "combat_crystal_mite", "skill_ground_slam", "skill_dash"]
 	for id in want:
 		if not names.has(id):
 			_fail("route missing %s" % id)
 			return
-	_ok("route order stops at combat")
+	_ok("route order stops at crystal")
 
 
 func _check_traversal() -> void:
@@ -209,6 +216,63 @@ func _check_blueprint_key() -> void:
 	_ok("blueprint key is a press and a release")
 
 
+func _check_roster() -> void:
+	var rows: Array = [
+		{"id": "a", "kind": "crystal_mite", "xz": Vector2(0.0, 4.0)},
+		{"id": "b", "kind": "crystal_stag", "xz": Vector2(10.0, 0.0)},
+		{"id": "c", "kind": "crystal_mite", "xz": Vector2(0.0, 40.0)},
+	]
+	var first: Dictionary = _Roster.pick(rows, Vector2.ZERO, _Roster.SCAN_COLUMNS, {}, true)
+	if str(first.get("id", "")) != "a":
+		_fail("nearest fresh foe should be the mite, got %s" % first)
+		return
+	var killed := {"crystal_mite": 1}
+	var next: Dictionary = _Roster.pick(rows, Vector2.ZERO, _Roster.SCAN_COLUMNS, killed, true)
+	if str(next.get("kind", "")) != "crystal_stag":
+		_fail("unkilled stag should beat a repeat mite, got %s" % next)
+		return
+	var far: Dictionary = _Roster.pick(rows, Vector2.ZERO, _Roster.SCAN_COLUMNS, {"crystal_mite": 1, "crystal_stag": 1}, false)
+	if str(far.get("id", "")) != "":
+		_fail("mite outside the scan should be ignored, got %s" % far)
+		return
+	if _Roster.kind_status("crystal_wisp", {}, {}) != "absent":
+		_fail("unseen kind should be absent")
+		return
+	if _Roster.kind_status("crystal_stag", killed, {"crystal_stag": true}) != "fail":
+		_fail("a seen stag that is still up should fail")
+		return
+	if _Roster.kind_status("crystal_mite", killed, {"crystal_mite": true}) != "pass":
+		_fail("a killed mite should pass")
+		return
+	var goal := _Roster.pool_goal(Vector2(0.0, 20.0), Vector2.ZERO, _Roster.POOL_STAND)
+	if goal.distance_to(Vector2(0.0, _Roster.POOL_STAND)) > 0.01:
+		_fail("pool stand landed on %s" % goal)
+		return
+	if not _Roster.keep_hunting(2, 3, 1.0, 40.0, 10.0, 165.0, false, false):
+		_fail("level 2 should keep hunting mites")
+		return
+	if _Roster.keep_hunting(3, 3, 2.0, 40.0, 10.0, 165.0, false, false):
+		_fail("level 3 with nothing new should stop")
+		return
+	_ok("combat roster pick and chapter status")
+
+
+func _check_skill_pad() -> void:
+	var dash := _Cast.presses("dash")
+	if dash != PackedStringArray(["skill_tree", "ui_down", "ui_accept", "skill_tree"]):
+		_fail("dash pad %s" % [dash])
+		return
+	var slam := _Cast.presses("ground_slam")
+	if slam != PackedStringArray(["skill_tree", "ui_right", "ui_accept", "skill_tree"]):
+		_fail("ground slam pad %s" % [slam])
+		return
+	var pulse := _Cast.presses("crystal_pulse")
+	if pulse != PackedStringArray(["skill_tree", "ui_accept", "skill_tree"]):
+		_fail("pulse pad %s" % [pulse])
+		return
+	_ok("skill pad matches the tree")
+
+
 func _check_hud() -> bool:
 	var layer = _Hud.new()
 	root.add_child(layer)
@@ -299,6 +363,12 @@ func _check_live() -> void:
 		return
 	if not text.contains("structure_wall_segment ") or not text.contains("structure_small_tower "):
 		_fail("sidecar missing a structure type")
+		return
+	if not text.contains("combat_crystal_mite ") or not text.contains("combat_spawn_elite "):
+		_fail("sidecar missing an enemy chapter")
+		return
+	if not text.contains("skill_dash ") or not text.contains("skill_ground_slam "):
+		_fail("sidecar missing a skill chapter")
 		return
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string("%s/chapters.json" % _Capture.run_dir()))
 	if typeof(parsed) != TYPE_DICTIONARY:
