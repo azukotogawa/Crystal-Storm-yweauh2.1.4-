@@ -1,0 +1,204 @@
+# Showcase speedrun route
+
+Input-only route for one fresh world on `res://scenes/main.tscn`. The bot sends input events and reads what the game already shows. It does not teleport, grant XP or items, write health, or change balance.
+
+Record later with `bash .cursor/skills/verify-crystal-storm/cs-verify.sh record` once a driver can play this route. Movies go to `D:\ARCHIVE\CrystalStorm\verify-evidence\showcase\`. Copy the mp4 to `D:\LATEST\CrystalStorm\showcase-speedrun.mp4`. This document does not run that recording.
+
+## What the last honest runs already proved
+
+`0.2.8/scripts/honest_bot/` only presses and releases input actions (`Input.action_press`, `Input.action_release`, `InputEventAction`).
+
+| Run | What happened |
+| --- | --- |
+| verify-13 `bot-crystal` | Sim destroy and boss fight passed. Live walk from about `1008.50,-951.50` to `953.92,-952.56` (origin `952,-952`). 20 swings, heart stayed `500/500`, boss never spawned. |
+| verify-14 `20261016-004519-bot-run` | Boot and a 1.44-column nav. Combat not reached (no foe within 32 of spawn). Crystal failed (11 swings, remaining 1.97, heart `500/500`). 70 XP from mass cells did open the tree (`SKILL dash`). |
+| verify-15 `20261016-005507-bot-run` | How to play was closed with two `pause` taps. Crystal still failed (12 swings, remaining 1.53, heart `500/500`, 0 XP). Combat and the skill tree were not reached. Report: `0.2.8/docs/VERIFY-15-honest-bot.md`. |
+
+The sword hits `ActionTargeting`’s mouse cell. `damage_spawn_at_world` only hurts the heart when that cell is within the swing’s radius of the origin (sword radius 2.8, hammer radius 1.6). Facing the pool is not enough. Verify-14’s 14 XP events were mass chips (`XP_CRYSTAL_HIT` 4 plus `XP_CRYSTAL_CELL` 10), not heart damage.
+
+A showcase driver has to aim the mouse. That is still a player input. It is not a stat write. The current action-only driver cannot finish the heart, the craft buttons, or Z / X.
+
+## Rules the driver keeps
+
+- Fresh world. No seed shopping. Spawn and the origin come from the live game (`get_origin_cell` on the last run was `952,-952`).
+- Navigation is the existing one: hold `rotate_left` or `rotate_right` until the camera faces the column, then hold `move_forward`. Strafe when progress stalls. After 1.25 s and under 0.35 columns, print `STUCK nav`, sidestep, and tap `jump`. Three stuck lines and that target is abandoned (`unstuck` once, then skip).
+- Do not path the whole continent. Detours are capped below.
+- Fight retreat stays the combat bot’s rule: at or under 30% health, walk away and stop attacking. `hotbar_6` then `build_place` uses the herb (right-click use). One death fails the run.
+- Tick the JSON checklist at the bottom as each segment ends. Print `SHOWCASE <id> <status>` with `status` one of `pass`, `fail`, `absent`, `too-far`, `skipped-no-point`.
+
+## Loadout the route is allowed to touch
+
+Hotbar slots 0–7 are keys `hotbar_1` … `hotbar_8`.
+
+| Slot | Key | Item |
+| --- | --- | --- |
+| 0 | `hotbar_1` | wooden sword (heart damage 12, cooldown 0.45 s, heart radius 2.8) |
+| 1 | `hotbar_2` | stone pick (tier 0, break shape `single`, digs one cell) |
+| 2 | `hotbar_3` | shortbow |
+| 3 | `hotbar_4` | wood ×16 |
+| 4 | `hotbar_5` | stone ×16 |
+| 5 | `hotbar_6` | herb ×4 |
+| 6 | `hotbar_7` | empty until a craft lands here |
+| 7 | `hotbar_8` | empty |
+
+Bag, not hotbar: spear (slot 8), crystal hammer (slot 9, heart damage 8, radius 1.6, cooldown 1.1 s), sling, bombs, stone plate. The hammer is slower and has to stand closer. The speedrun uses the sword on the heart. There is no higher-tier pick, so the pick never digs a 1×2, a line of 3, or a 3×3. The 3×3 the player can actually perform is Ground Slam.
+
+## Skill tree (focus resets to fighter / top every open)
+
+Columns are fighter, miner, builder. Rows are the catalog ids sorted.
+
+| Column | Row 0 | Row 1 | Row 2 |
+| --- | --- | --- | --- |
+| 0 fighter | crystal_pulse | dash | fighter_passive |
+| 1 miner | ground_slam | miner_passive | |
+| 2 builder | builder_passive | quick_wall | |
+
+`open()` starts at column 0, row 0. Unlocking an active equips it into the first empty slot. Slot 0 is `skill_1` (C), slot 1 is `skill_2` (H), slot 2 is `skill_3` (J). Only three actives fit.
+
+XP to the next level is `round(50 * level^1.5)`: 50, then 141, then 260. Level 2 is 50 XP. Level 3 is 191 XP total. Heart hits pay 4 XP each and do not pay the broken-cell bonus. The heart has 500 HP, so a clean sword kill is about 42 hits and about 168 XP. That is level 2 with room to spare, and short of level 3. The boss line is 25% (`BossBrain.BOSS_SPAWN_HEALTH_RATIO`), 125 HP, around sword hit 32 (about 116 HP). Spend dash as soon as the first point exists. If the heart reaches 125 HP before the second point exists, stop hitting the heart. Earn the rest from mass cells, mites, and a few extra digs beside the pool, then slam, then resume. Do not grind a second biome.
+
+Kill XP, if a kill actually happens: mite / thornling 8, stag / beast / bomber / wisp 14, shard guard 20, warden 32. Militia and villagers pay nothing. Do not hunt them.
+
+## Ordered segments
+
+Each segment is one feature. Do them in this order. Skip a capped detour instead of adding a new trip.
+
+### 1. `boot_tutorial`
+
+Wait until the player is in the world and the stream is ready. If the How to play panel is visible, pulse `pause`, release it, pulse `pause` again, release it. The panel closes on that pair. Confirm the panel is gone before moving.
+
+Pass: panel hidden, player can move.
+
+### 2. `movement`
+
+Face the live origin. Hold `sprint` and `move_forward` for at least 8 columns. Tap `jump` once on flat ground. One `rotate_left` or `rotate_right` correction is enough; do not orbit. If a deep channel is already underfoot, hold `jump` to rise to the waterline, then walk out. Do not dig a pool to demonstrate swimming.
+
+Pass: the body moved at least 8 columns, a jump left the ground, sprint was held.
+
+### 3. `lighting`
+
+During segment 2, the medium preset is already on: directional sun, shadow map, SSAO, exponential fog, terrain corner AO. Keep the player in frame long enough that the body casts a shadow on the ground. Do not change quality and do not rotate the sun. `SceneLighting` treats a moved sun as an error. The sun vector stays `(0.55, 0.82, 0.38)`.
+
+Pass: player shadow is on screen under that sun. No extra travel.
+
+### 4. `day_night`
+
+There is no day clock, dusk, or night. Do not wait, and do not spin the light to fake one.
+
+Pass status: `absent`.
+
+### 5. `dig_tool`
+
+`hotbar_2`, aim the mouse at a diggable surface cell beside the route, pulse `attack` eleven times on open ground. The highlight is one cell. That is the whole multi-block tool table at tier 0. Eleven blocks are 11 XP. Stop early if a column refuses (border, town, water, dig floor) and make the count up on the next open cell. Do not hold `[` or `]` and do not cut a tunnel.
+
+Pass: at least one column height dropped. Count the blocks; the crystal segment needs the number.
+
+### 6. `structure_place`
+
+`inventory_toggle` (I). Click the button named `Craft_wall_segment` (6 stone). Close the bag with `inventory_toggle`. The piece lands in the first empty slot, which is slot 6 (`hotbar_7`) when slots 6 and 7 were empty. Select that slot. Aim the mouse at an open cell in reach. Pulse `build_place` (right mouse). The ghost is green on open supported ground and red when blocked. Default blueprint is `wall_segment` (3 wide, 2 high, 1 deep). Do not press Z or X unless the ghost is red; Z turns it, X cycles `wall_corner`, `gate`, `stairs`, `small_tower`. Place only the segment. The other four are the same click with a different piece, and the starter 16 stone cannot also pay the 12-stone tower after this craft.
+
+Pass: a wall segment exists, and the place granted structure XP (12).
+
+### 7. `density_poi`
+
+From the player, read placed POIs (`poi_kind` of `camp`, `abandoned_dig`, `crystal_grove`, `shrine`; names Hunter Camp, Abandoned Dig, Crystal Grove, Shrine). Walk to the nearest if it is within 48 columns. Stand on it so the props are in frame. There is no `poi_discovered` emit in the live director, so do not expect the 20 XP. If the nearest is farther than 48, status `too-far`.
+
+### 8. `density_treasure`
+
+Nearest feature with `treasure_site` true, same 48-column cap. Walk inside `ruin_discover_radius` (10). Discovery pays 25 XP and is worth taking when it is inside the cap. Status `too-far` otherwise. Do not open a chest by writing inventory; walking into range is the player action.
+
+### 9. `density_landmark`
+
+Nearest landmark (`landmark` true, kind `rock_spire`, `ruined_tower`, or `crystal_glow`). Same 48-column cap. Stop where the mesh is readable at ortho size 16 (they are built to clear half of that view). Yaw until it is in frame. Status `too-far` otherwise.
+
+### 10. `combat`
+
+Sprint to the origin. Only then look for foes. The verify-15 scan at spawn found nobody because the pool is ~56 columns away.
+
+On the first living `crystal_mite` inside 32 columns: `hotbar_1`, mouse on the mite, pulse `attack` until `KILL`. Also pulse `hotbar_3` and one `attack` so the bow fires once (aim the ground column under the cursor). Then scan once, still within 32 columns, for `farm_bomber`, `crystal_stag`, `thornling`, `corrupted_beast`, `crystal_wisp`, `shard_guard`, and `spawn_elite`. Fight each one that is already alive the same way. Status `absent` per id that is not alive. Do not wait for absorption. Mites start unlocked. The others unlock only after the crystal eats farmland, trees, bushes, animals, ruins, or a bird, and the elite is not on that table. `origin_warden` is segment 15, not this scan.
+
+Pass: mite `pass` or `absent` (absent is allowed only after the pool scan). Each other id is `pass` or `absent`.
+
+### 11. `xp_level`
+
+No segment of its own beyond watching the HUD while digging, placing, and hitting. Level 2 must happen before segment 14 ends. Print `LEVEL` with the new level when the bar flips.
+
+Pass: level at least 2, from kills, digs, the placed structure, ruin discovery, or crystal hits only.
+
+### 12. `skill_dash`
+
+The moment `skill_points >= 1`: `skill_tree`, `ui_down`, `ui_accept`, `skill_tree`. That is dash, and it equips to `skill_1`. Hold `move_forward` and pulse `skill_1`. Dash slides 4 columns.
+
+Pass: log `SKILL dash`, and the body moved on that press.
+
+### 13. `skill_ground_slam`
+
+This is also the multi-block break. Second point (191 XP total): if the heart is still above 125 HP, keep swinging until the point exists. If the heart has reached 125 HP, stop heart swings. Break mass cells under the mouse and kill mites already on the pool, and dig a few more open cells if that is still short. Then `skill_tree`, `ui_right`, `ui_accept`, `skill_tree`. Ground slam equips to `skill_2`. Stand on open ground, not inside a town, and pulse `skill_2`. It digs the 3×3 under the player and hits enemies standing on that patch for 18.
+
+Pass: log `SKILL ground_slam`, and more than one cell in that 3×3 lost height.
+
+### 14. `skill_rest`
+
+Only with points already in hand. Do not farm for them. Third point: `skill_tree`, `ui_accept`, `skill_tree` (crystal pulse, `skill_3`), then pulse `skill_3` on the pool (16 damage in 4 columns, crystal flow ×0.4 for 4 s). A fourth point would be quick wall: `skill_tree`, `ui_right`, `ui_right`, `ui_down`, `ui_accept`, `skill_tree`, but only if a slot is free; otherwise status `skipped-no-point`. Passives (`fighter_passive`, `miner_passive`, `builder_passive`) use the same pad from their cells and do not take a slot. Leave them if the point is better spent on pulse.
+
+Pass: each of `crystal_pulse`, `quick_wall`, and the three passives is `pass` or `skipped-no-point`.
+
+### 15. `crystal`
+
+`hotbar_1`. Put the mouse on the origin column itself, not merely a purple neighbor. Hold range so that cell stays inside 2.8 columns (stand nearer than the verify-15 stop at remaining 1.5). Pulse `attack` on cooldown. Watch Crystal HP on the HUD. Stop at or under 125 HP if segment 13 is not done yet; resume only after the slam. Mass under the cursor may chip for 14 XP and still leave the heart at 500. That does not count as this segment.
+
+Pass: heart HP has been at or under 125, and it dropped because of swings, not a write.
+
+### 16. `boss`
+
+The first time the heart is at or under 25%, one `origin_warden` spawns two columns off the heart (try +X, −X, +Z, −Z). HUD warning and a toast. Fight that id before any further heart damage that could empty the bar. Mouse on the warden, sword, `skill_1` to leave a slam telegraph, `skill_2` if the 3×3 will catch it. Phase 2 starts at half the warden’s 240 HP (burst, then slam or charge). Kill it (`BOSS KILL`) before the heart. Status `fail` if the heart hits 0 while the warden is alive, or if no warden appears after the line.
+
+Pass: `BOSS SPAWN` then `BOSS KILL`.
+
+### 17. `win_screen`
+
+Sword the origin cell until the heart is 0. Stop attacking. The overlay title is `Victory — Crystal Destroyed`, the subtitle is `You destroyed the crystal.` and `Press R to restart.`, and the run summary says the crystal was destroyed. Do not press restart, `quick_load`, or quit. Hold about 3 seconds so the screen is on the recording.
+
+Pass: phase victory, `victory_reason` crystal, that title visible. Log `CRYSTAL DESTROYED`.
+
+## Checklist
+
+The bot rewrites `status` in place. `pending` means not played yet. Order is the play order.
+
+```json
+{
+  "route": "showcase-speedrun",
+  "version": 1,
+  "scene": "res://scenes/main.tscn",
+  "input": "events-only",
+  "features": [
+    {"id": "boot_tutorial", "segment": 1, "required": true, "actions": ["pause", "pause"], "pass": "how-to-play hidden", "status": "pending"},
+    {"id": "movement", "segment": 2, "required": true, "actions": ["sprint", "move_forward", "jump", "rotate_left", "rotate_right"], "pass": "moved >= 8 columns and left the ground", "status": "pending"},
+    {"id": "lighting", "segment": 3, "required": true, "actions": [], "pass": "player shadow under the locked sun during the walk", "status": "pending"},
+    {"id": "day_night", "segment": 4, "required": true, "actions": [], "pass": "no clock exists", "status": "pending"},
+    {"id": "dig_tool", "segment": 5, "required": true, "actions": ["hotbar_2", "attack"], "pass": "stone pick removed a single surface cell", "status": "pending"},
+    {"id": "structure_place", "segment": 6, "required": true, "actions": ["inventory_toggle", "mouse:Craft_wall_segment", "hotbar_7", "build_place"], "pass": "wall_segment placed", "status": "pending"},
+    {"id": "density_poi", "segment": 7, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "stood on camp, abandoned_dig, crystal_grove, or shrine within 48 columns", "status": "pending"},
+    {"id": "density_treasure", "segment": 8, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "inside 10 columns of a treasure_site, or too-far", "status": "pending"},
+    {"id": "density_landmark", "segment": 9, "required": true, "actions": ["move_forward", "rotate_left", "rotate_right"], "pass": "rock_spire, ruined_tower, or crystal_glow in frame within 48 columns, or too-far", "status": "pending"},
+    {"id": "combat_crystal_mite", "segment": 10, "required": true, "actions": ["hotbar_1", "attack", "hotbar_3", "attack"], "pass": "KILL crystal_mite after the pool scan, or absent", "status": "pending"},
+    {"id": "combat_farm_bomber", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_crystal_stag", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_thornling", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_corrupted_beast", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_crystal_wisp", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_shard_guard", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "combat_spawn_elite", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
+    {"id": "xp_level", "segment": 11, "required": true, "actions": [], "pass": "LEVEL >= 2 from play, not a grant", "status": "pending"},
+    {"id": "skill_dash", "segment": 12, "required": true, "actions": ["skill_tree", "ui_down", "ui_accept", "skill_tree", "move_forward", "skill_1"], "pass": "SKILL dash and a slide", "status": "pending"},
+    {"id": "skill_ground_slam", "segment": 13, "required": true, "actions": ["skill_tree", "ui_right", "ui_accept", "skill_tree", "skill_2"], "pass": "SKILL ground_slam and a 3x3 dig", "status": "pending"},
+    {"id": "multiblock_break", "segment": 13, "required": true, "actions": ["skill_2"], "pass": "same 3x3; the stone pick stays single", "status": "pending"},
+    {"id": "skill_crystal_pulse", "segment": 14, "required": false, "actions": ["skill_tree", "ui_accept", "skill_tree", "skill_3"], "pass": "SKILL crystal_pulse or skipped-no-point", "status": "pending"},
+    {"id": "skill_quick_wall", "segment": 14, "required": false, "actions": ["skill_tree", "ui_right", "ui_right", "ui_down", "ui_accept", "skill_tree"], "pass": "placed a segment or skipped-no-point", "status": "pending"},
+    {"id": "skill_passives", "segment": 14, "required": false, "actions": ["skill_tree", "ui_accept"], "pass": "unlocked or skipped-no-point", "status": "pending"},
+    {"id": "crystal", "segment": 15, "required": true, "actions": ["hotbar_1", "attack"], "mouse": "origin column", "pass": "heart <= 125 from swings", "status": "pending"},
+    {"id": "boss", "segment": 16, "required": true, "actions": ["hotbar_1", "attack", "skill_1", "skill_2"], "pass": "BOSS SPAWN and BOSS KILL while the heart remains", "status": "pending"},
+    {"id": "win_screen", "segment": 17, "required": true, "actions": ["hotbar_1", "attack"], "pass": "Victory — Crystal Destroyed, then hold", "status": "pending"}
+  ]
+}
+```
