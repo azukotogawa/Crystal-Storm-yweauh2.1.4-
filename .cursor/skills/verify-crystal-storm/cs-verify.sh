@@ -9,6 +9,7 @@ STATE=/tmp/cs-verify; mkdir -p "$STATE"
 EVID_ROOT="${CS_VERIFY_EVID_ROOT:-/mnt/d/ARCHIVE/CrystalStorm/verify-evidence}"
 FFMPEG_PORTABLE="/mnt/c/Users/cwith/pivot/ffmpeg/ffmpeg-9.0.2-essentials_build/bin/ffmpeg.exe"
 RECORD=0
+RECORD_FPS=30
 SHOWCASE_CAPTURE=0
 SHOWCASE_OVERRIDE=0
 FFMPEG=""
@@ -93,15 +94,36 @@ convert_movie() {
   local avi="$EVID/$name.avi"
   local wav="$EVID/$name.wav"
   local out="$EVID/$name.mp4"
+  local part="$EVID/$name.encoding.mp4"
   local log="$EVID/$name-ffmpeg.log"
-  local out_win in_win seq_win wav_win
+  local out_win in_win seq_win wav_win frames game vf part_win
+  if [ -s "$out" ]; then
+    if duration_ok "$out" "$name"; then
+      echo "RECORD mp4=$out"
+      return 0
+    fi
+    echo "RECORD FAIL: $out is already there and its duration is not game time" >&2
+    return 1
+  fi
   out_win=$(win_path "$out")
+  part_win=$(win_path "$part")
   if [ -s "$avi" ]; then
+    wait_avi_closed "$avi" || return 1
     in_win=$(win_path "$avi")
-    if ! "$FFMPEG" -y -i "$in_win" -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$out_win" >"$log" 2>&1; then
-      echo "RECORD FAIL: ffmpeg could not convert $name.avi (see $log)" >&2
+    frames=$(video_frame_count "$in_win") || { echo "RECORD FAIL: frame count of $name.avi" >&2; return 1; }
+    game=$(game_seconds_for "$name" || true)
+    vf=$(pace_vf "$frames" "$game")
+    if ! "$FFMPEG" -nostdin -y -i "$in_win" -vf "$vf" -fps_mode passthrough -c:v libx264 -pix_fmt yuv420p -c:a aac -movflags +faststart "$part_win" >"$log" 2>&1; then
+      if ! "$FFMPEG" -nostdin -y -i "$in_win" -an -vf "$vf" -fps_mode passthrough -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$part_win" >"$log" 2>&1; then
+        echo "RECORD FAIL: ffmpeg could not convert $name.avi (see $log)" >&2
+        return 1
+      fi
+    fi
+    if ! duration_ok "$part" "$name"; then
+      echo "RECORD FAIL: $name video duration is not game time (see $log)" >&2
       return 1
     fi
+    mv "$part" "$out" || return 1
   else
     local pngs=()
     shopt -s nullglob
@@ -117,13 +139,96 @@ convert_movie() {
       wav_win=$(win_path "$wav")
       args+=(-i "$wav_win" -c:a aac -shortest)
     fi
-    args+=(-c:v libx264 -pix_fmt yuv420p -movflags +faststart "$out_win")
+    args=(-nostdin "${args[@]}" -c:v libx264 -pix_fmt yuv420p -movflags +faststart "$part_win")
     if ! "$FFMPEG" "${args[@]}" >"$log" 2>&1; then
       echo "RECORD FAIL: ffmpeg could not convert $name png sequence (see $log)" >&2
       return 1
     fi
+    if ! duration_ok "$part" "$name"; then
+      echo "RECORD FAIL: $name video duration is not game time (see $log)" >&2
+      return 1
+    fi
+    mv "$part" "$out" || return 1
   fi
   echo "RECORD mp4=$out"
+}
+
+wait_avi_closed() {
+  local avi="$1" win size prev=0 stable=0 i locked
+  win=$(win_path "$avi")
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+    [ -f "$avi" ] || { sleep 0.4; continue; }
+    size=$(stat -c %s "$avi" 2>/dev/null || echo 0)
+    locked=0
+    if command -v powershell.exe >/dev/null 2>&1; then
+      powershell.exe -NoProfile -Command "try { \$f=[System.IO.File]::Open('$win','Open','Read','None'); \$f.Dispose(); exit 0 } catch { exit 1 }" >/dev/null 2>&1 || locked=1
+    fi
+    if [ "$locked" -eq 0 ] && [ "$size" = "$prev" ] && [ "$size" -gt 32 ]; then
+      stable=$((stable + 1))
+      [ "$stable" -ge 2 ] && return 0
+    else
+      stable=0
+    fi
+    prev=$size
+    sleep 0.4
+  done
+  echo "RECORD FAIL: $avi was still open or still growing" >&2
+  return 1
+}
+
+game_seconds_for() {
+  local name="$1" log="$EVID/$name.log" end line
+  if [ -s "$EVID/chapters.txt" ]; then
+    end=$(awk 'NF >= 3 { v = $3 } END { if (v + 0 > 0) print v }' "$EVID/chapters.txt")
+    if [ -n "$end" ]; then
+      echo "$end"
+      return 0
+    fi
+  fi
+  if [ -f "$log" ]; then
+    line=$(grep -E '^MOVIE_GAME_SEC ' "$log" | tail -1 | tr -d '\r')
+    if [ -n "$line" ]; then
+      echo "${line#MOVIE_GAME_SEC }"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+pace_vf() {
+  local frames="$1" game="$2" keep="$1" sel scale
+  if [ "$frames" -gt 1 ]; then
+    keep=$((frames - 1))
+    sel="select='gte(n\\,1)'"
+  else
+    sel="select='gte(n\\,0)'"
+  fi
+  scale=""
+  if [ -n "$game" ] && [ "$keep" -ge 1 ]; then
+    scale=$(awk -v g="$game" -v k="$keep" -v fps="$RECORD_FPS" 'BEGIN { n = k / fps; tol = g * 0.08; if (tol < 0.45) tol = 0.45; if (n + tol < g) printf "%.6f", g / k }')
+  fi
+  if [ -n "$scale" ]; then
+    echo "RECORD pace $keep frames across ${game}s" >&2
+    printf '%s,setpts=N*%s/TB' "$sel" "$scale"
+  else
+    printf '%s,setpts=N/FRAME_RATE/TB' "$sel"
+  fi
+}
+
+duration_ok() {
+  local file="$1" name="$2" dur game
+  dur=$(video_duration "$(win_path "$file")") || return 1
+  game=$(game_seconds_for "$name" || true)
+  if [ -n "$game" ]; then
+    if ! awk -v d="$dur" -v g="$game" 'BEGIN { tol = g * 0.08; if (tol < 0.45) tol = 0.45; diff = d - g; if (diff < 0) diff = -diff; exit (diff <= tol ? 0 : 1) }'; then
+      echo "RECORD FAIL: $name video ${dur}s vs game ${game}s" >&2
+      return 1
+    fi
+    echo "RECORD time $name video=${dur}s game=${game}s"
+  else
+    echo "RECORD time $name video=${dur}s"
+  fi
+  return 0
 }
 
 ffprobe_bin() {
@@ -157,6 +262,16 @@ video_frame_count() {
     ''|N/A|0) return 1 ;;
   esac
   echo "$n"
+}
+
+video_duration() {
+  local in_win="$1" probe d
+  probe=$(ffprobe_bin) || return 1
+  d=$("$probe" -v error -show_entries format=duration -of default=nw=1:nk=1 "$in_win" 2>/dev/null | tr -d '\r')
+  case "$d" in
+    ''|N/A|nan) return 1 ;;
+  esac
+  echo "$d"
 }
 
 contact_layout() {
@@ -202,13 +317,25 @@ frame_select_expr() {
   printf '%s' "$expr"
 }
 
-contact_chain() {
-  local expr="$1" prefix="$2" with_text="$3" chain escaped
-  chain="select='${expr}',scale=320:-2"
-  if [ "$with_text" = 1 ]; then
-    escaped=${prefix//:/\\:}
-    chain="${chain},drawtext=fontfile='C\\:/Windows/Fonts/arial.ttf':text='${escaped}%{pts\\:hms}':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.65:x=8:y=h-th-8"
+stamp_font_w() {
+  local bundled="$HERE/fonts/DejaVuSans.ttf" win
+  if [ -f "$bundled" ]; then
+    win=$(win_path "$bundled")
+  elif [ -f /mnt/c/Windows/Fonts/arial.ttf ]; then
+    win="C:/Windows/Fonts/arial.ttf"
+  else
+    return 1
   fi
+  win=${win//\\/\\\\}
+  win=${win//:/\\:}
+  printf '%s' "$win"
+}
+
+contact_chain() {
+  local expr="$1" prefix="$2" font="$3" chain escaped
+  chain="select='${expr}',scale=320:-2"
+  escaped=${prefix//:/\\:}
+  chain="${chain},drawtext=fontfile='${font}':text='${escaped}%{pts\\:hms}':fontsize=18:fontcolor=white:box=1:boxcolor=black@0.65:x=8:y=h-th-8"
   printf '%s' "$chain"
 }
 
@@ -237,37 +364,25 @@ drop_contact_frames_from() {
 
 write_one_contact_sheet() {
   local file="$1" fc="$2" cols="$3" rows="$4" count="$5"
-  local expr in_win out vf
+  local expr in_win out vf font
+  font=$(stamp_font_w) || { echo "RECORD FAIL: no stamp font" >&2; return 1; }
   expr=$(frame_select_expr "$fc" "$count")
   in_win=$(win_path "$file")
   out=$(win_path "$EVID/contact-sheet.png")
-  if [ -f /mnt/c/Windows/Fonts/arial.ttf ]; then
-    vf="$(contact_chain "$expr" "" 1),$(contact_tile "$cols" "$rows")"
-    if "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 && [ -s "$EVID/contact-sheet.png" ]; then
-      return 0
-    fi
-    rm -f "$EVID/contact-sheet.png"
-  fi
-  vf="$(contact_chain "$expr" "" 0),$(contact_tile "$cols" "$rows")"
-  "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 && [ -s "$EVID/contact-sheet.png" ]
+  vf="$(contact_chain "$expr" "" "$font"),$(contact_tile "$cols" "$rows")"
+  "$FFMPEG" -nostdin -y -i "$in_win" -vf "$vf" -fps_mode vfr -frames:v 1 -update 1 "$out" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 && [ -s "$EVID/contact-sheet.png" ]
 }
 
 dump_contact_frames() {
   local file="$1" dir="$2" fc="$3" count="$4" start="$5" prefix="$6"
-  local expr in_win seq vf before
+  local expr in_win seq vf before font
+  font=$(stamp_font_w) || { echo "RECORD FAIL: no stamp font" >&2; return 1; }
   expr=$(frame_select_expr "$fc" "$count")
   in_win=$(win_path "$file")
   seq=$(win_path "$dir/frame-%02d.png")
   before=$(contact_frame_count "$dir")
-  if [ -f /mnt/c/Windows/Fonts/arial.ttf ]; then
-    vf=$(contact_chain "$expr" "$prefix" 1)
-    if "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -start_number "$start" "$seq" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1; then
-      [ $(( $(contact_frame_count "$dir") - before )) -eq "$count" ] && return 0
-    fi
-    drop_contact_frames_from "$dir" "$start"
-  fi
-  vf=$(contact_chain "$expr" "$prefix" 0)
-  "$FFMPEG" -y -i "$in_win" -vf "$vf" -fps_mode vfr -start_number "$start" "$seq" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 || return 1
+  vf=$(contact_chain "$expr" "$prefix" "$font")
+  "$FFMPEG" -nostdin -y -i "$in_win" -vf "$vf" -fps_mode vfr -start_number "$start" "$seq" >>"$EVID/contact-sheet-ffmpeg.log" 2>&1 || return 1
   [ $(( $(contact_frame_count "$dir") - before )) -eq "$count" ]
 }
 
@@ -326,7 +441,7 @@ write_contact_sheet() {
 run_godot(){ local name="$1"; shift
   local extra=() args=("$@")
   if [ "$RECORD" = 1 ] && wants_movie_frames "$@"; then
-    extra=(--write-movie "$(movie_file_w "$name")" --fixed-fps 30 --disable-vsync)
+    extra=(--fixed-fps "$RECORD_FPS" --disable-vsync --write-movie "$(movie_file_w "$name")")
     if [ "$SHOWCASE_CAPTURE" = 1 ]; then
       extra+=(--windowed --resolution 1280x720)
       arm_showcase_override
@@ -367,6 +482,10 @@ finish_record() {
     echo "RECORD FAIL: no mp4 written under $EVID"
     return 1
   fi
+  if ! write_contact_sheet "${mp4s[@]}"; then
+    echo "RECORD FAIL: contact sheet (see $EVID/contact-sheet-ffmpeg.log)" >&2
+    return 1
+  fi
   if [ "$rc" -ne 0 ]; then
     echo "RECORD FAIL rc=$rc evidence=$EVID"
     return "$rc"
@@ -382,10 +501,6 @@ finish_record() {
       return 1
     fi
     echo "SHOWCASE capture ${w}x${h}"
-  fi
-  if ! write_contact_sheet "${mp4s[@]}"; then
-    echo "RECORD FAIL: contact sheet (see $EVID/contact-sheet-ffmpeg.log)" >&2
-    return 1
   fi
   if [ "$SHOWCASE_CAPTURE" = 1 ]; then
     published=$(attach_showcase_chapters "$primary" "$EVID/chapters.txt")
@@ -600,5 +715,13 @@ cleanup)
   if [ -f "$STATE/pids" ]; then while read -r p; do kill -0 "$p" 2>/dev/null && { kill "$p"; echo "killed $p"; }; done < "$STATE/pids"; rm -f "$STATE/pids"; fi
   rm -rf "$SCRATCH_W"; rm -f "$STATE/run_id"
   echo "CLEANUP OK scratch removed; evidence kept at $EVID ($(ls "$EVID" | wc -l) files)" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|feature <name>|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+clip)
+  run_godot movie-pace --headless --path "$ROOT" -s res://scripts/verify_movie_pace.gd; r=$?
+  grep -E '^(OK|FAIL|MOVIE_)' "$EVID/movie-pace.log" | tr -d '\r'
+  if bad "$EVID/movie-pace.log"; then echo "CLIP FAIL script rc=$r"; tail -8 "$EVID/movie-pace.log"; exit 1; fi
+  if ! grep -q '^OK chapter label clear' "$EVID/movie-pace.log" || ! grep -q '^MOVIE_GAME_SEC ' "$EVID/movie-pace.log"; then
+    echo "CLIP FAIL rc=$r"; tail -20 "$EVID/movie-pace.log"; exit 1
+  fi
+  echo "CLIP OK rc=$r" ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
