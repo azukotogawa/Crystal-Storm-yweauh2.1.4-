@@ -459,13 +459,25 @@ func _on_relic_equipped(relic_id: StringName) -> void:
 	_update_game_hud()
 
 
+func _banner_seconds() -> float:
+	if not is_inside_tree():
+		return 2.5
+	var feel := get_node_or_null("/root/GameFeel")
+	if feel == null or not feel.has_method("banner_seconds"):
+		return 2.5
+	var seconds := float(feel.banner_seconds())
+	if seconds <= 0.0:
+		return 2.5
+	return seconds
+
+
 func _show_toast(text: String) -> void:
 	_ensure_toast()
 	if _toast == null:
 		return
 	_toast.text = text
 	_toast.visible = true
-	_toast_timer = 4.0
+	_toast_timer = _banner_seconds()
 
 
 func _on_spawn_destroyed(_spawn) -> void:

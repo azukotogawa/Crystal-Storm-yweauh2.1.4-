@@ -55,8 +55,8 @@ const SLOW_MO_FLOOR := 0.35
 @export_range(2.0, 3.0, 0.05) var banner_sec: float = 2.5
 
 
-static func create_default() -> GameFeelConfig:
-	var cfg := GameFeelConfig.new()
+static func create_default():
+	var cfg = load("res://config/game_feel_config.gd").new()
 	cfg.action_ids = PackedStringArray(ACTIONS)
 	cfg.telegraph_sec = PackedFloat32Array([0.18, 0.32, 0.28, 0.20, 0.35, 0.40, 0.22, 0.16])
 	cfg.hit_stop_sec = PackedFloat32Array([0.05, 0.09, 0.07, 0.05, 0.08, 0.05, 0.06, 0.05])

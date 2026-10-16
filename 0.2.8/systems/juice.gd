@@ -55,7 +55,7 @@ static func request_hit_stop(seconds: float, tree: SceneTree, force: bool = fals
 		return false
 	if not force and DisplayServer.get_name() == "headless":
 		return false
-	var dur := clampf(seconds, 0.04, 0.08)
+	var dur := clampf(seconds, 0.04, 0.10)
 	if not _hit_active:
 		if absf(Engine.time_scale - 1.0) > 0.02:
 			return false
