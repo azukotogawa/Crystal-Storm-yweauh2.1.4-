@@ -490,6 +490,17 @@ func _space_from(dt: float, tree: SceneTree, player: Node, crowd: Dictionary) ->
 	var goal := _space_goal(tree, pos, origin, threat)
 	var bot = heart.fight.bot
 	bot.extra_held = PackedStringArray(["sprint"])
+	if _pest_wait > 0.0 and not _Hazard.burning(tree, pos):
+		_pest_wait = maxf(_pest_wait - dt, 0.0)
+		bot.release()
+		bot.input.begin_tick()
+		var face := _Nav.face_action(pos, aim, _yaw(player))
+		var held := PackedStringArray()
+		if face != "":
+			held.append(face)
+		bot.input.set_held(held)
+		bot.input.aim_column(player, aim.x, aim.y)
+		return
 	if not bot.has_target or bot.gave_up or bot.arrived or bot.target.distance_to(goal) > 0.8:
 		bot.set_target(goal)
 	bot.tick(pos, _yaw(player), dt)

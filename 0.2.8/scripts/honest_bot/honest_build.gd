@@ -11,8 +11,8 @@ const OFFSETS: Array[Vector2i] = [
 	Vector2i(3, 1), Vector2i(-3, 1), Vector2i(1, 3), Vector2i(1, -3),
 	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 2), Vector2i(2, -4),
 ]
-const DIG_LIMIT := 24.0
-const PLACE_LIMIT := 90.0
+const DIG_LIMIT := 36.0
+const PLACE_LIMIT := 130.0
 
 var chapter_label := ""
 var hands: RefCounted
@@ -425,6 +425,10 @@ func _craft_segment() -> String:
 			return ""
 		print("SHOWCASE structure wall_segment placed")
 		return "pass"
+	if show_age < _place_wind():
+		show_age += step_dt
+		_look_at(_cursor_cell())
+		return ""
 	tries += 1
 	if tries > 8:
 		print("FAIL structure wall_segment tiles %d piece %d reason %s" % [_new_tiles(), _piece_count(), _place_reason()])

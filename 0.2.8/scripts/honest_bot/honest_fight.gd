@@ -28,6 +28,7 @@ var _xp := 0
 var _announced := false
 var _bow := 0
 var _attack_wait := 0.0
+var _swing_left := 0.0
 var _burn_wind := false
 var _open_age := 0.0
 var _sword := false
@@ -97,6 +98,7 @@ func reset() -> void:
 	_announced = false
 	_bow = 0
 	_attack_wait = 0.0
+	_swing_left = 0.0
 	_sword = false
 	_foe_id = ""
 	_unstuck = false
@@ -607,6 +609,11 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return _heal_or_leave(dt, player, foe)
 	if _ratio(player) <= 0.30:
 		return _heal_or_leave(dt, player, foe)
+	if _swing_left > 0.0:
+		_swing_left = maxf(_swing_left - dt, 0.0)
+		_attack_wait = maxf(_attack_wait - dt, 0.0)
+		_face_foe(player, pos, foe)
+		return ""
 	if pos.distance_to(foe) < 1.1:
 		_back_off(dt, player, pos, foe)
 		return ""
@@ -704,6 +711,17 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 		return
 	if bot.input.pulse("attack"):
 		_attack_wait = _sword_gap()
+		_swing_left = _Pace.action_span("sword_swing")
+
+
+func _face_foe(player: Node, pos: Vector2, foe: Vector2) -> void:
+	bot.input.begin_tick()
+	var held := PackedStringArray()
+	var rot := _Nav.face_action(pos, foe, _yaw(player))
+	if rot != "":
+		held.append(rot)
+	bot.input.set_held(held)
+	bot.input.aim_column(player, foe.x, foe.y)
 
 
 func arm_bow() -> void:
