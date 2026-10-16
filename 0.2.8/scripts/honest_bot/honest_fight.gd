@@ -94,6 +94,10 @@ func _approach(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> Str
 	if bot.gave_up:
 		_recover(pos, origin)
 		return ""
+	if _level < _Roster.LEVEL_GOAL:
+		var mite := _nearest_mite(tree, pos)
+		if not mite.is_empty():
+			return _fight(dt, player, mite)
 	var threat := _nearest_foe(tree, pos)
 	var threatened := not threat.is_empty() and float(threat.get("dist", 99.0)) < THREAT_COLUMNS
 	if not threatened and _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
@@ -172,6 +176,8 @@ func _fight(dt: float, player: Node, choice: Dictionary) -> String:
 			_bow = 0
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
+	if _ratio(player) <= 0.55 and _herbs(player) > 0:
+		return _heal_or_leave(dt, player, foe)
 	if _ratio(player) <= 0.30:
 		return _heal_or_leave(dt, player, foe)
 	var dist := pos.distance_to(foe)
@@ -296,6 +302,22 @@ func _heal_idle() -> void:
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false
+
+
+func _nearest_mite(tree: SceneTree, pos: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := _Roster.SCAN_COLUMNS
+	for row in _sense(tree):
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		if str(row.get("kind", "")) != "crystal_mite":
+			continue
+		var xz: Vector2 = row.get("xz", pos)
+		var dist := pos.distance_to(xz)
+		if dist < best_d:
+			best_d = dist
+			best = row
+	return best
 
 
 func _nearest_foe(tree: SceneTree, pos: Vector2) -> Dictionary:

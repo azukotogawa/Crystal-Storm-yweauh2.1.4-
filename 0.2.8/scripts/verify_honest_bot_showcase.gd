@@ -282,6 +282,9 @@ func _check_roster() -> void:
 	if not _Roster.keep_hunting(2, 3, 1.0, 40.0, 10.0, 165.0, false, false):
 		_fail("level 2 should keep hunting mites")
 		return
+	if not _Roster.keep_hunting(2, 3, 50.0, 40.0, 10.0, 165.0, false, false):
+		_fail("a quiet level 2 hunt should stay until the timer")
+		return
 	if _Roster.keep_hunting(3, 3, 2.0, 40.0, 10.0, 165.0, false, false):
 		_fail("level 3 with nothing new should stop")
 		return

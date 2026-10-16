@@ -70,8 +70,6 @@ static func keep_hunting(level: int, goal: int, quiet: float, quiet_limit: float
 		return true
 	if level >= goal:
 		return false
-	if quiet >= quiet_limit and level >= 2:
-		return false
 	return true
 
 
