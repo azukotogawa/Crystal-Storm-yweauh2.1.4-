@@ -1,6 +1,6 @@
 # Design Pivot Plan (2026-10-14)
 
-Plan only, no code. Source decisions: D-221..D-232 in `studio/DECISIONS.md`; open questions Q-028..Q-032 (Q-027 answered: death-only loss, D-232) in `studio/QUESTIONS.md`. File paths are relative to `0.2.8/` and come from grepping the `cs/playtest-0.2.9` tree on 2026-10-14. Every queue step is 30 minutes or less, runs one at a time, keeps all code comment-free, reads `AGENTS.md` and `studio/VISION.md` first, and ends with the VERIFY.md QUICK_CHECK passing plus a local commit. Not queued yet: Cole decides when.
+Plan only, no code, except D-233 which landed as the game-feel resource. Source decisions: D-221..D-233 in `studio/DECISIONS.md`; open questions Q-028..Q-032 (Q-027 answered: death-only loss, D-232) and Q-052..Q-057 in `studio/QUESTIONS.md`. File paths are relative to `0.2.8/` and come from grepping the `cs/playtest-0.2.9` tree on 2026-10-14. Every queue step is 30 minutes or less, runs one at a time, keeps all code comment-free, reads `AGENTS.md` and `studio/VISION.md` first, and ends with the VERIFY.md QUICK_CHECK passing plus a local commit. Not queued yet: Cole decides when.
 
 ## 1. One-crystal refactor (D-225, D-226, D-227)
 
@@ -86,6 +86,55 @@ XP outline:
 5. Save/load in the run save; per-run unless Cole lifts D-158 (no meta-progression).
 6. Verify script for the curve, sources and save round-trip.
 Skills (after XP lands): skill points unlock 1-3 active abilities on hotkeys with cooldowns (e.g. dash, ground slam that breaks a 3x3 area, crystal pulse that slows spread, quick-build a wall) and a few passives; a small tree per playstyle (fighter, miner, builder). Each ability one queue task.
+
+## 8. Game feel and readability (D-233)
+
+Players should read an action before it lands, see the hit, and still be able to move while the result is on screen. The bot video is not the timing source. Every duration lives in one resource, `config/default_game_feel.tres` (`config/game_feel_config.gd`, autoload `GameFeel` in `systems/game_feel.gd`), so a later tune does not copy numbers into skills, weapons, or the HUD.
+
+Damage, cooldowns, HP, and XP are unchanged. Telegraph, linger, and recovery are stored for the eight actions and are not yet inserted in front of those actions, so the honest bot's input waits stay as they are. When a later step does wait, it waits by holding the input, not by teleporting or granting the result.
+
+Presentation must not freeze the player while enemies keep hitting. Hit-stop and milestone slow-mo set `Engine.time_scale` for the whole world, so enemies slow with the player. Slow-mo never goes below 0.35. The hook never pauses the tree and never blocks input. A beat that starts while time is already scaled (hit-stop or the relic offer) does not stack another scale. Headless runs skip the dip so probe timers stay in step. `sound_hook` names the cue. It does not play a file. `Juice` hit-stop now accepts up to 100 ms; the dip is still 0.02. Ordinary toasts use the shared banner, 2.5 s, down from 4 s.
+
+`scripts/verify_game_feel.gd` requires every action row to have a nonzero telegraph and linger.
+
+### Default values
+
+Action times are seconds. Shake and flash are strengths, not seconds.
+
+| Action | Telegraph | Hit-stop | Shake | Flash | Linger | Recovery |
+| --- | --- | --- | --- | --- | --- | --- |
+| Dash | 0.18 | 0.05 | 0.22 | 0.15 | 0.55 | 0.12 |
+| Ground Slam | 0.32 | 0.09 | 0.70 | 0.55 | 0.90 | 0.28 |
+| Crystal Pulse | 0.28 | 0.07 | 0.40 | 0.65 | 1.10 | 0.22 |
+| Quick Wall | 0.20 | 0.05 | 0.18 | 0.25 | 0.80 | 0.16 |
+| Multi-block break | 0.35 | 0.08 | 0.48 | 0.40 | 0.70 | 0.24 |
+| Bow shot | 0.40 | 0.05 | 0.12 | 0.10 | 0.60 | 0.20 |
+| Sword swing | 0.22 | 0.06 | 0.28 | 0.35 | 0.50 | 0.14 |
+| Building placement | 0.16 | 0.05 | 0.16 | 0.30 | 0.85 | 0.12 |
+
+Shared toast banner: 2.5 s. Milestone banner, slow-mo scale, slow-mo seconds, camera shake, ortho zoom pull (smaller size, closer), and flash:
+
+| Beat | Banner | Slow-mo | Seconds | Shake | Zoom | Flash |
+| --- | --- | --- | --- | --- | --- | --- |
+| Level-up | 2.4 | 0.55 | 0.35 | 0.20 | 1.0 | 0.25 |
+| Skill unlock | 2.6 | 0.60 | 0.40 | 0.24 | 1.2 | 0.30 |
+| Treasure | 2.2 | 0.70 | 0.25 | 0.16 | 0.6 | 0.20 |
+| Relic | 2.8 | 0.50 | 0.45 | 0.30 | 1.4 | 0.40 |
+| Landmark discovery | 2.5 | 0.75 | 0.30 | 0.14 | 2.0 | 0.15 |
+| Crystal damage stage | 2.2 | 0.45 | 0.30 | 0.45 | 0.8 | 0.55 |
+| Boss spawn | 3.0 | 0.40 | 0.55 | 0.80 | 1.6 | 0.70 |
+| Win | 3.0 | 0.35 | 0.70 | 0.55 | 2.2 | 0.45 |
+
+Enemy telegraphs, seconds, not yet applied to the AI: mite 0.45, boss 0.85, burn pool 0.60.
+
+### Open tuning questions
+
+- Q-052. Once telegraphs delay the swing, should sword and bow keep their current animation clocks instead of these rows?
+- Q-053. Does recovery add onto the skill cooldown, or is it only the readable settle after the effect?
+- Q-054. Is a 0.35 slow-mo on the win right, or should that beat be a camera punch with no time change?
+- Q-055. Should mite, boss, and burn-pool telegraphs replace their current attack startup, and can the player act during that wind-up?
+- Q-056. Ordinary toasts are 2.5 s (was 4 s). Should a milestone use its own banner instead of that toast, or stack a second line?
+- Q-057. Hit-stop still dips the whole world to 0.02 for 50-100 ms. Is that short enough, or should emphasis be camera-only so a 30 fps recording does not hitch?
 
 ## Order
 
