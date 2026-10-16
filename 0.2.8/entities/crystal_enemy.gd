@@ -65,6 +65,10 @@ var _knock_left := 0.0
 var _special: _BossBrain
 var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
+var _warn: MeshInstance3D
+var _warn_anchor := Vector3.ZERO
+var _contact_left: float = 0.0
+var _contact_kind: String = ""
 var boss_phase: int = 1
 const GUARDIAN_AGGRO_COLUMNS := 14.0
 const GUARDIAN_LEASH_COLUMNS := 22.0
@@ -468,13 +472,17 @@ func _refresh_guardian_aggro() -> void:
 
 
 func _cancel_guardian_attack() -> void:
+	var strike := _contact_left > 0.0 or (_warn != null and _warn.visible)
 	if _special == null:
+		if strike:
+			_drop_contact_wind()
 		return
-	if _special.windup <= 0.0 and (_ring == null or not _ring.visible):
+	if _special.windup <= 0.0 and (_ring == null or not _ring.visible) and not strike:
 		return
 	_special.windup = 0.0
 	_special.action = &""
 	_hide_ring()
+	_drop_contact_wind()
 
 
 func _profiler_node() -> Node:
@@ -563,21 +571,14 @@ func _physics_process(delta: float) -> void:
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
-	var did_attack := false
 	var aim_cell := _player_column()
 	var aim_pos := _player_world_pos()
 	var in_reach := global_position.distance_to(aim_pos) <= 1.8
-	if guardian:
-		if _guardian_aggro and in_reach and brain.wants_attack(self_cell, aim_cell):
-			did_attack = true
-			_damage_player(contact_damage, &"", global_position)
-			attacked_player.emit(contact_damage)
-	elif in_reach and brain.wants_attack(self_cell, aim_cell):
-		did_attack = true
-		_damage_player(contact_damage, &"", global_position)
-		attacked_player.emit(contact_damage)
+	var allow_contact := in_reach and (not guardian or _guardian_aggro)
+	var did_attack := _resolve_contact(delta, allow_contact, self_cell, aim_cell)
 	_StructureIntegrity.chip_enemy(self_cell, contact_damage, did_attack, brain, self)
-	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
+	var winding := _contact_left > 0.0 or (_special != null and _special.windup > 0.0)
+	_apply_walk_bob(delta, target_cell != self_cell, did_attack or winding)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
 
@@ -673,8 +674,10 @@ func _tick_special(delta: float) -> void:
 		_show_ring(act)
 	if bool(intent.get("telegraph", false)):
 		_show_ring(act)
+		_pose_windup()
 	if bool(intent.get("impact", false)):
 		_hide_ring()
+		_clear_windup_flash()
 		_sfx("boss_slam", global_position)
 		_Juice.request_hit_stop(0.08, get_tree())
 		_Juice.request_shake(0.85)
@@ -698,12 +701,148 @@ func _show_ring(act: StringName) -> void:
 	_ring.visible = true
 	if _ring.material_override is StandardMaterial3D:
 		var mat := _ring.material_override as StandardMaterial3D
-		mat.albedo_color = Color(1.0, 0.45, 0.15, 0.55) if act == &"burst" else Color(1.0, 0.22, 0.16, 0.48)
+		var pulse := 0.36 + 0.34 * absf(sin(_age * 14.0))
+		mat.albedo_color = Color(1.0, 0.45, 0.15, pulse) if act == &"burst" else Color(1.0, 0.22, 0.16, pulse)
 
 
 func _hide_ring() -> void:
 	if _ring:
 		_ring.visible = false
+
+
+func _contact_kind_for() -> String:
+	if enemy_id == &"crystal_mite":
+		return "mite"
+	if enemy_id == &"origin_warden":
+		return "boss"
+	return ""
+
+
+func _feel_seconds(id: String) -> float:
+	if not is_inside_tree():
+		return 0.0
+	var feel := get_node_or_null("/root/GameFeel")
+	if feel == null or not feel.has_method("enemy_telegraph"):
+		return 0.0
+	return maxf(float(feel.enemy_telegraph(id)), 0.0)
+
+
+func _cells_in_reach(self_cell: Vector2i, aim_cell: Vector2i) -> bool:
+	return Vector2(self_cell).distance_to(Vector2(aim_cell)) <= 1.45
+
+
+func _resolve_contact(delta: float, allow: bool, self_cell: Vector2i, aim_cell: Vector2i) -> bool:
+	if _contact_left > 0.0:
+		_show_warn()
+		_pose_windup()
+		_contact_left = maxf(_contact_left - delta, 0.0)
+		if _contact_left > 0.0:
+			return false
+		_hide_warn()
+		_clear_windup_flash()
+		if not allow or not _cells_in_reach(self_cell, aim_cell):
+			return false
+		_land_contact()
+		return true
+	if not allow or brain == null or brain.config == null:
+		return false
+	var kind := _contact_kind_for()
+	if kind == "":
+		if brain.wants_attack(self_cell, aim_cell):
+			_land_contact()
+			return true
+		return false
+	if brain.attack_timer > 0.0 or brain.config.contact_damage <= 0.0:
+		return false
+	if not _cells_in_reach(self_cell, aim_cell):
+		return false
+	var wind := _feel_seconds(kind)
+	brain.attack_timer = brain.config.attack_cooldown
+	if wind <= 0.0:
+		_land_contact()
+		return true
+	_contact_kind = kind
+	_contact_left = wind
+	_warn_anchor = _player_world_pos()
+	_show_warn()
+	_pose_windup()
+	return false
+
+
+func _land_contact() -> void:
+	_damage_player(contact_damage, &"", global_position)
+	attacked_player.emit(contact_damage)
+
+
+func _drop_contact_wind() -> void:
+	_contact_left = 0.0
+	_hide_warn()
+	_clear_windup_flash()
+
+
+func _pose_windup() -> void:
+	locomotion_pose = "attack"
+	_attack_hold = maxf(_attack_hold, 0.16)
+	var vis := _active_visual()
+	if vis and _PlayerSettings.flash_effects_enabled:
+		_flash_tree(vis, 0.7)
+
+
+func _clear_windup_flash() -> void:
+	var vis := _active_visual()
+	if vis:
+		_flash_tree(vis, 0.0)
+
+
+func _flash_tree(node: Node, amount: float) -> void:
+	if node is GeometryInstance3D:
+		_Juice.set_flash(node, amount)
+	for child in node.get_children():
+		_flash_tree(child, amount)
+
+
+func _make_disc(node_name: String) -> MeshInstance3D:
+	var disc := MeshInstance3D.new()
+	disc.name = node_name
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 1.0
+	mesh.bottom_radius = 1.0
+	mesh.height = 0.06
+	disc.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(1.0, 0.78, 0.16, 0.62)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.55, 0.12)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	disc.material_override = mat
+	disc.visible = false
+	add_child(disc)
+	return disc
+
+
+func _show_warn() -> void:
+	if _warn == null or not is_instance_valid(_warn):
+		_warn = _make_disc("StrikeTelegraph")
+	var vs: float = WorldSettings.get_active().voxel_scale
+	var radius := 1.55 if _contact_kind == "boss" else 1.25
+	_warn.global_position = Vector3(_warn_anchor.x, global_position.y + 0.08, _warn_anchor.z)
+	_warn.scale = Vector3(radius * vs, 1.0, radius * vs)
+	_warn.visible = true
+	if _warn.material_override is StandardMaterial3D:
+		var mat := _warn.material_override as StandardMaterial3D
+		var pulse := 0.42 + 0.38 * absf(sin(_age * 16.0))
+		if _contact_kind == "boss":
+			mat.albedo_color = Color(1.0, 0.22, 0.16, pulse)
+		else:
+			mat.albedo_color = Color(1.0, 0.82, 0.18, pulse)
+
+
+func _hide_warn() -> void:
+	if _warn:
+		_warn.visible = false
 
 
 func _resolve_special(act: StringName, summon: int) -> void:

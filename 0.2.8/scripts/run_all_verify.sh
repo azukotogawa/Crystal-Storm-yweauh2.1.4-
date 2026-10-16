@@ -145,6 +145,7 @@ SUITES=(
 	"res://scripts/verify_projectile.gd"
 	"res://scripts/verify_combat_depth.gd"
 	"res://scripts/verify_boss.gd"
+	"res://scripts/verify_enemy_telegraph.gd"
 	"res://scripts/verify_juice.gd"
 	"res://scripts/verify_item_animations.gd"
 	"res://scripts/verify_held_item_use.gd"

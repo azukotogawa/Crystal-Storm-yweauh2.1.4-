@@ -47,6 +47,8 @@ var _town_penalty_bound: bool = false
 var _player: Node3D
 var _crystal
 var _world: InfiniteNoiseWorld
+var _burn_left: float = -1.0
+var _burn_glow: MeshInstance3D
 
 
 func _ready() -> void:
@@ -201,14 +203,27 @@ func _on_town_fallen(town_name: String, center: Vector2i) -> void:
 
 func _apply_crystal_damage(delta: float) -> void:
 	if phase != Phase.ASSAULT:
+		_end_burn_warn()
 		return
 	if not _player.has_method("take_damage"):
+		_end_burn_warn()
 		return
 	var col2 := _player_column_xz()
 	var wx := floori(col2.x)
 	var wz := floori(col2.y)
 	var depth: float = _crystal.get_depth_at(wx, wz)
 	if depth < 0.25:
+		_end_burn_warn()
+		return
+	var wind := _burn_telegraph_sec()
+	if _burn_left < 0.0:
+		_burn_left = wind
+		_show_burn_warn()
+		if _burn_left > 0.0:
+			return
+	_burn_left = maxf(_burn_left - delta, 0.0)
+	_paint_burn_warn(wind)
+	if _burn_left > 0.0:
 		return
 	var resist := 0.0
 	if _player.has_method("get_stat"):
@@ -218,6 +233,61 @@ func _apply_crystal_damage(delta: float) -> void:
 	if "damage_source_hint" in _player:
 		_player.damage_source_hint = &"crystal_field"
 	_player.take_damage(dmg)
+
+
+func _burn_telegraph_sec() -> float:
+	var feel := get_node_or_null("/root/GameFeel")
+	if feel == null or not feel.has_method("enemy_telegraph"):
+		return 0.0
+	return maxf(float(feel.enemy_telegraph("burn_pool")), 0.0)
+
+
+func _show_burn_warn() -> void:
+	if _burn_glow != null and is_instance_valid(_burn_glow):
+		_paint_burn_warn(_burn_telegraph_sec())
+		return
+	var disc := MeshInstance3D.new()
+	disc.name = "BurnWarn"
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 1.0
+	mesh.bottom_radius = 1.0
+	mesh.height = 0.05
+	disc.mesh = mesh
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.emission_enabled = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	disc.material_override = mat
+	add_child(disc)
+	_burn_glow = disc
+	_paint_burn_warn(_burn_telegraph_sec())
+
+
+func _paint_burn_warn(wind: float) -> void:
+	if _burn_glow == null or not is_instance_valid(_burn_glow):
+		return
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	var feet := _player.global_position if _player != null else Vector3.ZERO
+	_burn_glow.global_position = feet + Vector3(0.0, 0.06, 0.0)
+	_burn_glow.scale = Vector3(1.35 * vs, 1.0, 1.35 * vs)
+	_burn_glow.visible = true
+	if not (_burn_glow.material_override is StandardMaterial3D):
+		return
+	var mat := _burn_glow.material_override as StandardMaterial3D
+	var urgent := 1.0
+	if wind > 0.0 and _burn_left > 0.0:
+		urgent = clampf(1.0 - _burn_left / wind, 0.0, 1.0)
+	var pulse := 0.35 + 0.4 * urgent
+	mat.albedo_color = Color(1.0, 0.32, 0.08, pulse)
+	mat.emission = Color(1.0, 0.36, 0.08) * lerpf(0.5, 1.6, urgent)
+
+
+func _end_burn_warn() -> void:
+	_burn_left = -1.0
+	if _burn_glow != null and is_instance_valid(_burn_glow):
+		_burn_glow.visible = false
 
 
 func _on_all_spawns_destroyed() -> void:

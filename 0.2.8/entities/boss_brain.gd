@@ -1,9 +1,7 @@
 class_name BossBrain
 extends RefCounted
 
-const SLAM_WINDUP := 0.8
-const BURST_WINDUP := 0.8
-const CHARGE_WINDUP := 0.65
+const FALLBACK_TELEGRAPH := 0.85
 const PHASE_HP := 0.5
 const BOSS_SPAWN_HEALTH_RATIO = 0.25
 
@@ -12,6 +10,7 @@ const _RelicChoice = preload("res://relics/relic_choice.gd")
 var phase: int = 1
 var elite: bool = false
 var windup: float = 0.0
+var telegraph_sec: float = FALLBACK_TELEGRAPH
 var cooldown: float = 0.0
 var action: StringName = &""
 var _phase2_fresh: bool = false
@@ -35,15 +34,16 @@ func tick(delta: float, dist_voxels: float) -> Dictionary:
 	var summon := 0
 	var phase_changed := false
 	var marker_fresh := false
+	var just_armed := false
 	if _phase2_fresh:
 		_phase2_fresh = false
 		phase_changed = true
 		summon = 3
-		action = &"burst"
-		windup = BURST_WINDUP
+		_arm(&"burst")
 		cooldown = 0.0
 		marker_fresh = true
-	if windup > 0.0:
+		just_armed = true
+	if windup > 0.0 and not just_armed:
 		var current := action
 		windup -= delta
 		if windup > 0.0:
@@ -56,18 +56,33 @@ func tick(delta: float, dist_voxels: float) -> Dictionary:
 		cooldown = maxf(cooldown - delta, 0.0)
 		return _pack(&"", false, false, summon, phase_changed, false)
 	if elite or phase == 1:
-		action = &"slam" if elite or dist_voxels <= 4.0 else &"charge"
-		windup = SLAM_WINDUP if action == &"slam" else CHARGE_WINDUP
+		_arm(&"slam" if elite or dist_voxels <= 4.0 else &"charge")
 	else:
 		if _burst_next:
-			action = &"burst"
-			windup = BURST_WINDUP
+			_arm(&"burst")
 		else:
-			action = &"slam" if dist_voxels <= 4.0 else &"charge"
-			windup = 0.5 if action == &"slam" else 0.45
+			_arm(&"slam" if dist_voxels <= 4.0 else &"charge")
 		_burst_next = not _burst_next
 	marker_fresh = true
 	return _pack(action, true, false, summon, phase_changed, marker_fresh)
+
+
+func _arm(act: StringName) -> void:
+	_read_telegraph()
+	action = act
+	windup = telegraph_sec
+
+
+func _read_telegraph() -> void:
+	var loop := Engine.get_main_loop()
+	if loop == null or not (loop is SceneTree):
+		return
+	var feel := (loop as SceneTree).root.get_node_or_null("GameFeel")
+	if feel == null or not feel.has_method("enemy_telegraph"):
+		return
+	var seconds := float(feel.enemy_telegraph("boss"))
+	if seconds > 0.0:
+		telegraph_sec = seconds
 
 
 func _pack(

@@ -78,7 +78,7 @@ func _phase_and_telegraph() -> bool:
 			if not saw_telegraph:
 				push_error("slam damaged before its telegraph")
 				return false
-			if elapsed + 0.001 < _BossBrain.SLAM_WINDUP:
+			if elapsed + 0.001 < brain.telegraph_sec:
 				push_error("slam landed before the windup, elapsed %.2f" % elapsed)
 				return false
 			break

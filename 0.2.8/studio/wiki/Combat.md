@@ -62,12 +62,14 @@ Each enemy keeps one `0.22s` hurt lock after a player hit. A second hit from the
 
 **Origin Warden** (`origin_warden`) stands on the origin heart. 240 HP, speed 6.5, contact 18, defense 0.08, lifetime 0, visual `crystal_mite` scaled 1.65 and tinted crimson.
 
-- Phase 1 (above 50% HP): slam if the player is within 4 voxels (windup 0.8s), otherwise a charge (windup 0.65s). Cooldown 0.85s.
-- Phase 2 (at or under 50%): the next tick opens a shard burst (windup 0.8s) and summons 3 crystal mites. After that it alternates bursts with a faster slam (0.5s) or charge (0.45s). Cooldown 0.32s. Every attack is telegraphed before it hits.
+- Phase 1 (above 50% HP): slam if the player is within 4 voxels, otherwise a charge. Both wait for the boss row in `config/default_game_feel.tres` (0.85 s) before damage. Cooldown 0.85 s.
+- Phase 2 (at or under 50%): the next tick opens a shard burst and summons 3 crystal mites. After that it alternates bursts with a slam or a charge. Every attack uses that same boss telegraph. Cooldown 0.32 s. The player can move during the wind-up.
 
 The HUD boss bar is hidden until the player is within 22 columns or the warden has taken damage.
 
-**Shard Tyrant** (`spawn_elite`) is one elite on each other active heart. 96 HP, speed 7.5, contact 16, visual `shard_guard` scaled 1.35. It only slams (windup 0.8s). No second phase and no summons.
+**Shard Tyrant** (`spawn_elite`) is one elite on each other active heart. 96 HP, speed 7.5, contact 16, visual `shard_guard` scaled 1.35. It only slams, using the same boss telegraph. No second phase and no summons.
+
+A crystal mite bite and the warden's bite use their own rows (`mite` 0.45 s, `boss` 0.85 s). The marker is a ground disc, the body holds the attack pose, and the mesh flashes. Damage waits until that time is up, and only if the player is still in reach. Standing in a crystal pool of depth 0.25 or more shows `BurnWarn` for the `burn_pool` row (0.60 s) before the same burn rate starts. Leaving the pool cancels it. None of these pause the tree.
 
 Guardians are not placed during the mite grace (`spawn_grace_sec`). After that, the spawner retries about once a second and will not place a second copy of a heart that already has a living guardian. A guardian only aggros when the player is within 14 columns of its heart. It walks back when the player is past 22 columns, or when the guardian itself is dragged past 22. It does not roam the map, and it does not charge or slam while leashed home. Saves store `guard_spawn_id` so a resume does not double them and the body is leashed to that heart again. A save that predates guardians grows them on load, after grace. The warden flag is not cleared from `_exit_tree` (save import frees the old body before the new one is ready).
 

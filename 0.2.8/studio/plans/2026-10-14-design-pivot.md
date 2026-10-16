@@ -125,14 +125,14 @@ Shared toast banner: 2.5 s. Milestone banner, slow-mo scale, slow-mo seconds, ca
 | Boss spawn | 3.0 | 0.40 | 0.55 | 0.80 | 1.6 | 0.70 |
 | Win | 3.0 | 0.35 | 0.70 | 0.55 | 2.2 | 0.45 |
 
-Enemy telegraphs, seconds, not yet applied to the AI: mite 0.45, boss 0.85, burn pool 0.60.
+Enemy telegraphs, seconds, read from this resource when the attack starts: mite 0.45, boss 0.85, burn pool 0.60. A mite bite, a warden slam, charge, burst, or bite, and the crystal burn pool show a pose, flash, or ground warning for that long before damage. The player can still move. Cooldowns, damage, and health are unchanged.
 
 ### Open tuning questions
 
 - Q-052. Once telegraphs delay the swing, should sword and bow keep their current animation clocks instead of these rows?
 - Q-053. Does recovery add onto the skill cooldown, or is it only the readable settle after the effect?
 - Q-054. Is a 0.35 slow-mo on the win right, or should that beat be a camera punch with no time change?
-- Q-055. Should mite, boss, and burn-pool telegraphs replace their current attack startup, and can the player act during that wind-up?
+- Q-055. Answered: those telegraphs replace the old startup, and the player can act during the wind-up.
 - Q-056. Ordinary toasts are 2.5 s (was 4 s). Should a milestone use its own banner instead of that toast, or stack a second line?
 - Q-057. Hit-stop still dips the whole world to 0.02 for 50-100 ms. Is that short enough, or should emphasis be camera-only so a 30 fps recording does not hitch?
 
