@@ -10,7 +10,9 @@ const WIN_LIMIT := 90.0
 const WIN_HOLD := 3.0
 const SPACE_COLUMNS := 1.75
 const HEAL_RATIO := 0.78
-const SWORD_REACH := 2.55
+const SAFE_DEPTH := 0.22
+const SWORD_REACH := 2.7
+const SWING_GAP := 0.62
 
 var heart = _Crystal.new()
 var caption := ""
@@ -26,6 +28,9 @@ var _pest_sword := false
 var _pest_wait := 0.0
 var _relic_frames := 0
 var _stand_logged := false
+var _camp_logged := false
+var _gap := 0.0
+var _boss_wait := 0.0
 var _armed := false
 var _clocks := {"crystal": 0.0, "boss": 0.0, "win_screen": 0.0}
 
@@ -45,6 +50,9 @@ func begin(id: String) -> void:
 	_relic = 0
 	_relic_frames = 0
 	_stand_logged = false
+	_camp_logged = false
+	_gap = 0.0
+	_boss_wait = 0.0
 	_pest_sword = false
 	_pest_wait = 0.0
 	caption = id
@@ -74,7 +82,11 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	if relic == 2:
 		print("FAIL relic offer stayed open")
 		return "fail"
-	if _needs_herb(player):
+	_gap = maxf(_gap - dt, 0.0)
+	var origin := _origin(tree)
+	var pos := _xz(player)
+	var deep := _feet_depth(tree, pos) >= SAFE_DEPTH
+	if _needs_herb(player) and not deep:
 		_use_herb()
 		return ""
 	var seen_hp := _hp(tree)
@@ -86,10 +98,10 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 		_drain()
 		_note_hp()
 		return _status(dt, tree)
-	if _bosses(tree).is_empty() and _walk_stand(dt, tree, player):
-		_note_hp()
-		return _status(dt, tree)
-	_drive(dt, tree, player)
+	if _bosses(tree).is_empty():
+		_swing_heart(dt, tree, player, origin, pos, deep)
+	else:
+		_swing_boss(dt, tree, player, origin, deep)
 	_drain()
 	_note_hp()
 	return _status(dt, tree)
@@ -172,30 +184,83 @@ func tick_clock(step: float) -> void:
 	_clocks[seg] = float(_clocks.get(seg, 0.0)) + step
 
 
-func _walk_stand(dt: float, tree: SceneTree, player: Node) -> bool:
-	if seg != "crystal":
-		return false
-	var origin := _origin(tree)
+func _swing_heart(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2, deep: bool) -> void:
+	var pad := _shallow_stand(tree, origin)
+	var aim := origin + Vector2(0.5, 0.5)
+	if _feet_depth(tree, pad) < SAFE_DEPTH:
+		if pos.distance_to(pad) > 0.7:
+			_goto(dt, player, pad, aim)
+			return
+		_drive(dt, tree, player)
+		return
+	if not _in_sword_range(pos, origin):
+		if _gap > 0.0:
+			_goto(dt, player, _camp(tree, origin), aim)
+			return
+		_goto(dt, player, pad, aim)
+		return
+	if _gap > 0.0:
+		_goto(dt, player, _camp(tree, origin), aim)
+		return
+	_drive(dt, tree, player)
+	if deep:
+		_gap = SWING_GAP
+
+
+func _swing_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, deep: bool) -> void:
+	var bosses := _bosses(tree)
+	if bosses.is_empty():
+		return
+	var boss: Vector2 = bosses[0].get("xz", origin)
 	var pos := _xz(player)
-	var stand := _shallow_stand(tree, origin)
-	var here := _feet_depth(tree, pos)
-	if not _stand_logged:
+	var dist := pos.distance_to(boss)
+	if dist <= 3.2:
+		_boss_wait = 0.0
+	else:
+		_boss_wait += dt
+	var chase := _boss_wait >= 10.0
+	if not chase and dist > 2.5:
+		_goto(dt, player, _camp(tree, origin), boss)
+		return
+	if deep and dist > 2.3 and not chase:
+		_goto(dt, player, _camp(tree, origin), boss)
+		return
+	_drive(dt, tree, player)
+
+
+func _camp(tree: SceneTree, origin: Vector2) -> Vector2:
+	var center := origin + Vector2(0.5, 0.5)
+	var best := center + Vector2(8.0, 8.0).normalized() * 8.0
+	var best_dist := 9999.0
+	var found := false
+	for dx in range(-14, 15):
+		for dz in range(-14, 15):
+			var at := Vector2(origin.x + float(dx) + 0.5, origin.y + float(dz) + 0.5)
+			var dist := at.distance_to(center)
+			if dist < 4.2 or dist > 13.0:
+				continue
+			if _feet_depth(tree, at) >= SAFE_DEPTH:
+				continue
+			if dist < best_dist:
+				best_dist = dist
+				best = at
+				found = true
+	if not _camp_logged:
+		_camp_logged = true
+		print("SHOWCASE camp %.0f,%.0f depth %.2f" % [best.x, best.y, _feet_depth(tree, best)])
+	if not found and not _stand_logged:
 		_stand_logged = true
-		print("SHOWCASE stand %.0f,%.0f depth %.2f feet %.2f player %.0f/%.0f" % [
-			stand.x, stand.y, _feet_depth(tree, stand), here,
-			float(player.health), float(player.max_health),
-		])
-	if here < 0.25 and _in_sword_range(pos, origin):
-		return false
-	if pos.distance_to(stand) <= 0.75 and _feet_depth(tree, stand) + 0.05 >= here:
-		return false
+		print("SHOWCASE camp fallback %.0f,%.0f" % [best.x, best.y])
+	return best
+
+
+func _goto(dt: float, player: Node, goal: Vector2, aim: Vector2) -> void:
 	var bot = heart.fight.bot
 	bot.extra_held = PackedStringArray(["sprint"])
-	if not bot.has_target or bot.gave_up or bot.target.distance_to(stand) > 0.6:
-		bot.set_target(stand)
-	bot.tick(pos, _yaw(player), dt)
-	bot.input.aim_column(player, origin.x + 0.5, origin.y + 0.5)
-	return true
+	if not bot.has_target or bot.gave_up or bot.arrived or bot.target.distance_to(goal) > 0.8:
+		bot.set_target(goal)
+	bot.tick(_xz(player), _yaw(player), dt)
+	bot.input.aim_column(player, aim.x, aim.y)
 
 
 func _shallow_stand(tree: SceneTree, origin: Vector2) -> Vector2:
@@ -414,16 +479,35 @@ func _nearest_pest(tree: SceneTree, pos: Vector2) -> Dictionary:
 			continue
 		if str(node.get("enemy_id")) == "origin_warden":
 			continue
-		var body := node as Node3D
-		if body == null:
+		var foe := _body_xz(node)
+		if foe == Vector2.INF:
 			continue
-		var col := _Move.column_pos(body.global_position)
-		var xz := Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
-		var dist := pos.distance_to(xz)
+		var dist := pos.distance_to(foe)
 		if dist < best_d:
 			best_d = dist
-			best = {"xz": xz, "dist": dist}
+			best = {"xz": foe, "dist": dist}
+	for node in tree.get_nodes_in_group("world_entity"):
+		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var cfg = node.get("config")
+		if cfg == null or float(cfg.get("contact_damage")) <= 0.0:
+			continue
+		var foe := _body_xz(node)
+		if foe == Vector2.INF:
+			continue
+		var dist := pos.distance_to(foe)
+		if dist < best_d:
+			best_d = dist
+			best = {"xz": foe, "dist": dist}
 	return best
+
+
+func _body_xz(node: Node) -> Vector2:
+	var body := node as Node3D
+	if body == null:
+		return Vector2.INF
+	var col := _Move.column_pos(body.global_position)
+	return Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
 
 
 func _bosses(tree: SceneTree) -> Array:

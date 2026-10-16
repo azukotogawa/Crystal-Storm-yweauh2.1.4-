@@ -142,7 +142,7 @@ func _recover(pos: Vector2, origin: Vector2) -> void:
 
 func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
-	if _level >= _Roster.LEVEL_GOAL and _ratio(player) < 0.55 and _herbs(player) <= 0:
+	if _level >= _Roster.LEVEL_GOAL and _ratio(player) < 0.70:
 		bot.release()
 		return _mite_result()
 	var rows := _sense(tree)

@@ -16,6 +16,8 @@ var slam_tried := false
 var skill_id := ""
 var walk_goal := Vector2.ZERO
 var walk_armed := false
+var _heal := 0
+var _heal_wait := 0.0
 
 
 func begin(segment: String) -> void:
@@ -30,6 +32,8 @@ func begin(segment: String) -> void:
 	skill_id = ""
 	walk_goal = Vector2.ZERO
 	walk_armed = false
+	_heal = 0
+	_heal_wait = 0.0
 
 
 func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
@@ -52,6 +56,8 @@ func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: Re
 		return _settle(dt, tree)
 	if phase == "hold":
 		return _hold(dt, player, hands)
+	if phase == "clear":
+		return _clear(dt, player, hands, bot, origin)
 	if phase == "fire":
 		return _fire(tree, player, hands)
 	if phase == "watch":
@@ -88,9 +94,15 @@ func _boot(tree: SceneTree) -> String:
 			return "fail"
 		phase = "press"
 		return ""
-	phase = "hold" if mode == "skill_dash" else "fire"
+	phase = _armed_phase()
 	watch = 0.0
 	return ""
+
+
+func _armed_phase() -> String:
+	if mode == "skill_dash" or mode == "skill_ground_slam":
+		return "clear"
+	return "fire"
 
 
 func _press(hands: RefCounted) -> String:
@@ -113,7 +125,7 @@ func _settle(dt: float, tree: SceneTree) -> String:
 		print("FAIL skill %s did not unlock" % skill_id)
 		return "fail"
 	print("SKILL %s" % skill_id)
-	phase = "hold" if mode == "skill_dash" else "fire"
+	phase = _armed_phase()
 	watch = 0.0
 	return ""
 
@@ -166,6 +178,12 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 		if moved >= 3.2 and _cooled(tree, skill_id):
 			print("OK dash slide %.2f" % moved)
 			return "pass"
+		if tries < 1:
+			tries += 1
+			walk_armed = false
+			phase = "clear"
+			watch = 0.0
+			return ""
 		print("FAIL dash slide %.2f" % moved)
 		return "fail"
 	if watch < 0.35:
@@ -188,6 +206,69 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 		return "pass"
 	print("FAIL %s cast" % skill_id)
 	return "fail"
+
+
+func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
+	_heal_wait = maxf(_heal_wait - dt, 0.0)
+	var pos := _xz(player)
+	if not walk_armed and pos.distance_to(origin) >= 18.0 and tries == 0:
+		bot.release()
+		phase = "hold" if mode == "skill_dash" else "fire"
+		watch = 0.0
+		return ""
+	if _heal_wait <= 0.0 and _ratio(player) < 0.82 and _herbs(player) > 0:
+		_heal_cast(hands)
+		return ""
+	if not walk_armed:
+		var away := pos - origin
+		if away.length() < 0.4:
+			away = Vector2(1.0, 1.0)
+		away = away.normalized()
+		if tries > 0:
+			away = Vector2(-away.y, away.x)
+			walk_goal = pos + away * 10.0
+		else:
+			walk_goal = origin + away * 24.0
+		bot.set_target(walk_goal)
+		walk_armed = true
+		watch = 0.0
+	bot.extra_held = PackedStringArray(["sprint"])
+	bot.tick(pos, _yaw(player), dt)
+	watch += dt
+	if not bot.arrived and not bot.gave_up and watch < 12.0:
+		return ""
+	bot.release()
+	walk_armed = false
+	phase = "hold" if mode == "skill_dash" else "fire"
+	watch = 0.0
+	return ""
+
+
+func _heal_cast(hands: RefCounted) -> void:
+	hands.begin_tick()
+	if _heal == 0:
+		hands.pulse("hotbar_6")
+		_heal = 1
+		return
+	hands.pulse("build_place")
+	_heal = 0
+	_heal_wait = 0.5
+	print("SHOWCASE herb")
+
+
+func _ratio(player: Node) -> float:
+	if player == null:
+		return 1.0
+	return clampf(float(player.health) / maxf(float(player.max_health), 1.0), 0.0, 1.0)
+
+
+func _herbs(player: Node) -> int:
+	if player == null:
+		return 0
+	var inv = player.get("inventory")
+	if inv == null or not inv.has_method("count_item"):
+		return 0
+	return int(inv.count_item("herb"))
 
 
 func _walk(dt: float, player: Node, bot: RefCounted, origin: Vector2) -> String:
