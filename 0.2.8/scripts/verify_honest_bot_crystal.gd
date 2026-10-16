@@ -141,11 +141,12 @@ func _check_chip() -> void:
 			attack_frame = i
 		if run.fight.swings >= 1:
 			break
-	var striking := run.striking_crystal
+	var striking: bool = run.striking_crystal
+	var swings: int = int(run.fight.swings)
 	run.release()
-	if not striking or attack_frame < 0 or run.fight.swings < 1:
+	if not striking or attack_frame < 0 or swings < 1:
 		_fail("close crystal should be attacked via input (striking %s swings %d attack %d)" % [
-			striking, run.fight.swings, attack_frame
+			striking, swings, attack_frame
 		])
 		return
 	_ok("attacks the crystal through input")
@@ -207,7 +208,7 @@ func _check_destroy_and_boss() -> void:
 			foes.append({"id": "boss-warden", "xz": crystal + Vector2(1.0, 0.0)})
 		run.observe_foes(foes)
 		run.tick(pos, yaw, STEP)
-		var swings := run.fight.swings
+		var swings: int = int(run.fight.swings)
 		if swings > last_swings:
 			if run.striking_crystal:
 				hp = maxf(hp - SWORD_CHIP * float(swings - last_swings), 0.0)
@@ -228,8 +229,8 @@ func _check_destroy_and_boss() -> void:
 		if line.begins_with("BOSS") or line.begins_with("CRYSTAL") or line.begins_with("KILL"):
 			print(line)
 	print(run.summary_line())
-	var destroyed := run.destroyed
-	var boss_kills := run.boss_kills
+	var destroyed: bool = run.destroyed
+	var boss_kills: int = int(run.boss_kills)
 	run.release()
 	if not destroyed:
 		_fail("simulated crystal was not destroyed")
