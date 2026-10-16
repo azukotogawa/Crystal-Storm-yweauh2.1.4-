@@ -336,6 +336,9 @@ func _check_live_crystal() -> void:
 	if start_remaining < 4.0:
 		_fail("player spawned on the crystal but did not destroy it")
 		return
+	if remaining <= _Run.ENGAGE_COLUMNS and hp_now.x >= hp_now.y - 0.01:
+		_ok("live attacks did not chip the crystal")
+		return
 	_ok("live crystal not reached; remaining %.2f" % remaining)
 
 
