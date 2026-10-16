@@ -28,6 +28,8 @@ var _xp := 0
 var _announced := false
 var _bow := 0
 var _attack_wait := 0.0
+var _burn_wind := false
+var _open_age := 0.0
 var _sword := false
 var _foe_id := ""
 var _unstuck := false
@@ -126,6 +128,8 @@ func reset() -> void:
 	_site_limit = 20.0
 	_site_mark = -1
 	_site_inside = 0.0
+	_open_age = 0.0
+	_burn_wind = false
 	_site_opened = false
 	_site_noted = false
 	_visits = 0
@@ -279,7 +283,7 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		_chip_noted = true
 		_heart_at = _heart_hp(tree)
 		print("SHOWCASE mass chip level %d earned %d heart %.0f" % [_level, _Farm.earned(_level, _xp), _heart_at])
-	if _Hazard.burning(tree, pos):
+	if _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, origin, origin)
 		return ""
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
@@ -487,6 +491,7 @@ func _arm_site(site: Dictionary, tree: SceneTree) -> void:
 	_site_limit = _Walk.leg_limit(float(site.get("distance", 0.0)))
 	_site_mark = _ruin_count(tree)
 	_site_inside = 0.0
+	_open_age = 0.0
 	_site_opened = false
 	_site_noted = false
 	_site_resumes = 0
@@ -531,10 +536,13 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 	_site_inside += dt
 	if not _site_opened and _ruin_count(tree) > _site_mark:
 		_site_opened = true
+		_open_age = 0.0
+	if _site_opened:
+		_open_age += dt
 	if _site_opened and not _site_noted:
 		_site_noted = true
 		print("SHOWCASE treasure open pass %s" % _site_key)
-	var held := _site_opened and _site_inside >= _Pace.PRE_PAUSE + _Pace.RESULT_HOLD
+	var held := _site_opened and _open_age >= _Pace.banner_span("treasure") and _site_inside >= _Pace.PRE_PAUSE + _Pace.beat_hold("treasure")
 	var missed := not _site_opened and _site_inside >= 8.0
 	if (held or missed) and _site_age >= 10.0:
 		if missed:
@@ -572,7 +580,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_foe_id = fid
 		_foe_age = 0.0
 		_sword = false
-		_attack_wait = 0.0
+		_attack_wait = _Pace.enemy_span(_telegraph_kind(kind))
 		if _bow > 0 and _bow < 4:
 			_bow = 0
 		if kind != "" and kind != "crystal_mite":
@@ -592,7 +600,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
-	if _Hazard.burning(tree, pos):
+	if _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
@@ -695,7 +703,7 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	if _attack_wait > 0.0:
 		return
 	if bot.input.pulse("attack"):
-		_attack_wait = 0.48
+		_attack_wait = _sword_gap()
 
 
 func arm_bow() -> void:
@@ -708,7 +716,7 @@ func finish_bow() -> void:
 	bow_phase = "off"
 	_bow = 4
 	_sword = false
-	_attack_wait = 0.48
+	_attack_wait = _sword_gap()
 
 
 func _bow_beat(dt: float) -> void:
@@ -741,7 +749,7 @@ func _bow_beat(dt: float) -> void:
 		return
 	bow_phase = "done"
 	_sword = false
-	_attack_wait = 0.48
+	_attack_wait = _sword_gap()
 
 
 func _hold_pool(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
@@ -918,6 +926,28 @@ func _aim_on_foe(player: Node, foe: Vector2) -> bool:
 	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
 	var want := Vector2(float(floori(foe.x)) + 0.5, float(floori(foe.y)) + 0.5)
 	return cell.distance_to(want) <= 1.15
+
+
+func _sword_gap() -> float:
+	return _Pace.strike_gap("sword_swing")
+
+
+func _telegraph_kind(kind: String) -> String:
+	if kind == "crystal_mite":
+		return "mite"
+	if kind == "origin_warden":
+		return "boss"
+	return ""
+
+
+func _note_burn(tree: SceneTree, pos: Vector2) -> bool:
+	var hot := _Hazard.burning(tree, pos)
+	if hot and not _burn_wind:
+		_burn_wind = true
+		_attack_wait = maxf(_attack_wait, _Pace.enemy_span("burn_pool"))
+	elif not hot:
+		_burn_wind = false
+	return hot
 
 
 func _watch_level(tree: SceneTree) -> void:

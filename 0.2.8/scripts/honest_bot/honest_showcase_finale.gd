@@ -38,6 +38,8 @@ var _gap := 0.0
 var _aim_hold := 0.0
 var _poking := false
 var _boss_wait := 0.0
+var _boss_wind := false
+var _burn_wind := false
 var _armed := false
 var _intro := 0.0
 var _exit_age := -1.0
@@ -70,6 +72,8 @@ func begin(id: String) -> void:
 	_aim_hold = 0.0
 	_poking = false
 	_boss_wait = 0.0
+	_boss_wind = false
+	_burn_wind = false
 	_pest_sword = false
 	_pest_wait = 0.0
 	_carve = Vector2.INF
@@ -116,7 +120,13 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	var early_bosses := _bosses(tree)
 	if not early_bosses.is_empty():
 		aim = early_bosses[0].get("xz", aim)
+	if not _boss_wind and not _bosses(tree).is_empty():
+		_boss_wind = true
+		heart.fight.hold_attacks(_Pace.enemy_span("boss"))
 	if _Hazard.burning(tree, pos):
+		if not _burn_wind:
+			_burn_wind = true
+			heart.fight.hold_attacks(_Pace.enemy_span("burn_pool"))
 		_poking = false
 		_carve = Vector2.INF
 		_carve_pick = false
@@ -124,6 +134,7 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 		_drain()
 		_note_hp()
 		return _status(dt, tree)
+	_burn_wind = false
 	if _needs_herb(player):
 		_poking = false
 		var rest := _camp(tree, origin)
@@ -199,7 +210,7 @@ func _status(dt: float, tree: SceneTree) -> String:
 		if _victory_ready(tree):
 			heart.release()
 			_hold += dt
-			if _hold >= WIN_HOLD:
+			if _hold >= _win_seconds():
 				print("SHOWCASE win hold %.2f" % _hold)
 				return "pass"
 			return ""
@@ -244,9 +255,20 @@ func _hold_exit(dt: float) -> String:
 	if _exit_age < 0.0:
 		_exit_age = 0.0
 	_exit_age += dt
-	if _exit_age < _Pace.RESULT_HOLD + _Pace.SETTLE:
+	if _exit_age < _exit_seconds():
 		return ""
 	return "pass"
+
+
+func _exit_seconds() -> float:
+	var base := _Pace.RESULT_HOLD + _Pace.SETTLE
+	if seg == "crystal":
+		return maxf(base, _Pace.banner_span("boss_spawn") + _Pace.SETTLE)
+	return base
+
+
+func _win_seconds() -> float:
+	return maxf(WIN_HOLD, _Pace.banner_span("win"))
 
 
 func _at_line() -> bool:
@@ -478,7 +500,7 @@ func _space_from(dt: float, tree: SceneTree, player: Node, crowd: Dictionary) ->
 		return
 	_pest_wait -= dt
 	if _pest_wait <= 0.0 and bot.input.pulse("attack"):
-		_pest_wait = 0.48
+		_pest_wait = _Pace.strike_gap("sword_swing")
 
 
 func _space_goal(tree: SceneTree, pos: Vector2, origin: Vector2, threat: Vector2) -> Vector2:

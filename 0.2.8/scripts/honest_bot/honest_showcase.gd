@@ -18,6 +18,8 @@ const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
+const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
+const _Relic = preload("res://ui/relic_choice_panel.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
@@ -106,6 +108,10 @@ var build = _Build.new()
 var fight = _Fight.new()
 var caster = _Cast.new()
 var finale = _Finale.new()
+var _banner_left := 0.0
+var _paced_level := -1
+var _relic_paced := false
+var _stage_hit: Array[bool] = [false, false, false]
 
 
 func load_route() -> bool:
@@ -139,6 +145,14 @@ func tick(delta: float) -> bool:
 		step = 1.0 / 60.0
 	_advance_clock(step)
 	_arm_pace(step)
+	if _seg != "":
+		_note_beats()
+	if _banner_left > 0.0:
+		_banner_left = maxf(_banner_left - step, 0.0)
+		if not _unsafe():
+			_idle_inputs()
+			_paint()
+			return finished
 	if _seg == "":
 		if not _pull_next():
 			finished = true
@@ -520,7 +534,7 @@ func _tick_face(pos: Vector2, step: float) -> void:
 			found = _ruin_count() > _ruins_before
 			if not found and _pickup_age < PICKUP_LIMIT:
 				return
-		if _pose_age < _Pace.RESULT_HOLD:
+		if _pose_age < _pose_hold():
 			return
 		if _seg == "density_landmark":
 			_note_glow()
@@ -584,6 +598,102 @@ func _density_id(tag: String) -> String:
 func _open_chapter(feature: String) -> void:
 	if chapters != null and chapters.has_method("open"):
 		chapters.open(feature)
+
+
+func _pose_hold() -> float:
+	if _seg == "density_landmark":
+		return _Pace.beat_hold("landmark_discovery")
+	if _seg == "density_treasure":
+		return _Pace.beat_hold("treasure")
+	return _Pace.RESULT_HOLD
+
+
+func _note_beats() -> void:
+	_note_level()
+	_note_relic()
+	_note_stages()
+
+
+func _note_level() -> void:
+	if tree == null:
+		return
+	var node := tree.get_first_node_in_group("progression_service")
+	if node == null:
+		return
+	var level := int(node.level)
+	if _paced_level < 0:
+		_paced_level = level
+		return
+	if level <= _paced_level:
+		return
+	_paced_level = level
+	_arm_banner("level_up")
+
+
+func _note_relic() -> void:
+	var panel = _Relic._open
+	var open := panel != null and is_instance_valid(panel)
+	if not open:
+		_relic_paced = false
+		return
+	if _relic_paced:
+		return
+	_relic_paced = true
+	_arm_banner("relic")
+
+
+func _note_stages() -> void:
+	if tree == null or finale == null:
+		return
+	if not finale._bosses(tree).is_empty():
+		return
+	var crystal := tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_spawn_progress"):
+		return
+	var prog: Dictionary = crystal.get_spawn_progress()
+	var mx := float(prog.get("crystal_max_health", 0.0))
+	var hp := float(prog.get("crystal_health", mx))
+	if mx <= 0.0 or hp <= 0.0:
+		return
+	var ratio := hp / mx
+	var lines: Array[float] = [0.75, 0.50, 0.25]
+	var crossed := false
+	for i in lines.size():
+		if _stage_hit[i] or ratio > lines[i]:
+			continue
+		_stage_hit[i] = true
+		crossed = true
+	if crossed:
+		_arm_banner("crystal_damage_stage")
+
+
+func _arm_banner(id: String) -> void:
+	var span := _Pace.banner_span(id)
+	if span <= _banner_left:
+		return
+	_banner_left = span
+	print("SHOWCASE pace %s %.2f" % [id, span])
+
+
+func _unsafe() -> bool:
+	if player == null:
+		return false
+	var mx := float(player.max_health)
+	if mx > 0.0 and float(player.health) / mx <= 0.35:
+		return true
+	if tree == null:
+		return false
+	return _Hazard.burning(tree, _xz())
+
+
+func _idle_inputs() -> void:
+	hands.begin_tick()
+	hands.release_all()
+	bot.release()
+	if fight != null:
+		fight.bot.release()
+	if finale != null and finale.heart != null and finale.heart.fight != null:
+		finale.heart.fight.bot.release()
 
 
 func _arm_pace(step: float) -> void:

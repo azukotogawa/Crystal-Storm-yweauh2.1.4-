@@ -267,6 +267,27 @@ func _check_pace() -> void:
 	if _Pace.short_feature("bow_shot 10.000 13.999\ncrystal 14.000 20.000\n") != "bow_shot":
 		_fail("short bow chapter should be named")
 		return
+	if absf(_Pace.strike_gap("sword_swing") - (0.22 + 0.14 + _Pace.STRIKE_PAD)) > 0.001:
+		_fail("sword gap should follow telegraph plus recovery")
+		return
+	if absf(_Pace.strike_gap("bow_shot") - (0.40 + 0.20 + _Pace.STRIKE_PAD)) > 0.001:
+		_fail("bow gap should follow telegraph plus recovery")
+		return
+	if absf(_Pace.banner_span("boss_spawn") - 3.0) > 0.001 or absf(_Pace.banner_span("win") - 3.0) > 0.001:
+		_fail("boss and win banners should be 3s")
+		return
+	if absf(_Pace.beat_hold("skill_unlock") - 2.6) > 0.001:
+		_fail("skill unlock hold should follow its banner")
+		return
+	if _Pace.beat_hold("treasure") + 0.001 < _Pace.RESULT_HOLD:
+		_fail("a short banner should keep the result hold")
+		return
+	if absf(_Pace.enemy_span("mite") - 0.45) > 0.001 or absf(_Pace.enemy_span("boss") - 0.85) > 0.001:
+		_fail("enemy wind-up should come from the config")
+		return
+	if _Pace.enemy_span("") > 0.001 or absf(_Pace.enemy_span("burn_pool") - 0.60) > 0.001:
+		_fail("burn wind-up should be 0.60 and unknown kinds should not wait")
+		return
 	var hands = _Hands.new()
 	var fault := _Pace.gap_fault(hands)
 	hands.begin_tick()

@@ -2,6 +2,7 @@ extends RefCounted
 
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 
 const ENGAGE_COLUMNS := 2.4
 const HIT_COLUMNS := 2.6
@@ -162,13 +163,13 @@ func _strike(player_xz: Vector2, foe: Vector2, yaw: float, step: float) -> void:
 	if _attack_wait <= 0.0:
 		if bot.input.pulse(ATTACK_ACTION):
 			swings += 1
-			_attack_wait = ATTACK_GAP_SEC
+			_attack_wait = _sword_gap()
 	if chip_skills and _skill_wait <= 0.0 and _attack_wait > 0.0:
 		var skill := SKILL_ACTIONS[_skill_i % SKILL_ACTIONS.size()]
 		if bot.input.pulse(skill):
 			skills_used += 1
 			_skill_i += 1
-			_skill_wait = SKILL_GAP_SEC
+			_skill_wait = _skill_gap()
 
 
 func walk_to(goal: Vector2, player_xz: Vector2, yaw: float, step: float) -> void:
@@ -177,6 +178,21 @@ func walk_to(goal: Vector2, player_xz: Vector2, yaw: float, step: float) -> void
 
 func strike_point(player_xz: Vector2, point: Vector2, yaw: float, step: float) -> void:
 	_strike(player_xz, point, yaw, step)
+
+
+func hold_attacks(seconds: float) -> void:
+	_attack_wait = maxf(_attack_wait, seconds)
+
+
+func _sword_gap() -> float:
+	return maxf(ATTACK_GAP_SEC, _Pace.strike_gap("sword_swing"))
+
+
+func _skill_gap() -> float:
+	var gap := SKILL_GAP_SEC
+	for id in ["dash", "ground_slam", "crystal_pulse", "quick_wall"]:
+		gap = maxf(gap, _Pace.strike_gap(id))
+	return gap
 
 
 func _tap_sword() -> void:

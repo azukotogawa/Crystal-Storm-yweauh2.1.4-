@@ -228,7 +228,7 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 		var moved := _xz(player).distance_to(mark)
 		if moved >= 3.2 and _cooled(tree, skill_id):
 			_cast_seen = true
-		if watch < _Pace.RESULT_HOLD:
+		if watch < _Pace.beat_hold("skill_unlock"):
 			return ""
 		if _cast_seen:
 			print("OK dash slide %.2f" % moved)
@@ -246,7 +246,7 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 		slam_drops = _drops(heights)
 		if slam_drops >= 2:
 			_cast_seen = true
-		if watch < _Pace.RESULT_HOLD:
+		if watch < _Pace.beat_hold("skill_unlock"):
 			return ""
 		if _cast_seen:
 			shown_drops = slam_drops
@@ -272,7 +272,7 @@ func _watch(dt: float, tree: SceneTree, player: Node, hands: RefCounted, origin:
 	if mode == "skill_crystal_pulse":
 		hands.begin_tick()
 		hands.aim_column(player, origin.x, origin.y)
-	if watch < _Pace.RESULT_HOLD:
+	if watch < _Pace.beat_hold("skill_unlock"):
 		return ""
 	if mode == "skill_quick_wall" and not _cast_seen and tries < 3:
 		tries += 1
@@ -524,7 +524,7 @@ func _xp_beat(dt: float, tree: SceneTree, hands: RefCounted, chapters) -> String
 		hands.begin_tick()
 		hands.set_held(PackedStringArray())
 		watch += dt
-		if watch < _Pace.RESULT_HOLD:
+		if watch < _Pace.beat_hold("level_up"):
 			return ""
 		phase = "sheet_close"
 		watch = 0.0
@@ -594,7 +594,7 @@ func _gallery_tick(dt: float, tree: SceneTree, hands: RefCounted, chapters, skil
 		watch = 0.0
 		return ""
 	if phase == "result":
-		if watch < _Pace.RESULT_HOLD:
+		if watch < _Pace.beat_hold("skill_unlock"):
 			return ""
 		if step_i >= steps.size():
 			phase = "close"
