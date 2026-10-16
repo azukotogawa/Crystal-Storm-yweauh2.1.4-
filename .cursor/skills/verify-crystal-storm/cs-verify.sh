@@ -665,7 +665,7 @@ showcase|bot-showcase)
   if ! grep -q '^SHOWCASE combat_crystal_mite pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^KILL crystal_mite' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE bow attack' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL combat rc=$r"; exit 1
   fi
-  if ! grep -q '^SHOWCASE xp_level pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^LEVEL ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SKILL dash' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_dash pass' "$EVID/honest-bot-showcase.log"; then
+  if ! grep -q '^SHOWCASE xp_level pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^LEVEL ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE xp ready level ' "$EVID/honest-bot-showcase.log" || ! grep -q '^SKILL dash' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_dash pass' "$EVID/honest-bot-showcase.log"; then
     echo "BOT SHOWCASE FAIL progress rc=$r"; exit 1
   fi
   if ! grep -q '^SKILL ground_slam' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE skill_ground_slam pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE multiblock_break pass' "$EVID/honest-bot-showcase.log"; then

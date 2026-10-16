@@ -113,17 +113,19 @@ The landmark stop chosen with segment 7 (`rock_spire`, `ruined_tower`, or `cryst
 
 ### 10. `combat`
 
-Sprint to the origin. Only then look for foes. The verify-15 scan at spawn found nobody because the pool is ~56 columns away.
+Do not walk onto the heart yet. Farm until level 3 (191 XP earned) before any crystal-segment swing. The already opened chain treasure is not opened again.
 
-On the first living `crystal_mite` inside 32 columns: `hotbar_1`, mouse on the mite, pulse `attack` until `KILL`. Also pulse `hotbar_3` and one `attack` so the bow fires once (aim the ground column under the cursor). Then scan once, still within 32 columns, for `farm_bomber`, `crystal_stag`, `thornling`, `corrupted_beast`, `crystal_wisp`, `shard_guard`, and `spawn_elite`. Fight each one that is already alive the same way. Status `absent` per id that is not alive. Do not wait for absorption. Mites start unlocked. The others unlock only after the crystal eats farmland, trees, bushes, animals, ruins, or a bird, and the elite is not on that table. `origin_warden` is segment 15, not this scan.
+Seek a living non-mite crystal enemy inside 220 columns before another mite. Also fight rabbits, deer, boar, and birds that are already in range. Town militia and villagers are not targets. If nothing fresh is close, open up to four more treasure sites inside 1500 columns: stand inside the ruin radius, wait for the director to discover the chest, then fight the guardians. After those sites, or once level 3 is in hand and one mite is dead, hold the safe ring outside the burn for a short look at whatever the pool has spawned. The first mite still takes one bow shot after the mite chapter has been up for 4 seconds.
 
-Pass: mite `pass` or `absent` (absent is allowed only after the pool scan). Each other id is `pass` or `absent`.
+On the first living `crystal_mite`: `hotbar_1`, mouse on the mite, pulse `attack` until `KILL`. Also pulse `hotbar_3` and one `attack` so the bow fires once. Kinds that never show up stay `absent`. Do not write an unlock. `origin_warden` is segment 15, not this scan.
+
+Pass: mite `pass` after a real kill, and earned XP at level 3 before segment 15. Each other id is `pass` or `absent`.
 
 ### 11. `xp_level`
 
-No segment of its own beyond watching the HUD while digging, placing, and hitting. Level 2 must happen before segment 14 ends. Print `LEVEL` with the new level when the bar flips.
+Watched on the HUD while digging, placing, opening treasure, and killing. Level 3 must already be true before the crystal segment starts. Print `LEVEL` when the bar flips and `SHOWCASE xp ready` with the earned total.
 
-Pass: level at least 2, from kills, digs, the placed structure, ruin discovery, or crystal hits only.
+Pass: level at least 3, earned at least 191, from kills, digs, the placed structure, or ruin discovery only. Heart hits do not count toward this gate.
 
 ### 12. `skill_dash`
 
@@ -189,7 +191,7 @@ The bot rewrites `status` in place. `pending` means not played yet. Order is the
     {"id": "combat_crystal_wisp", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
     {"id": "combat_shard_guard", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
     {"id": "combat_spawn_elite", "segment": 10, "required": true, "actions": ["hotbar_1", "attack"], "pass": "KILL or absent", "status": "pending"},
-    {"id": "xp_level", "segment": 11, "required": true, "actions": [], "pass": "LEVEL >= 2 from play, not a grant", "status": "pending"},
+    {"id": "xp_level", "segment": 11, "required": true, "actions": [], "pass": "LEVEL >= 3 and earned >= 191 before the crystal, not a grant", "status": "pending"},
     {"id": "skill_dash", "segment": 12, "required": true, "actions": ["skill_tree", "ui_down", "ui_accept", "skill_tree", "move_forward", "skill_1"], "pass": "SKILL dash and a slide", "status": "pending"},
     {"id": "skill_ground_slam", "segment": 13, "required": true, "actions": ["skill_tree", "ui_right", "ui_accept", "skill_tree", "skill_2"], "pass": "SKILL ground_slam and a 3x3 dig", "status": "pending"},
     {"id": "multiblock_break", "segment": 13, "required": true, "actions": ["skill_2"], "pass": "same 3x3; the stone pick stays single", "status": "pending"},

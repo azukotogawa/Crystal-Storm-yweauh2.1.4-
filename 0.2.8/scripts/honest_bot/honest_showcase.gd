@@ -17,6 +17,7 @@ const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 
 const ROUTE_PATH := "res://docs/showcase/ROUTE.md"
 const MOVE_COLUMNS := 8.0
@@ -145,6 +146,7 @@ func tick(delta: float) -> bool:
 	_seg_age += step
 	if _hold_status == "":
 		_sync_bow()
+		_sync_farm()
 		_run_segment(step)
 		if _seg_status != "":
 			_hold_status = _seg_status
@@ -219,6 +221,9 @@ func _open_segment(id: String) -> void:
 		build.reset(id)
 	elif id == "combat_crystal_mite":
 		fight.reset()
+		var prior: Dictionary = _chain.get("density_treasure", {})
+		if str(prior.get("status", "")) == "walk":
+			fight.skip_site(prior.get("xz", Vector2.ZERO))
 	elif id == "xp_level" or id.begins_with("skill_") or id == "multiblock_break":
 		if caster == null:
 			print("FAIL skill cast missing")
@@ -226,6 +231,10 @@ func _open_segment(id: String) -> void:
 			return
 		caster.begin(id)
 	elif id == "crystal" or id == "boss" or id == "win_screen":
+		if id == "crystal" and not _Farm.ready(fight.level_now(), fight.remainder_now()):
+			print("FAIL crystal before level 3 earned %d" % _Farm.earned(fight.level_now(), fight.remainder_now()))
+			_seg_status = "fail"
+			return
 		finale.begin(id)
 
 
@@ -611,6 +620,17 @@ func _sync_bow() -> void:
 			fight.finish_bow()
 
 
+func _sync_farm() -> void:
+	if chapters == null or fight == null or _seg != "combat_crystal_mite":
+		return
+	if fight.bow_phase == "wait" or fight.bow_phase == "run":
+		return
+	var want := str(fight.chapter_feature())
+	if want == "":
+		want = "combat_crystal_mite"
+	chapters.open(want)
+
+
 func _note_lights() -> void:
 	if _lights_noted:
 		return
@@ -799,8 +819,10 @@ func _paint() -> void:
 			chapter = _detour_label
 		elif finale != null and (_seg == "crystal" or _seg == "boss" or _seg == "win_screen") and finale.caption != "":
 			chapter = finale.caption
-		if chapters.has_method("feature") and chapters.feature() == "bow_shot":
-			chapter = "bow_shot"
+		if chapters.has_method("feature"):
+			var feat := str(chapters.feature())
+			if feat == "bow_shot" or feat.begins_with("treasure_open") or (feat.begins_with("combat_") and feat != _seg):
+				chapter = feat
 		hud.set_readout(chapters.format_clock(), chapter)
 
 

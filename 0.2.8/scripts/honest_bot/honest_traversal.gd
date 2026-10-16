@@ -28,6 +28,10 @@ static func landmark_choice(from_xz: Vector2, cells: Dictionary) -> Dictionary:
 	return _choice(from_xz, cells, "landmark")
 
 
+static func treasure_sites(cells: Dictionary) -> Array:
+	return _buckets(cells)["treasure"]
+
+
 static func exploration_chain(from_xz: Vector2, cells: Dictionary) -> Array:
 	var buckets := _buckets(cells)
 	var poi_list := _candidates(from_xz, buckets["poi"], "poi")

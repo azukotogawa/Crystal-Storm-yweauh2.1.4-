@@ -3,6 +3,7 @@ extends RefCounted
 const _Pad = preload("res://scripts/honest_bot/honest_progress.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 
 var mode := ""
 var phase := ""
@@ -462,10 +463,11 @@ func _xp(tree: SceneTree) -> String:
 		return "fail"
 	var level := int(node.get("level"))
 	var amount := int(node.get("xp"))
-	print("LEVEL %d xp %d" % [level, amount])
-	if level >= 2:
+	var total := _Farm.earned(level, amount)
+	print("LEVEL %d xp %d earned %d" % [level, amount, total])
+	if _Farm.ready(level, amount):
 		return "pass"
-	print("FAIL xp level %d" % level)
+	print("FAIL xp level %d earned %d" % [level, total])
 	return "fail"
 
 

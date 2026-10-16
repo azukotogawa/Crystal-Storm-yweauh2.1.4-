@@ -15,6 +15,7 @@ const _Capture = preload("res://helpers/probe_capture.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
+const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
@@ -58,6 +59,7 @@ func _run() -> void:
 	_check_sprint_hold()
 	_check_blueprint_key()
 	_check_roster()
+	_check_farm()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -115,6 +117,7 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_showcase_finale.gd",
 		"res://scripts/honest_bot/honest_pace.gd",
 		"res://scripts/honest_bot/honest_hazard.gd",
+		"res://scripts/honest_bot/honest_farm.gd",
 		"res://scripts/honest_bot/honest_crystal.gd",
 	]
 	var joined := ""
@@ -382,6 +385,49 @@ func _check_roster() -> void:
 		_fail("level 3 with nothing new should stop")
 		return
 	_ok("combat roster pick and chapter status")
+
+
+func _check_farm() -> void:
+	if _Farm.ready(2, 140):
+		_fail("level 2 must stay short of 191")
+		return
+	if not _Farm.ready(3, 0) or _Farm.earned(3, 0) < _Farm.XP_READY:
+		_fail("level 3 should be at least %d earned %d" % [_Farm.XP_READY, _Farm.earned(3, 0)])
+		return
+	var sites: Array = [
+		{"xz": Vector2(10, 0)},
+		{"xz": Vector2(400, 0)},
+		{"xz": Vector2(2000, 0)},
+	]
+	var picked: Dictionary = _Farm.next_site(Vector2.ZERO, sites, {}, 0)
+	if str(picked.get("key", "")) != "10:0":
+		_fail("nearest treasure %s" % picked)
+		return
+	var second: Dictionary = _Farm.next_site(Vector2.ZERO, sites, {"10:0": true}, 0)
+	if absf(float(second.get("distance", 0.0)) - 400.0) > 0.1:
+		_fail("second treasure %s" % second)
+		return
+	if not _Farm.next_site(Vector2.ZERO, sites, {"10:0": true, "400:0": true}, 0).is_empty():
+		_fail("a treasure past 1500 columns should be ignored")
+		return
+	if not _Farm.next_site(Vector2.ZERO, sites, {}, _Farm.SITE_CAP).is_empty():
+		_fail("the treasure visit cap should stop the tour")
+		return
+	var rows: Array = [
+		{"id": "m", "kind": "crystal_mite", "xz": Vector2(0, 4)},
+		{"id": "s", "kind": "crystal_stag", "xz": Vector2(30, 0)},
+		{"id": "r", "kind": "rabbit", "xz": Vector2(2, 0)},
+		{"id": "t", "kind": "town_militia", "xz": Vector2(1, 0)},
+	]
+	var foe: Dictionary = _Farm.pick_seek(rows, Vector2.ZERO, {}, _Farm.SEEK_COLUMNS, {}, true)
+	if str(foe.get("kind", "")) != "crystal_stag":
+		_fail("a new stag should beat a mite and a rabbit, got %s" % foe)
+		return
+	var wild: Dictionary = _Farm.pick_seek(rows, Vector2.ZERO, {"crystal_stag": 1}, 48.0, {}, false)
+	if str(wild.get("kind", "")) != "rabbit":
+		_fail("a rabbit should beat a repeat mite inside the short seek, got %s" % wild)
+		return
+	_ok("farm route reaches level 3 before the crystal")
 
 
 func _check_skill_pad() -> void:
