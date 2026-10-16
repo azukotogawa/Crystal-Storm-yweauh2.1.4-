@@ -6,6 +6,8 @@ const _Prog = preload("res://scripts/honest_bot/honest_progress.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Coords = preload("res://helpers/world_visual_coords.gd")
 const _Capture = preload("res://helpers/probe_capture.gd")
+const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
+const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -106,8 +108,31 @@ func _boot() -> bool:
 	_mark("boot", "reached", "stream ready at %.2f,%.2f origin %.2f,%.2f" % [
 		_nav_start.x, _nav_start.y, _origin.x, _origin.y
 	])
+	await _dismiss_tutorial()
 	await _Capture.capture_step("honest-bot-boot")
 	return true
+
+
+func _dismiss_tutorial() -> void:
+	if not _tutorial_open():
+		return
+	var hands := _Hands.new()
+	hands.pulse("pause")
+	await process_frame
+	hands.begin_tick()
+	await process_frame
+	hands.pulse("pause")
+	await process_frame
+	hands.begin_tick()
+
+
+func _tutorial_open() -> bool:
+	for node in root.get_children():
+		if node.get_script() != _Tutorial:
+			continue
+		if bool(node.visible):
+			return true
+	return false
 
 
 func _skip_after_boot() -> void:
