@@ -6,7 +6,7 @@ const ENGAGE_COLUMNS := 2.4
 const BOSS_PREFIX := "boss-"
 const BOSS_LINE := 0.25
 
-var fight = _Fight.new()
+var fight := _Fight.new()
 var lines: PackedStringArray = PackedStringArray()
 var crystal_xz := Vector2.ZERO
 var crystal_hp := 0.0
@@ -60,10 +60,10 @@ func observe_foes(seen: Array) -> void:
 		if not id.begins_with(BOSS_PREFIX):
 			continue
 		bosses.append(item)
-	var before := fight.kills
+	var before: int = int(fight.kills)
 	fight.observe(bosses)
-	if fight.kills > before:
-		var gained := fight.kills - before
+	if int(fight.kills) > before:
+		var gained: int = int(fight.kills) - before
 		boss_kills += gained
 		_keep("BOSS KILL")
 	if not bosses.is_empty() and not _saw_boss:
