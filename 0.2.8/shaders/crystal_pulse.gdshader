@@ -5,10 +5,10 @@ render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 uniform vec2 ground_cell = vec2(6.0, 3.0);
-uniform float albedo_tint = 0.28;
+uniform float albedo_tint = 0.0;
 uniform vec4 albedo_color : source_color = vec4(0.72, 0.28, 1.0, 0.88);
 uniform vec4 emission_color : source_color = vec4(0.55, 0.18, 0.95, 1.0);
-uniform float emission_energy = 0.42;
+uniform float emission_energy = 0.16;
 uniform float crystal_time = 0.0;
 
 #include "res://shaders/atlas_sample.gdshaderinc"

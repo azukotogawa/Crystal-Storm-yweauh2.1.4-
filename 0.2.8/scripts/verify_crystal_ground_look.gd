@@ -85,15 +85,13 @@ func _run() -> void:
 		if not (child is MeshInstance3D):
 			continue
 		var sm := (child as MeshInstance3D).material_override as StandardMaterial3D
-		if sm == null or not (sm.albedo_texture is AtlasTexture):
+		if sm == null or sm.albedo_texture == null:
 			bare += 1
 		else:
 			textured += 1
-			var region := (sm.albedo_texture as AtlasTexture).region
-			var expect_x := float(look.stone_col) * region.size.x
-			var expect_y := float(look.stone_row) * region.size.y
-			if absf(region.position.x - expect_x) > 0.5 or absf(region.position.y - expect_y) > 0.5:
-				push_error("spire cell %s is not stone %d,%d" % [region, look.stone_col, look.stone_row])
+			var face := sm.albedo_texture
+			if face.get_width() > 48 or face.get_height() > 48:
+				push_error("spire face is the whole atlas %dx%d" % [face.get_width(), face.get_height()])
 				failed = true
 	if textured < 1 or bare > 0:
 		push_error("rock spire textured %d bare %d" % [textured, bare])

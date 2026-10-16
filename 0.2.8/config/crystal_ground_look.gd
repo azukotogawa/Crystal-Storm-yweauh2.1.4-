@@ -12,8 +12,8 @@ const RESOURCE_PATH := "res://config/default_crystal_ground.tres"
 @export var stone_row: int = 4
 @export var crystal_col: int = 6
 @export var crystal_row: int = 2
-@export var emission_energy: float = 0.42
-@export var albedo_tint: float = 0.28
+@export var emission_energy: float = 0.16
+@export var albedo_tint: float = 0.0
 @export var show_debug_markers: bool = false
 @export var spawn_fallback_path: String = "res://assets/art/crystal/amethyst.png"
 

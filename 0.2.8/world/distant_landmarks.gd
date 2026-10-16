@@ -8,6 +8,7 @@ const _Voxels = preload("res://helpers/voxel_types.gd")
 const _GroundLook = preload("res://config/crystal_ground_look.gd")
 
 static var _atlas_tex: Texture2D
+static var _cell_tex: Dictionary = {}
 
 static var ENABLED: bool = true
 
@@ -199,18 +200,26 @@ static func _atlas() -> Texture2D:
 
 
 static func _cell_texture(col: int, row: int) -> Texture2D:
+	var key := Vector2i(col, row)
+	if _cell_tex.has(key):
+		return _cell_tex[key] as Texture2D
 	var base := _atlas()
 	if base == null:
+		return null
+	var image := base.get_image()
+	if image == null or image.is_empty():
 		return null
 	var look := _GroundLook.load_active()
 	var cols := maxi(look.atlas_columns, 1)
 	var rows := maxi(look.atlas_rows, 1)
-	var cell_w := float(base.get_width()) / float(cols)
-	var cell_h := float(base.get_height()) / float(rows)
-	var atlas := AtlasTexture.new()
-	atlas.atlas = base
-	atlas.region = Rect2(float(col) * cell_w, float(row) * cell_h, cell_w, cell_h)
-	return atlas
+	var cell_w := int(image.get_width() / cols)
+	var cell_h := int(image.get_height() / rows)
+	if cell_w < 1 or cell_h < 1:
+		return null
+	var cut := image.get_region(Rect2i(col * cell_w, row * cell_h, cell_w, cell_h))
+	var tex := ImageTexture.create_from_image(cut)
+	_cell_tex[key] = tex
+	return tex
 
 
 static func _accept(proposed: Array[Dictionary]) -> Array[Dictionary]:
