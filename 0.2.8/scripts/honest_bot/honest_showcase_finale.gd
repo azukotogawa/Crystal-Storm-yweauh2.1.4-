@@ -4,6 +4,8 @@ const _Crystal = preload("res://scripts/honest_bot/honest_crystal.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _Relic = preload("res://ui/relic_choice_panel.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
+const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 
 const CRYSTAL_LIMIT := 150.0
 const BOSS_LIMIT := 120.0
@@ -11,7 +13,8 @@ const WIN_LIMIT := 90.0
 const WIN_HOLD := 4.0
 const SPACE_COLUMNS := 1.75
 const HEAL_RATIO := 0.78
-const SAFE_DEPTH := 0.22
+const SAFE_DEPTH := 0.25
+const POKE_RATIO := 0.62
 const SWORD_REACH := 2.7
 const SWING_GAP := 0.62
 
@@ -31,6 +34,8 @@ var _relic_frames := 0
 var _stand_logged := false
 var _camp_logged := false
 var _gap := 0.0
+var _aim_hold := 0.0
+var _poking := false
 var _boss_wait := 0.0
 var _armed := false
 var _intro := 0.0
@@ -58,6 +63,8 @@ func begin(id: String) -> void:
 	_stand_logged = false
 	_camp_logged = false
 	_gap = 0.0
+	_aim_hold = 0.0
+	_poking = false
 	_boss_wait = 0.0
 	_pest_sword = false
 	_pest_wait = 0.0
@@ -98,10 +105,34 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	_gap = maxf(_gap - dt, 0.0)
 	var origin := _origin(tree)
 	var pos := _xz(player)
-	var deep := _feet_depth(tree, pos) >= SAFE_DEPTH
-	if _needs_herb(player) and not deep:
-		_use_herb()
-		return ""
+	var aim := origin + Vector2(0.5, 0.5)
+	var early_bosses := _bosses(tree)
+	if not early_bosses.is_empty():
+		aim = early_bosses[0].get("xz", aim)
+	if _Hazard.burning(tree, pos):
+		if _poking and _ratio(player) >= 0.55 and _gap <= 0.0:
+			if _in_sword_range(pos, origin):
+				_swing_at(dt, tree, player, origin, aim)
+				_gap = SWING_GAP
+				_poking = false
+			else:
+				_goto(dt, player, _shallow_stand(tree, origin), aim)
+		else:
+			_poking = false
+			_goto(dt, player, _camp(tree, origin), aim)
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
+	if _needs_herb(player):
+		_poking = false
+		var rest := _camp(tree, origin)
+		if pos.distance_to(rest) > 1.2:
+			_goto(dt, player, rest, aim)
+		elif _needs_herb(player):
+			_use_herb()
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
 	var seen_hp := _hp(tree)
 	if seen_hp.y > 0.0 and seen_hp.x < seen_hp.y - 0.5:
 		_dropped = true
@@ -112,9 +143,9 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 		_note_hp()
 		return _status(dt, tree)
 	if _bosses(tree).is_empty():
-		_swing_heart(dt, tree, player, origin, pos, deep)
+		_swing_heart(dt, tree, player, origin, pos, false)
 	else:
-		_swing_boss(dt, tree, player, origin, deep)
+		_swing_boss(dt, tree, player, origin, false)
 	_drain()
 	_note_hp()
 	return _status(dt, tree)
@@ -131,7 +162,7 @@ func _drive(dt: float, tree: SceneTree, player: Node) -> void:
 		var toward := origin - pos
 		if toward.length() > 1.6:
 			var step_in := pos + toward.normalized() * 0.8
-			if _feet_depth(tree, step_in) < SAFE_DEPTH:
+			if not _Hazard.burning(tree, step_in):
 				nav = step_in
 	heart.set_vitals(float(player.health), float(player.max_health))
 	heart.observe_crystal(nav, hp.x, hp.y)
@@ -145,8 +176,8 @@ func _drive(dt: float, tree: SceneTree, player: Node) -> void:
 		heart.fight.bot.extra_held = PackedStringArray(["sprint"])
 	else:
 		heart.fight.bot.extra_held = PackedStringArray()
-	heart.tick(pos, _yaw(player), dt)
 	heart.fight.bot.input.aim_column(player, aim.x, aim.y)
+	heart.tick(pos, _yaw(player), dt)
 	if hp.x < hp.y - 0.5:
 		_dropped = true
 
@@ -238,55 +269,109 @@ func tick_clock(step: float) -> void:
 	_clocks[seg] = float(_clocks.get(seg, 0.0)) + step
 
 
-func _swing_heart(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2, deep: bool) -> void:
-	var pad := _shallow_stand(tree, origin)
+func _swing_heart(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2, _deep: bool) -> void:
 	var aim := origin + Vector2(0.5, 0.5)
-	if deep and (_gap > 0.0 or _needs_herb(player)):
-		_goto(dt, player, _camp(tree, origin), aim)
-		return
-	if deep:
-		_drive(dt, tree, player)
-		_gap = SWING_GAP
-		return
-	if _feet_depth(tree, pad) < SAFE_DEPTH:
-		if pos.distance_to(pad) > 0.7:
+	var pad := _safe_pad(tree, origin)
+	if pad != Vector2.INF:
+		if pos.distance_to(pad) > 0.7 or not _in_sword_range(pos, origin):
 			_goto(dt, player, pad, aim)
 			return
-		_drive(dt, tree, player)
+		_swing_at(dt, tree, player, origin, aim)
 		return
-	if not _in_sword_range(pos, origin):
-		if _gap > 0.0:
-			_goto(dt, player, _camp(tree, origin), aim)
-			return
-		_goto(dt, player, pad, aim)
-		return
-	if _gap > 0.0:
+	if _gap > 0.0 or _ratio(player) < 0.7:
 		_goto(dt, player, _camp(tree, origin), aim)
 		return
-	_drive(dt, tree, player)
-	if deep:
-		_gap = SWING_GAP
+	var poke := _shallow_stand(tree, origin)
+	_poking = true
+	if pos.distance_to(poke) > 0.45 or not _in_sword_range(pos, origin):
+		_goto(dt, player, poke, aim)
+		return
+	_swing_at(dt, tree, player, origin, aim)
+	_gap = SWING_GAP
+	_poking = false
 
 
-func _swing_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, deep: bool) -> void:
+func _swing_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, _deep: bool) -> void:
 	var bosses := _bosses(tree)
 	if bosses.is_empty():
 		return
 	var boss: Vector2 = bosses[0].get("xz", origin)
 	var pos := _xz(player)
-	var dist := pos.distance_to(boss)
-	if dist <= 3.2:
-		_boss_wait = 0.0
-	else:
-		_boss_wait += dt
-	var chase := _boss_wait >= 10.0
-	if not chase and dist > 2.5:
+	if _Hazard.burning(tree, pos) or _ratio(player) < POKE_RATIO:
 		_goto(dt, player, _camp(tree, origin), boss)
 		return
-	if deep and dist > 2.3 and not chase:
-		_goto(dt, player, _camp(tree, origin), boss)
+	var stand := _Hazard.strike_stand(tree, pos, boss)
+	if stand == Vector2.INF:
+		_boss_wait += dt
+		if _boss_wait < 8.0:
+			_goto(dt, player, _camp(tree, origin), boss)
+			return
+		stand = boss
+	else:
+		_boss_wait = 0.0
+	if pos.distance_to(stand) > 0.7:
+		_goto(dt, player, stand, boss)
+		return
+	_swing_at(dt, tree, player, origin, boss)
+
+
+func _swing_at(dt: float, tree: SceneTree, player: Node, origin: Vector2, aim: Vector2) -> void:
+	var bot = heart.fight.bot
+	bot.input.aim_column(player, aim.x, aim.y)
+	var ready := _aim_locked(player, aim)
+	if ready:
+		_aim_hold = 0.0
+	else:
+		_aim_hold += dt
+	heart.fight.aim_ready = ready or _aim_hold >= 0.35
+	var facing := _Nav.face_action(_xz(player), aim, _yaw(player))
+	if facing != "" or not heart.fight.aim_ready:
+		bot.input.begin_tick()
+		var held := PackedStringArray()
+		if facing != "":
+			held.append(facing)
+		bot.input.set_held(held)
+		bot.input.aim_column(player, aim.x, aim.y)
 		return
 	_drive(dt, tree, player)
+
+
+func _aim_locked(player: Node, aim: Vector2) -> bool:
+	if player == null:
+		return false
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return true
+	var shared: Vector3 = hl.get_action_column()
+	if shared == Vector3.ZERO:
+		return true
+	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
+	var want := Vector2(float(floori(aim.x)) + 0.5, float(floori(aim.y)) + 0.5)
+	return cell.distance_to(want) <= 1.15
+
+
+func _safe_pad(tree: SceneTree, origin: Vector2) -> Vector2:
+	var center := origin + Vector2(0.5, 0.5)
+	var best := Vector2.INF
+	var best_depth := 99.0
+	for dx in range(-4, 5):
+		for dz in range(-4, 5):
+			var at := Vector2(origin.x + float(dx) + 0.5, origin.y + float(dz) + 0.5)
+			if at.distance_to(center) > SWORD_REACH or at.distance_to(center) < 1.2:
+				continue
+			if _Hazard.burning(tree, at):
+				continue
+			var depth := _Hazard.depth_at(tree, at)
+			if depth < best_depth:
+				best_depth = depth
+				best = at
+	return best
+
+
+func _ratio(player: Node) -> float:
+	if player == null:
+		return 1.0
+	return clampf(float(player.health) / maxf(float(player.max_health), 1.0), 0.0, 1.0)
 
 
 func _camp(tree: SceneTree, origin: Vector2) -> Vector2:
@@ -410,6 +495,8 @@ func _space_goal(tree: SceneTree, pos: Vector2, origin: Vector2, threat: Vector2
 		var to_heart: Vector2 = cand - center
 		if to_heart.length() > SWORD_REACH:
 			cand = center + to_heart.normalized() * (SWORD_REACH - 0.15)
+		if _Hazard.burning(tree, cand):
+			continue
 		var gap: float = cand.distance_to(threat)
 		var score: float = gap - _feet_depth(tree, cand) * 6.0
 		if score > best_score:
@@ -620,8 +707,8 @@ func _xz(player: Node) -> Vector2:
 
 func _yaw(player: Node) -> float:
 	var cam = player.get("camera")
-	if cam != null and "yaw_target_degrees" in cam:
-		return float(cam.yaw_target_degrees)
 	if cam != null and "yaw_degrees" in cam:
 		return float(cam.yaw_degrees)
+	if cam != null and "yaw_target_degrees" in cam:
+		return float(cam.yaw_target_degrees)
 	return 0.0

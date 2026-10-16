@@ -14,6 +14,7 @@ const _GI = preload("res://helpers/gameplay_input.gd")
 const _Capture = preload("res://helpers/probe_capture.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
@@ -59,6 +60,7 @@ func _run() -> void:
 	_check_roster()
 	_check_skill_pad()
 	_check_pace()
+	_check_hazard()
 	var hud_ok: bool = await _check_hud()
 	if not hud_ok:
 		_fail("timer label missing")
@@ -112,6 +114,7 @@ func _check_sources() -> void:
 		"res://scripts/honest_bot/honest_skill_cast.gd",
 		"res://scripts/honest_bot/honest_showcase_finale.gd",
 		"res://scripts/honest_bot/honest_pace.gd",
+		"res://scripts/honest_bot/honest_hazard.gd",
 		"res://scripts/honest_bot/honest_crystal.gd",
 	]
 	var joined := ""
@@ -268,6 +271,34 @@ func _check_pace() -> void:
 		_fail("human gap %s" % fault)
 		return
 	_ok("chapter span and human gap")
+
+
+func _check_hazard() -> void:
+	var samples: Array = [
+		{"xz": Vector2(1.5, 0.5), "depth": 0.80},
+		{"xz": Vector2(2.5, 0.5), "depth": 0.40},
+		{"xz": Vector2(6.5, 0.5), "depth": 0.05},
+	]
+	var picked := _Hazard.pick_clear(samples, Vector2(1.5, 0.5))
+	if picked.distance_to(Vector2(6.5, 0.5)) > 0.01:
+		_fail("burn escape picked %s" % picked)
+		return
+	if _Hazard.pick_clear([{"xz": Vector2(1.5, 0.5), "depth": 0.9}], Vector2.ZERO) != Vector2.INF:
+		_fail("a fully burning disk should not pick a stand")
+		return
+	if _Hazard.accepts_kill("crystal_mite", false):
+		_fail("a despawn must not count as a kill")
+		return
+	if _Hazard.accepts_kill("", true) or _Hazard.accepts_kill("origin_warden", true):
+		_fail("empty and warden ids must not inflate the mite count")
+		return
+	if not _Hazard.accepts_kill("crystal_mite", true):
+		_fail("a player mite kill should count")
+		return
+	if _Hazard.BURN_DEPTH < 0.25 or _Hazard.HIT_COLUMNS > 2.2:
+		_fail("burn line or sword reach drifted")
+		return
+	_ok("hazard escape and player kills")
 
 
 func _check_sprint_hold() -> void:

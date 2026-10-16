@@ -6,7 +6,10 @@ const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _Water = preload("res://helpers/water_locomotion.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const THREAT_COLUMNS := 14.0
+const HEAL_RATIO := 0.55
+const AIM_WAIT := 0.35
 
 var bot = _Bot.new()
 var killed: Dictionary = {}
@@ -28,9 +31,15 @@ var _approach_limit := -1.0
 var _alive: Dictionary = {}
 var bow_phase := "off"
 var _bow_age := 0.0
+var _aim_wait := 0.0
+var _bound: Array = []
 
 
 func release() -> void:
+	for node in _bound:
+		if is_instance_valid(node) and node.killed.is_connected(_on_enemy_killed):
+			node.killed.disconnect(_on_enemy_killed)
+	_bound.clear()
 	bot.release()
 
 
@@ -55,6 +64,7 @@ func reset() -> void:
 	_alive = {}
 	bow_phase = "off"
 	_bow_age = 0.0
+	_aim_wait = 0.0
 	bot.extra_held = PackedStringArray()
 
 
@@ -102,13 +112,13 @@ func _approach(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> Str
 	if _level < _Roster.LEVEL_GOAL:
 		var mite := _nearest_mite(tree, pos)
 		if not mite.is_empty():
-			return _fight(dt, player, mite)
+			return _fight(dt, tree, player, mite, origin)
 	var threat := _nearest_foe(tree, pos)
 	var threatened := not threat.is_empty() and float(threat.get("dist", 99.0)) < THREAT_COLUMNS
 	if not threatened and _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
 		_heal_idle()
 		return ""
-	var goal := _Roster.pool_goal(pos, origin, _Roster.POOL_STAND)
+	var goal := _safe_pool(tree, pos, origin)
 	var extras := PackedStringArray()
 	if threatened:
 		var foe: Vector2 = threat.get("xz", pos)
@@ -160,10 +170,10 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		return _mite_result()
 	if choice.is_empty():
 		_quiet += dt
-		_hold_pool(dt, player, origin)
+		_hold_pool(dt, tree, player, origin)
 		return ""
 	_quiet = 0.0
-	return _fight(dt, player, choice)
+	return _fight(dt, tree, player, choice, origin)
 
 
 func _mite_result() -> String:
@@ -172,7 +182,7 @@ func _mite_result() -> String:
 	return status
 
 
-func _fight(dt: float, player: Node, choice: Dictionary) -> String:
+func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin: Vector2) -> String:
 	var kind := str(choice.get("kind", ""))
 	var foe: Vector2 = choice.get("xz", Vector2.ZERO)
 	var fid := str(choice.get("id", ""))
@@ -184,16 +194,22 @@ func _fight(dt: float, player: Node, choice: Dictionary) -> String:
 			_bow = 0
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
-	if _ratio(player) <= 0.55 and _herbs(player) > 0:
+	if _Hazard.burning(tree, pos):
+		_exit_hazard(dt, tree, player, foe, origin)
+		return ""
+	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
 		return _heal_or_leave(dt, player, foe)
 	if _ratio(player) <= 0.30:
 		return _heal_or_leave(dt, player, foe)
-	var dist := pos.distance_to(foe)
-	if dist < _Roster.KITE_COLUMNS:
+	if pos.distance_to(foe) < 1.1:
 		_back_off(dt, player, pos, foe)
 		return ""
-	if dist > _Roster.ENGAGE_COLUMNS:
-		_close_in(dt, player, foe, dist)
+	var stand := _Hazard.strike_stand(tree, pos, foe)
+	if stand == Vector2.INF:
+		_exit_hazard(dt, tree, player, foe, origin)
+		return ""
+	if pos.distance_to(stand) > 0.65 or pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
+		_close_in(dt, player, stand, pos.distance_to(stand))
 		return ""
 	_strike(dt, player, pos, foe, kind)
 	return ""
@@ -250,7 +266,16 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	bot.input.set_held(held)
 	bot.input.aim_column(player, foe.x, foe.y)
 	if rot != "":
+		_aim_wait = 0.0
 		return
+	if pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
+		return
+	if not _aim_on_foe(player, foe):
+		_aim_wait += dt
+		if _aim_wait < AIM_WAIT:
+			return
+	else:
+		_aim_wait = 0.0
 	if kind == "crystal_mite" and bow_phase != "off":
 		if bow_phase == "wait":
 			return
@@ -316,17 +341,20 @@ func _bow_beat(dt: float) -> void:
 	_attack_wait = 0.48
 
 
-func _hold_pool(dt: float, player: Node, origin: Vector2) -> void:
+func _hold_pool(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
 	var pos := _xz(player)
-	if pos.distance_to(origin) <= _Roster.POOL_STAND + 2.0:
-		bot.release()
+	var goal := _safe_pool(tree, pos, origin)
+	if _Hazard.burning(tree, pos) or pos.distance_to(goal) > 0.8:
+		if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.2:
+			bot.set_target(goal)
+		bot.extra_held = PackedStringArray(["sprint"])
+		bot.tick(pos, _yaw(player), dt)
 		if _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
 			_heal_idle()
 		return
-	if not bot.has_target or bot.arrived or bot.gave_up:
-		bot.set_target(_Roster.pool_goal(pos, origin, _Roster.POOL_STAND))
-	bot.extra_held = PackedStringArray(["sprint"])
-	bot.tick(pos, _yaw(player), dt)
+	bot.release()
+	if _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
+		_heal_idle()
 
 
 func _heal_idle() -> void:
@@ -391,8 +419,10 @@ func _sense(tree: SceneTree) -> Array:
 			continue
 		var iid := str(node.get_instance_id())
 		if float(node.get("health")) <= 0.0:
-			_count_kill(iid, kind)
 			continue
+		if not node.killed.is_connected(_on_enemy_killed):
+			node.killed.connect(_on_enemy_killed)
+			_bound.append(node)
 		still[iid] = kind
 		var body := node as Node3D
 		if body == null:
@@ -403,21 +433,52 @@ func _sense(tree: SceneTree) -> Array:
 			"kind": kind,
 			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
 		})
-	for iid in _alive.keys():
-		if still.has(iid):
-			continue
-		_count_kill(str(iid), str(_alive[iid]))
 	_alive = still
 	return rows
 
 
-func _count_kill(iid: String, kind: String) -> void:
-	if _down.has(iid):
+func _on_enemy_killed(enemy_id: StringName, _world_pos: Vector2i, player_killed: bool) -> void:
+	var kind := str(enemy_id)
+	if not _Hazard.accepts_kill(kind, player_killed):
 		return
-	_down[iid] = true
 	killed[kind] = int(killed.get(kind, 0)) + 1
 	seen[kind] = true
 	print("KILL %s" % kind)
+
+
+func _exit_hazard(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
+	var pos := _xz(player)
+	var goal := _Hazard.leave_goal(tree, pos, origin)
+	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.2:
+		bot.set_target(goal)
+	bot.extra_held = PackedStringArray(["sprint"])
+	bot.tick(pos, _yaw(player), dt)
+	bot.input.aim_column(player, foe.x, foe.y)
+	if _ratio(player) <= 0.8 and _herbs(player) > 0 and _heal_wait <= 0.0:
+		_heal_idle()
+
+
+func _safe_pool(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
+	var goal := _Roster.pool_goal(pos, origin, _Roster.POOL_STAND)
+	if tree == null:
+		return goal
+	if _Hazard.burning(tree, pos) or _Hazard.burning(tree, goal):
+		return _Hazard.leave_goal(tree, pos, origin)
+	return goal
+
+
+func _aim_on_foe(player: Node, foe: Vector2) -> bool:
+	if player == null:
+		return false
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return true
+	var shared: Vector3 = hl.get_action_column()
+	if shared == Vector3.ZERO:
+		return true
+	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
+	var want := Vector2(float(floori(foe.x)) + 0.5, float(floori(foe.y)) + 0.5)
+	return cell.distance_to(want) <= 1.15
 
 
 func _watch_level(tree: SceneTree) -> void:
@@ -469,8 +530,8 @@ func _xz(player: Node) -> Vector2:
 
 func _yaw(player: Node) -> float:
 	var cam = player.get("camera")
-	if cam != null and "yaw_target_degrees" in cam:
-		return float(cam.yaw_target_degrees)
 	if cam != null and "yaw_degrees" in cam:
 		return float(cam.yaw_degrees)
+	if cam != null and "yaw_target_degrees" in cam:
+		return float(cam.yaw_target_degrees)
 	return 0.0

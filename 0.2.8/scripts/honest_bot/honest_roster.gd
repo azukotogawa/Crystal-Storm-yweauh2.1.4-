@@ -2,7 +2,7 @@ extends RefCounted
 
 const SCAN_COLUMNS := 32.0
 const POOL_STAND := 6.0
-const ENGAGE_COLUMNS := 2.35
+const ENGAGE_COLUMNS := 2.05
 const KITE_COLUMNS := 1.75
 const LEVEL_GOAL := 3
 const HUNT_LIMIT := 165.0

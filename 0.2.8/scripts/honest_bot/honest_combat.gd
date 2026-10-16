@@ -4,6 +4,7 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 
 const ENGAGE_COLUMNS := 2.4
+const HIT_COLUMNS := 2.6
 const RETREAT_HP_RATIO := 0.30
 const RETREAT_PUSH := 8.0
 const ATTACK_GAP_SEC := 0.40
@@ -30,6 +31,7 @@ var _attack_wait := 0.0
 var _skill_wait := 0.0
 var _skill_i := 0
 var chip_skills := true
+var aim_ready := true
 
 
 func release() -> void:
@@ -148,6 +150,10 @@ func _strike(player_xz: Vector2, foe: Vector2, yaw: float, step: float) -> void:
 	_attack_wait -= step
 	_skill_wait -= step
 	if rot != "":
+		return
+	if player_xz.distance_to(foe) > HIT_COLUMNS:
+		return
+	if not aim_ready:
 		return
 	if _attack_wait <= 0.0:
 		if bot.input.pulse(ATTACK_ACTION):
