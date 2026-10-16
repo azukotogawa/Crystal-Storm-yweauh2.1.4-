@@ -126,7 +126,9 @@ func _check_engage() -> void:
 		yaw = float(stepped[1])
 		if fight.swings >= 1 and fight.skills_used >= 1:
 			break
-	var skill_held := fight.bot.input.is_held("skill_1") or fight.bot.input.is_held("skill_2") or fight.bot.input.is_held("skill_3")
+	var skill_held := false
+	if fight.bot.input.is_held("skill_1") or fight.bot.input.is_held("skill_2") or fight.bot.input.is_held("skill_3"):
+		skill_held = true
 	fight.release()
 	if sword_frame < 0 or attack_frame < 0 or sword_frame >= attack_frame:
 		_fail("sword hotbar should pulse before attack (sword %d attack %d)" % [sword_frame, attack_frame])
