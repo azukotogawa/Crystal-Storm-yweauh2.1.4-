@@ -279,13 +279,14 @@ func _space_goal(tree: SceneTree, pos: Vector2, origin: Vector2, threat: Vector2
 	var center := origin + Vector2(0.5, 0.5)
 	var best := pos + away * 3.0
 	var best_score := -9999.0
-	for sign in [-1.0, 1.0]:
-		var cand := pos + away * 2.2 + tangent * sign * 2.2
-		var to_heart := cand - center
+	var signs: Array[float] = [-1.0, 1.0]
+	for sign in signs:
+		var cand: Vector2 = pos + away * 2.2 + tangent * sign * 2.2
+		var to_heart: Vector2 = cand - center
 		if to_heart.length() > SWORD_REACH:
 			cand = center + to_heart.normalized() * (SWORD_REACH - 0.15)
-		var gap := cand.distance_to(threat)
-		var score := gap - _feet_depth(tree, cand) * 6.0
+		var gap: float = cand.distance_to(threat)
+		var score: float = gap - _feet_depth(tree, cand) * 6.0
 		if score > best_score:
 			best_score = score
 			best = cand
