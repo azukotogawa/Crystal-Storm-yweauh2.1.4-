@@ -532,6 +532,12 @@ func _tick_detour(step: float) -> void:
 		extras.append("jump")
 	else:
 		extras.append("sprint")
+	var dodge := _Hazard.dodge_point(pos, _detour_goal, _Hazard.guardian_bubbles(tree))
+	if dodge != Vector2.INF and pos.distance_to(_detour_goal) > 8.0:
+		var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, _Hazard.guardian_bubbles(tree)), _yaw())
+		extras.append(flee)
+		if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
+			bot.set_target(dodge)
 	bot.extra_held = extras
 	bot.tick(pos, _yaw(), step)
 	if bot.arrived:

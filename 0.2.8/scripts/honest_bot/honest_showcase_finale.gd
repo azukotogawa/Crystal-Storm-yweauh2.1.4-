@@ -131,6 +131,15 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	if not _boss_wind and not _bosses(tree).is_empty():
 		_boss_wind = true
 		heart.fight.hold_attacks(_Pace.enemy_span("boss"))
+	var bubbles := _Hazard.guardian_bubbles(tree)
+	var slip := _Hazard.dodge_point(pos, pos, bubbles)
+	if slip != Vector2.INF:
+		var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, bubbles), _yaw(player))
+		heart.fight.bot.extra_held = PackedStringArray([flee, "sprint"])
+		_goto(dt, player, slip, aim)
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
 	if _Hazard.burning(tree, pos):
 		if not _burn_wind:
 			_burn_wind = true

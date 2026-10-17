@@ -1,10 +1,14 @@
 extends RefCounted
 
+const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
+const _Move = preload("res://entities/entity_navigation.gd")
+
 const BURN_DEPTH := 0.25
 const CLEAR_DEPTH := 0.12
 const HIT_COLUMNS := 1.65
 const SWORD_RANGE := 2.8
 const PAD_MIN := 1.2
+const BODY_CLEAR := 8.0
 
 
 static func depth_at(tree: SceneTree, at: Vector2) -> float:
@@ -58,6 +62,107 @@ static func leave_goal(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector
 	else:
 		away = away.normalized()
 	return pos + away * 8.0
+
+
+static func dodge_point(pos: Vector2, travel: Vector2, threats: Array) -> Vector2:
+	var best := Vector2.INF
+	var best_pen := 0.0
+	var near_goal := travel.distance_to(pos) <= 8.0
+	for row in threats:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var at: Vector2 = row.get("xz", pos)
+		var radius := float(row.get("radius", BODY_CLEAR))
+		var dist := pos.distance_to(at)
+		var pen := radius - dist
+		if pen <= 0.0:
+			continue
+		if near_goal and not bool(row.get("hard", false)):
+			continue
+		if pen <= best_pen:
+			continue
+		best_pen = pen
+		var away := pos - at
+		if away.length() < 0.05:
+			var side := travel - pos
+			away = Vector2(-side.y, side.x) if side.length() > 0.05 else Vector2(1.0, 0.0)
+		away = away.normalized()
+		best = pos + away * (pen + 2.5)
+	return best
+
+
+static func bubble_center(pos: Vector2, threats: Array) -> Vector2:
+	var best := pos
+	var best_pen := -1.0
+	for row in threats:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var at: Vector2 = row.get("xz", pos)
+		var radius := float(row.get("radius", BODY_CLEAR))
+		var pen := radius - pos.distance_to(at)
+		if pen > best_pen:
+			best_pen = pen
+			best = at
+	return best
+
+
+static func flee_action(from_xz: Vector2, threat: Vector2, yaw_degrees: float) -> String:
+	var away := from_xz - threat
+	if away.length_squared() < 0.0001:
+		away = Vector2(1.0, 0.0)
+	away = away.normalized()
+	var best := "move_forward"
+	var best_dot := -2.0
+	var options := {
+		"move_forward": Vector2(0.0, -1.0),
+		"move_back": Vector2(0.0, 1.0),
+		"move_left": Vector2(-1.0, 0.0),
+		"move_right": Vector2(1.0, 0.0),
+	}
+	for name in options.keys():
+		var dir: Vector2 = _Nav.world_delta(options[name], yaw_degrees)
+		if dir.length_squared() < 0.0001:
+			continue
+		var score := dir.normalized().dot(away)
+		if score > best_dot:
+			best_dot = score
+			best = str(name)
+	return best
+
+
+static func guardian_bubbles(tree: SceneTree) -> Array:
+	var out: Array = []
+	if tree == null:
+		return out
+	var vs := 1.0
+	var settings = WorldSettings.get_active()
+	if settings != null:
+		vs = maxf(float(settings.voxel_scale), 0.001)
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var kind := str(node.get("enemy_id"))
+		if kind != "spawn_elite" and kind != "origin_warden":
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		out.append({
+			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
+			"radius": BODY_CLEAR,
+			"hard": false,
+		})
+		var ring := node.get_node_or_null("TelegraphRing") as Node3D
+		if ring == null or not ring.visible:
+			continue
+		var ring_col := _Move.column_pos(ring.global_position)
+		out.append({
+			"xz": Vector2(float(ring_col.x) + 0.5, float(ring_col.y) + 0.5),
+			"radius": ring.scale.x / vs + 1.1,
+			"hard": true,
+		})
+	return out
 
 
 static func boss_off_heart(boss: Vector2, origin: Vector2) -> bool:

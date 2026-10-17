@@ -214,6 +214,8 @@ func _recover(pos: Vector2, origin: Vector2) -> void:
 
 func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
+	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+		return ""
 	var rows := _usable(_sense(tree))
 	if _foe_id != "" and not _alive.has(_foe_id):
 		_note_down()
@@ -470,7 +472,37 @@ func _usable(rows: Array) -> Array:
 	return out
 
 
+func _travel_goal(pos: Vector2, origin: Vector2) -> Vector2:
+	if bot.has_target:
+		return bot.target
+	return origin if origin.distance_to(pos) > 0.5 else pos + Vector2(12.0, 0.0)
+
+
+func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vector2, bodies: bool) -> bool:
+	var threats: Array = []
+	for row in _Hazard.guardian_bubbles(tree):
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		if bodies or bool(row.get("hard", false)):
+			threats.append(row)
+	var dodge := _Hazard.dodge_point(pos, travel, threats)
+	if dodge == Vector2.INF:
+		return false
+	var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, threats), _yaw(player))
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
+		bot.set_target(dodge)
+	bot.extra_held = PackedStringArray([flee, "sprint"])
+	bot.tick(pos, _yaw(player), dt)
+	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
+		_heal_idle()
+	return true
+
+
 func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2) -> String:
+	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
+		_heal_idle()
+	if _slip(dt, tree, player, pos, _Roster.pool_goal(pos, origin, 18.0), true):
+		return ""
 	if pos.distance_to(origin) > 36.0:
 		if _site_key != "":
 			_drop_site(false)

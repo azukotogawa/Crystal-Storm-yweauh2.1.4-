@@ -355,6 +355,23 @@ func _check_hazard() -> void:
 	if not _Hazard.boss_off_heart(Vector2(3.5, 0.5), Vector2.ZERO):
 		_fail("a warden three cells out should be safe to hit")
 		return
+	var beside := [{"xz": Vector2(2.0, 0.5), "radius": _Hazard.BODY_CLEAR, "hard": false}]
+	var slipped := _Hazard.dodge_point(Vector2(0.5, 0.5), Vector2(40.0, 0.5), beside)
+	if slipped == Vector2.INF or slipped.distance_to(Vector2(2.0, 0.5)) < _Hazard.BODY_CLEAR:
+		_fail("travel should step outside a guardian bubble, got %s" % slipped)
+		return
+	var held := _Hazard.dodge_point(Vector2(0.5, 0.5), Vector2(1.0, 0.5), beside)
+	if held != Vector2.INF:
+		_fail("a close swing should stay inside a soft bubble")
+		return
+	var ring := [{"xz": Vector2(0.5, 0.5), "radius": 3.0, "hard": true}]
+	var out := _Hazard.dodge_point(Vector2(0.5, 0.5), Vector2(0.5, 0.5), ring)
+	if out == Vector2.INF or out.distance_to(Vector2(0.5, 0.5)) < 3.0:
+		_fail("a telegraph ring should be left even on a close goal, got %s" % out)
+		return
+	if _Hazard.flee_action(Vector2.ZERO, Vector2(-4.0, 0.0), 0.0) != "move_right":
+		_fail("flee should strafe away without waiting to turn")
+		return
 	if _Finale.WIN_HOLD < 4.99:
 		_fail("win hold should stay on screen for 5s")
 		return
