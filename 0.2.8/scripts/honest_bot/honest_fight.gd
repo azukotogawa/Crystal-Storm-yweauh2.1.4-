@@ -492,7 +492,7 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 		var sites: Array = []
 		if world != null:
 			sites = _Walk.treasure_sites(world.feature_cells)
-		var site := _Farm.next_site(pos, sites, _done, _visits)
+		var site := _Farm.next_site(pos, sites, _done, _visits, _Farm.FARM_SITE_REACH)
 		if not site.is_empty():
 			_arm_site(site, tree)
 	if _site_key != "":

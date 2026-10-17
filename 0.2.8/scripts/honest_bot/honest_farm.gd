@@ -7,6 +7,7 @@ const CHIP_DEPTH_MIN := 0.05
 const CHIP_DEPTH_MAX := 2.3
 const SITE_CAP := 4
 const SITE_REACH := 1500.0
+const FARM_SITE_REACH := 96.0
 const SEEK_COLUMNS := 220.0
 const FARM_LIMIT := 900.0
 const CHIP_LIMIT := 480.0
@@ -41,9 +42,10 @@ static func site_key(at: Vector2) -> String:
 	return "%d:%d" % [int(round(at.x)), int(round(at.y))]
 
 
-static func next_site(from_xz: Vector2, sites: Array, done: Dictionary, visits: int) -> Dictionary:
+static func next_site(from_xz: Vector2, sites: Array, done: Dictionary, visits: int, reach: float = SITE_REACH) -> Dictionary:
 	if visits >= SITE_CAP:
 		return {}
+	var cap := reach if reach > 0.0 else SITE_REACH
 	var best: Dictionary = {}
 	var best_d := INF
 	for row in sites:
@@ -54,7 +56,7 @@ static func next_site(from_xz: Vector2, sites: Array, done: Dictionary, visits: 
 		if done.has(key):
 			continue
 		var dist := from_xz.distance_to(at)
-		if dist > SITE_REACH or dist >= best_d:
+		if dist > cap or dist >= best_d:
 			continue
 		best_d = dist
 		best = {"key": key, "xz": at, "distance": dist}

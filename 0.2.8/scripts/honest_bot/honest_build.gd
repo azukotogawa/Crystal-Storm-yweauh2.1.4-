@@ -434,22 +434,47 @@ func _craft_segment() -> String:
 			if not hands.pulse("hotbar_%d" % (slot + 1)):
 				return ""
 			return ""
-		if aim.x > 900000 or not _open_ground(aim):
-			aim = _free_cell(tries)
+		if aim.x > 900000 or _footprint_quarter(aim) < 0:
+			var found := _segment_cell(tries)
+			if found.x > 900000:
+				hands.set_held(_exit_crystal_held())
+				show_age += step_dt
+				if show_age < 1.2:
+					return ""
+				show_age = 0.0
+				tries += 1
+				if tries > 18:
+					print("FAIL structure wall_segment no footprint")
+					return "fail"
+				return ""
+			aim = found
 			spin = 0
 			show_age = 0.0
+		var want := _footprint_quarter(aim)
+		var weapon := _weapon()
+		if weapon != null and int(weapon.get("blueprint_quarter")) != want:
+			hands.pulse_key(KEY_Z)
+			return ""
+		if _spinning(aim):
+			_look_at(aim)
+			return ""
 		_look_at(aim)
 		var got := _cursor_cell()
+		if got != aim and _footprint_quarter(got) >= 0:
+			aim = got
+			spin = 0
+			show_age = 0.0
+			return ""
 		if got != aim or not _segment_ready(aim):
 			spin += 1
-			if spin < 90:
+			if spin < 48:
 				return ""
 			spin = 0
 			tries += 1
-			if tries > 12:
+			if tries > 18:
 				print("FAIL structure wall_segment cursor %s reason %s" % [got, _place_reason()])
 				return "fail"
-			aim = _free_cell(tries)
+			aim = Vector2i(999999, 999999)
 			show_age = 0.0
 			return ""
 		if show_age < _Pace.PRE_PAUSE:
@@ -477,7 +502,7 @@ func _craft_segment() -> String:
 		print("FAIL structure wall_segment tiles %d piece %d reason %s" % [_new_tiles(), _piece_count(), _place_reason()])
 		return "fail"
 	print("SHOWCASE structure place miss tiles %d reason %s" % [_new_tiles(), _place_reason()])
-	aim = _free_cell(tries)
+	aim = Vector2i(999999, 999999)
 	spin = 0
 	beat = 24
 	return ""
@@ -516,6 +541,40 @@ func _piece_selected() -> bool:
 	if weapon == null or not weapon.has_method("active_blueprint_id"):
 		return false
 	return weapon.active_blueprint_id() == &"wall_segment"
+
+
+func _footprint_quarter(cell: Vector2i) -> int:
+	if cell.x > 900000 or not _open_ground(cell):
+		return -1
+	var weapon := _weapon()
+	if weapon == null or not _piece_selected():
+		return -1
+	var world = player.get("world")
+	var column := Vector3(float(cell.x) + 0.5, 0.0, float(cell.y) + 0.5)
+	for quarter in 4:
+		var plan: Dictionary = weapon.ghost_preview(&"wall_segment", column, quarter, world)
+		if bool(plan.get("valid", false)):
+			return quarter
+	return -1
+
+
+func _segment_cell(start: int) -> Vector2i:
+	var origin := _column()
+	var ring: Array[Vector2i] = []
+	for dist in range(2, 14):
+		for dz in range(-dist, dist + 1):
+			for dx in range(-dist, dist + 1):
+				if maxi(absi(dx), absi(dz)) != dist:
+					continue
+				ring.append(Vector2i(dx, dz))
+	if ring.is_empty():
+		return Vector2i(999999, 999999)
+	var n := ring.size()
+	for k in n:
+		var cell: Vector2i = origin + ring[posmod(start + k, n)]
+		if _footprint_quarter(cell) >= 0:
+			return cell
+	return Vector2i(999999, 999999)
 
 
 func _segment_ready(cell: Vector2i) -> bool:

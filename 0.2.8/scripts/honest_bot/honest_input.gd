@@ -96,7 +96,8 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 	var screen := _Aim.screen_pos_for_column(body, world, col_x, col_z)
 	var size := vp.get_visible_rect().size
 	var key := Vector2i(floori(col_x), floori(col_z))
-	if _seat_key != key:
+	var seated := _seat_key == key and _seat_at.x >= 0.0 and _cell_at(body, world, _seat_at, size) == key
+	if not seated:
 		_seat_key = key
 		_seat_at = _seat_on_cell(body, world, key, screen, size)
 	var at := screen

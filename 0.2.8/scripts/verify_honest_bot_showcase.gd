@@ -479,6 +479,9 @@ func _check_farm() -> void:
 	if not _Farm.next_site(Vector2.ZERO, sites, {"10:0": true, "400:0": true}, 0).is_empty():
 		_fail("a treasure past 1500 columns should be ignored")
 		return
+	if not _Farm.next_site(Vector2.ZERO, sites, {"10:0": true}, 0, _Farm.FARM_SITE_REACH).is_empty():
+		_fail("farm treasure past %d columns should wait" % int(_Farm.FARM_SITE_REACH))
+		return
 	if not _Farm.next_site(Vector2.ZERO, sites, {}, _Farm.SITE_CAP).is_empty():
 		_fail("the treasure visit cap should stop the tour")
 		return
