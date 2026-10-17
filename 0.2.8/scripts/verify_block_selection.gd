@@ -126,8 +126,12 @@ func _run() -> void:
 		var omat := outline.material_override as StandardMaterial3D
 		if omat == null or not omat.no_depth_test:
 			_fail("outline is hidden by terrain depth")
+		elif omat.albedo_color.r < 0.8 or omat.albedo_color.g < 0.8 or omat.albedo_color.b < 0.8:
+			_fail("dig edge is still neon, got %s" % omat.albedo_color)
+		elif omat.transparency != BaseMaterial3D.TRANSPARENCY_ALPHA:
+			_fail("dig edge is opaque")
 		else:
-			_ok("outline is one mesh, unshaded, no depth test")
+			_ok("outline is one mesh, unshaded, no depth test, light edge")
 	if face_node == null:
 		_fail("highlight face marker missing")
 	else:

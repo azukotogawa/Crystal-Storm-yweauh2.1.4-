@@ -281,8 +281,8 @@ func _test_ghost_validity() -> void:
 func _test_ghost_uses_build_highlight() -> void:
 	var good: Color = _Highlight.structure_ghost_tint(true)
 	var bad: Color = _Highlight.structure_ghost_tint(false)
-	if good.g <= 0.75 or good.r >= 0.55:
-		_fail("valid ghost tint %s must match the green build highlight" % good)
+	if good.b <= good.g or good.b <= good.r or good.a >= 0.45:
+		_fail("valid ghost tint %s must be a transparent blue blueprint" % good)
 		return
 	if bad.r <= bad.g or bad.r < 0.8:
 		_fail("invalid ghost tint %s must match the blocked build highlight" % bad)

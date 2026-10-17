@@ -100,15 +100,20 @@ func _run() -> void:
 				var highlight: Node = player.get_node_or_null("TargetHighlight")
 				var box: MeshInstance3D = highlight.get_node_or_null("TargetBox") as MeshInstance3D if highlight else null
 				var hl_visible := box != null and box.visible
-				var hl_orange := false
+				var hl_light := false
 				if box != null and box.material_override is StandardMaterial3D:
 					var c: Color = (box.material_override as StandardMaterial3D).albedo_color
-					hl_orange = c.r > 0.75 and c.g < 0.65
-				if not hl_visible or not hl_orange:
+					hl_light = c.r > 0.8 and c.g > 0.8 and c.b > 0.8 and c.a < 0.3
+				var edge := highlight.get_node_or_null("TargetBox/TargetOutline") as MeshInstance3D if highlight else null
+				var edge_light := false
+				if edge != null and edge.material_override is StandardMaterial3D:
+					var e: Color = (edge.material_override as StandardMaterial3D).albedo_color
+					edge_light = e.r > 0.8 and e.g > 0.8 and e.b > 0.8 and e.a < 0.95
+				if not hl_visible or not hl_light or not edge_light:
 					continue
 				print(
-					"OK dig highlight visible cell=%s y=%.2f walk=%.2f orange=%s"
-					% [dig_info.get("cell"), dig_y, walk, hl_orange]
+					"OK dig highlight visible cell=%s y=%.2f walk=%.2f light=%s"
+					% [dig_info.get("cell"), dig_y, walk, hl_light]
 				)
 				placement_ok = true
 				break
@@ -118,7 +123,7 @@ func _run() -> void:
 			break
 
 	if not placement_ok:
-		push_error("dig highlight never visible orange on column top in main scene")
+		push_error("dig highlight never visible as a light edge on column top in main scene")
 		failed = true
 
 	if failed:

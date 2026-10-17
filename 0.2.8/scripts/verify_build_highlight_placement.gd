@@ -108,15 +108,15 @@ func _run() -> void:
 				var highlight: Node = player.get_node_or_null("TargetHighlight")
 				var box: MeshInstance3D = highlight.get_node_or_null("TargetBox") as MeshInstance3D if highlight else null
 				var hl_visible := box != null and box.visible
-				var hl_green := false
+				var hl_blue := false
 				if box != null and box.material_override is StandardMaterial3D:
 					var c: Color = (box.material_override as StandardMaterial3D).albedo_color
-					hl_green = c.g > 0.75 and c.r < 0.55
-				if not hl_visible or not hl_green:
+					hl_blue = c.b > 0.75 and c.b > c.r + 0.2 and c.b > c.g and c.a < 0.55
+				if not hl_visible or not hl_blue:
 					continue
 				print(
-					"OK build highlight visible cell=%s y=%.2f walk=%.2f green=%s"
-					% [build_info.get("cell"), build_y, walk, hl_green]
+					"OK build highlight visible cell=%s y=%.2f walk=%.2f blue=%s"
+					% [build_info.get("cell"), build_y, walk, hl_blue]
 				)
 				placement_ok = true
 				break
@@ -126,7 +126,7 @@ func _run() -> void:
 			break
 
 	if not placement_ok:
-		push_error("build highlight never visible green on placement top in main scene")
+		push_error("build highlight never visible blue on placement top in main scene")
 		failed = true
 
 	if failed:

@@ -7,6 +7,7 @@ const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _LivingForce = preload("res://world/living_force.gd")
+const _MarkerLook = preload("res://config/target_marker_look.gd")
 
 var player: Player
 var world: InfiniteNoiseWorld
@@ -20,9 +21,12 @@ const HOVER_PULSE_HZ := 2.4
 var _mesh: MeshInstance3D
 var _mat: StandardMaterial3D
 var _outline: MeshInstance3D
+var _outline_mat: StandardMaterial3D
 var _face: MeshInstance3D
+var _face_mat: StandardMaterial3D
 var _ghost: MeshInstance3D
 var _ghost_mat: StandardMaterial3D
+var _look
 
 var _stable_cell: Vector2i = Vector2i(999999, 999999)
 var _display_pos: Vector3 = Vector3.ZERO
@@ -55,6 +59,7 @@ var _brush_shown: bool = false
 const STRUCTURE_GHOST_POOL := 24
 var _structure_marks: Array[MeshInstance3D] = []
 var _structure_mats: Array[StandardMaterial3D] = []
+var _structure_edges: Array[StandardMaterial3D] = []
 
 
 func _ready() -> void:
@@ -63,6 +68,7 @@ func _ready() -> void:
 	chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	_crystal = get_tree().get_first_node_in_group("crystal_manager")
 	process_priority = -20
+	_look = _marker_look()
 	_build_mesh()
 	_build_ghost()
 	_build_brush_pool()
@@ -82,8 +88,11 @@ func _build_mesh() -> void:
 	_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	_mat.render_priority = 127
 	_mat.no_depth_test = true
-	_mat.albedo_color = Color(1.0, 0.92, 0.2, 0.55)
+	var look = _marker_look()
+	_mat.albedo_color = look.fill_albedo(&"dig", 0.0, 0.0, false)
 	_mat.emission_enabled = true
+	_mat.emission = look.fill_emission(&"dig", 0.0, false)
+	_mat.emission_energy_multiplier = look.fill_energy(&"dig", 0.0, 0.0, false)
 	_mesh.material_override = _mat
 	_mesh.visible = false
 	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -99,7 +108,7 @@ func _build_outline() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var h := 0.5
-	var t := 0.055
+	var t: float = _marker_look().edge_thickness
 	var corners: Array[Vector3] = [
 		Vector3(-h, -h, -h), Vector3(h, -h, -h), Vector3(h, -h, h), Vector3(-h, -h, h),
 		Vector3(-h, h, -h), Vector3(h, h, -h), Vector3(h, h, h), Vector3(-h, h, h),
@@ -111,12 +120,15 @@ func _build_outline() -> void:
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.no_depth_test = true
 	mat.render_priority = 127
-	mat.albedo_color = Color(1.0, 0.25, 0.95, 1.0)
+	var look = _marker_look()
+	mat.albedo_color = look.edge_albedo(&"dig", false)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.2, 0.9)
-	mat.emission_energy_multiplier = 1.6
+	mat.emission = look.edge_emission(&"dig", false)
+	mat.emission_energy_multiplier = look.edge_energy(&"dig", false)
+	_outline_mat = mat
 	_outline.material_override = mat
 	_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh.add_child(_outline)
@@ -163,10 +175,12 @@ func _build_face_marker() -> void:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.no_depth_test = true
 	mat.render_priority = 127
-	mat.albedo_color = Color(1.0, 0.95, 0.35, 0.92)
+	var look = _marker_look()
+	mat.albedo_color = look.face_albedo(&"dig", false)
 	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.9, 0.2)
-	mat.emission_energy_multiplier = 1.2
+	mat.emission = look.face_emission(&"dig", false)
+	mat.emission_energy_multiplier = look.face_energy(&"dig", false)
+	_face_mat = mat
 	_face.material_override = mat
 	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_mesh.add_child(_face)
@@ -211,10 +225,11 @@ func _build_ghost() -> void:
 	_ghost_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	_ghost_mat.render_priority = 126
 	_ghost_mat.no_depth_test = true
+	var look = _marker_look()
 	_ghost_mat.emission_enabled = true
-	_ghost_mat.albedo_color = Color(1.0, 0.9, 0.3, 0.18)
-	_ghost_mat.emission = Color(1.0, 0.85, 0.2)
-	_ghost_mat.emission_energy_multiplier = 0.35
+	_ghost_mat.albedo_color = look.predict_albedo(&"dig", 0.0)
+	_ghost_mat.emission = look.predict_emission(&"dig")
+	_ghost_mat.emission_energy_multiplier = look.predict_energy_at(0.0)
 	_ghost.material_override = _ghost_mat
 	_ghost.visible = false
 	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -328,32 +343,7 @@ func _process(delta: float) -> void:
 	_last_cell = cell
 
 	var blocked: bool = bool(info.get("blocked", false)) or not bool(info.get("valid", false))
-	if blocked:
-		_mat.albedo_color = Color(1.0, 0.15, 0.12, 0.32 + 0.12 * pulse)
-		_mat.emission = Color(0.9, 0.1, 0.08)
-		_mat.emission_energy_multiplier = 0.45 + 0.35 * pulse
-	else:
-		match mode:
-			&"dig":
-				_mat.albedo_color = Color(1.0, 0.52, 0.1, 0.28 + 0.16 * pulse)
-				_mat.emission = Color(1.0, 0.45, 0.05)
-				_mat.emission_energy_multiplier = 0.55 + 0.55 * pulse
-			&"build":
-				_mat.albedo_color = Color(0.25, 1.0, 0.4, 0.28 + 0.16 * pulse + 0.25 * place_boost)
-				_mat.emission = Color(0.2, 0.95, 0.35).lerp(Color(1.0, 1.0, 0.7), place_boost)
-				_mat.emission_energy_multiplier = 0.55 + 0.55 * pulse + 1.4 * place_boost
-			&"attack":
-				_mat.albedo_color = Color(1.0, 0.22, 0.18, 0.3 + 0.14 * pulse)
-				_mat.emission = Color(0.95, 0.2, 0.15)
-				_mat.emission_energy_multiplier = 0.5 + 0.45 * pulse
-			&"ranged":
-				_mat.albedo_color = Color(0.45, 0.75, 1.0, 0.28 + 0.14 * pulse)
-				_mat.emission = Color(0.4, 0.7, 1.0)
-				_mat.emission_energy_multiplier = 0.5 + 0.4 * pulse
-			_:
-				_mat.albedo_color = Color(0.35, 0.95, 0.45, 0.3)
-				_mat.emission = Color(0.3, 0.9, 0.4)
-				_mat.emission_energy_multiplier = 0.5
+	_paint_marker(mode, pulse, place_boost, blocked)
 
 	_update_prediction(info, range_v, layer, scale, pulse)
 	if mode == &"dig":
@@ -479,9 +469,28 @@ func _highlight_brush_radius() -> int:
 
 
 static func structure_ghost_tint(valid: bool) -> Color:
-	if valid:
-		return Color(0.25, 1.0, 0.4, 0.36)
-	return Color(1.0, 0.15, 0.12, 0.38)
+	return _MarkerLook.load_active().structure_tint(valid)
+
+
+func _marker_look():
+	if _look == null:
+		_look = _MarkerLook.load_active()
+	return _look
+
+
+func _paint_marker(mode: StringName, pulse: float, place_boost: float, blocked: bool) -> void:
+	var look = _marker_look()
+	_mat.albedo_color = look.fill_albedo(mode, pulse, place_boost, blocked)
+	_mat.emission = look.fill_emission(mode, place_boost, blocked)
+	_mat.emission_energy_multiplier = look.fill_energy(mode, pulse, place_boost, blocked)
+	if _outline_mat != null:
+		_outline_mat.albedo_color = look.edge_albedo(mode, blocked)
+		_outline_mat.emission = look.edge_emission(mode, blocked)
+		_outline_mat.emission_energy_multiplier = look.edge_energy(mode, blocked)
+	if _face_mat != null:
+		_face_mat.albedo_color = look.face_albedo(mode, blocked)
+		_face_mat.emission = look.face_emission(mode, blocked)
+		_face_mat.emission_energy_multiplier = look.face_energy(mode, blocked)
 
 
 func _build_structure_pool() -> void:
@@ -502,17 +511,35 @@ func _add_structure_mark() -> void:
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
 	mat.render_priority = 126
 	mat.no_depth_test = true
+	var look = _marker_look()
 	mat.emission_enabled = true
-	mat.albedo_color = structure_ghost_tint(true)
-	mat.emission = Color(0.2, 0.95, 0.35)
-	mat.emission_energy_multiplier = 0.45
+	mat.albedo_color = look.structure_tint(true)
+	mat.emission = look.structure_glow(true)
+	mat.emission_energy_multiplier = look.structure_energy
 	mark.material_override = mat
+	var edge := MeshInstance3D.new()
+	edge.name = "Edge"
+	edge.mesh = _outline.mesh if _outline != null else box
+	var edge_mat := StandardMaterial3D.new()
+	edge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	edge_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	edge_mat.no_depth_test = true
+	edge_mat.render_priority = 127
+	edge_mat.emission_enabled = true
+	edge_mat.albedo_color = look.edge_albedo(&"build", false)
+	edge_mat.emission = look.edge_emission(&"build", false)
+	edge_mat.emission_energy_multiplier = look.edge_energy(&"build", false)
+	edge.material_override = edge_mat
+	edge.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mark.add_child(edge)
 	mark.visible = false
 	mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mark.sorting_offset = 3.6
 	add_child(mark)
 	_structure_marks.append(mark)
 	_structure_mats.append(mat)
+	_structure_edges.append(edge_mat)
 
 
 func hide_structure_ghost() -> void:
@@ -535,12 +562,15 @@ func show_structure_ghost(cells: Array) -> void:
 		var mark := _structure_marks[i]
 		var mat := _structure_mats[i]
 		var ok := bool(cell.get("valid", false))
+		var look = _marker_look()
 		var tint := structure_ghost_tint(ok)
 		mat.albedo_color = tint
-		if ok:
-			mat.emission = Color(0.2, 0.95, 0.35)
-		else:
-			mat.emission = Color(0.9, 0.1, 0.08)
+		mat.emission = look.structure_glow(ok)
+		mat.emission_energy_multiplier = look.structure_energy
+		var edge_mat := _structure_edges[i]
+		edge_mat.albedo_color = look.edge_albedo(&"build", not ok)
+		edge_mat.emission = look.edge_emission(&"build", not ok)
+		edge_mat.emission_energy_multiplier = look.edge_energy(&"build", not ok)
 		mark.global_position = cell.get("position", Vector3.ZERO)
 		mark.scale = box
 		mark.visible = true
@@ -671,14 +701,10 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 		if not _ghost.visible:
 			return
 		var cached_mode: StringName = info.get("mode", &"none")
-		var cached_a: float = 0.12 + 0.08 * pulse
-		if cached_mode == &"dig":
-			_ghost_mat.albedo_color = Color(1.0, 0.55, 0.12, cached_a)
-			_ghost_mat.emission = Color(1.0, 0.5, 0.08)
-		else:
-			_ghost_mat.albedo_color = Color(0.3, 1.0, 0.45, cached_a)
-			_ghost_mat.emission = Color(0.25, 0.95, 0.35)
-		_ghost_mat.emission_energy_multiplier = 0.25 + 0.2 * pulse
+		var look = _marker_look()
+		_ghost_mat.albedo_color = look.predict_albedo(cached_mode, pulse)
+		_ghost_mat.emission = look.predict_emission(cached_mode)
+		_ghost_mat.emission_energy_multiplier = look.predict_energy_at(pulse)
 		return
 	var mode: StringName = info.get("mode", &"none")
 	if mode not in [&"dig", &"build"] or not bool(info.get("valid", false)):
@@ -703,14 +729,10 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 	var gpos: Vector3 = pred_info.get("world_pos", Vector3.ZERO)
 	gpos.y -= layer * 0.5
 	_ghost.global_position = gpos
-	var base_a: float = 0.12 + 0.08 * pulse
-	if mode == &"dig":
-		_ghost_mat.albedo_color = Color(1.0, 0.55, 0.12, base_a)
-		_ghost_mat.emission = Color(1.0, 0.5, 0.08)
-	else:
-		_ghost_mat.albedo_color = Color(0.3, 1.0, 0.45, base_a)
-		_ghost_mat.emission = Color(0.25, 0.95, 0.35)
-	_ghost_mat.emission_energy_multiplier = 0.25 + 0.2 * pulse
+	var look = _marker_look()
+	_ghost_mat.albedo_color = look.predict_albedo(mode, pulse)
+	_ghost_mat.emission = look.predict_emission(mode)
+	_ghost_mat.emission_energy_multiplier = look.predict_energy_at(pulse)
 
 
 func _active_range() -> float:
