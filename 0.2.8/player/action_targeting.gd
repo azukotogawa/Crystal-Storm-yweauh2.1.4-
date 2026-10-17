@@ -14,6 +14,8 @@ const INTERACTION_RANGE := 8.0
 const PICK_TOLERANCE_SCALE := 0.45
 static var last_pick_face: int = 0
 static var last_pick_exact: bool = false
+static var _event_pos := Vector2.ZERO
+static var _event_ok := false
 static var _aabb_t: float = 0.0
 static var _aabb_face: int = 0
 static var _box_min: Vector3 = Vector3.ZERO
@@ -299,7 +301,7 @@ static func _pick_column_from_mouse(
 	if cam == null or vp == null:
 		return Vector3.ZERO
 	var ws = _WorldSettings.get_active()
-	var mouse := vp.get_mouse_position()
+	var mouse := pointer_in(vp)
 	var rect := vp.get_visible_rect()
 	if rect.size.x > 4.0 and rect.size.y > 4.0:
 		if mouse.x < rect.position.x - 2.0 or mouse.y < rect.position.y - 2.0 \
@@ -720,6 +722,27 @@ static func predict_next_column(
 	return Vector3(float(wx) + 0.5, from_col.y, float(wz) + 0.5)
 
 
+static func note_event_mouse(at: Vector2, view: Vector2) -> void:
+	if at.x < 0.0 or at.y < 0.0 or at.x > view.x or at.y > view.y:
+		return
+	_event_pos = at
+	_event_ok = true
+
+
+static func pointer_in(vp: Viewport) -> Vector2:
+	if vp == null:
+		return Vector2.ZERO
+	var mouse := vp.get_mouse_position()
+	if not _event_ok:
+		return mouse
+	if mouse.distance_squared_to(_event_pos) <= 4.0:
+		return mouse
+	var size := vp.get_visible_rect().size
+	if _event_pos.x >= 0.0 and _event_pos.y >= 0.0 and _event_pos.x <= size.x and _event_pos.y <= size.y:
+		return _event_pos
+	return mouse
+
+
 static func screen_pos_for_column(
 	player: Node3D,
 	world: InfiniteNoiseWorld,
@@ -764,7 +787,7 @@ static func cursor_cell_under_mouse(player: Node3D, range_v: float) -> Vector3:
 	var vp: Viewport = player.get_viewport()
 	if cam == null or vp == null:
 		return Vector3.ZERO
-	var mouse := vp.get_mouse_position()
+	var mouse := pointer_in(vp)
 	var rect := vp.get_visible_rect()
 	if rect.size.x > 4.0 and rect.size.y > 4.0:
 		if mouse.x < rect.position.x - 2.0 or mouse.y < rect.position.y - 2.0 \

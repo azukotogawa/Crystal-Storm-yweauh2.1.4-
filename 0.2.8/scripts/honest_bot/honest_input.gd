@@ -94,9 +94,12 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 	var screen := _Aim.screen_pos_for_column(body, world, col_x, col_z)
 	if not _on_view(vp, screen):
 		return
+	_Aim.note_event_mouse(screen, vp.get_visible_rect().size)
+	vp.notification(NOTIFICATION_VP_MOUSE_ENTER)
 	vp.warp_mouse(screen)
 	var motion := InputEventMouseMotion.new()
 	_point(motion, screen)
+	motion.relative = screen - vp.get_mouse_position()
 	vp.push_input(motion, true)
 
 
@@ -110,6 +113,7 @@ func click_at(node: Node, at: Vector2, pressed: bool) -> bool:
 		return false
 	if not _press_slot():
 		return false
+	_Aim.note_event_mouse(at, vp.get_visible_rect().size)
 	vp.warp_mouse(at)
 	var ev := InputEventMouseButton.new()
 	ev.button_index = MOUSE_BUTTON_LEFT

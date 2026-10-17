@@ -377,10 +377,23 @@ func _build_preview_held() -> bool:
 	return not _ItemTypes.has_right_click_ability(str(slot.id))
 
 
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouse):
+		return
+	var vp := get_viewport()
+	if vp == null:
+		return
+	_ActionTargeting.note_event_mouse((event as InputEventMouse).position, vp.get_visible_rect().size)
+
+
+func _pointer() -> Vector2:
+	return _ActionTargeting.pointer_in(get_viewport())
+
+
 func _aim_is_static(range_v: float, build_held: bool) -> bool:
 	if not _aim_cache_ok or player == null:
 		return false
-	var mouse := get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	var mouse := _pointer()
 	if mouse.distance_squared_to(_aim_mouse) > 1.0:
 		return false
 	var pxz := Vector2(player.voxel_position.x, player.voxel_position.z)
@@ -430,7 +443,7 @@ func _active_item_id() -> String:
 
 func _remember_aim(range_v: float, build_held: bool, hover_col: Vector3, stable_col: Vector3, info: Dictionary) -> void:
 	_aim_cache_ok = true
-	_aim_mouse = get_viewport().get_mouse_position() if get_viewport() else Vector2.ZERO
+	_aim_mouse = _pointer()
 	_aim_pxz = Vector2(player.voxel_position.x, player.voxel_position.z)
 	_aim_yaw = 0.0
 	_aim_pitch = 0.0
