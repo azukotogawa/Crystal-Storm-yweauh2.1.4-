@@ -46,9 +46,9 @@ ambient_light_energy = 0.22
 tonemap_mode = 2
 tonemap_exposure = 0.72
 ssao_enabled = true
-ssao_radius = 0.55
-ssao_intensity = 0.85
-ssao_power = 1.5
+ssao_radius = 1.35
+ssao_intensity = 0.55
+ssao_power = 1.1
 ssao_detail = 0.35
 fog_enabled = true
 fog_light_color = Color(0.72, 0.78, 0.9, 1)
@@ -156,7 +156,7 @@ script = ExtResource("23_devasst")
 environment = SubResource("Environment_tipki")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1030504662]
-transform = Transform3D(0.7071067, -0.6532814, 0.27059802, 0, 0.3826834, 0.92387944, -0.7071067, -0.6532814, 0.27059802, 0, 0, 0)
+transform = Transform3D(0.568432, 0, -0.82273, -0.637673, 0.631876, -0.440574, 0.519864, 0.775069, 0.359179, 0, 0, 0)
 light_color = Color(0.72, 0.78, 0.9, 1)
 light_energy = 0.58
 shadow_enabled = true

@@ -5,6 +5,7 @@ extends RefCounted
 const _AO = preload("res://helpers/terrain_vertex_ao.gd")
 const _Shadow = preload("res://helpers/contact_shadow.gd")
 const _Quality = preload("res://config/performance_quality_config.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 const SUN := Vector3(0.55, 0.82, 0.38)
 
@@ -15,12 +16,16 @@ static func cheap_for_preset(preset: int) -> bool:
 
 static func apply_preset(preset: int) -> void:
 	var cheap := cheap_for_preset(preset)
+	var cfg = _Quality.apply_preset(preset)
 	_AO.bake_enabled = cheap
 	ensure_globals()
 	RenderingServer.global_shader_parameter_set("terrain_ao_strength", 1.0 if cheap else 0.0)
 	RenderingServer.global_shader_parameter_set("terrain_sun_dir", SUN)
 	RenderingServer.global_shader_parameter_set("terrain_detail", 1.0)
 	RenderingServer.global_shader_parameter_set("terrain_cave_fog", 0.55)
+	RenderingServer.global_shader_parameter_set("terrain_corner_darken", float(cfg.terrain_corner_darken))
+	RenderingServer.global_shader_parameter_set("terrain_shadow_darken", float(cfg.terrain_shadow_darken))
+	RenderingServer.global_shader_parameter_set("terrain_cell_size", _cell_size())
 	_Shadow.set_globally_enabled(cheap)
 
 
@@ -30,6 +35,16 @@ static func ensure_globals() -> void:
 	_add(have, &"terrain_sun_dir", RenderingServer.GLOBAL_VAR_TYPE_VEC3, SUN)
 	_add(have, &"terrain_detail", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add(have, &"terrain_cave_fog", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.55)
+	_add(have, &"terrain_corner_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.42)
+	_add(have, &"terrain_shadow_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.45)
+	_add(have, &"terrain_cell_size", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 2.0)
+
+
+static func _cell_size() -> float:
+	var ws = _WorldSettings.get_active()
+	if ws == null:
+		return 2.0
+	return maxf(float(ws.voxel_scale), 0.25)
 
 
 static func _add(have: PackedStringArray, param: StringName, type: int, default_value: Variant) -> void:

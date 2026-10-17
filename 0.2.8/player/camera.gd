@@ -73,6 +73,8 @@ var _scroll_lead: Vector3 = Vector3.ZERO
 func _ready():
 	projection = Camera3D.PROJECTION_ORTHOGONAL
 	size = zoom_level
+	# Ortho directional shadows are sized from this far plane, not shadow_max_distance.
+	far = 520.0
 	
 	target = get_tree().get_first_node_in_group("player")
 	player = target
@@ -344,6 +346,9 @@ func _ensure_cutaway_globals() -> void:
 	_add_cutaway_global(have, &"terrain_sun_dir", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0.55, 0.82, 0.38))
 	_add_cutaway_global(have, &"terrain_detail", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add_cutaway_global(have, &"terrain_cave_fog", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.55)
+	_add_cutaway_global(have, &"terrain_corner_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.42)
+	_add_cutaway_global(have, &"terrain_shadow_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.45)
+	_add_cutaway_global(have, &"terrain_cell_size", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 2.0)
 
 
 func _add_cutaway_global(have: PackedStringArray, param: StringName, type: int, default_value: Variant) -> void:

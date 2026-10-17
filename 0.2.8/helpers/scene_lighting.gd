@@ -79,7 +79,7 @@ static func _apply_env(env: Environment, quality) -> void:
 	env.ssao_enabled = bool(quality.ssao_enabled)
 	env.ssao_radius = float(quality.ssao_radius)
 	env.ssao_intensity = float(quality.ssao_intensity)
-	env.ssao_power = 1.5
+	env.ssao_power = float(quality.ssao_power)
 	env.ssao_detail = 0.35
 	env.fog_enabled = bool(quality.fog_enabled)
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL

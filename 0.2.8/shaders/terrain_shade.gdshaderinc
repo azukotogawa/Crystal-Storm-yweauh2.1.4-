@@ -1,6 +1,13 @@
-// Cheap terrain lighting for unshaded shaders. No shadow maps.
-// Included after the cutaway_* and terrain_* global uniforms.
-// Crystal glow is atlas column 6, rows 1, 2, 3, and 5 only (not mountain row 4).
+// Cheap terrain lighting. Crystal glow is atlas column 6, rows 1, 2, 3, and 5 only.
+// Corner darkening is the product of both axes. One axis alone reads as a grid line.
+
+global uniform float terrain_ao_strength;
+global uniform vec3 terrain_sun_dir;
+global uniform float terrain_detail;
+global uniform float terrain_cave_fog;
+global uniform float terrain_corner_darken;
+global uniform float terrain_cell_size;
+global uniform float terrain_shadow_darken;
 
 float cs_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -59,5 +66,42 @@ vec3 cs_finish(vec3 albedo, vec3 world_n, vec2 repeated_uv, vec3 world_pos, floa
 	float far = clamp((far_d - 28.0) / 100.0, 0.0, 1.0);
 	float fog = max(below * 0.55, far * 0.22) * clamp(terrain_cave_fog, 0.0, 1.0);
 	col = mix(col, vec3(0.58, 0.64, 0.74), fog);
+	return col;
+}
+
+float cs_corner_mask(vec3 world_pos, vec3 world_n) {
+	float cell = terrain_cell_size;
+	if (cell < 0.05) {
+		cell = 2.0;
+	}
+	vec3 n = world_n;
+	if (dot(n, n) < 0.001) {
+		n = vec3(0.0, 1.0, 0.0);
+	} else {
+		n = normalize(n);
+	}
+	vec3 p = world_pos / cell;
+	vec2 axes = fract(p.xz);
+	if (abs(n.y) <= 0.65) {
+		if (abs(n.x) > abs(n.z)) {
+			axes = fract(p.zy);
+		} else {
+			axes = fract(p.xy);
+		}
+	}
+	vec2 q = min(axes, vec2(1.0) - axes);
+	float cx = 1.0 - smoothstep(0.0, 0.22, q.x);
+	float cy = 1.0 - smoothstep(0.0, 0.22, q.y);
+	return cx * cy;
+}
+
+vec3 cs_depth(vec3 albedo, vec3 world_n, vec3 world_pos, float ao) {
+	float ao_f = ao;
+	if (ao_f < 0.02) {
+		ao_f = 1.0;
+	}
+	vec3 col = albedo * mix(1.0, ao_f, clamp(terrain_ao_strength, 0.0, 1.0));
+	float mask = cs_corner_mask(world_pos, world_n);
+	col *= 1.0 - mask * clamp(terrain_corner_darken, 0.0, 0.75);
 	return col;
 }

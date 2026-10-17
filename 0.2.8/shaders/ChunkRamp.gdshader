@@ -3,7 +3,7 @@ shader_type spatial;
 // Ramps are custom meshes with sloped normals. The voxel face-select shader
 // (ChunkView) discards non-axis faces and punched black diamonds in the
 // landing column. This shader always draws the wedge/corner.
-render_mode unshaded, cull_disabled, depth_draw_opaque;
+render_mode ambient_light_disabled, specular_disabled, cull_disabled, depth_draw_opaque;
 
 // Cave cutaway. Ramp geometry is unchanged. Keep in sync with helpers/camera_cutaway.gd.
 global uniform float cutaway_enabled;
@@ -18,6 +18,7 @@ uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
 #include "res://shaders/atlas_sample.gdshaderinc"
+#include "res://shaders/terrain_shade.gdshaderinc"
 
 varying flat vec4 instance_data;
 
@@ -62,5 +63,13 @@ void fragment() {
 	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.002) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
-	ALBEDO = tex_color.rgb * 0.92;
+	vec3 ramp_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 ramp_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	ALBEDO = cs_depth(tex_color.rgb * 0.92, ramp_n, ramp_pos, 1.0);
+}
+
+void light() {
+	float lit = clamp(ATTENUATION, 0.0, 1.0);
+	float dark = clamp(terrain_shadow_darken, 0.0, 0.8);
+	DIFFUSE_LIGHT += vec3(mix(1.0 - dark, 1.0, lit));
 }

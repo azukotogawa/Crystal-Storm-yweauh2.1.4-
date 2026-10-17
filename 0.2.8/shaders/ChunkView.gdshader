@@ -1,6 +1,6 @@
 shader_type spatial;
 
-render_mode unshaded, cull_disabled, depth_draw_opaque;
+render_mode ambient_light_disabled, specular_disabled, cull_disabled, depth_draw_opaque;
 
 // Cave cutaway. Literals for the rim match helpers/camera_cutaway.gd (T_MIN 0.05).
 global uniform float cutaway_enabled;
@@ -15,6 +15,7 @@ uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
 #include "res://shaders/atlas_sample.gdshaderinc"
+#include "res://shaders/terrain_shade.gdshaderinc"
 
 varying flat vec4 instance_data;
 
@@ -107,4 +108,13 @@ void fragment() {
     if (face_code < 0.5) {
         ALBEDO *= 0.96;
     }
+    vec3 depth_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+    vec3 depth_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+    ALBEDO = cs_depth(ALBEDO, depth_n, depth_pos, 1.0);
+}
+
+void light() {
+    float lit = clamp(ATTENUATION, 0.0, 1.0);
+    float dark = clamp(terrain_shadow_darken, 0.0, 0.8);
+    DIFFUSE_LIGHT += vec3(mix(1.0 - dark, 1.0, lit));
 }

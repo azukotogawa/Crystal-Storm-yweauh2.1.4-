@@ -297,3 +297,15 @@ terrain_cave_fog={
 "type": "float",
 "value": 0.55
 }
+terrain_corner_darken={
+"type": "float",
+"value": 0.42
+}
+terrain_shadow_darken={
+"type": "float",
+"value": 0.45
+}
+terrain_cell_size={
+"type": "float",
+"value": 2.0
+}

@@ -1,10 +1,9 @@
 shader_type spatial;
 
-// Face-authored shade (COLOR.b) plus a world-up hemisphere. Engine Lambert
-// with a single directional light blacks any face away from the sun — unusable
-// at the iso camera. Unshaded fill never drops a readable terrain/ramp face
-// to black. cull_disabled keeps 45° slopes visible from both sides.
-render_mode unshaded, cull_disabled, depth_draw_opaque;
+// Face-authored shade (COLOR.b) plus a world-up hemisphere. light() multiplies
+// shadow attenuation only. Lambert would black the faces the iso camera sees
+// edge-on. Terrain does not cast. cull_disabled keeps 45° slopes visible.
+render_mode ambient_light_disabled, specular_disabled, cull_disabled, depth_draw_opaque;
 
 // Cave cutaway. Keep in sync with helpers/camera_cutaway.gd and ChunkView.gdshader.
 global uniform float cutaway_enabled;
@@ -19,6 +18,7 @@ uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
 
 #include "res://shaders/atlas_sample.gdshaderinc"
+#include "res://shaders/terrain_shade.gdshaderinc"
 
 varying vec2 voxel_uv;
 varying flat vec4 face_tint;
@@ -82,5 +82,13 @@ void fragment() {
 	}
 
 	float shade = max(face_tint.b, 0.55);
-	ALBEDO = tex_color.rgb * shade * fill_light;
+	vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 world_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	ALBEDO = cs_depth(tex_color.rgb * shade * fill_light, world_n, world_pos, face_tint.a);
+}
+
+void light() {
+	float lit = clamp(ATTENUATION, 0.0, 1.0);
+	float dark = clamp(terrain_shadow_darken, 0.0, 0.8);
+	DIFFUSE_LIGHT += vec3(mix(1.0 - dark, 1.0, lit));
 }

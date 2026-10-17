@@ -145,6 +145,10 @@ var shadow_bias: float = 0.04
 var shadow_normal_bias: float = 1.0
 @export_range(0.0, 2.0, 0.05)
 var shadow_blur: float = 0.55
+@export_range(0.0, 0.8, 0.01)
+var terrain_corner_darken: float = 0.42
+@export_range(0.0, 0.8, 0.01)
+var terrain_shadow_darken: float = 0.45
 @export_range(0, 2, 1)
 var shadow_split_mode: int = 1
 @export_range(40.0, 400.0, 1.0)
@@ -161,9 +165,11 @@ var shadow_pancake: float = 36.0
 var shadow_atlas_size: int = 2048
 @export var ssao_enabled: bool = true
 @export_range(0.1, 4.0, 0.05)
-var ssao_radius: float = 0.55
+var ssao_radius: float = 1.35
 @export_range(0.0, 4.0, 0.05)
-var ssao_intensity: float = 0.85
+var ssao_intensity: float = 0.55
+@export_range(0.5, 4.0, 0.05)
+var ssao_power: float = 1.1
 @export var fog_enabled: bool = true
 @export_range(0.0, 0.02, 0.00001)
 var fog_density: float = 0.00032
@@ -451,8 +457,11 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 static func paint_scene_light(c: PerformanceQualityConfig) -> void:
 	c.ambient_light_energy = 0.22
 	c.tonemap_exposure = 0.72
-	c.ssao_radius = 0.55
-	c.ssao_intensity = 0.85
+	c.ssao_radius = 1.35
+	c.ssao_intensity = 0.55
+	c.ssao_power = 1.1
+	c.terrain_corner_darken = 0.42
+	c.terrain_shadow_darken = 0.45
 	c.fog_density = 0.00032
 	c.fog_light_energy = 0.28
 	c.shadow_bias = 0.04
@@ -470,13 +479,18 @@ static func paint_scene_light(c: PerformanceQualityConfig) -> void:
 		c.fog_enabled = false
 		c.shadow_split_mode = 1
 		c.shadow_atlas_size = 1024
+		c.terrain_corner_darken = 0.0
+		c.terrain_shadow_darken = 0.0
 		return
 	if c.preset == Preset.HIGH:
 		c.scene_shadows = true
 		c.ssao_enabled = true
 		c.fog_enabled = true
-		c.ssao_radius = 0.8
-		c.ssao_intensity = 1.15
+		c.ssao_radius = 1.6
+		c.ssao_intensity = 0.7
+		c.ssao_power = 1.15
+		c.terrain_corner_darken = 0.5
+		c.terrain_shadow_darken = 0.5
 		c.fog_density = 0.0004
 		c.shadow_bias = 0.03
 		c.shadow_normal_bias = 0.85
