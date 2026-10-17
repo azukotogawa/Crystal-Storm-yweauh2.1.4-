@@ -134,7 +134,7 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	var bubbles := _Hazard.guardian_bubbles(tree)
 	var slip := _Hazard.dodge_point(pos, pos, bubbles)
 	if slip != Vector2.INF:
-		var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, bubbles), _yaw(player))
+		var flee := _Hazard.flee_toward(pos, slip, _yaw(player))
 		heart.fight.bot.extra_held = PackedStringArray([flee, "sprint"])
 		_goto(dt, player, slip, aim)
 		_drain()

@@ -71,6 +71,7 @@ var _pool_visit := 0.0
 var _pool_done := false
 var _done: Dictionary = {}
 var _chip_skip: Dictionary = {}
+var _home_logged := false
 
 
 func release() -> void:
@@ -140,6 +141,7 @@ func reset() -> void:
 	_pool_done = false
 	_done = {}
 	_chip_skip = {}
+	_home_logged = false
 	bot.extra_held = PackedStringArray()
 
 
@@ -493,7 +495,7 @@ func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vecto
 	var dodge := _Hazard.dodge_point(pos, travel, threats)
 	if dodge == Vector2.INF:
 		return false
-	var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, threats), _yaw(player))
+	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
 		bot.set_target(dodge)
 	bot.extra_held = PackedStringArray([flee, "sprint"])
@@ -511,6 +513,9 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	if pos.distance_to(origin) > 36.0:
 		if _site_key != "":
 			_drop_site(false)
+		if not _home_logged:
+			_home_logged = true
+			print("SHOWCASE farm walk home dist %.0f" % pos.distance_to(origin))
 		var goal := _Roster.pool_goal(pos, origin, 18.0)
 		if _Hazard.burning(tree, goal):
 			goal = _Hazard.leave_goal(tree, goal, origin)

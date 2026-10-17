@@ -86,9 +86,27 @@ static func dodge_point(pos: Vector2, travel: Vector2, threats: Array) -> Vector
 		if away.length() < 0.05:
 			var side := travel - pos
 			away = Vector2(-side.y, side.x) if side.length() > 0.05 else Vector2(1.0, 0.0)
+		else:
+			away = _around(away, travel - pos)
 		away = away.normalized()
 		best = pos + away * (pen + 2.5)
 	return best
+
+
+static func _around(away: Vector2, to_goal: Vector2) -> Vector2:
+	if to_goal.length_squared() < 0.04 or away.dot(to_goal) >= 0.0:
+		return away
+	var side := Vector2(-away.y, away.x)
+	if side.dot(to_goal) < 0.0:
+		side = -side
+	var blended := side * 0.85 + to_goal.normalized() * 0.35
+	if blended.length_squared() < 0.0001:
+		return side
+	return blended
+
+
+static func flee_toward(from_xz: Vector2, goal: Vector2, yaw_degrees: float) -> String:
+	return flee_action(from_xz, from_xz * 2.0 - goal, yaw_degrees)
 
 
 static func bubble_center(pos: Vector2, threats: Array) -> Vector2:

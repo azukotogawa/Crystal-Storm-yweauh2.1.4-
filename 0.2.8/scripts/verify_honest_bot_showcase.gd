@@ -360,6 +360,13 @@ func _check_hazard() -> void:
 	if slipped == Vector2.INF or slipped.distance_to(Vector2(2.0, 0.5)) < _Hazard.BODY_CLEAR:
 		_fail("travel should step outside a guardian bubble, got %s" % slipped)
 		return
+	var goal := Vector2(40.0, 0.5)
+	if slipped.distance_to(goal) > Vector2(0.5, 0.5).distance_to(goal) + 1.0:
+		_fail("travel dodge ran away from the route, got %s" % slipped)
+		return
+	if _Hazard.flee_toward(Vector2.ZERO, Vector2(4.0, 0.0), 0.0) != "move_right":
+		_fail("flee toward a point should strafe at it without turning")
+		return
 	var held := _Hazard.dodge_point(Vector2(0.5, 0.5), Vector2(1.0, 0.5), beside)
 	if held != Vector2.INF:
 		_fail("a close swing should stay inside a soft bubble")
