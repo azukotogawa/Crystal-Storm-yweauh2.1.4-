@@ -9,6 +9,7 @@ const HIT_COLUMNS := 1.65
 const SWORD_RANGE := 2.8
 const PAD_MIN := 1.2
 const BODY_CLEAR := 8.0
+const TRAVEL_SKIRT := 16.0
 
 
 static func depth_at(tree: SceneTree, at: Vector2) -> float:
@@ -178,7 +179,7 @@ static func guardian_bubbles(tree: SceneTree) -> Array:
 		var col := _Move.column_pos(body.global_position)
 		out.append({
 			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
-			"radius": BODY_CLEAR,
+			"radius": TRAVEL_SKIRT,
 			"hard": false,
 		})
 		var ring := node.get_node_or_null("TelegraphRing") as Node3D

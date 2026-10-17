@@ -508,8 +508,15 @@ func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vecto
 func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2) -> String:
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
 		_heal_idle()
+	if _Hazard.burning(tree, pos):
+		_exit_hazard(dt, tree, player, origin, origin)
+		return ""
 	if _slip(dt, tree, player, pos, _Roster.pool_goal(pos, origin, 18.0), true):
 		return ""
+	var bite := _Farm.pick_seek(_usable(_sense(tree)), pos, killed, 8.0, _skipped, false)
+	if not bite.is_empty() and str(bite.get("kind", "")) != "spawn_elite":
+		_quiet = 0.0
+		return _fight(dt, tree, player, bite, origin)
 	if pos.distance_to(origin) > 36.0:
 		if _site_key != "":
 			_drop_site(false)

@@ -516,6 +516,8 @@ func _arm_detour(id: String) -> void:
 
 
 func _tick_detour(step: float) -> void:
+	if _step_off_burn(step):
+		return
 	if _glow_leg:
 		_tick_glow(step)
 		return
@@ -677,6 +679,19 @@ func _tick_glow(step: float) -> void:
 	_seg_status = "pass"
 
 
+func _step_off_burn(step: float) -> bool:
+	var pos := _xz()
+	if not _Hazard.burning(tree, pos):
+		return false
+	var goal := _Hazard.leave_goal(tree, pos, pos)
+	var flee := _Hazard.flee_toward(pos, goal, _yaw())
+	bot.extra_held = PackedStringArray([flee, "sprint"])
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 1.5:
+		bot.set_target(goal)
+	bot.tick(pos, _yaw(), step)
+	return true
+
+
 func _leave_ring(step: float) -> bool:
 	var pos := _xz()
 	var threats: Array = []
@@ -700,6 +715,8 @@ func _begin_face() -> void:
 
 
 func _detour_gap(id: String) -> float:
+	if id == "density_poi":
+		return _Hazard.TRAVEL_SKIRT
 	if id == "density_treasure":
 		return 6.0
 	if id == "density_landmark":

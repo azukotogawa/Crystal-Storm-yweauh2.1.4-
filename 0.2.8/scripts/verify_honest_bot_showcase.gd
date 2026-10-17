@@ -336,6 +336,9 @@ func _check_hazard() -> void:
 	if not _Hazard.accepts_kill("crystal_mite", true):
 		_fail("a player mite kill should count")
 		return
+	if _Hazard.TRAVEL_SKIRT < 16.0 or _Hazard.TRAVEL_SKIRT > 22.0:
+		_fail("travel skirt should stay outside guardian aggro, got %s" % _Hazard.TRAVEL_SKIRT)
+		return
 	if _Hazard.BURN_DEPTH < 0.25 or _Hazard.HIT_COLUMNS > 2.2:
 		_fail("burn line or sword reach drifted")
 		return
