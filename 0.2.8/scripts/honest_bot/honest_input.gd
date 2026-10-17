@@ -95,7 +95,6 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 	if not _on_view(vp, screen):
 		return
 	_Aim.note_event_mouse(screen, vp.get_visible_rect().size)
-	vp.notification(NOTIFICATION_VP_MOUSE_ENTER)
 	vp.warp_mouse(screen)
 	var motion := InputEventMouseMotion.new()
 	_point(motion, screen)
