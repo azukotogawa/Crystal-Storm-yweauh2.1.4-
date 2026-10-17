@@ -389,7 +389,7 @@ func _ring_reach(tree: SceneTree) -> float:
 	if tree == null:
 		return 0.0
 	var vs := 1.0
-	var settings := WorldSettings.get_active()
+	var settings = WorldSettings.get_active()
 	if settings != null:
 		vs = maxf(float(settings.voxel_scale), 0.001)
 	for node in tree.get_nodes_in_group("origin_boss"):
