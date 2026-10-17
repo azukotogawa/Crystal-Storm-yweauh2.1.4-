@@ -15,6 +15,7 @@ const _GameConfig = preload("res://config/game_config.gd")
 const _Progression = preload("res://systems/progression_service.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _Passives = preload("res://player/skill_passives.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _title: Label = $Panel/VBox/Title
@@ -60,6 +61,7 @@ var _boss_bar: ProgressBar = null
 var _boss_shown_hp: int = -1
 var _hud_player: Node = null
 var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
+var _vitals_plate: Panel = null
 var _hp_panel: PanelContainer = null
 var _hp_bar: ProgressBar = null
 var _hp_value_label: Label = null
@@ -123,6 +125,7 @@ func _ready() -> void:
 	_update_map_temp_label()
 	if _phase_label:
 		_phase_label_base_mod = _phase_label.modulate
+		_phase_label.clip_text = true
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
 	_ensure_objective_hud()
@@ -935,9 +938,29 @@ func _update_boss_bar() -> void:
 			_boss_label.text = "Origin Warden  %d / %d  ·  phase %d" % [shown, int(max_hp), phase]
 
 
+func _ensure_vitals_backing() -> void:
+	if _vitals_plate != null:
+		return
+	var layout := _HudLayout.load_active()
+	_vitals_plate = Panel.new()
+	_vitals_plate.name = "VitalsBacking"
+	_vitals_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vitals_plate.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_vitals_plate.offset_left = layout.vitals_left
+	_vitals_plate.offset_right = layout.vitals_right
+	_vitals_plate.offset_top = layout.vitals_top
+	_vitals_plate.offset_bottom = layout.vitals_bottom
+	var plate := StyleBoxFlat.new()
+	plate.bg_color = layout.backing
+	plate.set_corner_radius_all(6)
+	_vitals_plate.add_theme_stylebox_override("panel", plate)
+	add_child(_vitals_plate)
+
+
 func _ensure_player_health_bar() -> void:
 	if _hp_panel != null:
 		return
+	_ensure_vitals_backing()
 	_hp_panel = PanelContainer.new()
 	_hp_panel.name = "PlayerHealthBar"
 	_hp_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1077,6 +1100,7 @@ func _paint_hp_fill(ratio: float) -> void:
 func _ensure_xp_bar() -> void:
 	if _xp_panel != null:
 		return
+	_ensure_vitals_backing()
 	_xp_panel = PanelContainer.new()
 	_xp_panel.name = "XpBar"
 	_xp_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1309,11 +1333,13 @@ func _ensure_objective_hud() -> void:
 	_objective_panel = PanelContainer.new()
 	_objective_panel.name = "ObjectiveHud"
 	_objective_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var layout := _HudLayout.load_active()
+	var spot := layout.objective_rect()
 	_objective_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	_objective_panel.offset_left = 12.0
-	_objective_panel.offset_top = 12.0
-	_objective_panel.offset_right = 340.0
-	_objective_panel.offset_bottom = 148.0
+	_objective_panel.offset_left = spot.position.x
+	_objective_panel.offset_top = spot.position.y
+	_objective_panel.offset_right = spot.end.x
+	_objective_panel.offset_bottom = spot.end.y
 	var panel_style := StyleBoxFlat.new()
 	panel_style.bg_color = Color(0.06, 0.04, 0.1, 0.78)
 	panel_style.border_color = Color(0.62, 0.32, 0.9, 0.9)
@@ -1368,7 +1394,8 @@ func _ensure_crystal_hp_bar(box: Node) -> void:
 	_crystal_hp_bar.custom_minimum_size = Vector2(220, 12)
 	box.add_child(_crystal_hp_bar)
 	if _objective_panel:
-		_objective_panel.offset_bottom = 176.0
+		var layout := _HudLayout.load_active()
+		_objective_panel.offset_bottom = layout.objective_rect().end.y
 
 
 func _objective_line(parent: Node, text: String) -> Label:

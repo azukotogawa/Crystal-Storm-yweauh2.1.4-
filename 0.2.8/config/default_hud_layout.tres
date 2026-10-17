@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="HudLayout" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/hud_layout.gd" id="1_look"]
+
+[resource]
+script = ExtResource("1_look")
+objective_origin = Vector2(12, 12)
+objective_size = Vector2(328, 164)
+clearance = 18.0
+chapter_margin_right = 16.0
+chapter_top = 56.0
+chapter_width = 420.0
+chapter_height = 40.0
+clock_left = 16.0
+clock_gap = 22.0
+debug_width = 460.0
+debug_height = 168.0
+backing = Color(0.02, 0.025, 0.04, 0.62)
+backing_pad = 10.0
+vitals_left = -146.0
+vitals_right = 146.0
+vitals_top = -176.0
+vitals_bottom = -70.0

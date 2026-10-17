@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 
 @onready var _readout: Label = $Readout
 
@@ -22,7 +23,22 @@ func _ready() -> void:
 		_readout.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0, 0.95))
 		_readout.add_theme_color_override("font_outline_color", Color(0.02, 0.03, 0.06, 0.9))
 		_readout.add_theme_constant_override("outline_size", 4)
+		_place_readout()
 	set_process(false)
+
+
+func _place_readout() -> void:
+	if _readout == null:
+		return
+	var layout := _HudLayout.load_active()
+	var spot := layout.debug_position()
+	_readout.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	_readout.position = spot
+	_readout.size = Vector2(layout.debug_width, layout.debug_height)
+	_readout.offset_left = spot.x
+	_readout.offset_top = spot.y
+	_readout.offset_right = spot.x + layout.debug_width
+	_readout.offset_bottom = spot.y + layout.debug_height
 
 
 func is_overlay_visible() -> bool:

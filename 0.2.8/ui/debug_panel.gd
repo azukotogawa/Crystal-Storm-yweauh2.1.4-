@@ -3,6 +3,7 @@ extends Control
 const _PerformanceQualityConfig = preload("res://config/performance_quality_config.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 
 @onready var label = $DebugLabel
 
@@ -110,16 +111,22 @@ func refresh_now() -> String:
 func _place_away_from_minimap() -> void:
 	if label == null:
 		return
-	var x := 10.0
-	var y := 8.0
+	var layout := _HudLayout.load_active()
+	var spot := layout.debug_position()
+	var x := spot.x
+	var y := spot.y
 	var tree := get_tree()
 	if tree:
 		var map = tree.get_first_node_in_group("topographical_map")
 		if map and map.has_method("get_minimap_screen_rect"):
 			var r: Rect2 = map.get_minimap_screen_rect()
 			if r.size.x > 1.0 and r.size.y > 1.0:
-				x = r.position.x + r.size.x + 10.0
+				x = r.position.x + r.size.x + layout.clearance
 				y = r.position.y
+	var placed := Rect2(Vector2(x, y), label.custom_minimum_size)
+	if not layout.misses_objective(placed):
+		x = spot.x
+		y = spot.y
 	label.position = Vector2(x, y)
 
 

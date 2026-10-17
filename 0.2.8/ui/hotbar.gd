@@ -6,6 +6,7 @@ const _GameVisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 const _SlotDrag = preload("res://ui/slot_drag.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 
 const SLOT_SIZE := 52
 const SLOT_GAP := 6
@@ -56,6 +57,7 @@ func _build_slots() -> void:
 	# also moves this bar to the front of the canvas while it is open.
 	z_index = 2
 	z_as_relative = false
+	_add_backing(total_w)
 	for i in _Inventory.HOTBAR_SIZE:
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(SLOT_SIZE, SLOT_SIZE)
@@ -96,6 +98,21 @@ func _build_slots() -> void:
 		_slot_nodes.append(panel)
 		_icon_nodes.append(icon)
 		_label_nodes.append(label)
+
+
+func _add_backing(total_w: float) -> void:
+	var layout := _HudLayout.load_active()
+	var pad := layout.backing_pad
+	var plate := Panel.new()
+	plate.name = "HotbarBacking"
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.position = Vector2(-pad, -pad)
+	plate.size = Vector2(total_w + pad * 2.0, SLOT_SIZE + pad * 2.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = layout.backing
+	style.set_corner_radius_all(8)
+	plate.add_theme_stylebox_override("panel", style)
+	add_child(plate)
 
 
 func _on_slot_click(index: int) -> void:
