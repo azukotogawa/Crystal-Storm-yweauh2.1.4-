@@ -30,6 +30,8 @@ const FACE_LIMIT := 2.5
 const PICKUP_LIMIT := 8.0
 const DETOUR_STUCK := 12
 const DETOUR_RESUMES := 6
+const TREASURE_TOUCH := 9.0
+const TREASURE_SAFE := 24.0
 
 const READY: Array[String] = [
 	"boot_tutorial",
@@ -97,6 +99,7 @@ var _face_age := 0.0
 var _pickup_wait := false
 var _pickup_age := 0.0
 var _ruins_before := 0
+var _treasure_clear := false
 var _chain: Dictionary = {}
 var _chain_ready := false
 var _lights_noted := false
@@ -507,6 +510,7 @@ func _arm_detour(id: String) -> void:
 	_detour_goal = plan.get("goal", center)
 	_detour_limit = _Walk.leg_limit(float(choice.get("distance", 0.0)))
 	_ruins_before = _ruin_count()
+	_treasure_clear = false
 	bot.stuck_limit = DETOUR_STUCK
 	print("OK %s %s dist %.1f limit %.0f" % [id, kind if kind != "" else "site", float(choice.get("distance", 0.0)), _detour_limit])
 	if not bool(plan.get("walk", false)):
@@ -528,6 +532,8 @@ func _tick_detour(step: float) -> void:
 	if _face_only:
 		_face_age += step
 		_tick_face(pos, step)
+		return
+	if _leave_ring(step):
 		return
 	var extras := PackedStringArray()
 	if _submerged():
@@ -558,6 +564,9 @@ func _tick_detour(step: float) -> void:
 
 func _tick_face(pos: Vector2, step: float) -> void:
 	if _leave_ring(step):
+		return
+	if _treasure_exit_needed(pos):
+		_walk_off_treasure(pos, step)
 		return
 	hands.begin_tick()
 	if _pose == "":
@@ -718,7 +727,7 @@ func _detour_gap(id: String) -> float:
 	if id == "density_poi":
 		return _Hazard.TRAVEL_SKIRT
 	if id == "density_treasure":
-		return 6.0
+		return TREASURE_TOUCH
 	if id == "density_landmark":
 		return _Walk.LANDMARK_STAND
 	return 0.0
@@ -845,7 +854,41 @@ func _unsafe() -> bool:
 		return true
 	if tree == null:
 		return false
-	return _Hazard.burning(tree, _xz()) or _Hazard.ring_hot(tree, _xz())
+	if _Hazard.burning(tree, _xz()) or _Hazard.ring_hot(tree, _xz()):
+		return true
+	var ahead := _xz() + Vector2(40.0, 0.0)
+	return _Hazard.dodge_point(_xz(), ahead, _Hazard.guardian_bubbles(tree)) != Vector2.INF
+
+
+func _treasure_exit_needed(pos: Vector2) -> bool:
+	if _seg != "density_treasure" or _treasure_clear:
+		return false
+	if _ruin_count() <= _ruins_before:
+		return false
+	return pos.distance_to(_detour_face) < TREASURE_SAFE - 1.2
+
+
+func _walk_off_treasure(pos: Vector2, step: float) -> void:
+	var away := pos - _detour_face
+	if away.length() < 0.2:
+		away = Vector2(1.0, 0.0)
+	var goal := _detour_face + away.normalized() * TREASURE_SAFE
+	var extras := PackedStringArray(["sprint"])
+	var dodge := _Hazard.dodge_point(pos, goal, _Hazard.guardian_bubbles(tree))
+	if dodge != Vector2.INF:
+		var flee := _Hazard.flee_toward(pos, dodge, _yaw())
+		extras.append(flee)
+		goal = dodge
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 1.5:
+		bot.set_target(goal)
+	bot.extra_held = extras
+	bot.tick(pos, _yaw(), step)
+	if _xz().distance_to(_detour_face) < TREASURE_SAFE - 1.2:
+		return
+	_treasure_clear = true
+	_pose = ""
+	_pose_age = 0.0
+	bot.release()
 
 
 func _idle_inputs() -> void:
