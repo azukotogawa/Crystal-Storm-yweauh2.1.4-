@@ -485,6 +485,18 @@ func _travel_goal(pos: Vector2, origin: Vector2) -> Vector2:
 	return origin if origin.distance_to(pos) > 0.5 else pos + Vector2(12.0, 0.0)
 
 
+func _leave_leash(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vector2) -> bool:
+	var dodge := _Hazard.leash_step(pos, travel, tree)
+	if dodge == Vector2.INF:
+		return false
+	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
+		bot.set_target(dodge)
+	bot.extra_held = PackedStringArray([flee, "sprint"])
+	bot.tick(pos, _yaw(player), dt)
+	return true
+
+
 func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vector2, bodies: bool) -> bool:
 	var threats: Array = []
 	for row in _Hazard.guardian_bubbles(tree):
@@ -511,7 +523,10 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	if _Hazard.burning(tree, pos):
 		_exit_hazard(dt, tree, player, origin, origin)
 		return ""
-	if _slip(dt, tree, player, pos, _Roster.pool_goal(pos, origin, 18.0), true):
+	var home := _Roster.pool_goal(pos, origin, 18.0)
+	if _leave_leash(dt, tree, player, pos, home):
+		return ""
+	if _slip(dt, tree, player, pos, home, true):
 		return ""
 	var bite := _Farm.pick_seek(_usable(_sense(tree)), pos, killed, 8.0, _skipped, false)
 	if not bite.is_empty() and str(bite.get("kind", "")) != "spawn_elite":
@@ -571,6 +586,8 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 	_site_age += dt
 	if _Hazard.burning(tree, pos):
 		_exit_hazard(dt, tree, player, _site_at, _site_at)
+		return ""
+	if _leave_leash(dt, tree, player, pos, _site_at):
 		return ""
 	if pos.distance_to(_site_at) > SITE_STAND:
 		_site_inside = 0.0

@@ -339,6 +339,14 @@ func _check_hazard() -> void:
 	if _Hazard.TRAVEL_SKIRT < 16.0 or _Hazard.TRAVEL_SKIRT > 22.0:
 		_fail("travel skirt should stay outside guardian aggro, got %s" % _Hazard.TRAVEL_SKIRT)
 		return
+	if _Hazard.LEASH_CLEAR <= 22.0:
+		_fail("leash clear should sit past the latched guardian leash")
+		return
+	var latched: Array = [{"xz": Vector2(0.5, 0.5), "radius": _Hazard.LEASH_CLEAR, "hard": true}]
+	var left := _Hazard.dodge_point(Vector2(12.0, 0.5), Vector2(80.0, 0.5), latched)
+	if left == Vector2.INF or left.distance_to(Vector2(0.5, 0.5)) < _Hazard.LEASH_CLEAR:
+		_fail("a latched guardian should be left behind, got %s" % left)
+		return
 	if _Hazard.BURN_DEPTH < 0.25 or _Hazard.HIT_COLUMNS > 2.2:
 		_fail("burn line or sword reach drifted")
 		return

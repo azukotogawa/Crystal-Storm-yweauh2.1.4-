@@ -522,6 +522,8 @@ func _arm_detour(id: String) -> void:
 func _tick_detour(step: float) -> void:
 	if _step_off_burn(step):
 		return
+	if _step_off_leash(step, _clear_goal(_xz(), _detour_goal)):
+		return
 	if _glow_leg:
 		_tick_glow(step)
 		return
@@ -563,6 +565,8 @@ func _tick_detour(step: float) -> void:
 
 
 func _tick_face(pos: Vector2, step: float) -> void:
+	if _step_off_leash(step, _clear_goal(pos, _detour_face)):
+		return
 	if _leave_ring(step):
 		return
 	if _treasure_exit_needed(pos):
@@ -634,7 +638,7 @@ func _start_glow() -> void:
 		_glow_limit = 0.0
 		return
 	_glow_face = choice.get("xz", Vector2.ZERO)
-	var plan: Dictionary = _Walk.approach(_xz(), _glow_face, _Walk.LANDMARK_STAND)
+	var plan: Dictionary = _Walk.approach(_xz(), _glow_face, _Hazard.LEASH_CLEAR)
 	_glow_goal = plan.get("goal", _glow_face)
 	_glow_limit = _Walk.leg_limit(float(choice.get("distance", 0.0)))
 	_glow_walk = bool(plan.get("walk", false))
@@ -645,6 +649,8 @@ func _start_glow() -> void:
 
 
 func _tick_glow(step: float) -> void:
+	if _step_off_leash(step, _clear_goal(_xz(), _glow_goal if _glow_goal != Vector2.ZERO else _glow_face)):
+		return
 	if _leave_ring(step):
 		return
 	if chapters != null and chapters.has_method("open") and not bool(chapters.open("glow")):
@@ -688,6 +694,32 @@ func _tick_glow(step: float) -> void:
 	_seg_status = "pass"
 
 
+func _clear_goal(pos: Vector2, goal: Vector2) -> Vector2:
+	var shifted := goal
+	for row in _Hazard.leash_bubbles(tree):
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var at: Vector2 = row.get("xz", shifted)
+		var radius := float(row.get("radius", 0.0)) + 0.8
+		if shifted.distance_to(at) >= radius:
+			continue
+		shifted = _Walk.stand_off(pos, at, radius)
+	return shifted
+
+
+func _step_off_leash(step: float, travel: Vector2) -> bool:
+	var pos := _xz()
+	var dodge := _Hazard.leash_step(pos, travel, tree)
+	if dodge == Vector2.INF:
+		return false
+	var flee := _Hazard.flee_toward(pos, dodge, _yaw())
+	bot.extra_held = PackedStringArray([flee, "sprint"])
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
+		bot.set_target(dodge)
+	bot.tick(pos, _yaw(), step)
+	return true
+
+
 func _step_off_burn(step: float) -> bool:
 	var pos := _xz()
 	if not _Hazard.burning(tree, pos):
@@ -725,7 +757,7 @@ func _begin_face() -> void:
 
 func _detour_gap(id: String) -> float:
 	if id == "density_poi":
-		return _Hazard.TRAVEL_SKIRT
+		return _Hazard.LEASH_CLEAR
 	if id == "density_treasure":
 		return TREASURE_TOUCH
 	if id == "density_landmark":
@@ -855,6 +887,8 @@ func _unsafe() -> bool:
 	if tree == null:
 		return false
 	if _Hazard.burning(tree, _xz()) or _Hazard.ring_hot(tree, _xz()):
+		return true
+	if _Hazard.leash_step(_xz(), _xz() + Vector2(40.0, 0.0), tree) != Vector2.INF:
 		return true
 	var ahead := _xz() + Vector2(40.0, 0.0)
 	return _Hazard.dodge_point(_xz(), ahead, _Hazard.guardian_bubbles(tree)) != Vector2.INF

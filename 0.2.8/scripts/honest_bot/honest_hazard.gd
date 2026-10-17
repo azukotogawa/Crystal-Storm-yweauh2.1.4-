@@ -10,6 +10,7 @@ const SWORD_RANGE := 2.8
 const PAD_MIN := 1.2
 const BODY_CLEAR := 8.0
 const TRAVEL_SKIRT := 16.0
+const LEASH_CLEAR := 24.0
 
 
 static func depth_at(tree: SceneTree, at: Vector2) -> float:
@@ -192,6 +193,32 @@ static func guardian_bubbles(tree: SceneTree) -> Array:
 			"hard": true,
 		})
 	return out
+
+
+static func leash_bubbles(tree: SceneTree) -> Array:
+	var out: Array = []
+	if tree == null:
+		return out
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var kind := str(node.get("enemy_id"))
+		if kind != "spawn_elite" and kind != "origin_warden":
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		out.append({
+			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
+			"radius": LEASH_CLEAR,
+			"hard": true,
+		})
+	return out
+
+
+static func leash_step(pos: Vector2, travel: Vector2, tree: SceneTree) -> Vector2:
+	return dodge_point(pos, travel, leash_bubbles(tree))
 
 
 static func boss_off_heart(boss: Vector2, origin: Vector2) -> bool:
