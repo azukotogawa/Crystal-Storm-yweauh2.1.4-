@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="BurnPoolLook" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/burn_pool_look.gd" id="1_look"]
+
+[resource]
+script = ExtResource("1_look")
+cover_radius_columns = 1.35
+tile_inset = 0.08
+tile_thickness = 0.16
+ground_gap = 0.04
+magma_hot = Color(1, 0.78, 0.12, 1)
+magma_cool = Color(0.62, 0.08, 0.02, 1)
+crack_color = Color(0.05, 0.012, 0.008, 1)
+emission = Color(1, 0.32, 0.05, 1)
+emission_low = 0.9
+emission_high = 2.5
+alpha_low = 0.82
+alpha_span = 0.18
+colorblind_hot = Color(1, 0.95, 0.35, 1)
+colorblind_cool = Color(0.95, 0.55, 0.05, 1)
+colorblind_crack = Color(0.05, 0.04, 0.02, 1)
+colorblind_emission = Color(1, 0.9, 0.2, 1)
+fire_per_tile = 3
+fire_size = 0.16
+fire_height = 0.55
+fire_spread = 0.34
+fire_speed = 1.7
+fire_hot = Color(1, 0.92, 0.35, 0.95)
+fire_cool = Color(0.95, 0.28, 0.04, 0.7)
+colorblind_fire_hot = Color(1, 1, 0.85, 0.95)
+colorblind_fire_cool = Color(1, 0.72, 0.1, 0.75)

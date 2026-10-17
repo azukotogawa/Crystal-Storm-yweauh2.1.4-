@@ -252,6 +252,10 @@ func _check_burn(feel) -> void:
 	var glow := gm.get_node_or_null("BurnWarn")
 	if glow == null or not glow.visible:
 		_fail("burn warning glow hidden")
+	if _cylinder_disc(glow):
+		_fail("burn warning is still a smooth disc")
+	if _magma_tiles(glow) < 1:
+		_fail("burn warning has no magma tiles")
 	while gm._burn_left > 0.05:
 		gm._apply_crystal_damage(0.05)
 		if not player.hits.is_empty():
@@ -276,6 +280,26 @@ func _check_burn(feel) -> void:
 		_fail("burn glow stayed after leaving the pool")
 	gm.free()
 	player.free()
+
+
+func _cylinder_disc(node: Node) -> bool:
+	if node is MeshInstance3D:
+		var mesh := (node as MeshInstance3D).mesh
+		if mesh is CylinderMesh:
+			return true
+	for child in node.get_children():
+		if _cylinder_disc(child):
+			return true
+	return false
+
+
+func _magma_tiles(node: Node) -> int:
+	var count := 0
+	if node is MeshInstance3D and node.name == "MagmaTile" and (node as MeshInstance3D).mesh is BoxMesh:
+		count += 1
+	for child in node.get_children():
+		count += _magma_tiles(child)
+	return count
 
 
 func _flashing(node: Node) -> bool:

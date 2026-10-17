@@ -5,6 +5,8 @@ const _GameConfig = preload("res://config/game_config.gd")
 const _StatIds = preload("res://stats/stat_ids.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _Progression = preload("res://systems/progression_service.gd")
+const _BurnLook = preload("res://config/burn_pool_look.gd")
+const _BurnWarn = preload("res://helpers/burn_pool_warn.gd")
 
 const DEATH_ONLY_LOSS := true
 
@@ -48,7 +50,8 @@ var _player: Node3D
 var _crystal
 var _world: InfiniteNoiseWorld
 var _burn_left: float = -1.0
-var _burn_glow: MeshInstance3D
+var _burn_glow: Node3D
+var _burn_look: BurnPoolLook
 
 
 func _ready() -> void:
@@ -246,42 +249,62 @@ func _show_burn_warn() -> void:
 	if _burn_glow != null and is_instance_valid(_burn_glow):
 		_paint_burn_warn(_burn_telegraph_sec())
 		return
-	var disc := MeshInstance3D.new()
-	disc.name = "BurnWarn"
-	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 1.0
-	mesh.bottom_radius = 1.0
-	mesh.height = 0.05
-	disc.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.emission_enabled = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	disc.material_override = mat
-	add_child(disc)
-	_burn_glow = disc
+	_burn_glow = _BurnWarn.attach(self)
 	_paint_burn_warn(_burn_telegraph_sec())
 
 
 func _paint_burn_warn(wind: float) -> void:
 	if _burn_glow == null or not is_instance_valid(_burn_glow):
 		return
-	var vs: float = _WorldSettings.get_active().voxel_scale
-	var feet := _player.global_position if _player != null else Vector3.ZERO
-	_burn_glow.global_position = feet + Vector3(0.0, 0.06, 0.0)
-	_burn_glow.scale = Vector3(1.35 * vs, 1.0, 1.35 * vs)
-	_burn_glow.visible = true
-	if not (_burn_glow.material_override is StandardMaterial3D):
+	if _player == null:
 		return
-	var mat := _burn_glow.material_override as StandardMaterial3D
+	var look := _active_burn_look()
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	var feet := _player.global_position
 	var urgent := 1.0
 	if wind > 0.0 and _burn_left > 0.0:
 		urgent = clampf(1.0 - _burn_left / wind, 0.0, 1.0)
-	var pulse := 0.35 + 0.4 * urgent
-	mat.albedo_color = Color(1.0, 0.32, 0.08, pulse)
-	mat.emission = Color(1.0, 0.36, 0.08) * lerpf(0.5, 1.6, urgent)
+	var cells := _burn_cells_under(feet, vs, look.cover_radius_columns)
+	_BurnWarn.paint(_burn_glow, look, feet, cells, vs, urgent)
+
+
+func _active_burn_look() -> BurnPoolLook:
+	if _burn_look == null:
+		_burn_look = _BurnLook.load_active()
+	return _burn_look
+
+
+func _burn_cells_under(feet: Vector3, vs: float, reach_columns: float) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	var col2 := _player_column_xz()
+	var stand := Vector2i(floori(col2.x), floori(col2.y))
+	var reach := maxf(reach_columns, 0.0) * vs
+	var span := maxi(ceili(reach_columns), 1)
+	for dz in range(-span, span + 1):
+		for dx in range(-span, span + 1):
+			var cell := Vector2i(stand.x + dx, stand.y + dz)
+			if cell != stand and not _disc_hits_cell(feet, vs, reach, cell):
+				continue
+			if cell != stand and not _cell_is_pool(cell):
+				continue
+			out.append(cell)
+	return out
+
+
+func _cell_is_pool(cell: Vector2i) -> bool:
+	if _crystal == null or not _crystal.has_method("get_depth_at"):
+		return false
+	return float(_crystal.get_depth_at(cell.x, cell.y)) >= 0.25
+
+
+func _disc_hits_cell(feet: Vector3, vs: float, reach: float, cell: Vector2i) -> bool:
+	var min_x := float(cell.x) * vs
+	var max_x := min_x + vs
+	var min_z := float(cell.y) * vs
+	var max_z := min_z + vs
+	var x := clampf(feet.x, min_x, max_x)
+	var z := clampf(feet.z, min_z, max_z)
+	return Vector2(x - feet.x, z - feet.z).length() <= reach + 0.001
 
 
 func _end_burn_warn() -> void:
