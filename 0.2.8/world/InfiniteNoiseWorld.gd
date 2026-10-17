@@ -17,6 +17,7 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _WorldGenConfig = preload("res://config/world_gen_config.gd")
 const _BiomeLayout = preload("res://world/biome_layout.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _RouteDressing = preload("res://world/route_dressing.gd")
 
 var world_seed: int
 var _spawn_river_cx: float = 0.0
@@ -753,7 +754,7 @@ func _compute_surface_height(wx: float, wz: float) -> float:
 		var edge_h: float = edge_base - edge_river.carve
 		h = WorldBorder.apply_border_height(wx, wz, edge_h, border_info)
 
-	# Quantize to voxel-layer steps (each layer = WorldSettings.layer_height world units).
+	h += _RouteDressing.relief_world(world_seed, wx, wz, float(_WorldSettings.get_active().layer_height()))
 	h = clamp(h, -4.0 * _height_gen_scale(), _max_height())
 	return _quantize_to_voxel_layer(h)
 
@@ -909,7 +910,7 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 			name = "plains"
 
 	var id: int = VoxelTypes.biome_to_voxel_id.get(name, VoxelTypes.GRASSLAND3)
-	return id
+	return _RouteDressing.tile_for(world_seed, wx, wz, id)
 
 func get_voxel(wx: float, wy: float, wz: float) -> int:
 	var surf: float = get_surface_height_uncached(wx, wz)

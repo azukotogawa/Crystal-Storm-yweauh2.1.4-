@@ -11,6 +11,8 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelPropBuilder = preload("res://helpers/voxel_prop_builder.gd")
 const _PoiScatter = preload("res://world/poi_scatter.gd")
 const _PropScatter = preload("res://world/prop_scatter.gd")
+const _RouteDressing = preload("res://world/route_dressing.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _Landmarks = preload("res://world/distant_landmarks.gd")
 const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
@@ -371,19 +373,42 @@ func _append_scatter_props(coord: Vector2i, chunk_nodes: Array) -> void:
 	var seed_value := 0
 	if world != null:
 		seed_value = int(world.world_seed)
+	var taken := {}
 	var spots: Array[Dictionary] = _PropScatter.for_chunk(seed_value, coord.x, coord.y, budget, world)
 	for spot in spots:
 		var cell: Vector2i = spot.get("cell", Vector2i.ZERO)
-		if _nodes_by_cell.has(cell):
+		if _nodes_by_cell.has(cell) or taken.has(cell):
 			continue
-		var kind := str(spot.get("kind", "rock"))
-		var prop := _VoxelPropBuilder.build_scatter_prop(kind)
-		prop.set_meta("prop_kind", kind)
-		prop.add_to_group("scatter_prop")
-		prop.rotation.y = deg_to_rad(float(int(spot.get("yaw", 0))))
-		prop.position = _anchor_pos(float(cell.x) + 0.5, float(cell.y) + 0.5, 0.0)
-		_vegetation_root.add_child(prop)
-		chunk_nodes.append(prop)
+		taken[cell] = true
+		_place_scatter_prop(chunk_nodes, cell, str(spot.get("kind", "rock")), int(spot.get("yaw", 0)))
+	for spot_v in _RouteDressing.props_for_chunk(seed_value, coord.x, coord.y):
+		var route: Dictionary = spot_v
+		var cell: Vector2i = route.get("cell", Vector2i.ZERO)
+		if _nodes_by_cell.has(cell) or taken.has(cell):
+			continue
+		if _route_cell_blocked(cell):
+			continue
+		taken[cell] = true
+		_place_scatter_prop(chunk_nodes, cell, str(route.get("kind", "rock")), int(route.get("yaw", 0)))
+
+
+func _place_scatter_prop(chunk_nodes: Array, cell: Vector2i, kind: String, yaw: int) -> void:
+	var prop := _VoxelPropBuilder.build_scatter_prop(kind)
+	prop.set_meta("prop_kind", kind)
+	prop.set_meta("prop_cell", cell)
+	prop.add_to_group("scatter_prop")
+	prop.rotation.y = deg_to_rad(float(yaw))
+	prop.position = _anchor_pos(float(cell.x) + 0.5, float(cell.y) + 0.5, 0.0)
+	_vegetation_root.add_child(prop)
+	chunk_nodes.append(prop)
+
+
+func _route_cell_blocked(cell: Vector2i) -> bool:
+	if world == null or not world.has_method("get_tile_type"):
+		return false
+	var tile := int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5))
+	return tile == _VoxelTypes.RIVER or tile == _VoxelTypes.WATER \
+		or tile == _VoxelTypes.OCEAN or tile == _VoxelTypes.OCEAN2 or tile == _VoxelTypes.OCEAN3
 
 
 func _is_poi_visual(feat: Dictionary) -> bool:

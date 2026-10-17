@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RouteVarietyConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/route_variety_config.gd" id="1_route"]
+
+[resource]
+script = ExtResource("1_route")
+enabled = true
+hill_layers = 0.85
+hill_wavelength = 20.0
+band_radius = 18.0
+fade_columns = 8.0
+path_radius = 0.86
+shoulder_radius = 2.6
+path_tile = 49
+shoulder_tiles = PackedInt32Array(41, 42, 9, 10, 25, 34, 11)
+link_columns = 72.0
+max_links = 36
+long_walk_cap = 1500.0
+spawn_clear = 28.0
+prop_spacing = 9.0
+prop_near = 2.8
+prop_far = 5.4
+props_per_chunk = 4
+prop_kinds = PackedStringArray("rock", "bush", "flower", "log", "mushroom", "bush", "flower", "rock")
