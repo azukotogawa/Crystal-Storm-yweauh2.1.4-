@@ -215,23 +215,46 @@ func _quad(x: int, z: int, y: float, face: int, dim_y: float, tile: int) -> Dict
 
 
 func _dress_props(world) -> void:
-	var path := "res://world/route_dressing.gd"
-	if not ResourceLoader.exists(path):
-		return
-	var dressing = load(path)
-	if dressing == null or not dressing.has_method("props_along"):
+	if not _Dress.config().enabled:
 		return
 	var walk := _walk_line()
-	var spots: Array = dressing.props_along(int(world.world_seed), walk["origin"], walk["dir"], _ALONG, _ACROSS)
-	for spot_v in spots:
-		var spot: Dictionary = spot_v
-		var cell: Vector2i = spot.get("cell", Vector2i.ZERO)
-		var h := float(world.get_surface_height(float(cell.x), float(cell.y)))
-		var layer := float(_Settings.get_active().layer_height())
-		var prop := _Props.build_scatter_prop(str(spot.get("kind", "rock")))
-		prop.position = _Coords.column_to_world_pos(float(cell.x) + 0.5, h + layer, float(cell.y) + 0.5)
-		prop.rotation.y = deg_to_rad(float(int(spot.get("yaw", 0))))
-		_host.add_child(prop)
+	var origin: Vector2 = walk["origin"]
+	var dir: Vector2 = walk["dir"]
+	var side := Vector2(-dir.y, dir.x)
+	var seen := {}
+	var placed := {}
+	var low := INF
+	var high := -INF
+	for along in _ALONG:
+		for across in _ACROSS:
+			var at: Vector2 = origin + dir * float(along) + side * float(across - _ACROSS / 2)
+			var h := float(world.get_surface_height(at.x, at.y))
+			low = minf(low, h)
+			high = maxf(high, h)
+			var key := Vector2i(int(floor(at.x / 16.0)), int(floor(at.y / 16.0)))
+			if seen.has(key):
+				continue
+			seen[key] = true
+			for spot_v in _Dress.props_for_chunk(int(world.world_seed), key.x, key.y):
+				var spot: Dictionary = spot_v
+				var cell: Vector2i = spot.get("cell", Vector2i.ZERO)
+				if placed.has(cell):
+					continue
+				var rel := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5) - origin
+				var along_d := rel.dot(dir)
+				var across_d := rel.dot(side)
+				if along_d < -1.0 or along_d > float(_ALONG) + 1.0:
+					continue
+				if absf(across_d) > float(_ACROSS) * 0.5 + 1.0:
+					continue
+				placed[cell] = true
+				var top := float(world.get_surface_height(float(cell.x), float(cell.y)))
+				var layer := float(_Settings.get_active().layer_height())
+				var prop := _Props.build_scatter_prop(str(spot.get("kind", "rock")))
+				prop.position = _Coords.column_to_world_pos(float(cell.x) + 0.5, top + layer, float(cell.y) + 0.5)
+				prop.rotation.y = deg_to_rad(float(int(spot.get("yaw", 0))))
+				_host.add_child(prop)
+	print("CS ART 08 SPAN height %.1f..%.1f props %d" % [low, high, placed.size()])
 
 
 func _walk_line() -> Dictionary:
@@ -249,7 +272,7 @@ func _walk_line() -> Dictionary:
 	if delta.length() < 1.0:
 		delta = Vector2(-1, 1)
 	var dir := delta.normalized()
-	return {"origin": corner + dir * 90.0, "dir": dir, "goal": best}
+	return {"origin": corner + dir * 140.0, "dir": dir, "goal": best}
 
 
 func _aim(focus: Vector3) -> void:
