@@ -130,6 +130,16 @@ static func flee_action(from_xz: Vector2, threat: Vector2, yaw_degrees: float) -
 	return best
 
 
+static func ring_hot(tree: SceneTree, pos: Vector2) -> bool:
+	for row in guardian_bubbles(tree):
+		if typeof(row) != TYPE_DICTIONARY or not bool(row.get("hard", false)):
+			continue
+		var at: Vector2 = row.get("xz", pos)
+		if pos.distance_to(at) < float(row.get("radius", 0.0)):
+			return true
+	return false
+
+
 static func guardian_bubbles(tree: SceneTree) -> Array:
 	var out: Array = []
 	if tree == null:

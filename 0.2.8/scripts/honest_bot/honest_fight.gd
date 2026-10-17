@@ -216,6 +216,8 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
 	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 		return ""
+	if not _Farm.demo_ready(_level) and pos.distance_to(origin) > 36.0:
+		return _seek_xp(dt, tree, player, origin, pos)
 	var rows := _usable(_sense(tree))
 	if _foe_id != "" and not _alive.has(_foe_id):
 		_note_down()
@@ -236,6 +238,9 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			choice = _Farm.pick_seek(rows, pos, killed, _Farm.SEEK_COLUMNS, _skipped, true)
 		if choice.is_empty():
 			choice = _Farm.pick_seek(rows, pos, killed, 48.0, _skipped, false)
+		if str(choice.get("kind", "")) == "spawn_elite":
+			_skipped[str(choice.get("id", ""))] = true
+			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
 			return _fight(dt, tree, player, choice, origin)

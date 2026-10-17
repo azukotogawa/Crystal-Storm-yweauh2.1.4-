@@ -555,6 +555,8 @@ func _tick_detour(step: float) -> void:
 
 
 func _tick_face(pos: Vector2, step: float) -> void:
+	if _leave_ring(step):
+		return
 	hands.begin_tick()
 	if _pose == "":
 		_pose = "pause"
@@ -632,6 +634,8 @@ func _start_glow() -> void:
 
 
 func _tick_glow(step: float) -> void:
+	if _leave_ring(step):
+		return
 	if chapters != null and chapters.has_method("open") and not bool(chapters.open("glow")):
 		return
 	if _glow_walk and _pose == "walk":
@@ -671,6 +675,23 @@ func _tick_glow(step: float) -> void:
 	hands.release_all()
 	bot.release()
 	_seg_status = "pass"
+
+
+func _leave_ring(step: float) -> bool:
+	var pos := _xz()
+	var threats: Array = []
+	for row in _Hazard.guardian_bubbles(tree):
+		if typeof(row) == TYPE_DICTIONARY and bool(row.get("hard", false)):
+			threats.append(row)
+	var dodge := _Hazard.dodge_point(pos, pos, threats)
+	if dodge == Vector2.INF:
+		return false
+	var flee := _Hazard.flee_action(pos, _Hazard.bubble_center(pos, threats), _yaw())
+	bot.extra_held = PackedStringArray([flee, "sprint"])
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
+		bot.set_target(dodge)
+	bot.tick(pos, _yaw(), step)
+	return true
 
 
 func _begin_face() -> void:
@@ -807,7 +828,7 @@ func _unsafe() -> bool:
 		return true
 	if tree == null:
 		return false
-	return _Hazard.burning(tree, _xz())
+	return _Hazard.burning(tree, _xz()) or _Hazard.ring_hot(tree, _xz())
 
 
 func _idle_inputs() -> void:

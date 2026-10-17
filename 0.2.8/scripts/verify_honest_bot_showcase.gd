@@ -507,7 +507,11 @@ func _check_farm() -> void:
 		{"id": "s", "kind": "crystal_stag", "xz": Vector2(30, 0)},
 		{"id": "r", "kind": "rabbit", "xz": Vector2(2, 0)},
 		{"id": "t", "kind": "town_militia", "xz": Vector2(1, 0)},
+		{"id": "e", "kind": "spawn_elite", "xz": Vector2(3, 0)},
 	]
+	if _Farm.prefer_kind("spawn_elite", {}) >= 0:
+		_fail("the farm should not seek a guardian")
+		return
 	var foe: Dictionary = _Farm.pick_seek(rows, Vector2.ZERO, {}, _Farm.SEEK_COLUMNS, {}, true)
 	if str(foe.get("kind", "")) != "crystal_stag":
 		_fail("a new stag should beat a mite and a rabbit, got %s" % foe)

@@ -64,7 +64,7 @@ static func next_site(from_xz: Vector2, sites: Array, done: Dictionary, visits: 
 
 
 static func prefer_kind(kind: String, killed: Dictionary) -> int:
-	if kind == "" or kind == "origin_warden" or kind == "town_militia" or kind == "town_villager":
+	if kind == "" or kind == "origin_warden" or kind == "spawn_elite" or kind == "town_militia" or kind == "town_villager":
 		return -1
 	if kind == "crystal_mite":
 		return 1 if not killed.has(kind) else 0
