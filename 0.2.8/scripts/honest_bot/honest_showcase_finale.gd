@@ -8,7 +8,11 @@ const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 
 const CRYSTAL_LIMIT := 240.0
-const BOSS_LIMIT := 150.0
+const BOSS_LIMIT := 240.0
+const BOSS_STAND_NEAR := 2.48
+const BOSS_STAND_FAR := 2.72
+const PULL_COLUMNS := 8.0
+const LEASH_COLUMNS := 16.0
 const WIN_LIMIT := 90.0
 const WIN_HOLD := 5.0
 const SPACE_COLUMNS := 1.75
@@ -46,6 +50,8 @@ var _exit_age := -1.0
 var _carve := Vector2.INF
 var _carve_pick := false
 var _carve_logged := false
+var _pull_logged := false
+var _dodge := Vector2.INF
 var _clocks := {"crystal": 0.0, "boss": 0.0, "win_screen": 0.0}
 
 
@@ -79,6 +85,8 @@ func begin(id: String) -> void:
 	_carve = Vector2.INF
 	_carve_pick = false
 	_carve_logged = false
+	_pull_logged = false
+	_dodge = Vector2.INF
 	caption = id
 
 
@@ -148,16 +156,29 @@ func tick(step: float, tree: SceneTree, player: Node) -> String:
 	var seen_hp := _hp(tree)
 	if seen_hp.y > 0.0 and seen_hp.x < seen_hp.y - 0.5:
 		_dropped = true
+	var bosses_now := _bosses(tree)
+	if not bosses_now.is_empty():
+		var boss_xz: Vector2 = bosses_now[0].get("xz", origin)
+		if not _Hazard.boss_off_heart(boss_xz, origin):
+			_pull_boss(dt, player, origin, pos, boss_xz)
+		elif _ring_reach(tree) > 0.0:
+			_dodge_boss(dt, tree, player, origin, pos, boss_xz)
+		elif pos.distance_to(boss_xz) < 1.05:
+			_dodge = Vector2.INF
+			_space_from(dt, tree, player, {"xz": boss_xz, "boss": true})
+		else:
+			_dodge = Vector2.INF
+			_swing_boss(dt, tree, player, origin, false)
+		_drain()
+		_note_hp()
+		return _status(dt, tree)
 	var crowd := _close_crowd(tree, player)
 	if not crowd.is_empty():
 		_space_from(dt, tree, player, crowd)
 		_drain()
 		_note_hp()
 		return _status(dt, tree)
-	if _bosses(tree).is_empty():
-		_swing_heart(dt, tree, player, origin, pos, false)
-	else:
-		_swing_boss(dt, tree, player, origin, false)
+	_swing_heart(dt, tree, player, origin, pos, false)
 	_drain()
 	_note_hp()
 	return _status(dt, tree)
@@ -293,7 +314,7 @@ func _swing_heart(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos
 			_goto(dt, player, pad, aim)
 			return
 		heart.fight.reset_weapon()
-		_swing_at(dt, tree, player, origin, aim)
+		_swing_at(dt, tree, player, origin, aim, false)
 		return
 	_carve_rim(dt, tree, player, origin, pos, aim)
 
@@ -304,37 +325,94 @@ func _swing_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, _dee
 		return
 	var boss: Vector2 = bosses[0].get("xz", origin)
 	var pos := _xz(player)
+	if not _Hazard.boss_off_heart(boss, origin):
+		_pull_boss(dt, player, origin, pos, boss)
+		return
 	if _Hazard.burning(tree, pos) or _ratio(player) < POKE_RATIO:
 		_goto(dt, player, _camp(tree, origin), boss)
 		return
-	var stand := _Hazard.strike_stand(tree, pos, boss)
+	var stand := _Hazard.strike_stand(tree, pos, boss, BOSS_STAND_FAR, BOSS_STAND_NEAR)
 	if stand == Vector2.INF:
-		stand = _Hazard.sword_pad(tree, origin)
 		_boss_wait += dt
-		if stand == Vector2.INF:
-			_goto(dt, player, _camp(tree, origin), boss)
-			return
-		if pos.distance_to(boss) > _Hazard.SWORD_RANGE or pos.distance_to(stand) > 0.7:
-			_goto(dt, player, stand, boss)
-			return
-	else:
-		_boss_wait = 0.0
-		if pos.distance_to(stand) > 0.7:
-			_goto(dt, player, stand, boss)
-			return
+		_goto(dt, player, _camp(tree, origin), boss)
+		return
+	_boss_wait = 0.0
+	if pos.distance_to(stand) > 0.55:
+		_goto(dt, player, stand, boss)
+		return
 	heart.fight.reset_weapon()
-	_swing_at(dt, tree, player, origin, boss)
+	_swing_at(dt, tree, player, origin, boss, true)
 
 
-func _swing_at(dt: float, tree: SceneTree, player: Node, origin: Vector2, aim: Vector2) -> void:
+func _pull_boss(dt: float, player: Node, origin: Vector2, pos: Vector2, boss: Vector2) -> void:
+	if not _pull_logged:
+		_pull_logged = true
+		print("SHOWCASE boss pull")
+	_dodge = Vector2.INF
+	var center := origin + Vector2(0.5, 0.5)
+	var away := pos - center
+	if away.length() < 0.2:
+		away = Vector2(1.0, 0.0)
+	else:
+		away = away.normalized()
+	var goal := center + away * PULL_COLUMNS
+	if pos.distance_to(goal) < 1.1 and not _Hazard.boss_off_heart(boss, origin):
+		var side := Vector2(-away.y, away.x)
+		goal = center + (away + side).normalized() * (PULL_COLUMNS + 3.0)
+	if goal.distance_to(center) > LEASH_COLUMNS:
+		goal = center + (goal - center).normalized() * LEASH_COLUMNS
+	_goto(dt, player, goal, boss)
+
+
+func _dodge_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2, boss: Vector2) -> void:
+	var reach := _ring_reach(tree)
+	if _dodge == Vector2.INF:
+		var away := pos - boss
+		if away.length() < 0.05:
+			away = pos - (origin + Vector2(0.5, 0.5))
+		if away.length() < 0.05:
+			away = Vector2(1.0, 0.0)
+		away = away.normalized()
+		var step := maxf(reach + 0.8, 3.2)
+		var goal := pos + away * step
+		var center := origin + Vector2(0.5, 0.5)
+		if goal.distance_to(center) > LEASH_COLUMNS:
+			goal = center + (goal - center).normalized() * LEASH_COLUMNS
+		if _Hazard.burning(tree, goal):
+			goal = _camp(tree, origin)
+		_dodge = goal
+		print("SHOWCASE boss dodge %.1f" % step)
+	_goto(dt, player, _dodge, boss)
+
+
+func _ring_reach(tree: SceneTree) -> float:
+	if tree == null:
+		return 0.0
+	var vs := 1.0
+	var settings := WorldSettings.get_active()
+	if settings != null:
+		vs = maxf(float(settings.voxel_scale), 0.001)
+	for node in tree.get_nodes_in_group("origin_boss"):
+		if not is_instance_valid(node):
+			continue
+		var ring := node.get_node_or_null("TelegraphRing") as Node3D
+		if ring == null or not ring.visible:
+			continue
+		return ring.scale.x / vs
+	return 0.0
+
+
+func _swing_at(dt: float, tree: SceneTree, player: Node, origin: Vector2, aim: Vector2, strict: bool) -> void:
 	var bot = heart.fight.bot
 	bot.input.aim_column(player, aim.x, aim.y)
-	var ready := _aim_locked(player, aim)
+	var ready := _aim_locked(player, aim, strict)
+	if strict and ready and not _Hazard.boss_off_heart(aim, origin):
+		ready = false
 	if ready:
 		_aim_hold = 0.0
 	else:
 		_aim_hold += dt
-	heart.fight.aim_ready = ready or _aim_hold >= 0.35
+	heart.fight.aim_ready = ready or (not strict and _aim_hold >= 0.35)
 	var facing := _Nav.face_action(_xz(player), aim, _yaw(player))
 	if facing != "" or not heart.fight.aim_ready:
 		bot.input.begin_tick()
@@ -347,15 +425,15 @@ func _swing_at(dt: float, tree: SceneTree, player: Node, origin: Vector2, aim: V
 	_drive(dt, tree, player)
 
 
-func _aim_locked(player: Node, aim: Vector2) -> bool:
+func _aim_locked(player: Node, aim: Vector2, strict: bool = false) -> bool:
 	if player == null:
 		return false
 	var hl = player.get_node_or_null("TargetHighlight")
 	if hl == null or not hl.has_method("get_action_column"):
-		return true
+		return not strict
 	var shared: Vector3 = hl.get_action_column()
 	if shared == Vector3.ZERO:
-		return true
+		return not strict
 	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
 	var want := Vector2(float(floori(aim.x)) + 0.5, float(floori(aim.y)) + 0.5)
 	return cell.distance_to(want) <= 1.15

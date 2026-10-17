@@ -60,19 +60,27 @@ static func leave_goal(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector
 	return pos + away * 8.0
 
 
-static func strike_stand(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
-	var reach := HIT_COLUMNS
-	if not burning(tree, pos) and pos.distance_to(foe) <= reach and pos.distance_to(foe) >= 1.15:
+static func boss_off_heart(boss: Vector2, origin: Vector2) -> bool:
+	var cell := Vector2(float(floori(boss.x)), float(floori(boss.y)))
+	var heart := Vector2(float(floori(origin.x)), float(floori(origin.y)))
+	return cell.distance_to(heart) > SWORD_RANGE
+
+
+static func strike_stand(tree: SceneTree, pos: Vector2, foe: Vector2, reach: float = -1.0, near: float = 1.15) -> Vector2:
+	if reach < 0.0:
+		reach = HIT_COLUMNS
+	if not burning(tree, pos) and pos.distance_to(foe) <= reach and pos.distance_to(foe) >= near:
 		return pos
 	var best := Vector2.INF
 	var best_d := 1.0e9
 	var cx := floori(foe.x)
 	var cz := floori(foe.y)
-	for dx in range(-4, 5):
-		for dz in range(-4, 5):
+	var span := maxi(ceili(reach) + 1, 4)
+	for dx in range(-span, span + 1):
+		for dz in range(-span, span + 1):
 			var at := Vector2(float(cx + dx) + 0.5, float(cz + dz) + 0.5)
 			var dist := at.distance_to(foe)
-			if dist > reach or dist < 1.15:
+			if dist > reach or dist < near:
 				continue
 			if burning(tree, at):
 				continue

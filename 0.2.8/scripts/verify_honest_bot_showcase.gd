@@ -349,6 +349,12 @@ func _check_hazard() -> void:
 	if _Hazard.rim_carve(null, Vector2.ZERO) != Vector2.INF:
 		_fail("an empty disk should not carve")
 		return
+	if _Hazard.boss_off_heart(Vector2(2.5, 0.5), Vector2.ZERO):
+		_fail("a warden two cells from the heart is still inside the sword")
+		return
+	if not _Hazard.boss_off_heart(Vector2(3.5, 0.5), Vector2.ZERO):
+		_fail("a warden three cells out should be safe to hit")
+		return
 	if _Finale.WIN_HOLD < 4.99:
 		_fail("win hold should stay on screen for 5s")
 		return
