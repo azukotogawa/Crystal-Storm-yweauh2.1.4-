@@ -25,6 +25,8 @@ const _RelicChoice = preload("res://relics/relic_choice.gd")
 const _RelicChoicePanel = preload("res://ui/relic_choice_panel.gd")
 const _CrystalPalette = preload("res://ui/crystal_palette.gd")
 const _CrystalGroundLook = preload("res://config/crystal_ground_look.gd")
+const _MainCrystalMesh = preload("res://helpers/main_crystal_mesh.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _StructureIntegrity = preload("res://helpers/structure_integrity.gd")
@@ -694,6 +696,7 @@ func _repaint_spawn_anchor(anchor: Node3D, colorblind: bool) -> void:
 	var prism := anchor.get_node_or_null("FallbackPrism") as MeshInstance3D
 	if prism and prism.material_override is StandardMaterial3D:
 		_CrystalPalette.paint_mass(prism.material_override as StandardMaterial3D, colorblind)
+	_MainCrystalMesh.repaint(anchor.get_node_or_null("HeartCrystal") as Node3D, colorblind)
 	var fill := anchor.get_node_or_null("HpFill") as MeshInstance3D
 	if fill and fill.material_override is StandardMaterial3D:
 		var mat := fill.material_override as StandardMaterial3D
@@ -1971,7 +1974,8 @@ func _refresh_spawn_markers() -> void:
 			if fallback != null:
 				has_tex = true
 				marker.texture = fallback
-		if not has_tex and _CrystalGroundLook.load_active().debug_markers_allowed():
+		var main_crystal := _is_main_crystal(spawn)
+		if not has_tex and not main_crystal and _CrystalGroundLook.load_active().debug_markers_allowed():
 			if _marker_material:
 				marker.material_override = _marker_material.duplicate()
 			var prism := MeshInstance3D.new()
@@ -1986,6 +1990,9 @@ func _refresh_spawn_markers() -> void:
 			prism.material_override = pmat
 			prism.position.y = marker_size * 0.15
 			anchor.add_child(prism)
+		if main_crystal:
+			marker.visible = false
+			_MainCrystalMesh.attach(anchor, marker_size, colorblind)
 		anchor.add_child(marker)
 
 		var col_x := float(spawn.world_pos.x) + 0.5
@@ -1999,6 +2006,10 @@ func _refresh_spawn_markers() -> void:
 		_attach_spawn_hp_bar(anchor, spawn, marker_size)
 		_marker_root.add_child(anchor)
 		_spawn_markers[spawn.id] = anchor
+
+
+func _is_main_crystal(spawn: CrystalSpawnPoint) -> bool:
+	return spawn != null and int(spawn.kind) == int(_CrystalTypes.SpawnKind.ORIGIN)
 
 
 func _attach_spawn_hp_bar(anchor: Node3D, spawn: CrystalSpawnPoint, marker_size: float) -> void:

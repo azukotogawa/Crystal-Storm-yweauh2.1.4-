@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MainCrystalLook" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://config/main_crystal_look.gd" id="1_look"]
+
+[resource]
+script = ExtResource("1_look")
+albedo = Color(0.62, 0.16, 0.92, 1)
+emission = Color(0.78, 0.22, 1, 1)
+emission_energy = 2.2
+colorblind_albedo = Color(0.98, 0.82, 0.12, 1)
+colorblind_emission = Color(1, 0.9, 0.2, 1)
+colorblind_emission_energy = 2.2
+roughness = 0.18
+shard_centers = Array[Vector3]([Vector3(0.02, -0.1, -0.04), Vector3(0.18, 0.46, 0.08), Vector3(-0.3, -0.24, 0.1), Vector3(0.04, 0.1, 0.42), Vector3(-0.1, -0.4, -0.2), Vector3(0.24, 0.8, -0.12), Vector3(-0.16, 0.28, -0.18)])
+shard_sizes = Array[Vector3]([Vector3(0.46, 0.98, 0.38), Vector3(0.2, 0.7, 0.16), Vector3(0.3, 0.52, 0.22), Vector3(0.16, 0.44, 0.36), Vector3(0.26, 0.3, 0.18), Vector3(0.12, 0.36, 0.14), Vector3(0.18, 0.28, 0.16)])
