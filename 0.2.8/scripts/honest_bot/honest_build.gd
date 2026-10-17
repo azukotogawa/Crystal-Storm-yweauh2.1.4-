@@ -88,7 +88,19 @@ func _dig() -> String:
 		beat = 1
 		return ""
 	if beat == 1:
-		aim = _free_cell(0)
+		aim = _dry_near()
+		if aim.x > 900000:
+			hands.set_held(_exit_crystal_held())
+			show_age += step_dt
+			if show_age < 1.4:
+				return ""
+			show_age = 0.0
+			tries += 1
+			if tries > 6:
+				print("FAIL dig_tool no dry cell")
+				return "fail"
+			return ""
+		tries = 0
 		_look_at(aim)
 		beat = 2
 		show_age = 0.0
@@ -107,7 +119,15 @@ func _dig() -> String:
 		show_age += step_dt
 		if show_age < _Pace.PRE_PAUSE:
 			return ""
-		if not _column_aimed(aim) and show_age < _Pace.PRE_PAUSE + 0.6:
+		if not _column_aimed(aim):
+			if show_age < _Pace.PRE_PAUSE + 1.4:
+				return ""
+			tries += 1
+			if tries >= 8:
+				print("FAIL dig_tool cursor %s aim %s" % [_cursor_cell(), aim])
+				return "fail"
+			beat = 1
+			show_age = 0.0
 			return ""
 		heights = _height_snap()
 		_look_at(aim, PackedStringArray(["attack"]))
@@ -126,9 +146,10 @@ func _dig() -> String:
 			if tries >= OFFSETS.size():
 				print("FAIL dig_tool swings missed")
 				return "fail"
-			aim = _free_cell(tries)
+			aim = _dry_near()
 			age = minf(age, DIG_LIMIT - 1.0)
-			beat = 2
+			beat = 1
+			show_age = 0.0
 			return ""
 		_stop_move()
 		show_age = 0.0
@@ -546,6 +567,43 @@ func _stop_move() -> void:
 func _spinning(cell: Vector2i) -> bool:
 	var at := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
 	return _Nav.face_action(_xz(), at, _yaw()) != ""
+
+
+func _dry_near() -> Vector2i:
+	var origin := _column()
+	var best := Vector2i(999999, 999999)
+	var best_d := 99
+	for dz in range(-3, 4):
+		for dx in range(-3, 4):
+			var cheb := maxi(absi(dx), absi(dz))
+			if cheb < 2 or cheb > 3:
+				continue
+			var cell := origin + Vector2i(dx, dz)
+			if not _open_ground(cell):
+				continue
+			if cheb < best_d:
+				best_d = cheb
+				best = cell
+	return best
+
+
+func _exit_crystal_held() -> PackedStringArray:
+	var origin := _column()
+	var best := Vector2i(4, 0)
+	var best_depth := 999.0
+	for off in [Vector2i(4, 0), Vector2i(-4, 0), Vector2i(0, 4), Vector2i(0, -4)]:
+		var depth := _crystal_depth(origin + off)
+		if depth < best_depth:
+			best_depth = depth
+			best = off
+	var held := PackedStringArray()
+	var face := _Nav.face_action(_xz(), _xz() + Vector2(best), _yaw())
+	if face != "":
+		held.append(face)
+	else:
+		held.append("move_forward")
+		held.append("sprint")
+	return held
 
 
 func _free_cell(start: int) -> Vector2i:
