@@ -471,6 +471,22 @@ func _usable(rows: Array) -> Array:
 
 
 func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2) -> String:
+	if pos.distance_to(origin) > 36.0:
+		if _site_key != "":
+			_drop_site(false)
+		var goal := _Roster.pool_goal(pos, origin, 18.0)
+		if _Hazard.burning(tree, goal):
+			goal = _Hazard.leave_goal(tree, goal, origin)
+		if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 2.0:
+			bot.set_target(goal)
+		var extras := PackedStringArray()
+		if pos.distance_to(goal) > 6.0:
+			extras.append("sprint")
+		if _submerged(player):
+			extras.append("jump")
+		bot.extra_held = extras
+		bot.tick(pos, _yaw(player), dt)
+		return ""
 	if _site_key == "" and _visits < _Farm.SITE_CAP:
 		var world = _World.get_active()
 		var sites: Array = []

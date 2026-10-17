@@ -11,8 +11,9 @@ const OFFSETS: Array[Vector2i] = [
 	Vector2i(3, 1), Vector2i(-3, 1), Vector2i(1, 3), Vector2i(1, -3),
 	Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 2), Vector2i(2, -4),
 ]
-const DIG_LIMIT := 36.0
+const DIG_LIMIT := 48.0
 const PLACE_LIMIT := 130.0
+const CRYSTAL_SKIP := 0.05
 
 var chapter_label := ""
 var hands: RefCounted
@@ -392,31 +393,32 @@ func _craft_segment() -> String:
 			if not hands.pulse("hotbar_%d" % (slot + 1)):
 				return ""
 			return ""
-		var got := _cursor_cell()
-		if _segment_ready(got):
-			_stop_move()
-			tiles = _tile_snap()
-			hands.aim_column(player, float(got.x) + 0.5, float(got.y) + 0.5)
-			if show_age < _Pace.PRE_PAUSE:
-				show_age += step_dt
-				return ""
-			if not hands.pulse("build_place"):
-				return ""
-			tries = 0
+		if aim.x > 900000 or not _open_ground(aim):
+			aim = _free_cell(tries)
+			spin = 0
 			show_age = 0.0
-			beat = 25
-			return ""
-		if spin < 36:
-			var held := PackedStringArray()
-			held.append("move_right" if tries % 2 == 0 else "move_forward")
-			hands.set_held(held)
+		_look_at(aim)
+		var got := _cursor_cell()
+		if got != aim or not _segment_ready(aim):
 			spin += 1
+			if spin < 90:
+				return ""
+			spin = 0
+			tries += 1
+			if tries > 12:
+				print("FAIL structure wall_segment cursor %s reason %s" % [got, _place_reason()])
+				return "fail"
+			aim = _free_cell(tries)
+			show_age = 0.0
 			return ""
-		spin = 0
-		tries += 1
-		if tries > 8:
-			print("FAIL structure wall_segment cursor %s reason %s" % [_cursor_cell(), _place_reason()])
-			return "fail"
+		if show_age < _Pace.PRE_PAUSE:
+			show_age += step_dt
+			return ""
+		tiles = _tile_snap()
+		if not hands.pulse("build_place"):
+			return ""
+		show_age = 0.0
+		beat = 25
 		return ""
 	if _new_tiles() >= 3:
 		if show_age < _Pace.RESULT_HOLD + _Pace.SETTLE:
@@ -433,6 +435,8 @@ func _craft_segment() -> String:
 	if tries > 8:
 		print("FAIL structure wall_segment tiles %d piece %d reason %s" % [_new_tiles(), _piece_count(), _place_reason()])
 		return "fail"
+	print("SHOWCASE structure place miss tiles %d reason %s" % [_new_tiles(), _place_reason()])
+	aim = _free_cell(tries)
 	spin = 0
 	beat = 24
 	return ""
@@ -546,19 +550,43 @@ func _spinning(cell: Vector2i) -> bool:
 
 func _free_cell(start: int) -> Vector2i:
 	var origin := _column()
-	var n := OFFSETS.size()
+	var ring: Array[Vector2i] = []
+	for dist in range(2, 14):
+		for dz in range(-dist, dist + 1):
+			for dx in range(-dist, dist + 1):
+				if maxi(absi(dx), absi(dz)) != dist:
+					continue
+				ring.append(Vector2i(dx, dz))
+	if ring.is_empty():
+		return origin + Vector2i(5, 0)
+	var n := ring.size()
 	for k in n:
-		var off: Vector2i = OFFSETS[posmod(start + k, n)]
+		var off: Vector2i = ring[posmod(start + k, n)]
 		var cell := origin + off
-		if not _Edits.can_edit(cell.x, cell.y):
-			continue
-		if _Edits.get_build_tile(cell.x, cell.y) >= 0:
-			continue
-		var feat := _Features.get_feature(cell.x, cell.y)
-		if str(feat.get("build_id", "")) != "":
+		if not _open_ground(cell):
 			continue
 		return cell
-	return origin + Vector2i(5, 0)
+	return origin + Vector2i(8, 0)
+
+
+func _open_ground(cell: Vector2i) -> bool:
+	if not _Edits.can_edit(cell.x, cell.y):
+		return false
+	if _Edits.get_build_tile(cell.x, cell.y) >= 0:
+		return false
+	var feat := _Features.get_feature(cell.x, cell.y)
+	if str(feat.get("build_id", "")) != "":
+		return false
+	return _crystal_depth(cell) < CRYSTAL_SKIP
+
+
+func _crystal_depth(cell: Vector2i) -> float:
+	if tree == null:
+		return 0.0
+	var crystal := tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_depth_at"):
+		return 0.0
+	return float(crystal.get_depth_at(cell.x, cell.y))
 
 
 func _column() -> Vector2i:

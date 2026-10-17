@@ -2,7 +2,7 @@ extends RefCounted
 
 const BURN_DEPTH := 0.25
 const CLEAR_DEPTH := 0.12
-const HIT_COLUMNS := 2.05
+const HIT_COLUMNS := 1.65
 const SWORD_RANGE := 2.8
 const PAD_MIN := 1.2
 
