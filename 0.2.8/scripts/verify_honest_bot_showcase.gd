@@ -41,6 +41,7 @@ func _prepare_capture() -> void:
 	var size := Vector2i(1280, 720)
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	DisplayServer.window_set_size(size)
+	DisplayServer.window_move_to_foreground()
 	if root != null:
 		root.size = size
 
@@ -554,10 +555,12 @@ func _check_live() -> void:
 	_prepare_capture()
 	var compose = game.get_node_or_null("CompositionRoot")
 	var frames := 0
+	var scene_sec := 0.0
 	while frames < 2400:
 		if compose != null and int(compose.stage) >= compose.Stage.INITIAL_STREAM_READY:
 			break
 		await process_frame
+		scene_sec += _frame_delta()
 		frames += 1
 	if compose == null or int(compose.stage) < compose.Stage.INITIAL_STREAM_READY:
 		_fail("start region not ready")
@@ -567,6 +570,7 @@ func _check_live() -> void:
 		print("SHOWCASE capture %d %d" % [int(root.size.x), int(root.size.y)])
 	for _w in 120:
 		await process_frame
+		scene_sec += _frame_delta()
 		if not _GI.blocks_actions():
 			break
 	if _GI.blocks_actions():
@@ -581,7 +585,17 @@ func _check_live() -> void:
 		_fail("no crystal origin")
 		return
 	var heart: Vector2i = crystal.get_origin_cell()
+	if not _driver_loaded():
+		print("RECORD FAIL input driver did not load")
+		_fail("input driver did not load")
+		_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+		return
 	var show = _Show.new()
+	if show.hands == null or not show.hands.has_method("pulse"):
+		print("RECORD FAIL input driver did not load")
+		_fail("input driver did not load")
+		_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+		return
 	if not show.load_route():
 		_fail("route missing at live boot")
 		return
@@ -591,14 +605,34 @@ func _check_live() -> void:
 	root.add_child(layer)
 	show.bind(self, player, Vector2(float(heart.x), float(heart.y)), layer, log)
 	var saw_movement := false
+	var boot_left := false
 	var guard := 0
+	var cap := _showcase_max_sec()
 	while not show.finished and guard < LIVE_FRAMES:
-		var delta := root.get_process_delta_time()
-		if delta <= 0.0:
-			delta = STEP
+		var delta := _frame_delta()
+		scene_sec += delta
 		show.tick(delta)
+		var feat := str(log.feature()) if log.has_method("feature") else ""
+		if not boot_left and feat != "" and feat != "boot_tutorial":
+			boot_left = true
+			print("SHOWCASE boot_tutorial left clock %.2f scene %.2f" % [log.seconds(), scene_sec])
 		if layer.chapter_text == "movement" and layer.clock_text.contains(":"):
 			saw_movement = true
+		if not boot_left and log.seconds() >= 30.0:
+			print("RECORD FAIL boot_tutorial has not advanced after 30s")
+			_fail("boot_tutorial idle")
+			_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+			return
+		if cap > 0.0 and log.seconds() >= cap:
+			print("SHOWCASE smoke stop %.2f" % log.seconds())
+			if not boot_left:
+				print("RECORD FAIL boot_tutorial has not advanced after 30s")
+				_fail("boot_tutorial idle")
+				_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+				return
+			print("MOVIE_GAME_SEC %.3f" % (float(Engine.get_process_frames()) / 30.0))
+			_ProbeExit.finish_tree(self, 0, "SHOWCASE SMOKE DONE")
+			return
 		await process_frame
 		guard += 1
 	if not show.finished:
@@ -643,3 +677,25 @@ func _check_live() -> void:
 		return
 	if _failed == 0:
 		_ok("live showcase through the win")
+
+
+func _frame_delta() -> float:
+	var delta := root.get_process_delta_time()
+	if delta <= 0.0:
+		return STEP
+	return delta
+
+
+func _showcase_max_sec() -> float:
+	var raw := OS.get_environment("CRYSTALSTORM_SHOWCASE_MAX_SEC")
+	if raw.is_empty():
+		return -1.0
+	return float(raw)
+
+
+func _driver_loaded() -> bool:
+	var script := load("res://scripts/honest_bot/honest_input.gd") as GDScript
+	if script == null or not script.can_instantiate():
+		return false
+	var sample = script.new()
+	return sample != null and sample.has_method("pulse") and sample.has_method("begin_tick")

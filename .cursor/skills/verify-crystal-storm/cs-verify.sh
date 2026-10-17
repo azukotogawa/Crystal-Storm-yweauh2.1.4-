@@ -502,6 +502,12 @@ finish_record() {
     fi
     echo "SHOWCASE capture ${w}x${h}"
   fi
+  if [ -n "${CRYSTALSTORM_SHOWCASE_MAX_SEC:-}" ]; then
+    echo "RECORD SMOKE evidence=$EVID"
+    printf '%s\n' "${mp4s[@]}"
+    echo "$EVID/contact-sheet.png"
+    return 0
+  fi
   if [ "$SHOWCASE_CAPTURE" = 1 ]; then
     published=$(attach_showcase_chapters "$primary" "$EVID/chapters.txt")
     publish_showcase "$published" || return 1
@@ -679,6 +685,22 @@ bot-run)
   grep -m1 '^Result:' "$EVID/bot-report.md" | tr -d '\r' ;;
 showcase|bot-showcase)
   run_godot honest-bot-showcase --headless --path "$ROOT" -s res://scripts/verify_honest_bot_showcase.gd; r=$?
+  if [ -n "${CRYSTALSTORM_SHOWCASE_MAX_SEC:-}" ]; then
+    if grep -q 'RECORD FAIL input driver did not load' "$EVID/honest-bot-showcase.log" || grep -q 'RECORD FAIL boot_tutorial has not advanced after 30s' "$EVID/honest-bot-showcase.log"; then
+      grep -E '^RECORD FAIL' "$EVID/honest-bot-showcase.log" | tr -d '\r'
+      echo "SHOWCASE SMOKE FAIL rc=$r evidence=$EVID"
+      exit 1
+    fi
+    if bad "$EVID/honest-bot-showcase.log"; then echo "SHOWCASE SMOKE FAIL script rc=$r"; tail -8 "$EVID/honest-bot-showcase.log"; exit 1; fi
+    if ! grep -q '^SHOWCASE boot_tutorial pass' "$EVID/honest-bot-showcase.log" || ! grep -q '^SHOWCASE boot_tutorial left ' "$EVID/honest-bot-showcase.log"; then
+      echo "RECORD FAIL boot_tutorial did not pass"
+      tail -24 "$EVID/honest-bot-showcase.log"
+      exit 1
+    fi
+    grep -E '^(SHOWCASE boot_tutorial|RECORD FAIL|MOVIE_GAME_SEC|SHOWCASE smoke)' "$EVID/honest-bot-showcase.log" | tr -d '\r'
+    echo "SHOWCASE SMOKE boot left rc=$r evidence=$EVID"
+    exit 0
+  fi
   if [ -s "$EVID/chapters.txt" ]; then
     short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
     if [ -n "$short" ]; then
