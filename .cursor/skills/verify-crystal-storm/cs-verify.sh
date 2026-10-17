@@ -545,24 +545,52 @@ attach_showcase_chapters() {
   echo "$mp4"
 }
 
+copy_fresh() {
+  local src="$1" dest="$2" dir base stem ext n candidate
+  [ -s "$src" ] || return 1
+  dir=$(dirname "$dest")
+  base=$(basename "$dest")
+  stem="$base"
+  ext=""
+  case "$base" in
+    *.*) ext=".${base##*.}"; stem="${base%.*}" ;;
+  esac
+  candidate="$dest"
+  n=2
+  while [ -e "$candidate" ]; do
+    candidate="$dir/${stem}-v${n}${ext}"
+    n=$((n + 1))
+    [ "$n" -le 40 ] || return 1
+  done
+  cp "$src" "$candidate" || return 1
+  echo "$candidate"
+}
+
 publish_showcase() {
   local mp4="$1"
   local dest="$EVID_ROOT/showcase"
   local latest="/mnt/d/LATEST/CrystalStorm"
+  local copied sheet chapters_json chapters_txt latest_mp4
   mkdir -p "$dest" "$latest" || return 1
-  cp -f "$mp4" "$dest/showcase-speedrun.mp4" || return 1
-  cp -f "$EVID/contact-sheet.png" "$dest/contact-sheet.png" || return 1
-  if [ -s "$EVID/chapters.json" ]; then cp -f "$EVID/chapters.json" "$dest/chapters.json" || return 1; fi
-  if [ -s "$EVID/chapters.txt" ]; then cp -f "$EVID/chapters.txt" "$dest/chapters.txt" || return 1; fi
-  if [ ! -s "$dest/chapters.json" ] || [ ! -s "$dest/chapters.txt" ]; then
+  copied=$(copy_fresh "$mp4" "$dest/showcase-speedrun.mp4") || return 1
+  sheet=$(copy_fresh "$EVID/contact-sheet.png" "$dest/contact-sheet.png") || return 1
+  chapters_json=""
+  chapters_txt=""
+  if [ -s "$EVID/chapters.json" ]; then
+    chapters_json=$(copy_fresh "$EVID/chapters.json" "$dest/chapters.json") || return 1
+  fi
+  if [ -s "$EVID/chapters.txt" ]; then
+    chapters_txt=$(copy_fresh "$EVID/chapters.txt" "$dest/chapters.txt") || return 1
+  fi
+  if [ -z "$chapters_json" ] || [ -z "$chapters_txt" ]; then
     echo "RECORD FAIL: showcase chapters sidecar missing" >&2
     return 1
   fi
-  cp -f "$dest/showcase-speedrun.mp4" "$latest/showcase-speedrun.mp4" || return 1
-  echo "SHOWCASE mp4=$dest/showcase-speedrun.mp4"
-  echo "SHOWCASE sheet=$dest/contact-sheet.png"
-  echo "SHOWCASE chapters=$dest/chapters.json"
-  echo "SHOWCASE latest=$latest/showcase-speedrun.mp4"
+  latest_mp4=$(copy_fresh "$copied" "$latest/showcase-speedrun.mp4") || return 1
+  echo "SHOWCASE mp4=$copied"
+  echo "SHOWCASE sheet=$sheet"
+  echo "SHOWCASE chapters=$chapters_json"
+  echo "SHOWCASE latest=$latest_mp4"
 }
 
 record_trap() {
