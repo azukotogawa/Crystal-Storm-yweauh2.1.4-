@@ -650,6 +650,14 @@ func _check_live() -> void:
 			print("MOVIE_GAME_SEC %.3f" % (float(Engine.get_process_frames()) / 30.0))
 			_ProbeExit.finish_tree(self, 0, "SHOWCASE SMOKE DONE")
 			return
+		if _evidence_hold(log):
+			if not log.write_dir(_Capture.run_dir()):
+				print("FAIL chapters sidecar was not written")
+				_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
+				return
+			print("SHOWCASE EVIDENCE HOLD %s" % OS.get_environment("CRYSTALSTORM_SHOWCASE_STOP_AFTER").strip_edges())
+			_ProbeExit.finish_tree(self, 0, "SHOWCASE EVIDENCE HOLD")
+			return
 		await process_frame
 		guard += 1
 	if not show.finished:
@@ -722,6 +730,28 @@ func _showcase_max_sec() -> float:
 	if raw.is_empty():
 		return -1.0
 	return float(raw)
+
+
+func _evidence_hold(log) -> bool:
+	var want := OS.get_environment("CRYSTALSTORM_SHOWCASE_STOP_AFTER").strip_edges()
+	if want == "" or log == null or not log.has_method("feature"):
+		return false
+	if str(log.feature()) != "":
+		return false
+	return _closed_span(log, want) + 0.001 >= _Pace.MIN_CHAPTER
+
+
+func _closed_span(log, feature: String) -> float:
+	var best := -1.0
+	var rows: Array = log.rows
+	for row in rows:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var item: Dictionary = row
+		if str(item.get("feature", "")) != feature:
+			continue
+		best = maxf(best, float(item.get("end", 0.0)) - float(item.get("start", 0.0)))
+	return best
 
 
 func _driver_loaded() -> bool:
