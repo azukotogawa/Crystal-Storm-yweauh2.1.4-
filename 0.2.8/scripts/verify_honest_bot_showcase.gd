@@ -210,6 +210,21 @@ func _check_traversal() -> void:
 	if str(chain[1].get("tag", "")) != "treasure" or str(chain[2].get("poi_kind", "")) != "rock_spire":
 		_fail("chain order %s" % chain)
 		return
+	var glow_cells := {
+		Vector2i(10, 0): {"center": Vector2i(10, 0), "poi_kind": "rock_spire", "landmark": true},
+		Vector2i(30, 0): {"center": Vector2i(30, 0), "poi_kind": "crystal_glow", "landmark": true},
+		Vector2i(0, 2000): {"center": Vector2i(0, 2000), "poi_kind": "crystal_glow", "landmark": true},
+	}
+	var glow: Dictionary = _Walk.glow_choice(Vector2.ZERO, glow_cells)
+	if str(glow.get("status", "")) != "walk" or str(glow.get("poi_kind", "")) != "crystal_glow":
+		_fail("nearest crystal glow should walk, got %s" % glow)
+		return
+	if absf(float(glow.get("distance", 0.0)) - 30.0) > 0.01:
+		_fail("glow distance %s" % glow)
+		return
+	if str(_Walk.glow_choice(Vector2.ZERO, {}).get("status", "")) != "too-far":
+		_fail("missing glow should be too-far")
+		return
 	var far_only := {
 		Vector2i(0, 2000): {"center": Vector2i(0, 2000), "poi_kind": "shrine", "poi": true},
 	}
@@ -630,6 +645,8 @@ func _check_live() -> void:
 				_fail("boot_tutorial idle")
 				_ProbeExit.finish_tree(self, 1, "HONEST BOT SHOWCASE FAIL")
 				return
+			if not log.write_dir(_Capture.run_dir()):
+				print("FAIL chapters sidecar was not written")
 			print("MOVIE_GAME_SEC %.3f" % (float(Engine.get_process_frames()) / 30.0))
 			_ProbeExit.finish_tree(self, 0, "SHOWCASE SMOKE DONE")
 			return
@@ -654,6 +671,10 @@ func _check_live() -> void:
 	if not text.contains("dig_tool ") or not text.contains("structure_place "):
 		_fail("sidecar missing dig or structure")
 		return
+	for feature in ["night", "torch", "day_night", "glow"]:
+		if _named_span(text, feature) + 0.001 < _Pace.MIN_CHAPTER:
+			_fail("chapter %s under 4s" % feature)
+			return
 	if not text.contains("structure_wall_segment ") or not text.contains("structure_small_tower "):
 		_fail("sidecar missing a structure type")
 		return
@@ -677,6 +698,16 @@ func _check_live() -> void:
 		return
 	if _failed == 0:
 		_ok("live showcase through the win")
+
+
+func _named_span(text: String, feature: String) -> float:
+	var best := -1.0
+	for raw in text.split("\n", false):
+		var parts := raw.split(" ", false)
+		if parts.size() < 3 or str(parts[0]) != feature:
+			continue
+		best = maxf(best, float(parts[2]) - float(parts[1]))
+	return best
 
 
 func _frame_delta() -> float:

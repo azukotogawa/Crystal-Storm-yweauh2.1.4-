@@ -83,9 +83,9 @@ Pass: player shadow is on screen under that sun. No extra travel.
 
 ### 4. `day_night`
 
-There is no day clock, dusk, night, or torch (`OmniLight3D` / `SpotLight3D`). Do not wait, and do not spin the light or drop its energy to fake one. Print `SHOWCASE night absent` and `SHOWCASE torch absent` (or `pass` if a later build actually has them). A crystal-glow landmark is emission on the mesh, logged later as `SHOWCASE glow`, not a torch.
+Open a `night` chapter, then `torch`, then `day_night`. Each stays up at least 4 seconds. Stand still and yaw once so the sky is in frame. Do not spin the sun or drop its energy. If a day clock exists, keep standing until the sun energy is under 0.35 or 90 seconds pass. There is no sleep action. Print `SHOWCASE night`, `SHOWCASE torch`, and `SHOWCASE day_night` as `pass` or `absent`. A crystal-glow landmark is not a torch.
 
-Pass status: `absent`.
+Pass status: `absent` when no clock is night, otherwise `pass`.
 
 ### 5. `dig_tool`
 
@@ -109,7 +109,7 @@ The treasure stop chosen with segment 7. Walk inside `ruin_discover_radius` (10)
 
 ### 9. `density_landmark`
 
-The landmark stop chosen with segment 7 (`rock_spire`, `ruined_tower`, or `crystal_glow`). Stop about 12 columns out so the mesh clears half of ortho size 16. Yaw until it is in frame. If it is a crystal glow and the mesh emission is in range, print `SHOWCASE glow pass`; otherwise `SHOWCASE glow absent`. Status `too-far` when that leg was over 1500.
+The landmark stop chosen with segment 7 (`rock_spire`, `ruined_tower`, or `crystal_glow`). Stop about 12 columns out so the mesh clears half of ortho size 16. Yaw until it is in frame. Then open a `glow` chapter and walk to the nearest `crystal_glow` inside 1500 columns. Stand about 12 columns out, yaw until the mesh is in frame, and wait for its emission. Print `SHOWCASE glow pass` when that mesh is inside 24 columns and the emission is above 0.5. Otherwise `SHOWCASE glow absent`. The glow chapter stays up at least 4 seconds. Status `too-far` when the landmark leg was over 1500.
 
 ### 10. `combat`
 

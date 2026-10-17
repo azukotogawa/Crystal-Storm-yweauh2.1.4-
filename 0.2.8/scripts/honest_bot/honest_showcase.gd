@@ -109,6 +109,12 @@ var fight = _Fight.new()
 var caster = _Cast.new()
 var finale = _Finale.new()
 var _banner_left := 0.0
+var _glow_leg := false
+var _glow_done := false
+var _glow_goal := Vector2.ZERO
+var _glow_face := Vector2.ZERO
+var _glow_limit := 20.0
+var _glow_walk := false
 var _paced_level := -1
 var _relic_paced := false
 var _stage_hit: Array[bool] = [false, false, false]
@@ -229,6 +235,8 @@ func _open_segment(id: String) -> void:
 		var feature := id
 		if id == "structure_place":
 			feature = "structure_stone_wall"
+		elif id == "day_night":
+			feature = "night"
 		chapters.open(feature)
 	if id == "movement":
 		_arm_movement()
@@ -287,7 +295,7 @@ func _run_segment(step: float) -> void:
 		"lighting":
 			_tick_lighting()
 		"day_night":
-			_tick_day_night()
+			_tick_day_night(step)
 		"dig_tool", "structure_place":
 			_tick_build(step)
 		"density_poi", "density_treasure", "density_landmark":
@@ -437,13 +445,49 @@ func _tick_cast(step: float) -> void:
 		_seg_status = result
 
 
-func _tick_day_night() -> void:
-	if _has_day_clock():
-		print("FAIL day_night clock exists")
-		_seg_status = "fail"
+func _tick_day_night(step: float) -> void:
+	var order: PackedStringArray = ["night", "torch", "day_night"]
+	if _pose == "" or not order.has(_pose):
+		_pose = "night"
+		_pose_age = 0.0
+	if chapters == null or not chapters.has_method("open") or not chapters.has_method("span"):
+		_note_lights()
+		_seg_status = "absent"
 		return
-	_note_lights()
-	_seg_status = "absent"
+	if not bool(chapters.open(_pose)):
+		return
+	var waiting_night := _pose == "night" and _has_day_clock() and not _night_on()
+	if waiting_night and chapters.span() < 90.0:
+		hands.set_held(PackedStringArray())
+		return
+	var held := PackedStringArray()
+	if not waiting_night and _pose_age >= _Pace.PRE_PAUSE and _pose_age < _Pace.PRE_PAUSE + 0.8:
+		held.append("rotate_right")
+	hands.set_held(held)
+	_pose_age += step
+	if chapters.span() < _Pace.PRE_PAUSE + _Pace.RESULT_HOLD + _Pace.SETTLE:
+		return
+	_log_light(_pose)
+	var idx := order.find(_pose)
+	if idx < 0 or idx + 1 >= order.size():
+		_seg_status = "pass" if _has_day_clock() and _night_on() else "absent"
+		return
+	_pose = order[idx + 1]
+	_pose_age = 0.0
+	hands.set_held(PackedStringArray())
+
+
+func _log_light(feature: String) -> void:
+	if feature == "night":
+		print("SHOWCASE night %s" % ("pass" if _night_on() else "absent"))
+		return
+	if feature == "torch":
+		print("SHOWCASE torch %s" % ("pass" if _torch_on() else "absent"))
+		return
+	if _has_day_clock() and _night_on():
+		print("SHOWCASE day_night pass")
+		return
+	print("SHOWCASE day_night absent")
 
 
 func _arm_detour(id: String) -> void:
@@ -472,6 +516,9 @@ func _arm_detour(id: String) -> void:
 
 
 func _tick_detour(step: float) -> void:
+	if _glow_leg:
+		_tick_glow(step)
+		return
 	if _pickup_wait:
 		_tick_pickup(step)
 		return
@@ -536,8 +583,6 @@ func _tick_face(pos: Vector2, step: float) -> void:
 				return
 		if _pose_age < _pose_hold():
 			return
-		if _seg == "density_landmark":
-			_note_glow()
 		if _seg == "density_treasure":
 			print("SHOWCASE treasure pickup %s" % ("pass" if found else "miss"))
 		_pose = "settle"
@@ -546,6 +591,79 @@ func _tick_face(pos: Vector2, step: float) -> void:
 	_pose_age += step
 	if _pose_age < _Pace.SETTLE:
 		return
+	if _seg == "density_landmark" and not _glow_done:
+		_start_glow()
+		return
+	_seg_status = "pass"
+
+
+func _start_glow() -> void:
+	_glow_done = true
+	_glow_leg = true
+	_face_only = false
+	_pose = "walk"
+	_pose_age = 0.0
+	_glow_walk = false
+	_glow_goal = Vector2.ZERO
+	_glow_face = Vector2.ZERO
+	bot.release()
+	hands.release_all()
+	var cells: Dictionary = _World.get_active().feature_cells
+	var choice: Dictionary = _Walk.glow_choice(_xz(), cells)
+	if str(choice.get("status", "")) != "walk":
+		print("OK glow too-far dist %.1f" % float(choice.get("distance", -1.0)))
+		_glow_limit = 0.0
+		return
+	_glow_face = choice.get("xz", Vector2.ZERO)
+	var plan: Dictionary = _Walk.approach(_xz(), _glow_face, _Walk.LANDMARK_STAND)
+	_glow_goal = plan.get("goal", _glow_face)
+	_glow_limit = _Walk.leg_limit(float(choice.get("distance", 0.0)))
+	_glow_walk = bool(plan.get("walk", false))
+	print("OK glow crystal_glow dist %.1f limit %.0f" % [float(choice.get("distance", 0.0)), _glow_limit])
+	if _glow_walk:
+		bot.stuck_limit = DETOUR_STUCK
+		bot.set_target(_glow_goal)
+
+
+func _tick_glow(step: float) -> void:
+	if chapters != null and chapters.has_method("open") and not bool(chapters.open("glow")):
+		return
+	if _glow_walk and _pose == "walk":
+		var extras := PackedStringArray()
+		if _submerged():
+			extras.append("jump")
+		else:
+			extras.append("sprint")
+		bot.extra_held = extras
+		bot.tick(_xz(), _yaw(), step)
+		_pose_age += step
+		if not bot.arrived and not bot.gave_up and _pose_age < _glow_limit:
+			return
+		bot.release()
+		_glow_walk = false
+		_pose = "hold"
+		_pose_age = 0.0
+		return
+	if _pose != "hold":
+		_pose = "hold"
+		_pose_age = 0.0
+		return
+	var held := PackedStringArray()
+	if _glow_face != Vector2.ZERO:
+		var spin := _Nav.face_action(_xz(), _glow_face, _yaw())
+		if spin != "" and _pose_age < _Pace.PRE_PAUSE + 0.8:
+			held.append(spin)
+	hands.set_held(held)
+	_pose_age += step
+	var hold := _Pace.PRE_PAUSE + _Pace.RESULT_HOLD + _Pace.SETTLE
+	if _glow_face != Vector2.ZERO and not _glow_near() and _pose_age < hold + 3.0:
+		return
+	if _pose_age < hold:
+		return
+	_note_glow()
+	_glow_leg = false
+	hands.release_all()
+	bot.release()
 	_seg_status = "pass"
 
 
@@ -935,7 +1053,7 @@ func _paint() -> void:
 			chapter = finale.caption
 		if chapters.has_method("feature"):
 			var feat := str(chapters.feature())
-			if feat == "bow_shot" or feat.begins_with("treasure_open") or (feat.begins_with("combat_") and feat != _seg):
+			if feat == "bow_shot" or feat == "night" or feat == "torch" or feat == "day_night" or feat == "glow" or feat.begins_with("treasure_open") or (feat.begins_with("combat_") and feat != _seg):
 				chapter = feat
 		hud.set_readout(chapters.format_clock(), chapter)
 

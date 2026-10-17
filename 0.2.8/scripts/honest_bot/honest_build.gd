@@ -35,6 +35,7 @@ var marked := ""
 var spin := 0
 var step_dt := 0.0
 var miss_age := 0.0
+var blocked_cells: Array[Vector2i] = []
 
 
 func reset(segment: String) -> void:
@@ -49,6 +50,7 @@ func reset(segment: String) -> void:
 	show_id = ""
 	show_age = 0.0
 	miss_age = 0.0
+	blocked_cells = []
 	piece_before = 0
 	marked = ""
 	spin = 0
@@ -119,9 +121,15 @@ func _dig() -> String:
 		show_age += step_dt
 		if show_age < _Pace.PRE_PAUSE:
 			return ""
+		var got := _cursor_cell()
+		if got != aim and _cursor_usable(got):
+			aim = got
+			_look_at(aim)
 		if not _column_aimed(aim):
 			if show_age < _Pace.PRE_PAUSE + 1.4:
 				return ""
+			print("SHOWCASE dig aim miss want %s cursor %s" % [aim, _cursor_cell()])
+			blocked_cells.append(aim)
 			tries += 1
 			if tries >= 8:
 				print("FAIL dig_tool cursor %s aim %s" % [_cursor_cell(), aim])
@@ -146,6 +154,7 @@ func _dig() -> String:
 			if tries >= OFFSETS.size():
 				print("FAIL dig_tool swings missed")
 				return "fail"
+			blocked_cells.append(aim)
 			aim = _dry_near()
 			age = minf(age, DIG_LIMIT - 1.0)
 			beat = 1
@@ -161,7 +170,9 @@ func _dig() -> String:
 		show_age += step_dt
 		if show_age < _Pace.RESULT_HOLD:
 			return ""
-		print("SHOWCASE dig column %d %d" % [dug_hold.x, dug_hold.y])
+		var before := float(heights.get(dug_hold, _Edits.get_height_delta(dug_hold.x, dug_hold.y)))
+		var drop := before - _Edits.get_height_delta(dug_hold.x, dug_hold.y)
+		print("SHOWCASE dig column %d %d drop %.3f" % [dug_hold.x, dug_hold.y, drop])
 		show_age = 0.0
 		beat = 6
 		return ""
@@ -170,6 +181,15 @@ func _dig() -> String:
 	if show_age < _Pace.SETTLE:
 		return ""
 	return "pass"
+
+
+func _cursor_usable(cell: Vector2i) -> bool:
+	if cell.x > 900000:
+		return false
+	var origin := _column()
+	if maxi(absi(cell.x - origin.x), absi(cell.y - origin.y)) > 6:
+		return false
+	return _open_ground(cell)
 
 
 func _column_aimed(cell: Vector2i) -> bool:
@@ -573,13 +593,13 @@ func _dry_near() -> Vector2i:
 	var origin := _column()
 	var best := Vector2i(999999, 999999)
 	var best_d := 99
-	for dz in range(-3, 4):
-		for dx in range(-3, 4):
+	for dz in range(-5, 6):
+		for dx in range(-5, 6):
 			var cheb := maxi(absi(dx), absi(dz))
-			if cheb < 2 or cheb > 3:
+			if cheb < 2 or cheb > 5:
 				continue
 			var cell := origin + Vector2i(dx, dz)
-			if not _open_ground(cell):
+			if blocked_cells.has(cell) or not _open_ground(cell):
 				continue
 			if cheb < best_d:
 				best_d = cheb

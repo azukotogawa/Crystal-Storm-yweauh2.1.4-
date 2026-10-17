@@ -28,6 +28,38 @@ static func landmark_choice(from_xz: Vector2, cells: Dictionary) -> Dictionary:
 	return _choice(from_xz, cells, "landmark")
 
 
+static func glow_choice(from_xz: Vector2, cells: Dictionary) -> Dictionary:
+	var best := Vector2.ZERO
+	var best_d := INF
+	var found := false
+	for key in cells.keys():
+		var feat: Variant = cells[key]
+		if typeof(feat) != TYPE_DICTIONARY:
+			continue
+		var row: Dictionary = feat
+		if str(row.get("poi_kind", "")) != "crystal_glow":
+			continue
+		var center := _center(row, key)
+		var dist := from_xz.distance_to(center)
+		if dist < best_d:
+			best_d = dist
+			best = center
+			found = true
+	if not found or best_d > LEG_CAP:
+		return {
+			"status": "too-far",
+			"distance": best_d if found else -1.0,
+			"xz": best,
+			"poi_kind": "crystal_glow",
+		}
+	return {
+		"status": "walk",
+		"distance": best_d,
+		"xz": best,
+		"poi_kind": "crystal_glow",
+	}
+
+
 static func treasure_sites(cells: Dictionary) -> Array:
 	return _buckets(cells)["treasure"]
 
