@@ -421,6 +421,12 @@ func _stamp(chapters, feature: String) -> void:
 func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
 	_heal_wait = maxf(_heal_wait - dt, 0.0)
 	var pos := _xz(player)
+	if mode == "skill_dash" and pos.distance_to(origin) >= 18.0:
+		bot.release()
+		walk_armed = false
+		phase = "fire"
+		watch = 0.0
+		return ""
 	if not walk_armed and pos.distance_to(origin) >= 18.0 and tries == 0:
 		bot.release()
 		phase = "fire"

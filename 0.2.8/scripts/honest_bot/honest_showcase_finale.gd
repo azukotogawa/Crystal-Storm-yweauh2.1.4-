@@ -368,8 +368,8 @@ func _pull_boss(dt: float, player: Node, origin: Vector2, pos: Vector2, boss: Ve
 	if pos.distance_to(goal) < 1.1 and not _Hazard.boss_off_heart(boss, origin):
 		var side := Vector2(-away.y, away.x)
 		goal = center + (away + side).normalized() * (PULL_COLUMNS + 3.0)
-	if goal.distance_to(center) > LEASH_COLUMNS:
-		goal = center + (goal - center).normalized() * LEASH_COLUMNS
+	if goal.distance_to(center) > _Hazard.leash_columns():
+		goal = center + (goal - center).normalized() * _Hazard.leash_columns()
 	_goto(dt, player, goal, boss)
 
 
@@ -382,15 +382,12 @@ func _dodge_boss(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos:
 		if away.length() < 0.05:
 			away = Vector2(1.0, 0.0)
 		away = away.normalized()
-		var step := maxf(reach + 0.8, 3.2)
-		var goal := pos + away * step
 		var center := origin + Vector2(0.5, 0.5)
-		if goal.distance_to(center) > LEASH_COLUMNS:
-			goal = center + (goal - center).normalized() * LEASH_COLUMNS
+		var goal := _Hazard.slam_exit(pos, away, reach, center)
 		if _Hazard.burning(tree, goal):
 			goal = _camp(tree, origin)
 		_dodge = goal
-		print("SHOWCASE boss dodge %.1f" % step)
+		print("SHOWCASE boss dodge %.1f" % pos.distance_to(goal))
 	_goto(dt, player, _dodge, boss)
 
 

@@ -336,16 +336,22 @@ func _check_hazard() -> void:
 	if not _Hazard.accepts_kill("crystal_mite", true):
 		_fail("a player mite kill should count")
 		return
-	if _Hazard.TRAVEL_SKIRT < 16.0 or _Hazard.TRAVEL_SKIRT > 22.0:
-		_fail("travel skirt should stay outside guardian aggro, got %s" % _Hazard.TRAVEL_SKIRT)
+	if absf(_Hazard.aggro_columns() - CrystalEnemy.GUARDIAN_AGGRO_COLUMNS) > 0.001:
+		_fail("aggro radius drifted from the guardian latch")
 		return
-	if _Hazard.LEASH_CLEAR <= 22.0:
-		_fail("leash clear should sit past the latched guardian leash")
+	if absf(_Hazard.leash_columns() - CrystalEnemy.GUARDIAN_LEASH_COLUMNS) > 0.001:
+		_fail("leash radius drifted from the guardian drop")
 		return
-	var latched: Array = [{"xz": Vector2(0.5, 0.5), "radius": _Hazard.LEASH_CLEAR, "hard": true}]
+	var latched: Array = [{"xz": Vector2(0.5, 0.5), "radius": _Hazard.leash_columns(), "hard": true}]
 	var left := _Hazard.dodge_point(Vector2(12.0, 0.5), Vector2(80.0, 0.5), latched)
-	if left == Vector2.INF or left.distance_to(Vector2(0.5, 0.5)) < _Hazard.LEASH_CLEAR:
+	if left == Vector2.INF or left.distance_to(Vector2(0.5, 0.5)) <= _Hazard.leash_columns():
 		_fail("a latched guardian should be left behind, got %s" % left)
+		return
+	if not _check_den_leash():
+		return
+	if not _check_slam_exit():
+		return
+	if not _check_level_banner():
 		return
 	if _Hazard.BURN_DEPTH < 0.25 or _Hazard.HIT_COLUMNS > 2.2:
 		_fail("burn line or sword reach drifted")
@@ -394,6 +400,105 @@ func _check_hazard() -> void:
 		_fail("win hold should stay on screen for 5s")
 		return
 	_ok("hazard escape and player kills")
+
+
+func _check_den_leash() -> bool:
+	var tyrant := _plant_tyrant(Vector2(2.0, 0.0), Vector2i(30, 0))
+	var home := Vector2(-200.0, 0.5)
+	var far := _Hazard.leash_step(Vector2(0.5, 0.5), home, self)
+	if far != Vector2.INF:
+		tyrant.free()
+		_fail("a tyrant whose den is 30 columns away stole the walk, got %s" % far)
+		return false
+	_place_tyrant(tyrant, Vector2(22.0, 0.0))
+	var den := Vector2(30.5, 0.5)
+	var near := _Hazard.leash_step(Vector2(20.5, 0.5), home, self)
+	tyrant.free()
+	if near == Vector2.INF or near.distance_to(den) <= _Hazard.leash_columns():
+		_fail("the den leash should step past 22, got %s" % near)
+		return false
+	return true
+
+
+func _check_slam_exit() -> bool:
+	var center := Vector2(0.5, 0.5)
+	var burst := _Hazard.slam_exit(Vector2(14.5, 0.5), Vector2(1.0, 0.0), 4.6, center)
+	if burst.distance_to(Vector2(14.5, 0.5)) < 4.6:
+		_fail("a burst ring should be left, got %s" % burst)
+		return false
+	var outer := _Hazard.slam_exit(Vector2(20.5, 0.5), Vector2(1.0, 0.0), 4.6, center)
+	if outer.distance_to(Vector2(20.5, 0.5)) < 4.6:
+		_fail("a slam past the old 16 clamp should still leave the ring, got %s" % outer)
+		return false
+	return true
+
+
+func _check_level_banner() -> bool:
+	var span := _Pace.banner_span("level_up")
+	var feel = load("res://config/default_game_feel.tres")
+	var beat: Dictionary = feel.beat("level_up")
+	if beat.is_empty() or absf(span - float(beat["banner_sec"])) > 0.001 or span < 2.0:
+		_fail("level banner should follow game feel, got %.2f" % span)
+		return false
+	var show = _Show.new()
+	show.tree = self
+	var body := _stand_in(Vector3(0.5, 0.0, 0.5))
+	show.player = body
+	var tyrant := _plant_tyrant(Vector2(2.0, 0.0), Vector2i(30, 0))
+	if show._unsafe():
+		tyrant.free()
+		body.free()
+		_fail("a far den must leave the level banner readable")
+		return false
+	show._banner_left = span
+	show.tick(0.5)
+	var held: bool = show._seg == "" and show._banner_left <= span - 0.4 and not show.finished
+	_place_tyrant(tyrant, Vector2(22.0, 0.0))
+	body.voxel_position = Vector3(20.5, 0.0, 0.5)
+	var trapped: bool = show._unsafe()
+	tyrant.free()
+	body.free()
+	if not held:
+		_fail("the level banner did not hold the bot")
+		return false
+	if not trapped:
+		_fail("a player inside the den leash should stay marked unsafe")
+		return false
+	return true
+
+
+func _stand_in(at: Vector3) -> Node3D:
+	var scr := GDScript.new()
+	scr.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar health := 20.0\nvar max_health := 20.0\n"
+	scr.reload()
+	var body := Node3D.new()
+	body.set_script(scr)
+	body.voxel_position = at
+	return body
+
+
+func _plant_tyrant(column: Vector2, den: Vector2i) -> Node3D:
+	var scr := GDScript.new()
+	scr.source_code = "extends Node3D\nvar enemy_id := \"spawn_elite\"\nvar health := 40.0\nvar brain = null\n"
+	scr.reload()
+	var brain_scr := GDScript.new()
+	brain_scr.source_code = "extends RefCounted\nvar home_pos := Vector2i.ZERO\n"
+	brain_scr.reload()
+	var brain = brain_scr.new()
+	brain.home_pos = den
+	var body := Node3D.new()
+	body.set_script(scr)
+	body.brain = brain
+	body.enemy_id = "spawn_elite"
+	root.add_child(body)
+	body.add_to_group("crystal_enemy")
+	_place_tyrant(body, column)
+	return body
+
+
+func _place_tyrant(body: Node3D, column: Vector2) -> void:
+	var scale := WorldSettings.get_active().voxel_scale
+	body.global_position = Vector3(column.x * scale + 0.1, 0.0, column.y * scale + 0.1)
 
 
 func _check_sprint_hold() -> void:
@@ -560,12 +665,12 @@ func _check_skill_pad() -> void:
 			_fail("%s pad %s want %s" % [skill_name, got, want])
 			return
 	skills.free()
-	if not _dash_ready(1145.0) or not _dash_ready(18.0):
+	if not _dash_ready(1145.0, 0) or not _dash_ready(18.0, 0) or not _dash_ready(1145.0, 1):
 		return
 	_ok("skill pad matches the tree")
 
 
-func _dash_ready(columns: float) -> bool:
+func _dash_ready(columns: float, prior_tries: int) -> bool:
 	var scr := GDScript.new()
 	scr.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar health := 20.0\nvar max_health := 20.0\n"
 	if scr.reload() != OK:
@@ -577,7 +682,7 @@ func _dash_ready(columns: float) -> bool:
 	var cast = _Cast.new()
 	cast.begin("skill_dash")
 	cast.phase = "clear"
-	cast.tries = 0
+	cast.tries = prior_tries
 	var bot = _Bot.new()
 	var hands = _Hands.new()
 	var elapsed := 0.0

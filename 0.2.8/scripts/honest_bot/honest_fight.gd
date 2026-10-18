@@ -718,6 +718,16 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
+	if kind == "spawn_elite":
+		var home := _Roster.pool_goal(pos, origin, 18.0)
+		if _leave_leash(dt, tree, player, pos, home):
+			return ""
+		if _slip(dt, tree, player, pos, home, false):
+			return ""
+		_back_off(dt, player, pos, foe)
+		return ""
+	if _slip(dt, tree, player, pos, foe, false):
+		return ""
 	if _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""

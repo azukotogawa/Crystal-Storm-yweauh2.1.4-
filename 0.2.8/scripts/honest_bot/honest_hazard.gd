@@ -2,6 +2,7 @@ extends RefCounted
 
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
+const _Enemy = preload("res://entities/crystal_enemy.gd")
 
 const BURN_DEPTH := 0.25
 const CLEAR_DEPTH := 0.12
@@ -11,6 +12,14 @@ const PAD_MIN := 1.2
 const BODY_CLEAR := 8.0
 const TRAVEL_SKIRT := 16.0
 const LEASH_CLEAR := 24.0
+
+
+static func aggro_columns() -> float:
+	return float(_Enemy.GUARDIAN_AGGRO_COLUMNS)
+
+
+static func leash_columns() -> float:
+	return float(_Enemy.GUARDIAN_LEASH_COLUMNS)
 
 
 static func depth_at(tree: SceneTree, at: Vector2) -> float:
@@ -160,6 +169,58 @@ static func ring_hot(tree: SceneTree, pos: Vector2) -> bool:
 	return false
 
 
+static func den_center(node: Node) -> Vector2:
+	if node == null:
+		return Vector2.INF
+	if node.has_method("_heart_cell"):
+		var cell: Vector2i = node.call("_heart_cell")
+		return Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
+	var brain = node.get("brain")
+	if brain != null and "home_pos" in brain:
+		var home: Vector2i = brain.home_pos
+		return Vector2(float(home.x) + 0.5, float(home.y) + 0.5)
+	if node is Node3D:
+		return _column_center(node as Node3D)
+	return Vector2.INF
+
+
+static func slam_exit(pos: Vector2, away: Vector2, reach: float, center: Vector2) -> Vector2:
+	var dir := away
+	if dir.length_squared() < 0.0025:
+		dir = Vector2(1.0, 0.0)
+	dir = dir.normalized()
+	var step := maxf(reach + 0.8, 3.2)
+	var goal := pos + dir * step
+	var leash := leash_columns()
+	if goal.distance_to(center) <= leash:
+		return goal
+	var clamped := center + (goal - center).normalized() * leash
+	if clamped.distance_to(pos) >= reach + 0.35:
+		return clamped
+	return goal
+
+
+static func _column_center(body: Node3D) -> Vector2:
+	var col := _Move.column_pos(body.global_position)
+	return Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
+
+
+static func _guardian_nodes(tree: SceneTree) -> Array:
+	var out: Array = []
+	if tree == null:
+		return out
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var kind := str(node.get("enemy_id"))
+		if kind != "spawn_elite" and kind != "origin_warden":
+			continue
+		if node as Node3D == null:
+			continue
+		out.append(node)
+	return out
+
+
 static func guardian_bubbles(tree: SceneTree) -> Array:
 	var out: Array = []
 	if tree == null:
@@ -168,27 +229,19 @@ static func guardian_bubbles(tree: SceneTree) -> Array:
 	var settings = WorldSettings.get_active()
 	if settings != null:
 		vs = maxf(float(settings.voxel_scale), 0.001)
-	for node in tree.get_nodes_in_group("crystal_enemy"):
-		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
-			continue
-		var kind := str(node.get("enemy_id"))
-		if kind != "spawn_elite" and kind != "origin_warden":
-			continue
-		var body := node as Node3D
-		if body == null:
-			continue
-		var col := _Move.column_pos(body.global_position)
-		out.append({
-			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
-			"radius": TRAVEL_SKIRT,
-			"hard": false,
-		})
+	for node in _guardian_nodes(tree):
+		var den := den_center(node)
+		if den != Vector2.INF:
+			out.append({
+				"xz": den,
+				"radius": aggro_columns(),
+				"hard": false,
+			})
 		var ring := node.get_node_or_null("TelegraphRing") as Node3D
 		if ring == null or not ring.visible:
 			continue
-		var ring_col := _Move.column_pos(ring.global_position)
 		out.append({
-			"xz": Vector2(float(ring_col.x) + 0.5, float(ring_col.y) + 0.5),
+			"xz": _column_center(ring),
 			"radius": ring.scale.x / vs + 1.1,
 			"hard": true,
 		})
@@ -197,21 +250,13 @@ static func guardian_bubbles(tree: SceneTree) -> Array:
 
 static func leash_bubbles(tree: SceneTree) -> Array:
 	var out: Array = []
-	if tree == null:
-		return out
-	for node in tree.get_nodes_in_group("crystal_enemy"):
-		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+	for node in _guardian_nodes(tree):
+		var den := den_center(node)
+		if den == Vector2.INF:
 			continue
-		var kind := str(node.get("enemy_id"))
-		if kind != "spawn_elite" and kind != "origin_warden":
-			continue
-		var body := node as Node3D
-		if body == null:
-			continue
-		var col := _Move.column_pos(body.global_position)
 		out.append({
-			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
-			"radius": LEASH_CLEAR,
+			"xz": den,
+			"radius": leash_columns(),
 			"hard": true,
 		})
 	return out
