@@ -72,6 +72,7 @@ var _pool_done := false
 var _done: Dictionary = {}
 var _chip_skip: Dictionary = {}
 var _home_logged := false
+var _home_arrived := false
 
 
 func release() -> void:
@@ -142,6 +143,7 @@ func reset() -> void:
 	_done = {}
 	_chip_skip = {}
 	_home_logged = false
+	_home_arrived = false
 	bot.extra_held = PackedStringArray()
 
 
@@ -175,7 +177,6 @@ func tick(step: float, tree: SceneTree, player: Node, origin: Vector2) -> String
 	var dt := step
 	if dt <= 0.0:
 		dt = 1.0 / 60.0
-	age += dt
 	_heal_wait = maxf(_heal_wait - dt, 0.0)
 	_flush_stuck()
 	if player == null or tree == null:
@@ -188,6 +189,8 @@ func tick(step: float, tree: SceneTree, player: Node, origin: Vector2) -> String
 		bot.release()
 		return "fail"
 	_watch_level(tree)
+	if _Farm.farm_clock_open(_level, _xz(player).distance_to(origin)):
+		age += dt
 	if _phase == "approach":
 		return _approach(dt, tree, player, origin)
 	return _hunt(dt, tree, player, origin)
@@ -218,8 +221,12 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
 	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 		return ""
-	if not _Farm.demo_ready(_level) and pos.distance_to(origin) > 36.0:
+	if not _Farm.demo_ready(_level) and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		return _seek_xp(dt, tree, player, origin, pos)
+	if _home_logged and not _home_arrived:
+		_home_arrived = true
+		age = 0.0
+		print("SHOWCASE farm home dist %.0f" % pos.distance_to(origin))
 	var rows := _usable(_sense(tree))
 	if _foe_id != "" and not _alive.has(_foe_id):
 		_note_down()
@@ -532,7 +539,7 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	if not bite.is_empty() and str(bite.get("kind", "")) != "spawn_elite":
 		_quiet = 0.0
 		return _fight(dt, tree, player, bite, origin)
-	if pos.distance_to(origin) > 36.0:
+	if pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _site_key != "":
 			_drop_site(false)
 		if not _home_logged:

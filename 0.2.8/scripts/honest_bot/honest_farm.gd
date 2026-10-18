@@ -9,6 +9,7 @@ const SITE_CAP := 4
 const SITE_REACH := 1500.0
 const FARM_SITE_REACH := 96.0
 const SEEK_COLUMNS := 220.0
+const HOME_COLUMNS := 36.0
 const FARM_LIMIT := 900.0
 const CHIP_LIMIT := 480.0
 const WILD: PackedStringArray = ["rabbit", "deer", "boar", "bird"]
@@ -30,6 +31,10 @@ static func ready(level: int, remainder: int) -> bool:
 
 static func demo_ready(level: int) -> bool:
 	return level >= DEMO_LEVEL
+
+
+static func farm_clock_open(level: int, dist: float) -> bool:
+	return not demo_ready(level) and dist <= HOME_COLUMNS
 
 
 static func chip_cell_ok(cell: Vector2, origin: Vector2, depth: float) -> bool:

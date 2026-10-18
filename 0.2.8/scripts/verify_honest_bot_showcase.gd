@@ -498,6 +498,15 @@ func _check_farm() -> void:
 	if _Farm.chip_cell_ok(Vector2(6.5, 0.5), Vector2.ZERO, 0.01):
 		_fail("an empty cell should not be chipped")
 		return
+	if _Farm.farm_clock_open(2, 1145.0) or _Farm.HOME_COLUMNS > 40.0:
+		_fail("the farm clock must stay paused on the walk home")
+		return
+	if not _Farm.farm_clock_open(2, 30.0):
+		_fail("the farm clock should run once the bot is home")
+		return
+	if _Farm.farm_clock_open(6, 20.0):
+		_fail("mass chip should not spend the farm clock")
+		return
 	var sites: Array = [
 		{"xz": Vector2(10, 0)},
 		{"xz": Vector2(400, 0)},
