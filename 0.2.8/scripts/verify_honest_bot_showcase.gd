@@ -497,8 +497,8 @@ func _plant_tyrant(column: Vector2, den: Vector2i) -> Node3D:
 
 
 func _place_tyrant(body: Node3D, column: Vector2) -> void:
-	var scale := WorldSettings.get_active().voxel_scale
-	body.global_position = Vector3(column.x * scale + 0.1, 0.0, column.y * scale + 0.1)
+	var vs: float = float(WorldSettings.get_active().voxel_scale)
+	body.global_position = Vector3(column.x * vs + 0.1, 0.0, column.y * vs + 0.1)
 
 
 func _check_sprint_hold() -> void:
