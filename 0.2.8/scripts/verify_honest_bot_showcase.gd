@@ -585,7 +585,7 @@ func _dash_ready(columns: float) -> bool:
 	var saw_pause := false
 	var saw_clear_after_pause := false
 	while elapsed < 3.0:
-		var before := cast.phase
+		var before := String(cast.phase)
 		result = cast.tick(STEP, null, player, hands, bot, Vector2.ZERO, null)
 		elapsed += STEP
 		if before == "pause" and cast.phase == "clear":

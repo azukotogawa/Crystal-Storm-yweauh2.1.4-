@@ -188,11 +188,15 @@ func _check_nudge() -> void:
 
 
 func _check_stuck() -> void:
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", "D:/ARCHIVE/CrystalStorm/verify-evidence/cs-bot-fix-01-stuck")
 	var bot = _Bot.new()
 	var pos := Vector2(3.0, 4.0)
+	var yaw := 0.0
 	bot.set_target(Vector2(3.0, -20.0))
-	for _i in 260:
-		bot.tick(pos, 0.0, STEP)
+	for _i in 700:
+		bot.tick(pos, yaw, STEP)
+		var turned: Array = _integrate(pos, yaw, bot, STEP)
+		yaw = float(turned[1])
 	bot.release()
 	if bot.stuck_lines.is_empty() or not bot.stuck_lines[0].begins_with("STUCK nav"):
 		_fail("frozen body produced no STUCK nav line")
@@ -215,10 +219,13 @@ func _check_sideways_miss() -> void:
 	bot.objective = "farm walk home"
 	bot.set_target(goal)
 	var elapsed := 0.0
+	var yaw := 0.0
 	var window := _Nav.STUCK_WINDOW_SEC
 	var creep := 0.5 * STEP / window
 	while elapsed < 20.0 * window:
-		bot.tick(pos, 0.0, STEP)
+		bot.tick(pos, yaw, STEP)
+		var turned: Array = _integrate(pos, yaw, bot, STEP)
+		yaw = float(turned[1])
 		pos.y += creep
 		elapsed += STEP
 		if bot.gave_up:
