@@ -53,12 +53,30 @@ static func stuck_line(pos: Vector2, moved: float, span: float, goal: Vector2) -
 	]
 
 
+static func reroute_column(from_xz: Vector2, goal: Vector2, attempt: int) -> Vector2:
+	var offset := goal - from_xz
+	var dist := offset.length()
+	if dist < 0.05:
+		return from_xz + Vector2(8.0, float(attempt))
+	var dir := offset / dist
+	var side := Vector2(-dir.y, dir.x)
+	if attempt % 2 == 0:
+		side = -side
+	var lateral := 10.0 + float(maxi(attempt, 1) - 1) * 8.0
+	var along := minf(16.0, dist * 0.5)
+	var spot := from_xz + dir * along + side * lateral
+	if spot.distance_to(goal) > dist - 0.5:
+		spot = from_xz + dir * maxf(along, 1.0)
+	return spot
+
+
 class StuckWatch extends RefCounted:
 	var window_sec := STUCK_WINDOW_SEC
 	var min_columns := STUCK_MIN_COLUMNS
 	var last_moved := 0.0
 	var last_span := 0.0
 	var _origin := Vector2.ZERO
+	var _goal_dist := 0.0
 	var _age := 0.0
 	var _armed := false
 
@@ -67,6 +85,7 @@ class StuckWatch extends RefCounted:
 		_age = 0.0
 		last_moved = 0.0
 		last_span = 0.0
+		_goal_dist = 0.0
 
 	func note_idle(pos: Vector2) -> void:
 		_origin = pos
@@ -74,9 +93,10 @@ class StuckWatch extends RefCounted:
 		_armed = true
 		last_moved = 0.0
 
-	func sample(pos: Vector2, delta: float) -> bool:
+	func sample(pos: Vector2, delta: float, goal: Vector2) -> bool:
 		if not _armed:
 			_origin = pos
+			_goal_dist = pos.distance_to(goal)
 			_armed = true
 			_age = 0.0
 			return false
@@ -85,8 +105,10 @@ class StuckWatch extends RefCounted:
 		if _age < window_sec:
 			return false
 		last_span = _age
-		var blocked := last_moved < min_columns
+		var progress := _goal_dist - pos.distance_to(goal)
+		var blocked := progress < min_columns
 		_origin = pos
+		_goal_dist = pos.distance_to(goal)
 		_age = 0.0
 		return blocked
 

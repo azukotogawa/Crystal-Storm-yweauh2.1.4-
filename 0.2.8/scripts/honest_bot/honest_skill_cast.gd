@@ -423,7 +423,7 @@ func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin:
 	var pos := _xz(player)
 	if not walk_armed and pos.distance_to(origin) >= 18.0 and tries == 0:
 		bot.release()
-		phase = "pause"
+		phase = "fire"
 		watch = 0.0
 		return ""
 	if _heal_wait <= 0.0 and _ratio(player) < 0.82 and _herbs(player) > 0:

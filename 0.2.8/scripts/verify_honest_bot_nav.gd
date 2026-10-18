@@ -4,6 +4,7 @@ const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Player = preload("res://player/player.gd")
+const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Capture = preload("res://helpers/probe_capture.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
@@ -26,6 +27,8 @@ func _run() -> void:
 	_check_reach()
 	_check_nudge()
 	_check_stuck()
+	_check_sideways_miss()
+	_check_ridge_walk()
 	if _failed == 0:
 		await _check_live_walk()
 	await _Capture.capture_step("honest-bot-nav")
@@ -203,6 +206,74 @@ func _check_stuck() -> void:
 	_ok("stuck reported and gave up")
 
 
+func _check_sideways_miss() -> void:
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", "D:/ARCHIVE/CrystalStorm/verify-evidence/cs-bot-fix-01-stuck")
+	var bot = _Bot.new()
+	var pos := Vector2(1145.0, 0.0)
+	var goal := Vector2(18.0, 0.0)
+	bot.chapter = "combat_crystal_mite"
+	bot.objective = "farm walk home"
+	bot.set_target(goal)
+	var elapsed := 0.0
+	var window := _Nav.STUCK_WINDOW_SEC
+	var creep := 0.5 * STEP / window
+	while elapsed < 20.0 * window:
+		bot.tick(pos, 0.0, STEP)
+		pos.y += creep
+		elapsed += STEP
+		if bot.gave_up:
+			break
+	bot.release()
+	if bot.stuck_lines.is_empty() or not bot.stuck_lines[0].begins_with("STUCK nav"):
+		_fail("sideways creep produced no STUCK nav line")
+		return
+	if not bot.gave_up:
+		_fail("sideways creep should give up")
+		return
+	if elapsed >= _Farm.FARM_LIMIT:
+		_fail("sideways creep waited out the farm clock")
+		return
+	if not FileAccess.file_exists(bot.fail_report) or not FileAccess.file_exists(bot.fail_shot):
+		_fail("sideways creep wrote report %s shot %s" % [bot.fail_report, bot.fail_shot])
+		return
+	var text := FileAccess.get_file_as_string(bot.fail_report)
+	if not ("chapter: combat_crystal_mite" in text and "objective: farm walk home" in text):
+		_fail("stuck report missing chapter or objective: %s" % text)
+		return
+	if not ("position:" in text and "inputs:" in text and "reason:" in text and "distance:" in text):
+		_fail("stuck report missing fields: %s" % text)
+		return
+	var img := Image.load_from_file(bot.fail_shot)
+	if img == null or img.is_empty():
+		_fail("stuck shot is empty %s" % bot.fail_shot)
+		return
+	print("STUCK REPORT %s" % bot.fail_report)
+	print("STUCK SHOT %s" % bot.fail_shot)
+	_ok("sideways creep failed with a report before the farm clock")
+
+
+func _check_ridge_walk() -> void:
+	var bot = _Bot.new()
+	var pos := Vector2(1145.0, 0.0)
+	var yaw := 0.0
+	var start := pos.length()
+	bot.set_target(Vector2(18.0, 0.0))
+	for _i in 900:
+		bot.tick(pos, yaw, STEP)
+		var stepped: Array = _integrate_ridge(pos, yaw, bot, STEP)
+		pos = stepped[0]
+		yaw = float(stepped[1])
+		if pos.length() < start - 15.0:
+			break
+		if bot.gave_up:
+			break
+	bot.release()
+	if pos.length() > start - 15.0:
+		_fail("blocked walk home did not close on the heart (%.1f to %.1f)" % [start, pos.length()])
+		return
+	_ok("blocked walk home closed %.1f columns" % (start - pos.length()))
+
+
 func _check_live_walk() -> void:
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
 		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
@@ -268,6 +339,14 @@ func _check_live_walk() -> void:
 		_fail("live walk never closed 3 columns on a target")
 		return
 	_ok("live walk moved by held actions")
+
+
+func _integrate_ridge(pos: Vector2, yaw: float, bot, delta: float) -> Array:
+	var stepped: Array = _integrate(pos, yaw, bot, delta)
+	var next: Vector2 = stepped[0]
+	if pos.x > 40.0 and absf(pos.y) < 2.0 and next.x < pos.x:
+		next.x = pos.x
+	return [next, float(stepped[1])]
 
 
 func _integrate(pos: Vector2, yaw: float, bot, delta: float) -> Array:

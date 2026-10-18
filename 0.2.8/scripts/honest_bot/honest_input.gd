@@ -64,6 +64,13 @@ func release_all() -> void:
 	_held.clear()
 
 
+func held_names() -> PackedStringArray:
+	var out := PackedStringArray()
+	for action in _held.keys():
+		out.append(String(action))
+	return out
+
+
 func is_held(action: String) -> bool:
 	if bool(_held.get(action, false)):
 		return true

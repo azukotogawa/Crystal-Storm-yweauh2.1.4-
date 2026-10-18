@@ -73,6 +73,9 @@ var _done: Dictionary = {}
 var _chip_skip: Dictionary = {}
 var _home_logged := false
 var _home_arrived := false
+var _home_age := 0.0
+var _home_limit := 0.0
+var _home_mark := -1.0
 
 
 func release() -> void:
@@ -144,6 +147,9 @@ func reset() -> void:
 	_chip_skip = {}
 	_home_logged = false
 	_home_arrived = false
+	_home_age = 0.0
+	_home_limit = 0.0
+	_home_mark = -1.0
 	bot.extra_held = PackedStringArray()
 
 
@@ -542,13 +548,30 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	if pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _site_key != "":
 			_drop_site(false)
+		var dist := pos.distance_to(origin)
 		if not _home_logged:
 			_home_logged = true
-			print("SHOWCASE farm walk home dist %.0f" % pos.distance_to(origin))
+			_home_age = 0.0
+			_home_limit = _Walk.leg_limit(dist)
+			_home_mark = dist
+			print("SHOWCASE farm walk home dist %.0f" % dist)
+		else:
+			_home_age += dt
+			if absf(dist - _home_mark) >= 8.0:
+				print("SHOWCASE farm home progress dist %.0f" % dist)
+				_home_mark = dist
+		bot.chapter = "combat_crystal_mite"
+		bot.objective = "farm walk home"
+		if bot.gave_up or _home_age >= _home_limit:
+			if not bot.gave_up:
+				bot.fail_closed(pos, "walk home exceeded %.0fs at dist %.0f" % [_home_limit, dist])
+			print("FAIL farm walk home dist %.0f" % dist)
+			bot.release()
+			return "fail"
 		var goal := _Roster.pool_goal(pos, origin, 18.0)
 		if _Hazard.burning(tree, goal):
 			goal = _Hazard.leave_goal(tree, goal, origin)
-		if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 2.0:
+		if not bot.has_target or bot.home.distance_to(goal) > 2.0:
 			bot.set_target(goal)
 		var extras := PackedStringArray()
 		if pos.distance_to(goal) > 6.0:
@@ -557,6 +580,10 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 			extras.append("jump")
 		bot.extra_held = extras
 		bot.tick(pos, _yaw(player), dt)
+		if bot.gave_up:
+			print("FAIL farm walk home dist %.0f" % pos.distance_to(origin))
+			bot.release()
+			return "fail"
 		return ""
 	if _site_key == "" and _visits < _Farm.SITE_CAP:
 		var world = _World.get_active()

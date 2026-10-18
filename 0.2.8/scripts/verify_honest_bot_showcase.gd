@@ -560,7 +560,51 @@ func _check_skill_pad() -> void:
 			_fail("%s pad %s want %s" % [skill_name, got, want])
 			return
 	skills.free()
+	if not _dash_ready(1145.0) or not _dash_ready(18.0):
+		return
 	_ok("skill pad matches the tree")
+
+
+func _dash_ready(columns: float) -> bool:
+	var scr := GDScript.new()
+	scr.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar health := 20.0\nvar max_health := 20.0\n"
+	if scr.reload() != OK:
+		_fail("dash stand-in did not compile")
+		return false
+	var player := Node3D.new()
+	player.set_script(scr)
+	player.voxel_position = Vector3(columns, 0.0, 0.0)
+	var cast = _Cast.new()
+	cast.begin("skill_dash")
+	cast.phase = "clear"
+	cast.tries = 0
+	var bot = _Bot.new()
+	var hands = _Hands.new()
+	var elapsed := 0.0
+	var result := ""
+	var saw_pause := false
+	var saw_clear_after_pause := false
+	while elapsed < 3.0:
+		var before := cast.phase
+		result = cast.tick(STEP, null, player, hands, bot, Vector2.ZERO, null)
+		elapsed += STEP
+		if before == "pause" and cast.phase == "clear":
+			saw_clear_after_pause = true
+		if cast.phase == "pause":
+			saw_pause = true
+		if cast.phase == "fire" or result != "":
+			break
+	player.free()
+	bot.release()
+	hands.release_all()
+	if saw_pause and saw_clear_after_pause:
+		_fail("dash at %.0f alternated pause and clear" % columns)
+		return false
+	if cast.phase != "fire" and result != "fail":
+		_fail("dash at %.0f stayed in %s (%s)" % [columns, cast.phase, result])
+		return false
+	_ok("dash at %.0f reached %s" % [columns, cast.phase if result == "" else result])
+	return true
 
 
 func _pad_for(skills, skill_name: String) -> PackedStringArray:
