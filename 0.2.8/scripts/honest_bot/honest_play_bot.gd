@@ -26,10 +26,10 @@ var _fail_seq := 0
 
 
 func set_target(column_xz: Vector2) -> void:
-	var same := has_target and not gave_up and home.distance_to(column_xz) <= 2.0
-	home = column_xz
+	var same := has_target and home.distance_to(column_xz) <= 2.0
 	if same:
 		return
+	home = column_xz
 	target = column_xz
 	has_target = true
 	arrived = false
@@ -126,16 +126,16 @@ func _listed(names: PackedStringArray, name: String) -> bool:
 	return false
 
 
-func fail_closed(pos: Vector2, reason: String) -> void:
+func fail_closed(pos: Vector2, reason: String, announce: bool = true) -> void:
 	if fail_report != "":
 		gave_up = true
 		return
-	_write_failure(pos, reason)
+	_write_failure(pos, reason, announce)
 	gave_up = true
 	input.release_all()
 
 
-func _write_failure(pos: Vector2, reason: String) -> void:
+func _write_failure(pos: Vector2, reason: String, announce: bool = true) -> void:
 	var folder := _Capture.run_dir()
 	var err := DirAccess.make_dir_recursive_absolute(folder)
 	if err != OK:
@@ -145,10 +145,13 @@ func _write_failure(pos: Vector2, reason: String) -> void:
 	var stamp := "%d-%d" % [Time.get_ticks_msec(), _fail_seq]
 	var path := "%s/stuck-%s.txt" % [folder, stamp]
 	var names := input.held_names()
-	var text := "chapter: %s\nobjective: %s\nposition: %.2f,%.2f\ndistance: %.1f\ninputs: %s\nreason: %s\n" % [
-		chapter if chapter != "" else "unknown",
+	var phase := chapter if chapter != "" else "unknown"
+	var text := "phase: %s\nchapter: %s\nobjective: %s\nposition: %.2f,%.2f\ntarget: %.2f,%.2f\ndistance: %.1f\ninputs: %s\nreason: %s\n" % [
+		phase,
+		phase,
 		objective if objective != "" else "nav",
 		pos.x, pos.y,
+		home.x, home.y,
 		pos.distance_to(home),
 		",".join(names),
 		reason,
@@ -162,7 +165,8 @@ func _write_failure(pos: Vector2, reason: String) -> void:
 	fail_report = path
 	var shot := _failure_image(pos)
 	fail_shot = _Capture.write_step("stuck-%s" % stamp, shot)
-	print("FAIL stuck dist %.1f %s" % [pos.distance_to(home), reason])
+	if announce:
+		print("FAIL stuck dist %.1f %s" % [pos.distance_to(home), reason])
 	print("STUCK REPORT %s" % path)
 	if fail_shot != "":
 		print("STUCK SHOT %s" % fail_shot)

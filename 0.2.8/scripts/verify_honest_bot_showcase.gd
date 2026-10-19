@@ -16,6 +16,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
+const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
@@ -62,6 +63,7 @@ func _run() -> void:
 	_check_blueprint_key()
 	_check_roster()
 	_check_farm()
+	_check_farm_home()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -653,6 +655,122 @@ func _check_farm() -> void:
 		_fail("a rabbit should beat a repeat mite inside the short seek, got %s" % wild)
 		return
 	_ok("farm route reaches level 3 before the crystal")
+
+
+func _check_farm_home() -> void:
+	var feel = load("res://config/default_game_feel.tres")
+	var old_frames := int(feel.showcase_phase_frames)
+	var old_wall := float(feel.showcase_phase_wall_sec)
+	var old_evidence := OS.get_environment("CRYSTALSTORM_EVIDENCE")
+	var crystal_script := GDScript.new()
+	crystal_script.source_code = "extends Node\nfunc get_depth_at(x: int, z: int) -> float:\n\tvar at := Vector2(float(x) + 0.5, float(z) + 0.5)\n\tif at.distance_to(Vector2.ZERO) < 34.0:\n\t\treturn 1.0\n\treturn 0.0\n"
+	var player_script := GDScript.new()
+	player_script.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar health := 20.0\nvar max_health := 20.0\nvar camera: Node = null\n"
+	var camera_script := GDScript.new()
+	camera_script.source_code = "extends Node\nvar yaw_degrees := 0.0\n"
+	if crystal_script.reload() != OK or player_script.reload() != OK or camera_script.reload() != OK:
+		_fail("farm home stand-in did not compile")
+		return
+	var crystal := Node.new()
+	crystal.set_script(crystal_script)
+	crystal.add_to_group("crystal_manager")
+	root.add_child(crystal)
+	var player := Node3D.new()
+	player.set_script(player_script)
+	var camera := Node.new()
+	camera.set_script(camera_script)
+	player.add_child(camera)
+	player.camera = camera
+	player.voxel_position = Vector3(40.0, 0.0, 0.0)
+	root.add_child(player)
+	var fight = _Fight.new()
+	var pos := Vector2(40.0, 0.0)
+	var yaw := 0.0
+	var origin := Vector2.ZERO
+	var saw_home := false
+	var bounced := false
+	var steps := 0
+	var budget := 20.0
+	while steps < int(budget / STEP):
+		var result := fight.tick(STEP, self, player, origin)
+		var stepped: Array = _step_rim(pos, yaw, fight.bot, STEP)
+		pos = stepped[0]
+		yaw = float(stepped[1])
+		player.voxel_position = Vector3(pos.x, 0.0, pos.y)
+		camera.yaw_degrees = yaw
+		steps += 1
+		if fight._home_arrived:
+			saw_home = true
+		if saw_home and pos.length() > _Farm.HOME_COLUMNS + 1.5:
+			bounced = true
+			break
+		if result == "fail" or fight.bot.gave_up:
+			break
+	var show = _Show.new()
+	show.player = player
+	show.origin = origin
+	show.bot.set_target(Vector2(18.0, 0.0))
+	show._seg = "farm_home_probe"
+	feel.showcase_phase_frames = 240
+	feel.showcase_phase_wall_sec = 600.0
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", "D:/ARCHIVE/CrystalStorm/verify-evidence/cs-bot-hang-fix-01")
+	var guard_steps := 0
+	while show.stuck_line == "" and guard_steps < 400:
+		show._guard_phase()
+		guard_steps += 1
+	feel.showcase_phase_frames = old_frames
+	feel.showcase_phase_wall_sec = old_wall
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", old_evidence)
+	fight.release()
+	show.bot.release()
+	crystal.remove_from_group("crystal_manager")
+	player.free()
+	crystal.free()
+	if not saw_home:
+		_fail("farm home approach never arrived inside %d steps" % steps)
+		return
+	if bounced:
+		_fail("farm home bounced back out to %.1f" % pos.length())
+		return
+	if steps >= int(budget / STEP) and not saw_home:
+		_fail("farm home approach still running after %.0fs" % budget)
+		return
+	if guard_steps >= 400 or not show.stuck_line.begins_with("HONEST BOT SHOWCASE FAIL stuck"):
+		_fail("frozen farm home did not fail inside the phase budget (%s)" % show.stuck_line)
+		return
+	if not show.finished or not show.failed:
+		_fail("stuck farm home left the showcase running")
+		return
+	if not FileAccess.file_exists(show.bot.fail_report) or not FileAccess.file_exists(show.bot.fail_shot):
+		_fail("stuck farm home missing report %s shot %s" % [show.bot.fail_report, show.bot.fail_shot])
+		return
+	var text := FileAccess.get_file_as_string(show.bot.fail_report)
+	if not ("phase: farm_home_probe" in text and "position:" in text and "target:" in text and "inputs:" in text and "reason:" in text):
+		_fail("stuck report fields: %s" % text)
+		return
+	_ok("farm home rim stays put and a stall fails inside the phase budget")
+
+
+func _step_rim(pos: Vector2, yaw: float, bot, delta: float) -> Array:
+	var stick := Vector2.ZERO
+	if bot.input.is_held("move_right"):
+		stick.x += 1.0
+	if bot.input.is_held("move_left"):
+		stick.x -= 1.0
+	if bot.input.is_held("move_back"):
+		stick.y += 1.0
+	if bot.input.is_held("move_forward"):
+		stick.y -= 1.0
+	var next := pos
+	if stick.length_squared() > 0.0:
+		next = pos + _Nav.world_delta(stick.normalized(), yaw) * 10.0 * delta
+	if next.length() < 34.0:
+		next = pos
+	if bot.input.is_held("rotate_right"):
+		yaw += _Nav.YAW_SPEED_DEG * delta
+	if bot.input.is_held("rotate_left"):
+		yaw -= _Nav.YAW_SPEED_DEG * delta
+	return [next, yaw]
 
 
 func _check_skill_pad() -> void:

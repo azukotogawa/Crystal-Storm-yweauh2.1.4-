@@ -60,6 +60,18 @@ static func enemy_span(id: String) -> float:
 	return 0.0
 
 
+static func phase_budget() -> Dictionary:
+	var loaded = _feel()
+	var frames := 180000
+	var wall := 150.0
+	var log_sec := 2.0
+	if loaded != null:
+		frames = maxi(int(loaded.get("showcase_phase_frames")), 1)
+		wall = maxf(float(loaded.get("showcase_phase_wall_sec")), 0.05)
+		log_sec = maxf(float(loaded.get("showcase_progress_sec")), 0.05)
+	return {"frames": frames, "wall_sec": wall, "log_sec": log_sec}
+
+
 static func _feel():
 	return load("res://config/default_game_feel.tres")
 

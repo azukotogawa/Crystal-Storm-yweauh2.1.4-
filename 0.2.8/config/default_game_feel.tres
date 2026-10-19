@@ -21,3 +21,6 @@ beat_flash = PackedFloat32Array(0.25, 0.3, 0.2, 0.4, 0.15, 0.55, 0.7, 0.45)
 enemy_ids = PackedStringArray("mite", "boss", "burn_pool")
 enemy_telegraph_sec = PackedFloat32Array(0.45, 0.85, 0.6)
 banner_sec = 2.5
+showcase_phase_frames = 180000
+showcase_phase_wall_sec = 150.0
+showcase_progress_sec = 2.0

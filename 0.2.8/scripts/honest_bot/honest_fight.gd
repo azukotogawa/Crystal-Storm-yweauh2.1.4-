@@ -227,7 +227,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
 	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 		return ""
-	if not _Farm.demo_ready(_level) and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
+	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		return _seek_xp(dt, tree, player, origin, pos)
 	if _home_logged and not _home_arrived:
 		_home_arrived = true
@@ -545,7 +545,7 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 	if not bite.is_empty() and str(bite.get("kind", "")) != "spawn_elite":
 		_quiet = 0.0
 		return _fight(dt, tree, player, bite, origin)
-	if pos.distance_to(origin) > _Farm.HOME_COLUMNS:
+	if not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _site_key != "":
 			_drop_site(false)
 		var dist := pos.distance_to(origin)
@@ -568,9 +568,7 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 			print("FAIL farm walk home dist %.0f" % dist)
 			bot.release()
 			return "fail"
-		var goal := _Roster.pool_goal(pos, origin, 18.0)
-		if _Hazard.burning(tree, goal):
-			goal = _Hazard.leave_goal(tree, goal, origin)
+		var goal := _clear_home(tree, pos, origin)
 		if not bot.has_target or bot.home.distance_to(goal) > 2.0:
 			bot.set_target(goal)
 		var extras := PackedStringArray()
@@ -745,6 +743,13 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	var stand := _Hazard.strike_stand(tree, pos, foe)
 	if stand == Vector2.INF:
+		if _home_arrived and not _Hazard.burning(tree, pos):
+			bot.release()
+			_face_foe(player, pos, foe)
+			if _foe_age >= 2.0:
+				_skipped[fid] = true
+				_foe_id = ""
+			return ""
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""
 	if pos.distance_to(stand) > 0.65 or pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
@@ -1050,12 +1055,32 @@ func _exit_hazard(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin
 
 
 func _safe_pool(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
-	var goal := _Roster.pool_goal(pos, origin, _Roster.POOL_STAND)
-	if tree == null:
-		return goal
-	if _Hazard.burning(tree, pos) or _Hazard.burning(tree, goal):
+	var goal := _clear_home(tree, pos, origin)
+	if _home_arrived and not _Hazard.burning(tree, pos) and goal.distance_to(origin) + 0.5 >= pos.distance_to(origin):
+		return pos
+	if tree != null and _Hazard.burning(tree, pos):
 		return _Hazard.leave_goal(tree, pos, origin)
 	return goal
+
+
+func _clear_home(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
+	var inward := _Roster.pool_goal(pos, origin, 18.0)
+	if tree == null or not _Hazard.burning(tree, inward):
+		return inward
+	var step := inward - pos
+	if step.length() < 0.2:
+		return pos
+	var dir := step.normalized()
+	var best := pos
+	var span := pos.distance_to(inward)
+	var walked := 1.0
+	while walked < span:
+		var at := pos + dir * walked
+		if _Hazard.burning(tree, at):
+			return best
+		best = at
+		walked += 1.0
+	return best
 
 
 func _aim_on_foe(player: Node, foe: Vector2) -> bool:

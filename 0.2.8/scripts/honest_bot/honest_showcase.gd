@@ -121,6 +121,15 @@ var _glow_walk := false
 var _paced_level := -1
 var _relic_paced := false
 var _stage_hit: Array[bool] = [false, false, false]
+var stuck_line := ""
+var _guard_seg := ""
+var _guard_frames := 0
+var _guard_since := 0
+var _guard_log := 0
+var _guard_best := 0.0
+var _guard_pos := Vector2.ZERO
+var _guard_goal := Vector2.ZERO
+var _guard_token := ""
 
 
 func load_route() -> bool:
@@ -179,8 +188,66 @@ func tick(delta: float) -> bool:
 		_seg_status = _hold_status
 		_hold_status = ""
 		_finish_segment()
+	_guard_phase()
 	_paint()
 	return finished
+
+
+func _guard_phase() -> void:
+	if finished or _seg == "" or player == null:
+		return
+	var budget: Dictionary = _Pace.phase_budget()
+	var pos := _xz()
+	var target: Vector2 = bot.home if bot.has_target else origin
+	var dist := pos.distance_to(target)
+	var token := "%d:%d:%d" % [fight.level_now(), fight.remainder_now(), fight.killed.size()]
+	var now := Time.get_ticks_msec()
+	if _guard_seg != _seg:
+		_guard_seg = _seg
+		_guard_frames = 0
+		_guard_since = now
+		_guard_log = now
+		_guard_best = dist
+		_guard_pos = pos
+		_guard_goal = target
+		_guard_token = token
+		return
+	var progressed := _guard_best - dist >= 0.35 or token != _guard_token
+	if _guard_goal.distance_to(target) <= 2.0:
+		progressed = progressed or _guard_pos.distance_to(_guard_goal) - pos.distance_to(_guard_goal) >= 0.35
+	else:
+		_guard_goal = target
+		_guard_pos = pos
+	if _banner_left > 0.0 or _seg == "day_night" or _seg == "lighting" or _seg == "boot_tutorial":
+		progressed = true
+	if progressed:
+		_guard_frames = 0
+		_guard_since = now
+		_guard_best = minf(_guard_best, dist)
+		_guard_pos = pos
+		_guard_goal = target
+		_guard_token = token
+	_guard_frames += 1
+	if now - _guard_log >= int(float(budget["log_sec"]) * 1000.0):
+		_guard_log = now
+		var held := ",".join(bot.input.held_names())
+		print("SHOWCASE phase %s pos %.1f,%.1f target %.1f,%.1f dist %.1f inputs %s" % [
+			_seg, pos.x, pos.y, target.x, target.y, pos.distance_to(origin), held,
+		])
+	var wall := float(now - _guard_since) / 1000.0
+	if _guard_frames < int(budget["frames"]) and wall < float(budget["wall_sec"]):
+		return
+	var reason := "no progress phase %s frames %d wall %.1fs" % [_seg, _guard_frames, wall]
+	bot.chapter = _seg
+	bot.objective = _seg
+	bot.fail_closed(pos, reason, false)
+	stuck_line = "HONEST BOT SHOWCASE FAIL stuck %s" % _seg
+	print("%s pos %.1f,%.1f target %.1f,%.1f dist %.1f" % [
+		stuck_line, pos.x, pos.y, target.x, target.y, pos.distance_to(origin),
+	])
+	failed = true
+	finished = true
+	_seg_status = "fail"
 
 
 func _pull_next() -> bool:

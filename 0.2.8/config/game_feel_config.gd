@@ -53,6 +53,9 @@ const SLOW_MO_FLOOR := 0.35
 @export var enemy_telegraph_sec: PackedFloat32Array = PackedFloat32Array()
 
 @export_range(2.0, 3.0, 0.05) var banner_sec: float = 2.5
+@export var showcase_phase_frames: int = 180000
+@export var showcase_phase_wall_sec: float = 150.0
+@export var showcase_progress_sec: float = 2.0
 
 
 static func create_default():
@@ -74,6 +77,9 @@ static func create_default():
 	cfg.enemy_ids = PackedStringArray(ENEMIES)
 	cfg.enemy_telegraph_sec = PackedFloat32Array([0.45, 0.85, 0.60])
 	cfg.banner_sec = 2.5
+	cfg.showcase_phase_frames = 180000
+	cfg.showcase_phase_wall_sec = 150.0
+	cfg.showcase_progress_sec = 2.0
 	return cfg
 
 
