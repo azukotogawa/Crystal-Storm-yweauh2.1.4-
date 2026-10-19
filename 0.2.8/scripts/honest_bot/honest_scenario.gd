@@ -523,7 +523,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 	if not bool(job["cast_on"]):
 		cast.begin("skill_dash")
 		job["cast_on"] = true
-	var result := cast.tick(delta, tree, player, hands, bot, origin_xz, null)
+	var result: String = cast.tick(delta, tree, player, hands, bot, origin_xz, null)
 	if result == "pass":
 		job["skilled"] = true
 		print("HARNESS skill dash")
