@@ -702,7 +702,7 @@ showcase|bot-showcase)
     exit 0
   fi
   if [ -s "$EVID/chapters.txt" ]; then
-    short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
+    short=$(awk 'NF >= 3 { d = $3 - $2; if (d + 0.001 < 4) { print $1; exit } }' "$EVID/chapters.txt" | tr -d '\r')
     if [ -n "$short" ]; then
       echo "BOT SHOWCASE FAIL chapter $short under 4s"
       exit 1

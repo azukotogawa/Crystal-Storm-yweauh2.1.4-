@@ -144,3 +144,17 @@ Reuse these. Do not add a second walker, a second stuck watch, or a second leash
 ## Still open after this note
 
 A live unrecorded showcase that prints `SHOWCASE farm home`, then a boss kill and the win screen. `cf63bde` is not that run. Do not record a movie until that log exists.
+
+## cs-bot-win-run-02 (2026-10-18 18:16)
+
+Headless `20261018-cs-bot-win-run-02` on HEAD `7131179` (tee `tmp-cs-bot-win-run-02-1.log`, copy `D:\ARCHIVE\CrystalStorm\verify-evidence\20261018-cs-bot-win-run-02\honest-bot-showcase.log`). Start `2026-10-18T18:11:35-07:00`, `# exit=0 end=2026-10-18T18:16:50-07:00`. Wrapper printed `BOT SHOWCASE FAIL chapter movement under 4s` and `SHOWCASE_RC=1`. The script itself printed `HONEST BOT SHOWCASE FAIL`. No `DEATH`, no `BOSS KILL`, no `CRYSTAL DESTROYED`, no `win_screen`.
+
+### Cause: the mite stall watched the route bot
+
+`SHOWCASE farm home dist 36` is log line 560. The player was already about 19 columns from the heart. The phase log then repeats `SHOWCASE phase combat_crystal_mite` with target `86.2,-200.6` and empty inputs (log lines 561–612). That target is the route bot's leftover home, 1145 columns away, not the fight bot. `stuck-314831-1.txt` records position `938.55,-965.48`, target `86.19,-200.58`, distance `1145.2`, inputs empty, reason `no progress phase combat_crystal_mite frames 17211 wall 150.0s`. Log line 616 prints `HONEST BOT SHOWCASE FAIL stuck combat_crystal_mite` at dist 19.0 (distance to the origin, not to that target). The 150 s wall in `default_game_feel.tres` (`showcase_phase_wall_sec`) fired because distance to the route home never fell, while the fight was circling the heart.
+
+`honest_showcase.gd` `_guard_phase` now reads the fight bot during `combat_crystal_mite`, and the finale fight bot during `crystal`, `boss`, and `win_screen`. A real stall still writes the stuck report on that driver.
+
+### Wrapper: movement is 4.000 s
+
+`chapters.txt` line 2 is `movement 4.017 8.017` (span 4.000). The game log line 298 is `SHOWCASE movement pass`. The wrapper awk used `d + 0 < 4`, so a binary 4.000 that prints as just under 4 aborted the verdict before the stuck line. The compare is now `d + 0.001 < 4`. A chapter of 3.5 s still fails.

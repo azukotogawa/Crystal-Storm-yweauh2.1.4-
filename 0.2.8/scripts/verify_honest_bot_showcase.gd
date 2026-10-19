@@ -64,6 +64,7 @@ func _run() -> void:
 	_check_roster()
 	_check_farm()
 	_check_farm_home()
+	_check_phase_driver()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -749,6 +750,74 @@ func _check_farm_home() -> void:
 		_fail("stuck report fields: %s" % text)
 		return
 	_ok("farm home rim stays put and a stall fails inside the phase budget")
+
+
+func _check_phase_driver() -> void:
+	var feel = load("res://config/default_game_feel.tres")
+	var old_frames := int(feel.showcase_phase_frames)
+	var old_wall := float(feel.showcase_phase_wall_sec)
+	var old_log := float(feel.showcase_progress_sec)
+	var old_evidence := OS.get_environment("CRYSTALSTORM_EVIDENCE")
+	var player_script := GDScript.new()
+	player_script.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\n"
+	if player_script.reload() != OK:
+		_fail("phase driver stand-in did not compile")
+		return
+	var player := Node3D.new()
+	player.set_script(player_script)
+	root.add_child(player)
+	feel.showcase_phase_frames = 8
+	feel.showcase_phase_wall_sec = 600.0
+	feel.showcase_progress_sec = 60.0
+	var closing = _Show.new()
+	closing.player = player
+	closing.origin = Vector2.ZERO
+	closing._seg = "combat_crystal_mite"
+	closing.bot.set_target(Vector2(86.0, -200.0))
+	closing.fight.bot.set_target(Vector2(18.0, 0.0))
+	player.voxel_position = Vector3(80.0, 0.0, 0.0)
+	var step := 0
+	while step < 40 and closing.stuck_line == "" and player.voxel_position.x > 18.0:
+		var next := maxf(player.voxel_position.x - 2.0, 18.0)
+		player.voxel_position = Vector3(next, 0.0, 0.0)
+		closing._guard_phase()
+		step += 1
+	var stalled = _Show.new()
+	stalled.player = player
+	stalled.origin = Vector2.ZERO
+	stalled._seg = "combat_crystal_mite"
+	stalled.bot.set_target(Vector2(200.0, 0.0))
+	stalled.fight.bot.set_target(Vector2(18.0, 0.0))
+	player.voxel_position = Vector3(40.0, 0.0, 0.0)
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", "D:/ARCHIVE/CrystalStorm/verify-evidence/cs-bot-win-run-02-unit")
+	var stall_steps := 0
+	while stalled.stuck_line == "" and stall_steps < 30:
+		player.voxel_position = Vector3(player.voxel_position.x + 3.0, 0.0, 0.0)
+		stalled._guard_phase()
+		stall_steps += 1
+	feel.showcase_phase_frames = old_frames
+	feel.showcase_phase_wall_sec = old_wall
+	feel.showcase_progress_sec = old_log
+	OS.set_environment("CRYSTALSTORM_EVIDENCE", old_evidence)
+	closing.bot.release()
+	closing.fight.bot.release()
+	stalled.bot.release()
+	stalled.fight.bot.release()
+	player.free()
+	if closing.stuck_line != "":
+		_fail("fight walk toward the heart was stuck on the route bot (%s)" % closing.stuck_line)
+		return
+	if stall_steps >= 30 or not stalled.stuck_line.begins_with("HONEST BOT SHOWCASE FAIL stuck combat_crystal_mite"):
+		_fail("a farm walk away from its goal did not stall (%s)" % stalled.stuck_line)
+		return
+	if stalled.fight.bot.fail_report == "" or not FileAccess.file_exists(stalled.fight.bot.fail_report):
+		_fail("phase driver stall missing fight report")
+		return
+	var text := FileAccess.get_file_as_string(stalled.fight.bot.fail_report)
+	if not ("target: 18.00,0.00" in text):
+		_fail("phase driver stall watched the route bot: %s" % text)
+		return
+	_ok("mite phase watches the fight bot, not the route bot")
 
 
 func _step_rim(pos: Vector2, yaw: float, bot, delta: float) -> Array:

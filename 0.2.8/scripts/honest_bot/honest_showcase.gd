@@ -198,7 +198,8 @@ func _guard_phase() -> void:
 		return
 	var budget: Dictionary = _Pace.phase_budget()
 	var pos := _xz()
-	var target: Vector2 = bot.home if bot.has_target else origin
+	var driver: RefCounted = _phase_driver()
+	var target: Vector2 = driver.home if driver.has_target else origin
 	var dist := pos.distance_to(target)
 	var token := "%d:%d:%d" % [fight.level_now(), fight.remainder_now(), fight.killed.size()]
 	var now := Time.get_ticks_msec()
@@ -230,7 +231,7 @@ func _guard_phase() -> void:
 	_guard_frames += 1
 	if now - _guard_log >= int(float(budget["log_sec"]) * 1000.0):
 		_guard_log = now
-		var held := ",".join(bot.input.held_names())
+		var held := ",".join(driver.input.held_names())
 		print("SHOWCASE phase %s pos %.1f,%.1f target %.1f,%.1f dist %.1f inputs %s" % [
 			_seg, pos.x, pos.y, target.x, target.y, pos.distance_to(origin), held,
 		])
@@ -238,9 +239,9 @@ func _guard_phase() -> void:
 	if _guard_frames < int(budget["frames"]) and wall < float(budget["wall_sec"]):
 		return
 	var reason := "no progress phase %s frames %d wall %.1fs" % [_seg, _guard_frames, wall]
-	bot.chapter = _seg
-	bot.objective = _seg
-	bot.fail_closed(pos, reason, false)
+	driver.chapter = _seg
+	driver.objective = _seg
+	driver.fail_closed(pos, reason, false)
 	stuck_line = "HONEST BOT SHOWCASE FAIL stuck %s" % _seg
 	print("%s pos %.1f,%.1f target %.1f,%.1f dist %.1f" % [
 		stuck_line, pos.x, pos.y, target.x, target.y, pos.distance_to(origin),
@@ -248,6 +249,14 @@ func _guard_phase() -> void:
 	failed = true
 	finished = true
 	_seg_status = "fail"
+
+
+func _phase_driver() -> RefCounted:
+	if _seg == "combat_crystal_mite" and fight != null:
+		return fight.bot
+	if (_seg == "crystal" or _seg == "boss" or _seg == "win_screen") and finale != null and finale.heart != null and finale.heart.fight != null:
+		return finale.heart.fight.bot
+	return bot
 
 
 func _pull_next() -> bool:
