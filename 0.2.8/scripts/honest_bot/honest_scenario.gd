@@ -10,6 +10,7 @@ const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Worlds = preload("res://systems/world_manager.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
@@ -1149,6 +1150,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 			]
 			break
 		fight.trace_branch = "none"
+		fight.trace_hunt = "none"
 		fight.trace_strike = ""
 		var result := fight.tick(delta, tree, player, origin_xz)
 		var pos := _xz(player)
@@ -1164,6 +1166,28 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 			float(player.health), fight._herbs(player), _Hazard.depth_at(tree, pos),
 		])
 		fight.trace_heal = ""
+		var live_node: Node3D = null
+		var live_best := 1.0e9
+		for live in tree.get_nodes_in_group("crystal_enemy"):
+			if not is_instance_valid(live) or str(live.get("enemy_id")) != "crystal_mite" or float(live.get("health")) <= 0.0:
+				continue
+			var live_d := (live as Node3D).global_position.distance_to((player as Node3D).global_position)
+			if live_d < live_best:
+				live_best = live_d
+				live_node = live
+		if live_node != null:
+			var ws = _WorldSettings.get_active()
+			var lg := live_node.global_position
+			var pg := (player as Node3D).global_position
+			var live_xz := Vector2(ws.world_to_column(lg.x), ws.world_to_column(lg.z))
+			var self_cell := _Move.column_pos(lg)
+			var aim_cell: Vector2i = live_node.call("_player_column")
+			print("HARNESS mite live t %.3f hunt %s branch %s live %.2f,%.2f bot %.2f,%.2f live_d %.2f bot_d %.2f self_cell %d,%d aim_cell %d,%d cell_d %.2f world_d %.2f world_xz_d %.2f dy %.2f windup %.2f hp %.1f" % [
+				elapsed, fight.trace_hunt, fight.trace_branch, live_xz.x, live_xz.y, pos.x, pos.y,
+				live_xz.distance_to(pos), near_d, self_cell.x, self_cell.y, aim_cell.x, aim_cell.y,
+				Vector2(self_cell).distance_to(Vector2(aim_cell)), lg.distance_to(live_node.call("_player_world_pos")),
+				Vector2(lg.x, lg.z).distance_to(Vector2(pg.x, pg.z)), lg.y - pg.y, float(live_node.get("_contact_left")), float(player.health),
+			])
 		last_pos = pos
 		if _burn_sprint(tree, fight, player, pos):
 			burn_sprint += 1

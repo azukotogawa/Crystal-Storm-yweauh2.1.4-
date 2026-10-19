@@ -44,6 +44,7 @@ var trace_branch := ""
 var trace_strike := ""
 var trace_heal := ""
 var trace_foe := ""
+var trace_hunt := ""
 var bow_logged := false
 var _bow_age := 0.0
 var _pick := false
@@ -235,20 +236,26 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
 	if _Hazard.must_leave(tree, pos):
 		_exit_hazard(dt, tree, player, pos, origin)
+		trace_hunt = "h1__exit_hazard"
 		return ""
 	if not orbits():
 		if _Hazard.ring_hot(tree, pos):
 			_leave_ring(dt, tree, player, pos, origin)
+			trace_hunt = "h2__leave_ring"
 			return ""
 		if _off_rim(tree, pos, origin):
 			var close := _nearest_mite(tree, pos)
 			if _mite_hit_ready(tree, pos, close):
+				trace_hunt = "h3__fight"
 				return _fight(dt, tree, player, close, origin)
 			_return_rim(dt, tree, player, origin)
+			trace_hunt = "h4__return_rim"
 			return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			trace_hunt = "h5__slip"
 			return ""
+		trace_hunt = "h6__seek_xp"
 		return _seek_xp(dt, tree, player, origin, pos)
 	if _home_logged and not _home_arrived:
 		_home_arrived = true
@@ -263,6 +270,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		bot.release()
 		if _demo_hold <= 0.0:
 			_demo = ""
+		trace_hunt = "h7__demo"
 		return ""
 	var ready := _Farm.ready(_level, _xp)
 	var demo := _Farm.demo_ready(_level)
@@ -283,14 +291,17 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if not orbits() and not choice.is_empty() and not _mite_ready(tree, pos, choice, origin):
 			if _mite_hit_ready(tree, pos, choice):
 				_quiet = 0.0
+				trace_hunt = "h8__fight"
 				return _fight(dt, tree, player, choice, origin)
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
+			trace_hunt = "h9__fight"
 			return _fight(dt, tree, player, choice, origin)
 		if not orbits():
 			var close := _nearest_mite(tree, pos)
 			if _mite_hit_ready(tree, pos, close):
+				trace_hunt = "h10__fight"
 				return _fight(dt, tree, player, close, origin)
 			var foe_at := pos
 			var step := pos
@@ -305,6 +316,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 				bot.objective = "mite approach"
 				bot.stuck_limit = 24
 				_step_clear(dt, tree, player, step, foe_at, false)
+				trace_hunt = "h11__step_clear"
 				return ""
 			var ring := _anchor(tree, pos, origin)
 			var gap := pos.distance_to(origin) - ring.distance_to(origin)
@@ -313,30 +325,39 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 				bot.objective = "mite approach"
 				bot.stuck_limit = 24
 				_step_clear(dt, tree, player, _Hazard.skirt_goal(tree, pos, ring), origin, gap > 1.2)
+				trace_hunt = "h12__step_clear"
 				return ""
 		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			trace_hunt = "h13_orbits"
 			return ""
 		if age >= _Farm.FARM_LIMIT:
 			print("FAIL farm short level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
 			bot.release()
+			trace_hunt = "h14_botrelease"
 			return "fail"
+		trace_hunt = "h15__seek_xp"
 		return _seek_xp(dt, tree, player, origin, pos)
 	if not demo:
 		_chip_age += dt
 		if _chip_age >= _Farm.CHIP_LIMIT:
 			print("FAIL farm short of skill points level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
 			bot.release()
+			trace_hunt = "h16_botrelease"
 			return "fail"
 		var threat: Dictionary = _Farm.pick_seek(rows, pos, killed, CHIP_LEASH, _skipped, false)
 		threat = prefer_locked(rows, pos, CHIP_LEASH, threat)
 		if not threat.is_empty():
 			_pick = false
 			_quiet = 0.0
+			trace_hunt = "h17__fight"
 			return _fight(dt, tree, player, threat, origin)
 		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			trace_hunt = "h18_orbits"
 			return ""
+		trace_hunt = "h19__chip"
 		return _chip(dt, tree, player, origin)
 	if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+		trace_hunt = "h20_orbits"
 		return ""
 	if not _pool_done:
 		_pool_visit += dt
@@ -344,8 +365,10 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if _pool_visit >= 25.0:
 			_pool_done = true
 			bot.release()
+		trace_hunt = "h21_botrelease"
 		return ""
 	bot.release()
+	trace_hunt = "h22__mite_result"
 	return _mite_result()
 
 
