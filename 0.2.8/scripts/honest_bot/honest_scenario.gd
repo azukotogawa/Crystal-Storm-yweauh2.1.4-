@@ -448,6 +448,7 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 	var corrupt_now := _corrupt_near(origin, 18)
 	if not bool(job["spread"]) and corrupt_now > int(job["corrupt_boot"]):
 		job["spread"] = true
+		job["corrupt_seen"] = corrupt_now
 		print("HARNESS spread corrupt %d to %d" % [int(job["corrupt_boot"]), corrupt_now])
 	if not bool(job["cleansed"]):
 		if _attack_warn(tree):
@@ -455,8 +456,9 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 			return ""
 		if _Corrupt.scar_count() > int(job["scars_boot"]):
 			job["cleansed"] = true
+			job["scars_seen"] = _Corrupt.scar_count()
 			job["cell"] = Vector2i(999999, 999999)
-			print("HARNESS cleansed scars %d" % _Corrupt.scar_count())
+			print("HARNESS cleansed scars %d" % int(job["scars_seen"]))
 		else:
 			_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 			return ""
@@ -844,9 +846,9 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 	if float(after.get("hp", 1.0)) >= float(before.get("hp", 0.0)) - 0.05:
 		return "hp did not fall"
 	if name == "corruption":
-		if int(after.get("corrupt", 0)) <= int(before.get("corrupt", 0)):
+		if not bool(job.get("spread", false)):
 			return "corruption did not spread"
-		if int(after.get("scars", 0)) <= int(before.get("scars", 0)):
+		if not bool(job.get("cleansed", false)):
 			return "scar did not start"
 		if not bool(job["burn_seen"]):
 			return "burn warning missing"
@@ -896,17 +898,23 @@ func _banner_allowed(line: String) -> bool:
 	return false
 
 
-func _print_feature(name: String, before: Dictionary, after: Dictionary, seen: PackedStringArray, _job: Dictionary) -> void:
-	print("HARNESS see %s shards %d to %d heart %.1f to %.1f corrupt %d to %d scars %d to %d hp %s banners %s" % [
+func _print_feature(name: String, before: Dictionary, after: Dictionary, seen: PackedStringArray, job: Dictionary) -> void:
+	var corrupt_now := int(after.get("corrupt", 0))
+	var scars_now := int(after.get("scars", 0))
+	var corrupt_peak := maxi(corrupt_now, int(job.get("corrupt_seen", corrupt_now)))
+	var scars_peak := maxi(scars_now, int(job.get("scars_seen", scars_now)))
+	print("HARNESS see %s shards %d to %d heart %.1f to %.1f corrupt %d to %d now %d scars %d to %d now %d hp %s banners %s" % [
 		name,
 		int(before.get("shards", 0)),
 		int(after.get("shards", 0)),
 		float(before.get("heart", -1.0)),
 		float(after.get("heart", -1.0)),
 		int(before.get("corrupt", 0)),
-		int(after.get("corrupt", 0)),
+		corrupt_peak,
+		corrupt_now,
 		int(before.get("scars", 0)),
-		int(after.get("scars", 0)),
+		scars_peak,
+		scars_now,
 		str(after.get("hp_label", "")),
 		"|".join(seen),
 	])

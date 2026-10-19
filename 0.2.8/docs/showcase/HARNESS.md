@@ -74,8 +74,8 @@ Watches the pool until a nearby cell becomes corrupt, breaks one filmed cell wit
 
 | Check | Pass |
 | --- | --- |
-| Spread | A cell near the heart gains `corrupt` that it did not have at boot. |
-| Cleanse | `CrystalCorruption.scar_count` rises after the pick swings. |
+| Spread | A cell near the heart gains `corrupt` that it did not have at boot. The rise is kept when it happens. A scar can heal before the burn, so the end count may fall. |
+| Cleanse | `CrystalCorruption.scar_count` rises after the pick swings. The rise is kept when it happens. |
 | Effect | `BurnWarn` is visible, then `player.health` drops. |
 | Banner | Same allowed lines as crystals, plus the assault line. |
 | HP | Lower than boot, label matches, and the bar stays visible. |
