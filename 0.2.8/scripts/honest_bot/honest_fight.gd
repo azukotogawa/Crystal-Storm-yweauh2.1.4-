@@ -899,17 +899,26 @@ func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
 
 
 func _anchor(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
-	var rim := _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
-	var want := maxf(rim.distance_to(origin), _Hazard.aggro_columns() + 1.5)
 	var away := pos - origin
 	if away.length() < 0.2:
 		away = Vector2(1.0, 0.0)
 	else:
 		away = away.normalized()
-	var ring := origin + away * want
-	if tree != null and (_Hazard.burning(tree, ring) or (not _Hazard.burning(tree, pos) and _Hazard.crosses_burn(tree, pos, ring))):
-		return rim
-	return ring
+	var lip := origin + away * _Farm.HEART_STAND
+	var walk := 0.5
+	var limit := _Hazard.aggro_columns() + 12.0
+	while walk < limit:
+		var at := origin + away * walk
+		if tree == null or not _Hazard.burning(tree, at):
+			lip = at
+			break
+		walk += 0.5
+	var safe := origin + away * (_Hazard.aggro_columns() + 1.5)
+	if lip.distance_to(origin) + 0.5 >= safe.distance_to(origin):
+		return lip
+	if tree != null and (not _Hazard.burning(tree, pos)) and (_Hazard.burning(tree, safe) or _Hazard.crosses_burn(tree, pos, safe)):
+		return lip
+	return safe
 
 
 func _return_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
