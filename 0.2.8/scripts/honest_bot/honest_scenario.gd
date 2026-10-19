@@ -569,6 +569,21 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			return ""
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
+	if bool(job.get("dash_walk", false)):
+		var mark: Vector2 = job.get("dash_from", pos)
+		if pos.distance_to(mark) < 6.0:
+			var goal: Vector2 = job.get("dash_goal", Vector2.INF)
+			if goal == Vector2.INF:
+				var side := pos - origin_xz
+				if side.length() < 0.4:
+					side = Vector2(1.0, 0.0)
+				side = Vector2(-side.y, side.x).normalized()
+				goal = _Hazard.skirt_goal(tree, pos, pos + side * 12.0)
+				job["dash_goal"] = goal
+			_step_toward(bot, player, goal, delta, pos, true)
+			return ""
+		job["dash_walk"] = false
+		job["dash_goal"] = Vector2.INF
 	if not bool(job["cast_on"]):
 		cast.begin("skill_dash")
 		job["cast_on"] = true
@@ -578,7 +593,15 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		print("HARNESS skill dash")
 		return ""
 	if result == "fail":
-		return "dash did not cast"
+		if int(job.get("dash_tries", 0)) >= 2:
+			return "dash did not cast"
+		job["dash_tries"] = int(job.get("dash_tries", 0)) + 1
+		job["cast_on"] = false
+		job["dash_walk"] = true
+		job["dash_from"] = pos
+		job["dash_goal"] = Vector2.INF
+		bot.release()
+		return ""
 	return ""
 
 
