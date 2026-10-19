@@ -898,6 +898,10 @@ func _check_mite_lock() -> void:
 	if heart.distance_to(Vector2.ZERO) > _Farm.HEART_STAND + 0.1 or heart.distance_to(outside) >= outside.length():
 		_fail("mite approach did not step toward the heart")
 		return
+	var rim: Vector2 = fight._rim_goal(null, outside, Vector2.ZERO, _Farm.HEART_STAND)
+	if rim.length() > _Farm.HEART_STAND + 0.1 or rim.distance_to(outside) + 0.5 >= outside.length():
+		_fail("mite approach stayed on the 18 ring at %.1f" % rim.length())
+		return
 	_ok("mite lock keeps one foe and one stand")
 
 

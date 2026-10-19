@@ -267,7 +267,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_quiet = 0.0
 			return _fight(dt, tree, player, choice, origin)
 		if not orbits() and pos.distance_to(origin) > _Farm.HEART_STAND + 2.0:
-			var closer := _clear_home(tree, pos, origin)
+			var closer := _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
 			if closer.distance_to(origin) + 0.5 < pos.distance_to(origin):
 				bot.chapter = "combat_crystal_mite"
 				bot.objective = "mite approach"
@@ -1119,7 +1119,11 @@ func _safe_pool(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
 
 
 func _clear_home(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
-	var inward := _Roster.pool_goal(pos, origin, 18.0)
+	return _rim_goal(tree, pos, origin, 18.0)
+
+
+func _rim_goal(tree: SceneTree, pos: Vector2, origin: Vector2, stand: float) -> Vector2:
+	var inward := _Roster.pool_goal(pos, origin, stand)
 	if tree == null or not _Hazard.burning(tree, inward):
 		return inward
 	var step := inward - pos
