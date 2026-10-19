@@ -21,6 +21,21 @@ const ORDER: PackedStringArray = [
 ]
 
 
+static func hold_row(rows: Array, locked_id: String, from_xz: Vector2, radius: float) -> Dictionary:
+	if locked_id == "":
+		return {}
+	for row in rows:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		if str(row.get("id", "")) != locked_id:
+			continue
+		var xz: Vector2 = row.get("xz", from_xz)
+		if from_xz.distance_to(xz) > radius:
+			return {}
+		return row
+	return {}
+
+
 static func pick(rows: Array, from_xz: Vector2, radius: float, killed: Dictionary, grind_mite: bool) -> Dictionary:
 	var fresh: Dictionary = {}
 	var fresh_d := INF

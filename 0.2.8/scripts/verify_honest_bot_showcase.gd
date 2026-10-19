@@ -65,6 +65,7 @@ func _run() -> void:
 	_check_farm()
 	_check_farm_home()
 	_check_phase_driver()
+	_check_mite_lock()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -818,6 +819,39 @@ func _check_phase_driver() -> void:
 		_fail("phase driver stall watched the route bot: %s" % text)
 		return
 	_ok("mite phase watches the fight bot, not the route bot")
+
+
+func _check_mite_lock() -> void:
+	var near := {"id": "near", "kind": "crystal_mite", "xz": Vector2(2.0, 0.0)}
+	var far := {"id": "far", "kind": "crystal_mite", "xz": Vector2(8.0, 0.0)}
+	var rows: Array = [near, far]
+	var fight := _Fight.new()
+	fight._foe_id = "far"
+	var fallback: Dictionary = _Roster.pick(rows, Vector2.ZERO, 32.0, {}, true)
+	var held: Dictionary = fight.prefer_locked(rows, Vector2.ZERO, 32.0, fallback)
+	if str(held.get("id", "")) != "far":
+		_fail("mite lock dropped the current foe for %s" % str(held.get("id", "")))
+		return
+	var dropped: Dictionary = fight.prefer_locked(rows, Vector2.ZERO, 6.0, near)
+	if str(dropped.get("id", "")) != "near":
+		_fail("mite lock kept a foe outside the radius")
+		return
+	var foe := Vector2(0.5, 0.5)
+	var side_a := Vector2(1.5, 1.5)
+	var side_b := Vector2(1.5, -0.5)
+	var between := Vector2(3.0, 0.5)
+	if not _Hazard.stand_ok(null, foe, side_a) or not _Hazard.stand_ok(null, foe, side_b):
+		_fail("mite stands are outside the hit ring")
+		return
+	var kept := _Hazard.keep_stand(null, between, foe, side_b)
+	if kept.distance_to(side_b) > 0.05:
+		_fail("mite stand flipped to %.2f,%.2f" % [kept.x, kept.y])
+		return
+	var fresh := _Hazard.keep_stand(null, between, foe, Vector2.ZERO)
+	if fresh == Vector2.INF or fresh.distance_to(foe) > _Hazard.HIT_COLUMNS:
+		_fail("a bad stand was kept")
+		return
+	_ok("mite lock keeps one foe and one stand")
 
 
 func _step_rim(pos: Vector2, yaw: float, bot, delta: float) -> Array:

@@ -158,3 +158,9 @@ Headless `20261018-cs-bot-win-run-02` on HEAD `7131179` (tee `tmp-cs-bot-win-run
 ### Wrapper: movement is 4.000 s
 
 `chapters.txt` line 2 is `movement 4.017 8.017` (span 4.000). The game log line 298 is `SHOWCASE movement pass`. The wrapper awk used `d + 0 < 4`, so a binary 4.000 that prints as just under 4 aborted the verdict before the stuck line. The compare is now `d + 0.001 < 4`. A chapter of 3.5 s still fails.
+
+## cs-bot-win-run-03 (2026-10-18 18:48)
+
+Headless `20261018-cs-bot-win-run-03` on HEAD `9de7b13` (tee `tmp-cs-bot-win-run-03-1.log`, copy `D:\ARCHIVE\CrystalStorm\verify-evidence\20261018-cs-bot-win-run-03\honest-bot-showcase.log`). Start `2026-10-18T18:34:08-07:00`, `# exit=0 end=2026-10-18T18:48:59-07:00`. Wrapper printed `BOT SHOWCASE FAIL rc=0` and `SHOWCASE_RC=1`. The script printed `HONEST BOT SHOWCASE FAIL`. No `DEATH`, no `BOSS KILL`, no `CRYSTAL DESTROYED`, no `win_screen`.
+
+`SHOWCASE farm home dist 36` happened, and the walk home logged progress from 1145 down to the heart. The stop is later: `HONEST BOT SHOWCASE FAIL stuck combat_crystal_mite pos 937.0,-966.9 target 938.9,-968.8 dist 21.2`. `stuck-890574-1.txt` records position `937.03,-966.94`, target `938.93,-968.78`, distance `2.6`, inputs `rotate_right,move_left,sprint`, reason `no progress phase combat_crystal_mite frames 19441 wall 150.0s`. The phase log alternates targets around `935.2,-965` and `939,-969` with `rotate_left,move_right` then `rotate_right,move_left`. That is two mite stands, not the route home from run 02. `prefer_locked` keeps the current foe id inside the scan radius, and `keep_stand` keeps a still-legal stand unless the new one is more than 0.35 columns closer.

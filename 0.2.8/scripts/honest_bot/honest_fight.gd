@@ -76,6 +76,7 @@ var _home_arrived := false
 var _home_age := 0.0
 var _home_limit := 0.0
 var _home_mark := -1.0
+var _stand := Vector2.INF
 
 
 func release() -> void:
@@ -253,6 +254,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			choice = _Farm.pick_seek(rows, pos, killed, _Farm.SEEK_COLUMNS, _skipped, true)
 		if choice.is_empty():
 			choice = _Farm.pick_seek(rows, pos, killed, 48.0, _skipped, false)
+		choice = prefer_locked(rows, pos, _Roster.SCAN_COLUMNS, choice)
 		if str(choice.get("kind", "")) == "spawn_elite":
 			_skipped[str(choice.get("id", ""))] = true
 			choice = {}
@@ -271,6 +273,7 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			bot.release()
 			return "fail"
 		var threat: Dictionary = _Farm.pick_seek(rows, pos, killed, CHIP_LEASH, _skipped, false)
+		threat = prefer_locked(rows, pos, CHIP_LEASH, threat)
 		if not threat.is_empty():
 			_pick = false
 			_quiet = 0.0
@@ -479,6 +482,7 @@ func _note_down() -> void:
 	_foe_id = ""
 	_foe_age = 0.0
 	_sword = false
+	_stand = Vector2.INF
 
 
 func _usable(rows: Array) -> Array:
@@ -696,6 +700,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_foe_id = fid
 		_foe_age = 0.0
 		_sword = false
+		_stand = Vector2.INF
 		_attack_wait = _Pace.enemy_span(_telegraph_kind(kind))
 		if _bow > 0 and _bow < 4:
 			_bow = 0
@@ -710,6 +715,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_skipped[fid] = true
 		_foe_id = ""
 		_foe_age = 0.0
+		_stand = Vector2.INF
 		if _demo != "" and _demo_age < 9.0:
 			_demo_hold = 9.0 - _demo_age
 		bot.release()
@@ -741,7 +747,8 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	if pos.distance_to(foe) < 1.1:
 		_back_off(dt, player, pos, foe)
 		return ""
-	var stand := _Hazard.strike_stand(tree, pos, foe)
+	var stand := _Hazard.keep_stand(tree, pos, foe, _stand)
+	_stand = stand
 	if stand == Vector2.INF:
 		if _home_arrived and not _Hazard.burning(tree, pos):
 			bot.release()
@@ -757,6 +764,13 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	_strike(dt, player, pos, foe, kind)
 	return ""
+
+
+func prefer_locked(rows: Array, pos: Vector2, radius: float, fallback: Dictionary) -> Dictionary:
+	var held := _Roster.hold_row(rows, _foe_id, pos, radius)
+	if held.is_empty():
+		return fallback
+	return held
 
 
 func _heal_or_leave(dt: float, player: Node, foe: Vector2) -> String:

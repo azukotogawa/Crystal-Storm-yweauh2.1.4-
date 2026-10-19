@@ -272,6 +272,28 @@ static func boss_off_heart(boss: Vector2, origin: Vector2) -> bool:
 	return cell.distance_to(heart) > SWORD_RANGE
 
 
+static func keep_stand(tree: SceneTree, pos: Vector2, foe: Vector2, previous: Vector2) -> Vector2:
+	var next := strike_stand(tree, pos, foe)
+	if not stand_ok(tree, foe, previous):
+		return next
+	if next == Vector2.INF:
+		return previous
+	if pos.distance_to(previous) <= pos.distance_to(next) + 0.35:
+		return previous
+	return next
+
+
+static func stand_ok(tree: SceneTree, foe: Vector2, stand: Vector2, reach: float = -1.0, near: float = 1.15) -> bool:
+	if stand == Vector2.INF:
+		return false
+	if reach < 0.0:
+		reach = HIT_COLUMNS
+	var dist := stand.distance_to(foe)
+	if dist > reach or dist < near:
+		return false
+	return not burning(tree, stand)
+
+
 static func strike_stand(tree: SceneTree, pos: Vector2, foe: Vector2, reach: float = -1.0, near: float = 1.15) -> Vector2:
 	if reach < 0.0:
 		reach = HIT_COLUMNS
