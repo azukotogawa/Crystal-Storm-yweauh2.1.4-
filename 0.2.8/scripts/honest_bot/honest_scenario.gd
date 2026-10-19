@@ -505,6 +505,7 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 
 
 func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, fight, cast, job: Dictionary, delta: float, pos: Vector2) -> String:
+	_note_hit_feedback(tree, job)
 	if not bool(job["struck"]):
 		if _attack_warn(tree):
 			bot.release()
@@ -539,6 +540,16 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		if foe_id == "":
 			_step_toward(bot, player, origin_xz, delta, pos)
 			return ""
+		var aim_at := Vector2.INF
+		for row in rows:
+			if str(row.get("id", "")) == foe_id:
+				aim_at = row["xz"]
+				break
+		bot.release()
+		if aim_at != Vector2.INF:
+			hands.begin_tick()
+			hands.aim_column(player, aim_at.x, aim_at.y)
+			fight.aim_ready = _foe_aimed(player, aim_at)
 		fight.tick(pos, _yaw(player), delta)
 		return ""
 	if bool(job["skilled"]):
@@ -638,6 +649,32 @@ func _swing_heart(tree: SceneTree, player: Node, origin: Vector2i, bot, hands, j
 			job["sword_logged"] = true
 			print("HARNESS sword at heart")
 		job["gap"] = _Pace.strike_gap("sword_swing")
+
+
+func _note_hit_feedback(tree: SceneTree, job: Dictionary) -> void:
+	if bool(job.get("feedback", false)):
+		return
+	var vfx := tree.get_first_node_in_group("combat_visual_feedback")
+	if vfx == null:
+		return
+	var marks = vfx.get_node_or_null("HitMarkers")
+	if marks == null or not marks.has_method("has_live"):
+		return
+	if not bool(marks.has_live()):
+		return
+	job["feedback"] = true
+	print("HARNESS hit feedback")
+
+
+func _foe_aimed(player: Node, foe: Vector2) -> bool:
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return false
+	var shared: Vector3 = hl.get_action_column()
+	if shared == Vector3.ZERO:
+		return false
+	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
+	return cell.distance_to(foe) <= 1.15
 
 
 func _heart_aimed(player: Node, origin: Vector2i) -> bool:
@@ -901,6 +938,8 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 		return "attack warning missing"
 	if not bool(job["melee"]):
 		return "melee missed"
+	if not bool(job.get("feedback", false)):
+		return "hit feedback missing"
 	if not bool(job["skilled"]):
 		return "dash missing"
 	return ""

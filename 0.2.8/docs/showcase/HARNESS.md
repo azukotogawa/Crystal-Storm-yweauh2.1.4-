@@ -90,6 +90,7 @@ Stands through an enemy `StrikeTelegraph` or `TelegraphRing` until that warning 
 | Warning hit | The disc or ring is visible, then health falls. |
 | Melee | One foe's health is lower after sword swings. |
 | Skill | Dash is bought and the cast slides (`OK dash slide` or `SKILL dash`). |
+| Feedback | `HitMarkers` is live at least once (a sword connection or a crystal chip). |
 | Banner | Same allowed lines as crystals. |
 | HP | Lower than boot, label matches. Death fails the scenario. |
 | Shot | `steps/*_combat.png` |
