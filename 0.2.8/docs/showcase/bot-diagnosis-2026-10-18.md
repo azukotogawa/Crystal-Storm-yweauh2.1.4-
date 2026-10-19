@@ -176,3 +176,9 @@ A crystal mite no longer takes that slip. A dodge that does run keeps its goal u
 ### Rerun on 6d196ef still stuck
 
 Headless `20261018-cs-bot-win-run-04b` on HEAD `80b3c20` (tee `tmp-cs-bot-win-run-04-2.log`, copy `D:\ARCHIVE\CrystalStorm\verify-evidence\20261018-cs-bot-win-run-04b\honest-bot-showcase.log`). Start `2026-10-18T19:39:48-07:00`, `# exit=0 end=2026-10-18T19:49:07-07:00`. Wrapper printed `BOT SHOWCASE FAIL rc=0` and `SHOWCASE_RC=1`. The script printed `HONEST BOT SHOWCASE FAIL stuck combat_crystal_mite pos 939.1,-965.0 target 935.3,-961.1 dist 18.3`. `stuck-558884-1.txt` is that report. The phase log still alternates `935.3,-961` and `942.x,-968.7` with `rotate_left,move_forward,sprint` and `rotate_right,move_back,sprint`. No `KILL`, no `BOSS KILL`, no win. `move_back` is still `flee_toward`, so a dodge path is still taking the mite frames. The unit check passed; this live path did not.
+
+### Cause after 6d196ef
+
+`6d196ef` skipped `_slip` only when the locked foe was a `crystal_mite`, and it cleared `_dodge` on every hunt frame before `_fight`. A non-mite inside 32 columns (or an empty pick that still called `_slip` / `_leave_leash`) still ran `flee_toward`. Clearing `_dodge` made `keep_dodge` take whichever bubble was deeper that frame, so the two goals around `935.3,-961` and `942,-968` swapped and the player stayed near `938.9,-965`.
+
+Once the farm has arrived home and no mite kill is recorded, `orbits()` is false. Hunt, seek, site, and fight skips of `_slip` and `_leave_leash` stay off, including a stag or shard that is not a mite. A mite still never slips. The walk home, before arrival, still dodges. A saved dodge is cleared when the foe id changes, not every frame. Headless `CRYSTALSTORM_SHOWCASE_UNIT=1` on this change printed `HONEST BOT SHOWCASE UNIT OK` and `OK mite lock keeps one foe and one stand` (`tmp-cs-bot-win-run-04-unit2.log`).

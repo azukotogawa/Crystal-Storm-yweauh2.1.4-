@@ -868,6 +868,22 @@ func _check_mite_lock() -> void:
 	if not fight.slips_for("spawn_elite"):
 		_fail("elite fight lost its dodge")
 		return
+	fight._home_arrived = true
+	if fight.orbits() or fight.slips_for("crystal_stag") or fight.slips_for("crystal_mite"):
+		_fail("mite chapter still dodges before a mite kill")
+		return
+	fight.killed["crystal_mite"] = 1
+	if not fight.orbits() or not fight.slips_for("crystal_stag"):
+		_fail("dodge stayed off after the mite died")
+		return
+	if fight.slips_for("crystal_mite"):
+		_fail("a mite still dodges after the first kill")
+		return
+	fight._home_arrived = false
+	fight.killed.erase("crystal_mite")
+	if not fight.orbits() or not fight.slips_for("crystal_stag"):
+		_fail("the walk home lost its dodge")
+		return
 	_ok("mite lock keeps one foe and one stand")
 
 

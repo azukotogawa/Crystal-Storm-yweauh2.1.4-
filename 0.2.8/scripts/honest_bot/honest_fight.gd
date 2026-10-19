@@ -263,9 +263,8 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
-			_dodge = Vector2.INF
 			return _fight(dt, tree, player, choice, origin)
-		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
 		if age >= _Farm.FARM_LIMIT:
 			print("FAIL farm short level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
@@ -283,12 +282,11 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if not threat.is_empty():
 			_pick = false
 			_quiet = 0.0
-			_dodge = Vector2.INF
 			return _fight(dt, tree, player, threat, origin)
-		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
 		return _chip(dt, tree, player, origin)
-	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+	if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 		return ""
 	if not _pool_done:
 		_pool_visit += dt
@@ -558,9 +556,9 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 		_exit_hazard(dt, tree, player, origin, origin)
 		return ""
 	var home := _Roster.pool_goal(pos, origin, 18.0)
-	if _leave_leash(dt, tree, player, pos, home):
+	if orbits() and _leave_leash(dt, tree, player, pos, home):
 		return ""
-	if _slip(dt, tree, player, pos, home, true):
+	if orbits() and _slip(dt, tree, player, pos, home, true):
 		return ""
 	var bite := _Farm.pick_seek(_usable(_sense(tree)), pos, killed, 8.0, _skipped, false)
 	if not bite.is_empty() and str(bite.get("kind", "")) != "spawn_elite":
@@ -640,7 +638,7 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 	if _Hazard.burning(tree, pos):
 		_exit_hazard(dt, tree, player, _site_at, _site_at)
 		return ""
-	if _leave_leash(dt, tree, player, pos, _site_at):
+	if orbits() and _leave_leash(dt, tree, player, pos, _site_at):
 		return ""
 	if pos.distance_to(_site_at) > SITE_STAND:
 		_site_inside = 0.0
@@ -718,6 +716,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_foe_age = 0.0
 		_sword = false
 		_stand = Vector2.INF
+		_dodge = Vector2.INF
 		_attack_wait = _Pace.enemy_span(_telegraph_kind(kind))
 		if _bow > 0 and _bow < 4:
 			_bow = 0
@@ -741,9 +740,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	bot.input.aim_column(player, foe.x, foe.y)
 	if kind == "spawn_elite":
 		var home := _Roster.pool_goal(pos, origin, 18.0)
-		if _leave_leash(dt, tree, player, pos, home):
+		if orbits() and _leave_leash(dt, tree, player, pos, home):
 			return ""
-		if _slip(dt, tree, player, pos, home, false):
+		if orbits() and _slip(dt, tree, player, pos, home, false):
 			return ""
 		_back_off(dt, player, pos, foe)
 		return ""
@@ -783,7 +782,15 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	return ""
 
 
+func orbits() -> bool:
+	if not _home_arrived:
+		return true
+	return int(killed.get("crystal_mite", 0)) > 0
+
+
 func slips_for(kind: String) -> bool:
+	if not orbits():
+		return false
 	return kind != "crystal_mite"
 
 
