@@ -878,7 +878,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_step_clear(dt, tree, player, shallower, foe, false)
 		trace_branch = "b12"
 		return ""
-	if kind == "crystal_mite" and not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.sword_reach():
+	if kind == "crystal_mite" and not _Hazard.burning(tree, pos) and not _Hazard.ring_hot(tree, pos) and pos.distance_to(foe) <= _Hazard.sword_reach():
 		_strike(dt, player, pos, foe, kind)
 		trace_branch = "b13"
 		return ""
@@ -893,7 +893,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	var stand := _Hazard.keep_stand(tree, pos, foe, _stand)
 	if kind == "crystal_mite" and not orbits():
 		var melee := _Hazard.strike_stand(tree, pos, foe)
-		var melee_ok: bool = melee != Vector2.INF and not _Hazard.burning(tree, melee) and not _Hazard.crosses_burn(tree, pos, melee)
+		var melee_ok: bool = melee != Vector2.INF and not _Hazard.burning(tree, melee) and not _Hazard.crosses_burn(tree, pos, melee) and not _Hazard.ring_hot(tree, melee)
 		if melee_ok:
 			stand = melee
 		else:
@@ -976,7 +976,7 @@ func _mite_ready(tree: SceneTree, pos: Vector2, choice: Dictionary, origin: Vect
 		return false
 	var foe: Vector2 = choice.get("xz", pos)
 	var stand := _Hazard.mite_rim(tree, pos, foe)
-	if stand == Vector2.INF or _Hazard.burning(tree, stand):
+	if stand == Vector2.INF or _Hazard.burning(tree, stand) or _Hazard.ring_hot(tree, stand):
 		return false
 	if not _Hazard.burning(tree, pos) and _Hazard.crosses_burn(tree, pos, stand):
 		return false
@@ -988,7 +988,7 @@ func _mite_ready(tree: SceneTree, pos: Vector2, choice: Dictionary, origin: Vect
 func _mite_hit_ready(tree: SceneTree, pos: Vector2, choice: Dictionary) -> bool:
 	if choice.is_empty() or str(choice.get("kind", "")) != "crystal_mite":
 		return false
-	if _Hazard.burning(tree, pos):
+	if _Hazard.burning(tree, pos) or _Hazard.ring_hot(tree, pos):
 		return false
 	var foe: Vector2 = choice.get("xz", pos)
 	return pos.distance_to(foe) <= _Hazard.sword_reach()
@@ -1037,7 +1037,41 @@ func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin:
 		var close := _nearest_mite(tree, pos)
 		if not close.is_empty():
 			aim = close.get("xz", origin)
-	_step_clear(dt, tree, player, proposed, aim, pos.distance_to(proposed) > 4.5)
+	var key := _ring_key(tree, pos, proposed, _yaw(player))
+	if key == "":
+		_step_clear(dt, tree, player, proposed, aim, pos.distance_to(proposed) > 4.5)
+		return
+	bot.input.begin_tick()
+	var held := PackedStringArray([key])
+	held = _Hazard.with_sprint(tree, pos, proposed, _ratio(player), held, true)
+	bot.input.set_held(held)
+	bot.input.aim_column(player, aim.x, aim.y)
+
+
+func _ring_key(tree: SceneTree, pos: Vector2, proposed: Vector2, yaw: float) -> String:
+	var want := proposed - pos
+	if want.length_squared() < 0.04:
+		return ""
+	want = want.normalized()
+	var keys := {
+		"move_forward": Vector2(0.0, -1.0),
+		"move_back": Vector2(0.0, 1.0),
+		"move_left": Vector2(-1.0, 0.0),
+		"move_right": Vector2(1.0, 0.0),
+	}
+	var reach := _ring_escape(tree, pos)
+	var best := ""
+	var best_dot := 0.2
+	for name in keys:
+		var dir: Vector2 = _Nav.world_delta(keys[name], yaw).normalized()
+		var cand := pos + dir * reach
+		if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand) or _Hazard.ring_hot(tree, cand):
+			continue
+		var dot := dir.dot(want)
+		if dot > best_dot:
+			best_dot = dot
+			best = name
+	return best
 
 
 func _ring_exit(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
@@ -1136,7 +1170,7 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 
 
 func _step_on_rim(tree: SceneTree, pos: Vector2, cand: Vector2) -> bool:
-	if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
+	if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand) or _Hazard.ring_hot(tree, cand):
 		return false
 	return _Hazard.depth_at(tree, cand) < _Hazard.CLEAR_DEPTH
 
