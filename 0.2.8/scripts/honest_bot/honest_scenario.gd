@@ -6,6 +6,8 @@ const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Combat = preload("res://scripts/honest_bot/honest_combat.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
+const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
+const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _Move = preload("res://entities/entity_navigation.gd")
 const _GI = preload("res://helpers/gameplay_input.gd")
 const _Worlds = preload("res://systems/world_manager.gd")
@@ -438,7 +440,7 @@ func _tick_crystals(tree: SceneTree, player: Node, crystal: Node, origin: Vector
 			print("HARNESS used heart %.1f to %.1f" % [float(job["heart_mark"]), heart])
 			bot.release()
 			return ""
-		_swing_heart(player, origin, origin_xz, bot, hands, job, delta, pos)
+		_swing_heart(tree, player, origin, bot, hands, job, delta, pos)
 	return ""
 
 
@@ -565,17 +567,34 @@ func _swing_film(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i,
 		job["gap"] = SWING_GAP
 
 
-func _swing_heart(player: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> void:
-	var stand := origin_xz + Vector2(2.2, 0.4)
-	if pos.distance_to(stand) > 0.8:
-		_step_toward(bot, player, stand, delta, pos)
+func _swing_heart(tree: SceneTree, player: Node, origin: Vector2i, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> void:
+	var cell_origin := Vector2(float(origin.x), float(origin.y))
+	var aim := cell_origin + Vector2(0.5, 0.5)
+	var pad := _Hazard.sword_pad(tree, cell_origin)
+	if pad == Vector2.INF:
+		pad = aim + Vector2(1.6, 0.2)
+	if pos.distance_to(pad) > 0.8:
+		job["aim_hold"] = 0.0
+		_step_toward(bot, player, pad, delta, pos)
 		return
 	if _GI.blocks_actions():
 		bot.release()
 		return
 	bot.release()
 	hands.begin_tick()
-	hands.aim_column(player, float(origin.x) + 0.5, float(origin.y) + 0.5)
+	hands.aim_column(player, aim.x, aim.y)
+	var facing := _Nav.face_action(pos, aim, _yaw(player))
+	if facing != "":
+		job["aim_hold"] = 0.0
+		hands.set_held(PackedStringArray([facing]))
+		return
+	var locked := _heart_aimed(player, origin)
+	if locked:
+		job["aim_hold"] = 0.0
+	else:
+		job["aim_hold"] = float(job.get("aim_hold", 0.0)) + delta
+	if not locked and float(job["aim_hold"]) < 0.35:
+		return
 	if not bool(job["sword"]):
 		if hands.pulse(&"hotbar_1"):
 			job["sword"] = true
@@ -584,7 +603,22 @@ func _swing_heart(player: Node, origin: Vector2i, origin_xz: Vector2, bot, hands
 	if float(job["gap"]) > 0.0:
 		return
 	if hands.pulse(&"attack"):
-		job["gap"] = SWING_GAP
+		if not bool(job.get("sword_logged", false)):
+			job["sword_logged"] = true
+			print("HARNESS sword at heart")
+		job["gap"] = _Pace.strike_gap("sword_swing")
+
+
+func _heart_aimed(player: Node, origin: Vector2i) -> bool:
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl == null or not hl.has_method("get_action_column"):
+		return false
+	var shared: Vector3 = hl.get_action_column()
+	if shared == Vector3.ZERO:
+		return false
+	var cell := Vector2(float(floori(shared.x)) + 0.5, float(floori(shared.z)) + 0.5)
+	var want := Vector2(float(origin.x) + 0.5, float(origin.y) + 0.5)
+	return cell.distance_to(want) <= 1.15
 
 
 func _step_toward(bot, player: Node, goal: Vector2, delta: float, pos: Vector2) -> void:
