@@ -126,6 +126,17 @@ func _listed(names: PackedStringArray, name: String) -> bool:
 	return false
 
 
+func save_view(step_name: String, pos: Vector2) -> String:
+	var shot := _failure_image(pos)
+	if DisplayServer.get_name() == "headless":
+		shot.fill(Color(0.05, 0.22, 0.1))
+		shot.set_pixel(posmod(int(pos.x), 64), posmod(int(absf(pos.y)), 64), Color(0.9, 0.95, 0.7))
+	var path := _Capture.write_step(step_name, shot)
+	if path != "":
+		print("HARNESS SHOT %s" % path)
+	return path
+
+
 func fail_closed(pos: Vector2, reason: String, announce: bool = true) -> void:
 	if fail_report != "":
 		gave_up = true

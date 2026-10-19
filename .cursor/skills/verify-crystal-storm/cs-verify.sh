@@ -766,6 +766,38 @@ telemetry-summary)
   [ $# -ge 1 ] || { echo "usage: cs-verify.sh telemetry-summary <session.json|dir> [more...]"; exit 2; }
   "$py" "$ROOT/tools/telemetry_summary.py" "$@"; r=$?
   [ $r -eq 0 ] || exit "$r" ;;
+scenario)
+  name="${1:-}"
+  case "$name" in
+    dig|build|break) ;;
+    *) echo "usage: cs-verify.sh scenario <dig|build|break>"; exit 2 ;;
+  esac
+  export CRYSTALSTORM_SCENARIO="$name"
+  run_godot "scenario-$name" --headless --path "$ROOT" -s res://scripts/verify_honest_bot_scenario.gd; r=$?
+  unset CRYSTALSTORM_SCENARIO
+  log="$EVID/scenario-$name.log"
+  grep -E '^(OK|FAIL|HARNESS|STUCK|PROBE|SHOWCASE)' "$log" | tr -d '\r'
+  if bad "$log"; then echo "SCENARIO $name FAIL script rc=$r"; tail -8 "$log"; exit 1; fi
+  if [ "$name" = break ]; then
+    if grep -q '^FAIL harness assertion ' "$log" && grep -q '^STUCK REPORT ' "$log" && grep -q '^STUCK SHOT ' "$log" && grep -q '^HARNESS SCENARIO FAIL break' "$log"; then
+      echo "SCENARIO BREAK OK rc=$r evidence=$EVID"
+      exit 0
+    fi
+    echo "SCENARIO BREAK FAIL rc=$r"; tail -20 "$log"; exit 1
+  fi
+  if ! grep -q "^HARNESS SCENARIO OK $name" "$log" || grep -q '^FAIL' "$log"; then
+    echo "SCENARIO $name FAIL rc=$r"; tail -24 "$log"; exit 1
+  fi
+  if ! grep -q '^HARNESS SHOT ' "$log" || ! grep -q '^PROBE CAPTURE ' "$log"; then
+    echo "SCENARIO $name FAIL no screenshot"; exit 1
+  fi
+  shopt -s nullglob
+  shots=("$EVID"/steps/*_"$name".png)
+  shopt -u nullglob
+  if [ ${#shots[@]} -eq 0 ] || [ ! -s "${shots[0]}" ]; then
+    echo "SCENARIO $name FAIL missing steps png under $EVID/steps"; exit 1
+  fi
+  echo "SCENARIO $name OK rc=$r shot=${shots[0]} evidence=$EVID" ;;
 feature)
   f="${1:-}"; s="${SUITE[$f]:-}"; [ -n "$s" ] || { echo "unknown feature '$f' (${!SUITE[*]})"; exit 2; }
   if [ -n "${ABRUPT[$f]:-}" ]; then export CRYSTALSTORM_PROBE_ABRUPT_EXIT=1; fi
@@ -786,5 +818,5 @@ clip)
     echo "CLIP FAIL rc=$r"; tail -20 "$EVID/movie-pace.log"; exit 1
   fi
   echo "CLIP OK rc=$r" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|scenario <dig|build|break>|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac
