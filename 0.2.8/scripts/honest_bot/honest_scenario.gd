@@ -1009,6 +1009,7 @@ func _banner_allowed(line: String) -> bool:
 		"You rallied ",
 		"Origin Warden",
 		"Shard Tyrant",
+		"Used herb",
 	])
 	for prefix in prefixes:
 		if line.begins_with(prefix):
