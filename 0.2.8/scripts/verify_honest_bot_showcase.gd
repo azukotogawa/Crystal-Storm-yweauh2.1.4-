@@ -1061,6 +1061,27 @@ func _check_mite_burn() -> void:
 		return
 	home.release()
 	far.free()
+	mite.global_position = Vector3(17.0, 0.0, 1.0)
+	var closing := _plant_burn_player(player_script, camera_script, Vector3(16.0, 0.0, 0.5), 20.0)
+	var press = _Fight.new()
+	press._phase = "hunt"
+	press._home_arrived = true
+	press.tick(STEP, self, closing, Vector2.ZERO)
+	var toward: Vector2 = press.bot.target
+	if not press.bot.has_target or toward.length() > 13.5 or _Hazard.burning(self, toward) or _Hazard.crosses_burn(self, Vector2(16.0, 0.5), toward):
+		_fail("mite outside the pool was not approached on clear ground %.1f" % toward.length())
+		press.release()
+		closing.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _held_sprint(press.bot.extra_held) and not _Hazard.sprint_allowed(self, Vector2(16.0, 0.5), toward, 1.0):
+		_fail("approach sprinted into the burn")
+		press.release()
+		closing.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	press.release()
+	closing.free()
 	var elite := Node3D.new()
 	elite.set_script(mite_script)
 	elite.enemy_id = &"spawn_elite"

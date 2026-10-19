@@ -288,6 +288,20 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			var close := _nearest_mite(tree, pos)
 			if _mite_hit_ready(tree, pos, close):
 				return _fight(dt, tree, player, close, origin)
+			var foe_at := pos
+			var step := pos
+			var moving: bool = false
+			if not close.is_empty():
+				foe_at = close.get("xz", pos)
+				if pos.distance_to(foe_at) <= 48.0:
+					step = _clear_step_toward(tree, pos, foe_at)
+					moving = step.distance_to(pos) >= 0.45
+			if moving:
+				bot.chapter = "combat_crystal_mite"
+				bot.objective = "mite approach"
+				bot.stuck_limit = 24
+				_step_clear(dt, tree, player, step, foe_at, false)
+				return ""
 			var ring := _anchor(tree, pos, origin)
 			var gap := pos.distance_to(origin) - ring.distance_to(origin)
 			if absf(gap) > 1.2:
@@ -803,7 +817,19 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_back_off(dt, player, pos, foe)
 		return ""
 	var stand := _Hazard.keep_stand(tree, pos, foe, _stand)
-	if kind == "crystal_mite":
+	if kind == "crystal_mite" and not orbits():
+		var melee := _Hazard.strike_stand(tree, pos, foe)
+		var melee_ok: bool = melee != Vector2.INF and not _Hazard.burning(tree, melee) and not _Hazard.crosses_burn(tree, pos, melee)
+		if melee_ok:
+			stand = melee
+		else:
+			var step := _clear_step_toward(tree, pos, foe)
+			if step.distance_to(pos) < 0.35:
+				_face_foe(player, pos, foe)
+				return ""
+			_step_clear(dt, tree, player, step, foe, false)
+			return ""
+	elif kind == "crystal_mite":
 		var rim := _Hazard.mite_rim(tree, pos, foe)
 		if rim != Vector2.INF:
 			stand = rim
@@ -965,6 +991,33 @@ func _ring_side(tree: SceneTree, pos: Vector2, away: Vector2, reach: float) -> V
 			continue
 		if cand.distance_to(pos) > best.distance_to(pos):
 			best = cand
+	return best
+
+
+func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
+	var gap := foe - pos
+	if gap.length() < 0.2:
+		return pos
+	var direct := _Hazard.skirt_goal(tree, pos, pos + gap.normalized() * minf(2.6, gap.length()))
+	if not _Hazard.burning(tree, direct) and not _Hazard.enters_burn(tree, pos, direct) and direct.distance_to(foe) + 0.05 < pos.distance_to(foe):
+		return direct
+	var radial := pos
+	if radial.length() < 0.2:
+		radial = Vector2(1.0, 0.0)
+	else:
+		radial = radial.normalized()
+	var side := Vector2(-radial.y, radial.x)
+	var best := pos
+	var best_d := pos.distance_to(foe)
+	var signs: Array[float] = [1.0, -1.0]
+	for sign in signs:
+		var cand := _Hazard.skirt_goal(tree, pos, pos + side * sign * 2.6)
+		if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
+			continue
+		var dist := cand.distance_to(foe)
+		if dist + 0.05 < best_d:
+			best = cand
+			best_d = dist
 	return best
 
 
