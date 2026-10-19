@@ -445,7 +445,8 @@ func _tick_crystals(tree: SceneTree, player: Node, crystal: Node, origin: Vector
 
 
 func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> String:
-	if _attack_warn(tree) and not bool(job["burn_seen"]):
+	var commit_stand := bool(job["cleansed"]) and int(crystal.get("strength_tier")) >= 1
+	if _attack_warn(tree) and not commit_stand:
 		_step_away(tree, player, bot, origin_xz, delta, pos)
 		return ""
 	var corrupt_now := _corrupt_near(origin, 18)
@@ -467,6 +468,9 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 	if _Hazard.depth_at(tree, pos) < _Hazard.BURN_DEPTH:
 		_step_toward(bot, player, deep, delta, pos)
 		return ""
+	if not bool(job.get("stand_logged", false)):
+		job["stand_logged"] = true
+		print("HARNESS burn stand tier %d hp %.1f" % [int(crystal.get("strength_tier")), float(player.health)])
 	bot.release()
 	var burn := tree.root.find_child("BurnWarn", true, false)
 	if burn != null and burn.visible:
