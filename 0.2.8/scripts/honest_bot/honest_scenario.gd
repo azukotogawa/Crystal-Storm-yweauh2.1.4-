@@ -273,7 +273,7 @@ func _delta(tree: SceneTree) -> float:
 const FEATURE_LIMIT := {
 	"crystals": 90.0,
 	"corruption": 240.0,
-	"combat": 180.0,
+	"combat": 240.0,
 }
 const FIND_COLUMNS := 8.0
 const FILM_DEPTH := 0.2
@@ -523,20 +523,22 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
 	if not bool(job["melee"]):
-		var rows := _foe_rows(tree)
+		var rows := _near_foes(tree, pos)
 		fight.set_vitals(float(player.health), float(player.max_health))
 		fight.observe(rows)
 		var foe_id := str(job["foe_id"])
+		if foe_id != "":
+			var now_hp := _foe_health(tree, foe_id)
+			var was := float(job["foe_hp"])
+			if was >= 0.0 and (now_hp < 0.0 or now_hp < was - 0.05):
+				job["melee"] = true
+				print("HARNESS melee %s %.1f to %.1f" % [foe_id, was, now_hp])
+				fight.release()
+				return ""
 		if foe_id == "" or not _foe_alive(tree, foe_id):
 			foe_id = fight.nearest_id(pos)
 			job["foe_id"] = foe_id
 			job["foe_hp"] = _foe_health(tree, foe_id)
-		var now_hp := _foe_health(tree, foe_id)
-		if float(job["foe_hp"]) >= 0.0 and now_hp >= 0.0 and now_hp < float(job["foe_hp"]) - 0.05:
-			job["melee"] = true
-			print("HARNESS melee %s %.1f to %.1f" % [foe_id, float(job["foe_hp"]), now_hp])
-			fight.release()
-			return ""
 		if foe_id == "":
 			_step_toward(bot, player, origin_xz, delta, pos)
 			return ""
@@ -556,6 +558,9 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		bot.release()
 		return ""
 	if _points(tree) < 1 and not _unlocked(tree, "dash"):
+		if not bool(job.get("farm_logged", false)):
+			job["farm_logged"] = true
+			print("HARNESS skill farm points %d" % _points(tree))
 		if _attack_warn(tree):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
@@ -835,8 +840,17 @@ func _attack_warn(tree: SceneTree) -> bool:
 
 func _foe_rows(tree: SceneTree) -> Array:
 	var rows: Array = []
-	for node in tree.get_nodes_in_group("crystal_enemy"):
+	_collect_foes(rows, tree.get_nodes_in_group("crystal_enemy"), "enemy_id")
+	_collect_foes(rows, tree.get_nodes_in_group("world_entity"), "entity_kind")
+	return rows
+
+
+func _collect_foes(rows: Array, nodes: Array, kind_field: String) -> void:
+	for node in nodes:
 		if not is_instance_valid(node) or float(node.get("health")) <= 0.0:
+			continue
+		var kind := str(node.get(kind_field))
+		if kind == "town_villager" or kind == "town_militia":
 			continue
 		var body := node as Node3D
 		if body == null:
@@ -844,9 +858,25 @@ func _foe_rows(tree: SceneTree) -> Array:
 		var col: Vector2i = _Move.column_pos(body.global_position)
 		rows.append({
 			"id": str(node.get_instance_id()),
+			"kind": kind,
 			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
 		})
-	return rows
+
+
+func _near_foes(tree: SceneTree, pos: Vector2) -> Array:
+	var close: Array = []
+	var bosses: Array = []
+	for row in _foe_rows(tree):
+		var at: Vector2 = row["xz"]
+		if pos.distance_to(at) > 28.0:
+			continue
+		if str(row.get("kind", "")) == "origin_warden":
+			bosses.append(row)
+		else:
+			close.append(row)
+	if not close.is_empty():
+		return close
+	return bosses
 
 
 func _nearest_foe_xz(tree: SceneTree, pos: Vector2) -> Vector2:
