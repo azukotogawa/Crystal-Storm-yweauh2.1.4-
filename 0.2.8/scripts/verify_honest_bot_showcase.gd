@@ -67,6 +67,7 @@ func _run() -> void:
 	_check_phase_driver()
 	_check_mite_lock()
 	_check_mite_burn()
+	_check_treasure_stand()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -1001,6 +1002,69 @@ func _check_mite_burn() -> void:
 	edge.free()
 	_free_mite_burn(crystal, gm, mite)
 	_ok("mite burn fight stays on the clear rim")
+
+
+func _check_treasure_stand() -> void:
+	var player_script := GDScript.new()
+	player_script.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar camera: Node = null\n"
+	var camera_script := GDScript.new()
+	camera_script.source_code = "extends Node\nvar yaw_degrees := 0.0\n"
+	var elite_script := GDScript.new()
+	elite_script.source_code = "extends Node3D\nvar health := 40.0\nvar enemy_id := &\"spawn_elite\"\nvar brain = null\n"
+	var brain_script := GDScript.new()
+	brain_script.source_code = "extends Node\nvar home_pos := Vector2i(0, 0)\n"
+	if player_script.reload() != OK or camera_script.reload() != OK or elite_script.reload() != OK or brain_script.reload() != OK:
+		_fail("treasure stand-in did not compile")
+		return
+	var show = _Show.new()
+	show.tree = self
+	show._seg = "density_treasure"
+	show._ruins_before = 0
+	show._detour_face = Vector2.ZERO
+	show._detour_goal = Vector2(9.0, 0.0)
+	var player := Node3D.new()
+	player.set_script(player_script)
+	var camera := Node.new()
+	camera.set_script(camera_script)
+	player.add_child(camera)
+	player.camera = camera
+	player.voxel_position = Vector3(20.0, 0.0, 0.0)
+	root.add_child(player)
+	show.player = player
+	show.bot.set_target(Vector2(30.0, 5.0))
+	show.bot.arrived = true
+	show._face_only = true
+	show._tick_detour(STEP)
+	var home: Vector2 = show.bot.home
+	if show._face_only or show.bot.arrived or home.distance_to(Vector2(9.0, 0.0)) > 1.5:
+		_fail("off-ruin treasure face stayed at %.1f,%.1f" % [home.x, home.y])
+		show.bot.release()
+		player.free()
+		return
+	var elite := Node3D.new()
+	elite.set_script(elite_script)
+	var brain := Node.new()
+	brain.set_script(brain_script)
+	elite.add_child(brain)
+	elite.brain = brain
+	elite.add_to_group("crystal_enemy")
+	root.add_child(elite)
+	player.voxel_position = Vector3(2.0, 0.0, 0.0)
+	show._detour_goal = Vector2(9.0, 0.0)
+	show.bot.set_target(Vector2(9.0, 0.0))
+	show.bot.arrived = false
+	show.bot.gave_up = false
+	show._face_only = false
+	show._tick_detour(STEP)
+	var stayed: Vector2 = show.bot.home
+	show.bot.release()
+	elite.remove_from_group("crystal_enemy")
+	elite.free()
+	player.free()
+	if stayed.distance_to(Vector2(9.0, 0.0)) > 3.0:
+		_fail("treasure stand left the ruin for %.1f,%.1f" % [stayed.x, stayed.y])
+		return
+	_ok("treasure stand stays inside the ruin")
 
 
 func _plant_burn_player(player_script: GDScript, camera_script: GDScript, at: Vector3, hp: float) -> Node3D:

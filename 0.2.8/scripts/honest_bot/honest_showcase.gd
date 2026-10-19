@@ -32,6 +32,7 @@ const DETOUR_STUCK := 12
 const DETOUR_RESUMES := 6
 const TREASURE_TOUCH := 9.0
 const TREASURE_SAFE := 24.0
+const RUIN_DISCOVER := 10.0
 
 const READY: Array[String] = [
 	"boot_tutorial",
@@ -598,7 +599,9 @@ func _arm_detour(id: String) -> void:
 func _tick_detour(step: float) -> void:
 	if _step_off_burn(step):
 		return
-	if _step_off_leash(step, _clear_goal(_xz(), _detour_goal)):
+	if _resume_treasure_stand(step):
+		return
+	if not _holding_treasure() and _step_off_leash(step, _clear_goal(_xz(), _detour_goal)):
 		return
 	if _glow_leg:
 		_tick_glow(step)
@@ -627,6 +630,9 @@ func _tick_detour(step: float) -> void:
 	bot.extra_held = extras
 	bot.tick(pos, _yaw(), step)
 	if bot.arrived:
+		if _treasure_needs_stand():
+			_send_treasure_stand(step)
+			return
 		bot.release()
 		_begin_face()
 		return
@@ -641,7 +647,10 @@ func _tick_detour(step: float) -> void:
 
 
 func _tick_face(pos: Vector2, step: float) -> void:
-	if _step_off_leash(step, _clear_goal(pos, _detour_face)):
+	if _treasure_needs_stand():
+		_send_treasure_stand(step)
+		return
+	if not _holding_treasure() and _step_off_leash(step, _clear_goal(pos, _detour_face)):
 		return
 	if _leave_ring(step):
 		return
@@ -973,6 +982,57 @@ func _unsafe() -> bool:
 		return true
 	var ahead := _xz() + Vector2(40.0, 0.0)
 	return _Hazard.dodge_point(_xz(), ahead, _Hazard.guardian_bubbles(tree)) != Vector2.INF
+
+
+func _ruin_radius() -> float:
+	if tree == null:
+		return RUIN_DISCOVER
+	var director := tree.get_first_node_in_group("living_world_director")
+	if director != null and "ruin_discover_radius" in director:
+		return maxf(float(director.ruin_discover_radius), 1.0)
+	return RUIN_DISCOVER
+
+
+func _at_treasure(pos: Vector2) -> bool:
+	return pos.distance_to(_detour_face) <= _ruin_radius()
+
+
+func _treasure_needs_stand() -> bool:
+	return _seg == "density_treasure" and _ruin_count() <= _ruins_before and not _at_treasure(_xz())
+
+
+func _holding_treasure() -> bool:
+	return _seg == "density_treasure" and _ruin_count() <= _ruins_before and _at_treasure(_xz())
+
+
+func _resume_treasure_stand(step: float) -> bool:
+	if not _treasure_needs_stand():
+		return false
+	if not _face_only and not bot.arrived and not bot.gave_up:
+		return false
+	_send_treasure_stand(step)
+	return true
+
+
+func _send_treasure_stand(step: float) -> void:
+	_face_only = false
+	_pose = ""
+	_pose_age = 0.0
+	var pos := _xz()
+	var plan: Dictionary = _Walk.approach(pos, _detour_face, TREASURE_TOUCH)
+	_detour_goal = plan.get("goal", _detour_face)
+	bot.arrived = false
+	bot.gave_up = false
+	bot.set_target(_detour_goal)
+	bot.arrived = false
+	bot.gave_up = false
+	var extras := PackedStringArray()
+	if _submerged():
+		extras.append("jump")
+	else:
+		extras.append("sprint")
+	bot.extra_held = extras
+	bot.tick(pos, _yaw(), step)
 
 
 func _treasure_exit_needed(pos: Vector2) -> bool:
