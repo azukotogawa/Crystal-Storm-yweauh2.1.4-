@@ -232,6 +232,13 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	if _Hazard.must_leave(tree, pos):
 		_exit_hazard(dt, tree, player, pos, origin)
 		return ""
+	if not orbits():
+		if _Hazard.ring_hot(tree, pos):
+			_leave_ring(dt, tree, player, pos, origin)
+			return ""
+		if _off_rim(tree, pos, origin):
+			_return_rim(dt, tree, player, origin)
+			return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
@@ -265,6 +272,8 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		choice = prefer_locked(rows, pos, _Farm.MITE_SEEK if not orbits() else _Roster.SCAN_COLUMNS, choice)
 		if str(choice.get("kind", "")) == "spawn_elite":
 			_skipped[str(choice.get("id", ""))] = true
+			choice = {}
+		if not orbits() and not choice.is_empty() and not _mite_ready(tree, pos, choice, origin):
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
@@ -780,6 +789,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
 		return ""
+	if kind == "crystal_mite" and pos.distance_to(foe) < 1.1:
+		_hold_mite_rim(dt, tree, player, foe, origin)
+		return ""
 	if pos.distance_to(foe) < 1.1:
 		_back_off(dt, player, pos, foe)
 		return ""
@@ -842,6 +854,97 @@ func _heal_or_leave(dt: float, player: Node, foe: Vector2) -> String:
 	_heal_wait = 0.45
 	_sword = false
 	return ""
+
+
+func _mite_ready(tree: SceneTree, pos: Vector2, choice: Dictionary, origin: Vector2) -> bool:
+	if str(choice.get("kind", "")) != "crystal_mite":
+		return false
+	var foe: Vector2 = choice.get("xz", pos)
+	var stand := _Hazard.mite_rim(tree, pos, foe)
+	if stand == Vector2.INF or _Hazard.burning(tree, stand):
+		return false
+	if not _Hazard.burning(tree, pos) and _Hazard.crosses_burn(tree, pos, stand):
+		return false
+	if _off_rim(tree, stand, origin):
+		return false
+	return true
+
+
+func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
+	var anchor := _anchor(tree, pos, origin)
+	return pos.distance_to(origin) > anchor.distance_to(origin) + 3.0
+
+
+func _anchor(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
+	return _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
+
+
+func _return_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
+	var pos := _xz(player)
+	var goal := _Hazard.skirt_goal(tree, pos, _anchor(tree, pos, origin))
+	if _Hazard.burning(tree, goal) or _Hazard.crosses_burn(tree, pos, goal):
+		goal = _Hazard.skirt_goal(tree, pos, _Hazard.leave_goal(tree, pos, origin))
+	_step_clear(dt, tree, player, goal, origin, false)
+
+
+func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin: Vector2) -> void:
+	var away := pos - origin
+	if away.length_squared() < 0.04:
+		away = Vector2(1.0, 0.0)
+	var proposed := _Hazard.slam_exit(pos, away, 3.0, origin)
+	proposed = _Hazard.skirt_goal(tree, pos, proposed)
+	if _Hazard.burning(tree, proposed) or _Hazard.crosses_burn(tree, pos, proposed) or _off_rim(tree, proposed, origin):
+		proposed = _Hazard.skirt_goal(tree, pos, _anchor(tree, pos, origin))
+	_step_clear(dt, tree, player, proposed, origin, false)
+
+
+func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
+	var pos := _xz(player)
+	if not orbits() and _off_rim(tree, pos, origin):
+		_return_rim(dt, tree, player, origin)
+		return
+	if _Hazard.must_leave(tree, pos):
+		_exit_hazard(dt, tree, player, foe, origin)
+		return
+	var radial := pos - origin
+	if radial.length() < 0.2:
+		radial = Vector2(1.0, 0.0)
+	else:
+		radial = radial.normalized()
+	var side := Vector2(-radial.y, radial.x)
+	var options: Array[Vector2] = [
+		pos - radial * 1.6,
+		pos + side * 1.8,
+		pos - side * 1.8,
+	]
+	var best := pos
+	var best_clear := -1.0
+	for cand in options:
+		var step := _Hazard.skirt_goal(tree, pos, cand)
+		if _Hazard.burning(tree, step) or _Hazard.crosses_burn(tree, pos, step):
+			continue
+		if not orbits() and step.distance_to(origin) > pos.distance_to(origin) + 1.25:
+			continue
+		var score := step.distance_to(foe)
+		if score > best_clear:
+			best_clear = score
+			best = step
+	if best.distance_to(pos) < 0.45:
+		if not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.HIT_COLUMNS:
+			_strike(dt, player, pos, foe, "crystal_mite")
+			return
+		_face_foe(player, pos, foe)
+		return
+	_step_clear(dt, tree, player, best, foe, false)
+
+
+func _step_clear(dt: float, tree: SceneTree, player: Node, goal: Vector2, aim: Vector2, sprint_now: bool) -> void:
+	var pos := _xz(player)
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 0.8:
+		bot.set_target(goal)
+	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), sprint_now)
+	bot.tick(pos, _yaw(player), dt)
+	bot.input.aim_column(player, aim.x, aim.y)
 
 
 func _back_off(dt: float, player: Node, pos: Vector2, foe: Vector2) -> void:

@@ -1000,6 +1000,48 @@ func _check_mite_burn() -> void:
 		return
 	outer.release()
 	edge.free()
+	if _Hazard.sprint_allowed(self, pool, rim, 1.0):
+		_fail("full hp sprint was allowed across the burn")
+		_free_mite_burn(crystal, gm, mite)
+		return
+	mite.global_position = Vector3(11.2, 0.0, 1.0)
+	var glued := _plant_burn_player(player_script, camera_script, Vector3(6.4, 0.0, 0.5), 20.0)
+	var chase = _Fight.new()
+	chase._phase = "hunt"
+	chase._home_arrived = true
+	for _k in 24:
+		chase.tick(STEP, self, glued, Vector2.ZERO)
+	var ran: Vector2 = chase.bot.target
+	var glued_at := Vector2(6.4, 0.5)
+	if chase.bot.has_target and (ran.length() > 10.0 or _Hazard.burning(self, ran) or _Hazard.crosses_burn(self, glued_at, ran)):
+		_fail("close mite pulled a burn sprint to %.1f,%.1f" % [ran.x, ran.y])
+		chase.release()
+		glued.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _held_sprint(chase.bot.extra_held):
+		_fail("close mite still sprinted on the rim")
+		chase.release()
+		glued.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	chase.release()
+	glued.free()
+	var far := _plant_burn_player(player_script, camera_script, Vector3(20.0, 0.0, 0.5), 20.0)
+	mite.global_position = Vector3(40.0, 0.0, 1.0)
+	var home = _Fight.new()
+	home._phase = "hunt"
+	home._home_arrived = true
+	for _n in 8:
+		home.tick(STEP, self, far, Vector2.ZERO)
+	if not home.bot.has_target or home.bot.target.length() > 16.0:
+		_fail("off-rim mite fight did not turn back, target %.1f" % home.bot.target.length())
+		home.release()
+		far.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	home.release()
+	far.free()
 	_free_mite_burn(crystal, gm, mite)
 	_ok("mite burn fight stays on the clear rim")
 

@@ -409,15 +409,10 @@ static func must_leave(tree: SceneTree, pos: Vector2) -> bool:
 
 static func sprint_allowed(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float) -> bool:
 	if tree == null or goal == Vector2.INF:
-		return true
-	var crosses := crosses_burn(tree, pos, goal) or burning(tree, goal)
-	if not crosses:
-		return true
-	if not burning(tree, pos):
+		return ratio >= -0.001
+	if crosses_burn(tree, pos, goal):
 		return false
-	if depth_at(tree, goal) > depth_at(tree, pos) + 0.02:
-		return false
-	return not low_hp(ratio)
+	return true
 
 
 static func with_sprint(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float, held: PackedStringArray, want: bool) -> PackedStringArray:
