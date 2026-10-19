@@ -458,7 +458,7 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 			job["cell"] = Vector2i(999999, 999999)
 			print("HARNESS cleansed scars %d" % _Corrupt.scar_count())
 		else:
-			_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, true)
+			_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 			return ""
 	if bool(job["burned"]):
 		bot.release()
