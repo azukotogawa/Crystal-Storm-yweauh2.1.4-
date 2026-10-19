@@ -1105,6 +1105,23 @@ func _check_mite_burn() -> void:
 		return
 	short_step.release()
 	rim_body.free()
+	mite.global_position = Vector3(10.5, 0.0, 0.2)
+	var hurt := _plant_burn_player(player_script, camera_script, Vector3(8.2, 0.0, 0.2), 4.0)
+	var hold = _Fight.new()
+	hold._phase = "hunt"
+	hold._home_arrived = true
+	hold.tick(STEP, self, hurt, Vector2.ZERO)
+	var stayed: Vector2 = hold.bot.target
+	var foe_row: Dictionary = hold._nearest_mite(self, Vector2(8.2, 0.2))
+	var foe_at: Vector2 = foe_row.get("xz", Vector2(8.2, 0.2))
+	if foe_row.is_empty() or not hold.bot.has_target or stayed.distance_to(foe_at) + 0.15 >= Vector2(8.2, 0.2).distance_to(foe_at) or _Hazard.burning(self, stayed):
+		_fail("low hp left the mite %.1f" % stayed.distance_to(foe_at))
+		hold.release()
+		hurt.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	hold.release()
+	hurt.free()
 	var elite := Node3D.new()
 	elite.set_script(mite_script)
 	elite.enemy_id = &"spawn_elite"
@@ -1122,7 +1139,7 @@ func _check_mite_burn() -> void:
 	dodge._home_arrived = true
 	dodge.tick(STEP, self, slammed, Vector2.ZERO)
 	var escaped: Vector2 = dodge.bot.target
-	if not dodge.bot.has_target or escaped.length() + 0.4 < Vector2(9.0, 0.5).length() or _Hazard.burning(self, escaped):
+	if not dodge.bot.has_target or dodge.bot.target.distance_to(Vector2(9.0, 0.5)) < 0.4 or _Hazard.ring_hot(self, escaped) or _Hazard.burning(self, escaped):
 		_fail("slam ring did not step out to %.1f" % escaped.length())
 		dodge.release()
 		slammed.free()

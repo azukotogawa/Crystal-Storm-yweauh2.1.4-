@@ -801,9 +801,16 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	if _Hazard.must_leave(tree, pos) or _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""
-	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
+	var hold_rim: bool = kind == "crystal_mite" and not orbits()
+	if hold_rim and _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
+		bot.input.begin_tick()
+		var drinking := _heal
+		_heal_idle()
+		if _heal != drinking or _heal_wait > 0.0:
+			return ""
+	elif _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
 		return _heal_or_leave(dt, player, foe)
-	if _ratio(player) <= 0.30:
+	if _ratio(player) <= 0.30 and not hold_rim:
 		return _heal_or_leave(dt, player, foe)
 	if _swing_left > 0.0:
 		_swing_left = maxf(_swing_left - dt, 0.0)
@@ -956,17 +963,56 @@ func _return_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> v
 
 
 func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin: Vector2) -> void:
+	var proposed := _ring_exit(tree, pos, origin)
+	var aim := origin
+	if not orbits():
+		var close := _nearest_mite(tree, pos)
+		if not close.is_empty():
+			aim = close.get("xz", origin)
+	_step_clear(dt, tree, player, proposed, aim, pos.distance_to(proposed) > 4.5)
+
+
+func _ring_exit(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
 	var away := pos - origin
 	if away.length_squared() < 0.04:
 		away = Vector2(1.0, 0.0)
 	else:
 		away = away.normalized()
+	var side := Vector2(-away.y, away.x)
+	var foe := pos
+	if not orbits():
+		var close := _nearest_mite(tree, pos)
+		if not close.is_empty():
+			foe = close.get("xz", pos)
+	var dirs: Array[Vector2] = [
+		away, side, -side, away + side, away - side, -away, -away + side, -away - side,
+	]
+	var best := pos
+	var best_score := 1.0e9
+	var spans: Array[float] = [1.6, 2.8, 4.2, 6.0]
+	for span in spans:
+		for dir in dirs:
+			if dir.length_squared() < 0.01:
+				continue
+			var cand := _Hazard.skirt_goal(tree, pos, pos + dir.normalized() * span)
+			if cand.distance_to(pos) < 0.45:
+				continue
+			if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
+				continue
+			if _Hazard.ring_hot(tree, cand):
+				continue
+			var score := cand.distance_to(pos) + cand.distance_to(foe) * 0.35
+			if score < best_score:
+				best_score = score
+				best = cand
+	if best.distance_to(pos) >= 0.45:
+		return best
 	var reach := _ring_escape(tree, pos)
 	var proposed := _Hazard.slam_exit(pos, away, reach, origin)
 	proposed = _Hazard.skirt_goal(tree, pos, proposed)
 	if _Hazard.burning(tree, proposed) or _Hazard.enters_burn(tree, pos, proposed):
 		proposed = _ring_side(tree, pos, away, reach)
-	_step_clear(dt, tree, player, proposed, origin, true)
+	return proposed
 
 
 func _ring_escape(tree: SceneTree, pos: Vector2) -> float:
