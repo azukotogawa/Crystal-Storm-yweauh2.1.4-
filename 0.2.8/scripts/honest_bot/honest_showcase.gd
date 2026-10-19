@@ -802,7 +802,12 @@ func _step_off_burn(step: float) -> bool:
 		return false
 	var goal := _Hazard.leave_goal(tree, pos, pos)
 	var flee := _Hazard.flee_toward(pos, goal, _yaw())
-	bot.extra_held = PackedStringArray([flee, "sprint"])
+	var held := PackedStringArray()
+	held.append(flee)
+	var ratio := 1.0
+	if player != null and float(player.get("max_health")) > 0.0:
+		ratio = clampf(float(player.get("health")) / float(player.get("max_health")), 0.0, 1.0)
+	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, ratio, held, true)
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 1.5:
 		bot.set_target(goal)
 	bot.tick(pos, _yaw(), step)

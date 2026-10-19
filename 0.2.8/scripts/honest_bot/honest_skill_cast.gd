@@ -75,7 +75,7 @@ func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: Re
 	if phase == "hold":
 		return _hold(dt, player, hands)
 	if phase == "clear":
-		return _clear(dt, player, hands, bot, origin)
+		return _clear(dt, tree, player, hands, bot, origin)
 	if phase == "fire":
 		return _fire(tree, player, hands, origin)
 	if phase == "watch":
@@ -212,6 +212,9 @@ func _fire(tree: SceneTree, player: Node, hands: RefCounted, origin: Vector2) ->
 			return "fail"
 		_walls = _walls_near(player)
 	mark = _xz(player)
+	if mode == "skill_dash" and _Hazard.dash_lands_in_burn(tree, mark, _yaw(player)):
+		hands.set_held(PackedStringArray(["rotate_right"]))
+		return ""
 	if not hands.pulse("skill_%d" % [slot + 1]):
 		return ""
 	phase = "watch"
@@ -309,10 +312,11 @@ func _ring(dt: float, tree: SceneTree, player: Node, bot: RefCounted, origin: Ve
 			phase = "pause"
 			watch = 0.0
 			return ""
+		walk_goal = _Hazard.skirt_goal(tree, pos, walk_goal)
 		bot.set_target(walk_goal)
 		walk_armed = true
 		watch = 0.0
-	bot.extra_held = PackedStringArray(["sprint"])
+	bot.extra_held = _Hazard.with_sprint(tree, pos, walk_goal, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
 	watch += dt
 	if not bot.arrived and not bot.gave_up and watch < 16.0:
@@ -418,7 +422,7 @@ func _stamp(chapters, feature: String) -> void:
 	print("SHOWCASE STAMP %s%s" % [feature, clock])
 
 
-func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
+func _clear(dt: float, tree: SceneTree, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2) -> String:
 	_heal_wait = maxf(_heal_wait - dt, 0.0)
 	var pos := _xz(player)
 	if mode == "skill_dash" and pos.distance_to(origin) >= 18.0:
@@ -445,10 +449,11 @@ func _clear(dt: float, player: Node, hands: RefCounted, bot: RefCounted, origin:
 			walk_goal = pos + away * 10.0
 		else:
 			walk_goal = origin + away * 24.0
+		walk_goal = _Hazard.skirt_goal(tree, pos, walk_goal)
 		bot.set_target(walk_goal)
 		walk_armed = true
 		watch = 0.0
-	bot.extra_held = PackedStringArray(["sprint"])
+	bot.extra_held = _Hazard.with_sprint(tree, pos, walk_goal, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
 	watch += dt
 	if not bot.arrived and not bot.gave_up and watch < 12.0:

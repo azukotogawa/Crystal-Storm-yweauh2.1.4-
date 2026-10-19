@@ -520,9 +520,14 @@ func _camp(tree: SceneTree, origin: Vector2) -> Vector2:
 func _goto(dt: float, player: Node, goal: Vector2, aim: Vector2) -> void:
 	var bot = heart.fight.bot
 	var pos := _xz(player)
+	var tree := player.get_tree() if player != null else null
+	var ratio := _ratio(player)
+	if tree != null and (_Hazard.low_hp(ratio) or _Hazard.burning(tree, pos) or _Hazard.crosses_burn(tree, pos, goal)):
+		var safer := _Hazard.skirt_goal(tree, pos, goal)
+		if safer != Vector2.INF:
+			goal = safer
 	var extras := PackedStringArray()
-	if pos.distance_to(goal) > 5.0:
-		extras.append("sprint")
+	extras = _Hazard.with_sprint(tree, pos, goal, ratio, extras, pos.distance_to(goal) > 5.0)
 	bot.extra_held = extras
 	if bot.gave_up and bot.target.distance_to(goal) <= 0.8:
 		var side := Vector2(-(pos.y - goal.y), pos.x - goal.x)

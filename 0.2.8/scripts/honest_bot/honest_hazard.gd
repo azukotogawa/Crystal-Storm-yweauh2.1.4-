@@ -12,6 +12,8 @@ const PAD_MIN := 1.2
 const BODY_CLEAR := 8.0
 const TRAVEL_SKIRT := 16.0
 const LEASH_CLEAR := 24.0
+const LOW_RATIO := 0.55
+const DASH_COLUMNS := 4.0
 
 
 static func aggro_columns() -> float:
@@ -371,3 +373,123 @@ static func rim_carve(tree: SceneTree, origin: Vector2) -> Vector2:
 				best_d = dist
 				best = at
 	return best
+
+
+static func low_hp(ratio: float) -> bool:
+	return ratio <= LOW_RATIO
+
+
+static func crosses_burn(tree: SceneTree, fro: Vector2, to: Vector2) -> bool:
+	if tree == null:
+		return false
+	var span := fro.distance_to(to)
+	var steps := maxi(ceili(span), 1)
+	for i in range(steps + 1):
+		var at := fro.lerp(to, float(i) / float(steps))
+		if burning(tree, at):
+			return true
+	return false
+
+
+static func warn_showing(tree: SceneTree) -> bool:
+	if tree == null:
+		return false
+	var host: Node = tree.get_first_node_in_group("game_manager")
+	if host == null:
+		host = tree.root
+	if host == null:
+		return false
+	var burn := host.find_child("BurnWarn", true, false)
+	return burn != null and bool(burn.visible)
+
+
+static func must_leave(tree: SceneTree, pos: Vector2) -> bool:
+	return burning(tree, pos) or warn_showing(tree)
+
+
+static func sprint_allowed(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float) -> bool:
+	if tree == null or goal == Vector2.INF:
+		return true
+	var crosses := crosses_burn(tree, pos, goal) or burning(tree, goal)
+	if not crosses:
+		return true
+	if not burning(tree, pos):
+		return false
+	if depth_at(tree, goal) > depth_at(tree, pos) + 0.02:
+		return false
+	return not low_hp(ratio)
+
+
+static func with_sprint(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float, held: PackedStringArray, want: bool) -> PackedStringArray:
+	var out := PackedStringArray()
+	for name in held:
+		var action := String(name)
+		if action == "" or action == "sprint":
+			continue
+		out.append(action)
+	if want and sprint_allowed(tree, pos, goal, ratio):
+		out.append("sprint")
+	return out
+
+
+static func skirt_goal(tree: SceneTree, pos: Vector2, goal: Vector2) -> Vector2:
+	if tree == null or goal == Vector2.INF:
+		return goal
+	if burning(tree, pos):
+		return leave_goal(tree, pos, goal)
+	if not burning(tree, goal) and not crosses_burn(tree, pos, goal):
+		return goal
+	var step := goal - pos
+	if step.length() < 0.2:
+		return pos
+	var dir := step.normalized()
+	var best := pos
+	var walked := 0.5
+	var span := pos.distance_to(goal)
+	while walked < span:
+		var at := pos + dir * walked
+		if burning(tree, at):
+			break
+		best = at
+		walked += 0.5
+	if best.distance_to(pos) >= 1.3:
+		return best
+	var side := Vector2(-dir.y, dir.x)
+	var signs: Array[float] = [1.0, -1.0]
+	for sign in signs:
+		var cand := pos + side * float(sign) * 3.0
+		if not burning(tree, cand) and not crosses_burn(tree, pos, cand):
+			return cand
+	return best
+
+
+static func mite_rim(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
+	var melee := strike_stand(tree, pos, foe)
+	if melee != Vector2.INF and not crosses_burn(tree, pos, melee):
+		return melee
+	var best := Vector2.INF
+	var best_d := 1.0e9
+	var cx := floori(foe.x)
+	var cz := floori(foe.y)
+	for dx in range(-10, 11):
+		for dz in range(-10, 11):
+			var at := Vector2(float(cx + dx) + 0.5, float(cz + dz) + 0.5)
+			if burning(tree, at):
+				continue
+			if not burning(tree, pos) and crosses_burn(tree, pos, at):
+				continue
+			var score := at.distance_to(pos) + at.distance_to(foe) * 0.25
+			if score < best_d:
+				best_d = score
+				best = at
+	return best
+
+
+static func dash_lands_in_burn(tree: SceneTree, pos: Vector2, yaw_degrees: float) -> bool:
+	if tree == null:
+		return false
+	var facing := _Nav.world_delta(Vector2(0.0, -1.0), yaw_degrees)
+	if facing.length_squared() < 0.0001:
+		return false
+	var land := pos + facing.normalized() * DASH_COLUMNS
+	return burning(tree, land) or crosses_burn(tree, pos, land)

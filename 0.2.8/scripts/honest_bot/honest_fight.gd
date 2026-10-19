@@ -229,6 +229,9 @@ func _recover(pos: Vector2, origin: Vector2) -> void:
 
 func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
+	if _Hazard.must_leave(tree, pos):
+		_exit_hazard(dt, tree, player, pos, origin)
+		return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
 		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
@@ -267,14 +270,14 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_quiet = 0.0
 			return _fight(dt, tree, player, choice, origin)
 		if not orbits() and pos.distance_to(origin) > _Farm.HEART_STAND + 2.0:
-			var closer := _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
+			var closer := _Hazard.skirt_goal(tree, pos, _rim_goal(tree, pos, origin, _Farm.HEART_STAND))
 			if closer.distance_to(origin) + 0.5 < pos.distance_to(origin):
 				bot.chapter = "combat_crystal_mite"
 				bot.objective = "mite approach"
 				bot.stuck_limit = 24
 				if not bot.has_target or bot.gave_up or bot.target.distance_to(closer) > 2.0:
 					bot.set_target(closer)
-				bot.extra_held = PackedStringArray(["sprint"])
+				bot.extra_held = _Hazard.with_sprint(tree, pos, closer, _ratio(player), PackedStringArray(), true)
 				bot.tick(pos, _yaw(player), dt)
 				return ""
 		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
@@ -369,9 +372,10 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 				closer = closer + side.normalized() * 6.0
 		else:
 			closer = _Hazard.leave_goal(tree, pos, origin)
+		closer = _Hazard.skirt_goal(tree, pos, closer)
 		if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(closer) > 1.5:
 			bot.set_target(closer)
-		bot.extra_held = PackedStringArray(["sprint"])
+		bot.extra_held = _Hazard.with_sprint(tree, pos, closer, _ratio(player), PackedStringArray(), true)
 		bot.tick(pos, _yaw(player), dt)
 		return ""
 	var stand := _chip_stand(tree, _chip_cell, pos)
@@ -382,12 +386,11 @@ func _chip(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if bot.gave_up and bot.target.distance_to(stand) <= 0.75:
 			_skip_chip(_chip_cell)
 			return ""
+		stand = _Hazard.skirt_goal(tree, pos, stand)
 		if not bot.has_target or bot.gave_up or bot.target.distance_to(stand) > 0.75:
 			bot.set_target(stand)
 		var extras := PackedStringArray()
-		if pos.distance_to(stand) > 6.0:
-			extras.append("sprint")
-		bot.extra_held = extras
+		bot.extra_held = _Hazard.with_sprint(tree, pos, stand, _ratio(player), extras, pos.distance_to(stand) > 6.0)
 		bot.tick(pos, _yaw(player), dt)
 		return ""
 	bot.release()
@@ -532,9 +535,12 @@ func _leave_leash(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel
 	var dodge := _Hazard.keep_dodge(pos, _dodge, proposed)
 	_dodge = dodge
 	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
+	dodge = _Hazard.skirt_goal(tree, pos, dodge)
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
 		bot.set_target(dodge)
-	bot.extra_held = PackedStringArray([flee, "sprint"])
+	var held := PackedStringArray()
+	held.append(flee)
+	bot.extra_held = _Hazard.with_sprint(tree, pos, dodge, _ratio(player), held, true)
 	bot.tick(pos, _yaw(player), dt)
 	return true
 
@@ -553,9 +559,12 @@ func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vecto
 	var dodge := _Hazard.keep_dodge(pos, _dodge, proposed)
 	_dodge = dodge
 	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
+	dodge = _Hazard.skirt_goal(tree, pos, dodge)
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
 		bot.set_target(dodge)
-	bot.extra_held = PackedStringArray([flee, "sprint"])
+	var held := PackedStringArray()
+	held.append(flee)
+	bot.extra_held = _Hazard.with_sprint(tree, pos, dodge, _ratio(player), held, true)
 	bot.tick(pos, _yaw(player), dt)
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
 		_heal_idle()
@@ -565,7 +574,7 @@ func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vecto
 func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Vector2) -> String:
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
 		_heal_idle()
-	if _Hazard.burning(tree, pos):
+	if _Hazard.must_leave(tree, pos):
 		_exit_hazard(dt, tree, player, origin, origin)
 		return ""
 	var home := _Roster.pool_goal(pos, origin, 18.0)
@@ -600,12 +609,11 @@ func _seek_xp(dt: float, tree: SceneTree, player: Node, origin: Vector2, pos: Ve
 			print("FAIL farm walk home dist %.0f" % dist)
 			bot.release()
 			return "fail"
-		var goal := _clear_home(tree, pos, origin)
+		var goal := _Hazard.skirt_goal(tree, pos, _clear_home(tree, pos, origin))
 		if not bot.has_target or bot.home.distance_to(goal) > 2.0:
 			bot.set_target(goal)
 		var extras := PackedStringArray()
-		if pos.distance_to(goal) > 6.0:
-			extras.append("sprint")
+		extras = _Hazard.with_sprint(tree, pos, goal, _ratio(player), extras, pos.distance_to(goal) > 6.0)
 		if _submerged(player):
 			extras.append("jump")
 		bot.extra_held = extras
@@ -648,7 +656,7 @@ func _arm_site(site: Dictionary, tree: SceneTree) -> void:
 
 func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> String:
 	_site_age += dt
-	if _Hazard.burning(tree, pos):
+	if _Hazard.must_leave(tree, pos):
 		_exit_hazard(dt, tree, player, _site_at, _site_at)
 		return ""
 	if orbits() and _leave_leash(dt, tree, player, pos, _site_at):
@@ -656,7 +664,7 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 	if pos.distance_to(_site_at) > SITE_STAND:
 		_site_inside = 0.0
 		var plan: Dictionary = _Walk.approach(pos, _site_at, SITE_STAND)
-		var goal: Vector2 = plan.get("goal", _site_at)
+		var goal: Vector2 = _Hazard.skirt_goal(tree, pos, plan.get("goal", _site_at))
 		if not bot.has_target or bot.gave_up or bot.target.distance_to(goal) > 2.0:
 			if bot.gave_up and _site_resumes < 4 and _site_age < _site_limit:
 				_site_resumes += 1
@@ -665,8 +673,7 @@ func _tick_site(dt: float, tree: SceneTree, player: Node, pos: Vector2) -> Strin
 				return ""
 			bot.set_target(goal)
 		var extras := PackedStringArray()
-		if pos.distance_to(goal) > 6.0:
-			extras.append("sprint")
+		extras = _Hazard.with_sprint(tree, pos, goal, _ratio(player), extras, pos.distance_to(goal) > 6.0)
 		if _submerged(player):
 			extras.append("jump")
 		bot.extra_held = extras
@@ -761,7 +768,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	if slips_for(kind) and _slip(dt, tree, player, pos, foe, false):
 		return ""
-	if _note_burn(tree, pos):
+	if _Hazard.must_leave(tree, pos) or _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""
 	if _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
@@ -777,6 +784,12 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_back_off(dt, player, pos, foe)
 		return ""
 	var stand := _Hazard.keep_stand(tree, pos, foe, _stand)
+	if kind == "crystal_mite":
+		var rim := _Hazard.mite_rim(tree, pos, foe)
+		if rim != Vector2.INF:
+			stand = rim
+			if _Hazard.burning(tree, stand) or _Hazard.crosses_burn(tree, pos, stand):
+				stand = _Hazard.skirt_goal(tree, pos, rim)
 	_stand = stand
 	if stand == Vector2.INF:
 		if _home_arrived and not _Hazard.burning(tree, pos):
@@ -789,7 +802,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_exit_hazard(dt, tree, player, foe, origin)
 		return ""
 	if pos.distance_to(stand) > 0.65 or pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
-		_close_in(dt, player, stand, pos.distance_to(stand))
+		_close_in(dt, tree, player, stand, pos.distance_to(stand))
 		return ""
 	_strike(dt, player, pos, foe, kind)
 	return ""
@@ -838,21 +851,22 @@ func _back_off(dt: float, player: Node, pos: Vector2, foe: Vector2) -> void:
 	else:
 		away = away.normalized()
 	var goal := pos + away * 4.0
+	var tree := player.get_tree() if player != null else null
+	goal = _Hazard.skirt_goal(tree, pos, goal)
 	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.5:
 		bot.set_target(goal)
-	bot.extra_held = PackedStringArray(["sprint"])
+	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
 	bot.input.aim_column(player, foe.x, foe.y)
 
 
-func _close_in(dt: float, player: Node, foe: Vector2, dist: float) -> void:
-	if not bot.has_target or bot.gave_up or bot.target.distance_to(foe) > 0.75:
-		bot.set_target(foe)
-	var extras := PackedStringArray()
-	if dist > 6.0:
-		extras.append("sprint")
-	bot.extra_held = extras
-	bot.tick(_xz(player), _yaw(player), dt)
+func _close_in(dt: float, tree: SceneTree, player: Node, foe: Vector2, dist: float) -> void:
+	var pos := _xz(player)
+	var step := _Hazard.skirt_goal(tree, pos, foe)
+	if not bot.has_target or bot.gave_up or bot.target.distance_to(step) > 0.75:
+		bot.set_target(step)
+	bot.extra_held = _Hazard.with_sprint(tree, pos, step, _ratio(player), PackedStringArray(), dist > 6.0)
+	bot.tick(pos, _yaw(player), dt)
 
 
 func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) -> void:
@@ -960,9 +974,10 @@ func _hold_pool(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> vo
 	var pos := _xz(player)
 	var goal := _safe_pool(tree, pos, origin)
 	if _Hazard.burning(tree, pos) or pos.distance_to(goal) > 0.8:
+		goal = _Hazard.skirt_goal(tree, pos, goal)
 		if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.2:
 			bot.set_target(goal)
-		bot.extra_held = PackedStringArray(["sprint"])
+		bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), true)
 		bot.tick(pos, _yaw(player), dt)
 		if _ratio(player) < 0.72 and _herbs(player) > 0 and _heal_wait <= 0.0:
 			_heal_idle()
@@ -1100,9 +1115,11 @@ func _on_enemy_killed(enemy_id: StringName, _world_pos: Vector2i, player_killed:
 func _exit_hazard(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
 	var pos := _xz(player)
 	var goal := _Hazard.leave_goal(tree, pos, origin)
+	if _Hazard.burning(tree, goal) or _Hazard.crosses_burn(tree, pos, goal):
+		goal = _Hazard.skirt_goal(tree, pos, goal)
 	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.2:
 		bot.set_target(goal)
-	bot.extra_held = PackedStringArray(["sprint"])
+	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
 	bot.input.aim_column(player, foe.x, foe.y)
 	if _ratio(player) <= 0.8 and _herbs(player) > 0 and _heal_wait <= 0.0:

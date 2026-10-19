@@ -66,6 +66,7 @@ func _run() -> void:
 	_check_farm_home()
 	_check_phase_driver()
 	_check_mite_lock()
+	_check_mite_burn()
 	_check_skill_pad()
 	_check_pace()
 	_check_hazard()
@@ -903,6 +904,136 @@ func _check_mite_lock() -> void:
 		_fail("mite approach stayed on the 18 ring at %.1f" % rim.length())
 		return
 	_ok("mite lock keeps one foe and one stand")
+
+
+func _check_mite_burn() -> void:
+	var crystal_script := GDScript.new()
+	crystal_script.source_code = "extends Node\nfunc get_depth_at(x: int, z: int) -> float:\n\tvar at := Vector2(float(x) + 0.5, float(z) + 0.5)\n\tif at.length() < 6.0:\n\t\treturn 1.0\n\treturn 0.0\n"
+	var player_script := GDScript.new()
+	player_script.source_code = "extends Node3D\nvar voxel_position := Vector3.ZERO\nvar health := 20.0\nvar max_health := 20.0\nvar camera: Node = null\n"
+	var camera_script := GDScript.new()
+	camera_script.source_code = "extends Node\nvar yaw_degrees := 0.0\n"
+	var mite_script := GDScript.new()
+	mite_script.source_code = "extends Node3D\nvar health := 12.0\nvar enemy_id := &\"crystal_mite\"\nsignal killed(enemy_id, world_pos, player_killed)\n"
+	if crystal_script.reload() != OK or player_script.reload() != OK or camera_script.reload() != OK or mite_script.reload() != OK:
+		_fail("mite burn stand-in did not compile")
+		return
+	var crystal := Node.new()
+	crystal.set_script(crystal_script)
+	crystal.add_to_group("crystal_manager")
+	root.add_child(crystal)
+	var gm := Node.new()
+	gm.name = "Game"
+	gm.add_to_group("game_manager")
+	var warn := Node3D.new()
+	warn.name = "BurnWarn"
+	warn.visible = true
+	gm.add_child(warn)
+	root.add_child(gm)
+	var mite := Node3D.new()
+	mite.set_script(mite_script)
+	mite.add_to_group("crystal_enemy")
+	root.add_child(mite)
+	mite.global_position = Vector3(5.1, 0.0, 1.1)
+	var rim := Vector2(9.0, 0.5)
+	var foe := Vector2(2.5, 0.5)
+	var pool := Vector2(2.5, 0.5)
+	var stand := _Hazard.mite_rim(self, rim, foe)
+	if stand == Vector2.INF or _Hazard.burning(self, stand) or _Hazard.crosses_burn(self, rim, stand):
+		_fail("mite rim stand enters the burn %s" % stand)
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _Hazard.sprint_allowed(self, rim, foe, 0.3):
+		_fail("low hp sprint was allowed across the burn")
+		_free_mite_burn(crystal, gm, mite)
+		return
+	var skirt := _Hazard.skirt_goal(self, rim, foe)
+	if _Hazard.burning(self, skirt) or _Hazard.crosses_burn(self, rim, skirt):
+		_fail("skirt still crosses the burn %s" % skirt)
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if not _Hazard.dash_lands_in_burn(self, rim, 90.0) or _Hazard.dash_lands_in_burn(self, rim, 270.0):
+		_fail("dash facing did not notice the burn")
+		_free_mite_burn(crystal, gm, mite)
+		return
+	var inside := _plant_burn_player(player_script, camera_script, Vector3(2.5, 0.0, 0.5), 5.0)
+	var fight = _Fight.new()
+	fight._phase = "hunt"
+	fight._home_arrived = true
+	for _i in 8:
+		fight.tick(STEP, self, inside, Vector2.ZERO)
+	var left: Vector2 = fight.bot.target
+	if _Hazard.burning(self, left) or left.length() + 0.2 < pool.length():
+		_fail("burn warning did not retreat to %.2f,%.2f" % [left.x, left.y])
+		fight.release()
+		inside.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _held_sprint(fight.bot.extra_held):
+		_fail("low hp still sprinted out of the burn")
+		fight.release()
+		inside.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	fight.release()
+	inside.free()
+	warn.visible = false
+	var edge := _plant_burn_player(player_script, camera_script, Vector3(rim.x, 0.0, rim.y), 8.0)
+	var outer = _Fight.new()
+	outer._phase = "hunt"
+	outer._home_arrived = true
+	for _j in 8:
+		outer.tick(STEP, self, edge, Vector2.ZERO)
+	var held_stand: Vector2 = outer.bot.target
+	if outer.bot.has_target and (_Hazard.burning(self, held_stand) or _Hazard.crosses_burn(self, rim, held_stand)):
+		_fail("rim fight stepped into the burn %s" % held_stand)
+		outer.release()
+		edge.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _held_sprint(outer.bot.extra_held) and not _Hazard.sprint_allowed(self, rim, held_stand, 8.0 / 20.0):
+		_fail("rim fight sprinted across the burn")
+		outer.release()
+		edge.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	outer.release()
+	edge.free()
+	_free_mite_burn(crystal, gm, mite)
+	_ok("mite burn fight stays on the clear rim")
+
+
+func _plant_burn_player(player_script: GDScript, camera_script: GDScript, at: Vector3, hp: float) -> Node3D:
+	var player := Node3D.new()
+	player.set_script(player_script)
+	var camera := Node.new()
+	camera.set_script(camera_script)
+	player.add_child(camera)
+	player.camera = camera
+	player.voxel_position = at
+	player.health = hp
+	player.max_health = 20.0
+	root.add_child(player)
+	return player
+
+
+func _free_mite_burn(crystal: Node, gm: Node, mite: Node) -> void:
+	if crystal != null:
+		crystal.remove_from_group("crystal_manager")
+		crystal.free()
+	if gm != null:
+		gm.remove_from_group("game_manager")
+		gm.free()
+	if mite != null:
+		mite.remove_from_group("crystal_enemy")
+		mite.free()
+
+
+func _held_sprint(held: PackedStringArray) -> bool:
+	for name in held:
+		if String(name) == "sprint":
+			return true
+	return false
 
 
 func _step_rim(pos: Vector2, yaw: float, bot, delta: float) -> Array:
