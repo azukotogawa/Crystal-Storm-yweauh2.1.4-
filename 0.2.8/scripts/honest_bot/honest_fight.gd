@@ -237,10 +237,6 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_leave_ring(dt, tree, player, pos, origin)
 			return ""
 		if _off_rim(tree, pos, origin):
-			var close := _nearest_mite(tree, pos)
-			var foe_at: Vector2 = close.get("xz", pos)
-			if not close.is_empty() and pos.distance_to(foe_at) <= 6.0 and _mite_ready(tree, pos, close, origin):
-				return _fight(dt, tree, player, close, origin)
 			_return_rim(dt, tree, player, origin)
 			return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
@@ -866,7 +862,7 @@ func _mite_ready(tree: SceneTree, pos: Vector2, choice: Dictionary, origin: Vect
 		return false
 	if not _Hazard.burning(tree, pos) and _Hazard.crosses_burn(tree, pos, stand):
 		return false
-	if _off_rim(tree, stand, origin) and pos.distance_to(foe) > 6.0:
+	if _off_rim(tree, stand, origin):
 		return false
 	return true
 
@@ -929,7 +925,7 @@ func _ring_side(tree: SceneTree, pos: Vector2, away: Vector2, reach: float) -> V
 
 func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
 	var pos := _xz(player)
-	if not orbits() and _off_rim(tree, pos, origin) and pos.distance_to(foe) > 6.0:
+	if not orbits() and _off_rim(tree, pos, origin):
 		_return_rim(dt, tree, player, origin)
 		return
 	if _Hazard.must_leave(tree, pos):
@@ -968,8 +964,8 @@ func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, orig
 
 
 func _commit_goal(tree: SceneTree, pos: Vector2, goal: Vector2) -> void:
-	var unsafe := bot.has_target and (_Hazard.burning(tree, bot.home) or _Hazard.enters_burn(tree, pos, bot.home))
-	var stuck := bot.arrived and _Hazard.must_leave(tree, pos)
+	var unsafe: bool = bot.has_target and (_Hazard.burning(tree, bot.home) or _Hazard.enters_burn(tree, pos, bot.home))
+	var stuck: bool = bot.arrived and _Hazard.must_leave(tree, pos)
 	if not bot.has_target or bot.gave_up or bot.home.distance_to(goal) > 2.0:
 		bot.set_target(goal)
 	if (unsafe or stuck) and bot.home.distance_to(goal) > 0.35:
