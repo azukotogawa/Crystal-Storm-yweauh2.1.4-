@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
 
 ## Shared setup
 
@@ -55,6 +55,45 @@ Plays `HonestBuild` mode `structure_place` until the first stone wall is down (`
 | HP | Unchanged, label matches. |
 | Shot | `steps/*_build.png` |
 
+## crystals
+
+Walks to the released heart with `HonestPlayBot`, chips a film cell with the stone pick until `crystal_shard` increases, then swings the wooden sword at the heart column until crystal HP falls. The heart is observed. It is not written.
+
+| Check | Pass |
+| --- | --- |
+| Find | The player is within 8 columns of the heart. |
+| Collect | Crystal shard count rises. |
+| Use | Crystal HP falls after the sword swings. |
+| Banner | Opening line. First steps, trench, gate, bridge, wall, level-up, skill, enemy, boss, coverage, assault, and discovery lines are allowed. |
+| HP | Unchanged, label matches. A guardian or mite bite fails this scenario. |
+| Shot | `steps/*_crystals.png` |
+
+## corruption
+
+Watches the pool until a nearby cell becomes corrupt, breaks one filmed cell with the stone pick until a scar starts, then stands in crystal at least 0.25 deep. The burn warning has to be up before health falls. The player then walks out.
+
+| Check | Pass |
+| --- | --- |
+| Spread | A cell near the heart gains `corrupt` that it did not have at boot. |
+| Cleanse | `CrystalCorruption.scar_count` rises after the pick swings. |
+| Effect | `BurnWarn` is visible, then `player.health` drops. |
+| Banner | Same allowed lines as crystals, plus the assault line. |
+| HP | Lower than boot, label matches, and the bar stays visible. |
+| Shot | `steps/*_corruption.png` |
+
+## combat
+
+Stands through an enemy `StrikeTelegraph` or `TelegraphRing` until that warning deals damage, chips film until a skill point exists, spends it on Dash through `HonestSkillCast`, and lands a sword hit that lowers a living foe's health. `HonestCombat` does the sword walk. No XP is granted.
+
+| Check | Pass |
+| --- | --- |
+| Warning hit | The disc or ring is visible, then health falls. |
+| Melee | One foe's health is lower after sword swings. |
+| Skill | Dash is bought and the cast slides (`OK dash slide` or `SKILL dash`). |
+| Banner | Same allowed lines as crystals. |
+| HP | Lower than boot, label matches. Death fails the scenario. |
+| Shot | `steps/*_combat.png` |
+
 ## Not scripted yet
 
-One scenario each, same seed and the same input layer, when that feature is next: movement, combat, skills, treasure, landmark, crystal, boss, win. The showcase route still plays those. This harness does not replace it.
+One scenario each, same seed and the same input layer, when that feature is next: movement, treasure, landmark, boss, win. The showcase route still plays those. This harness does not replace it.
