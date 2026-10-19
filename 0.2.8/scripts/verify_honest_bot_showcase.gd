@@ -884,6 +884,20 @@ func _check_mite_lock() -> void:
 	if not fight.orbits() or not fight.slips_for("crystal_stag"):
 		_fail("the walk home lost its dodge")
 		return
+	var far_mite := {"id": "far-mite", "kind": "crystal_mite", "xz": Vector2(0.0, 80.0)}
+	var missed: Dictionary = _Farm.pick_seek([far_mite], Vector2.ZERO, {}, 48.0, {}, false)
+	if not missed.is_empty():
+		_fail("a mite at 80 columns was inside the short scan")
+		return
+	var found: Dictionary = _Farm.pick_seek([far_mite], Vector2.ZERO, {}, _Farm.MITE_SEEK, {}, false)
+	if str(found.get("id", "")) != "far-mite":
+		_fail("mite seek missed the far mite")
+		return
+	var outside := Vector2(16.0, 0.0)
+	var heart: Vector2 = _Roster.pool_goal(outside, Vector2.ZERO, _Farm.HEART_STAND)
+	if heart.distance_to(Vector2.ZERO) > _Farm.HEART_STAND + 0.1 or heart.distance_to(outside) >= outside.length():
+		_fail("mite approach did not step toward the heart")
+		return
 	_ok("mite lock keeps one foe and one stand")
 
 

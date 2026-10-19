@@ -257,13 +257,26 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			choice = _Farm.pick_seek(rows, pos, killed, _Farm.SEEK_COLUMNS, _skipped, true)
 		if choice.is_empty():
 			choice = _Farm.pick_seek(rows, pos, killed, 48.0, _skipped, false)
-		choice = prefer_locked(rows, pos, _Roster.SCAN_COLUMNS, choice)
+		if choice.is_empty() and not orbits():
+			choice = _Farm.pick_seek(rows, pos, killed, _Farm.MITE_SEEK, _skipped, false)
+		choice = prefer_locked(rows, pos, _Farm.MITE_SEEK if not orbits() else _Roster.SCAN_COLUMNS, choice)
 		if str(choice.get("kind", "")) == "spawn_elite":
 			_skipped[str(choice.get("id", ""))] = true
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
 			return _fight(dt, tree, player, choice, origin)
+		if not orbits() and pos.distance_to(origin) > _Farm.HEART_STAND + 2.0:
+			var closer := _clear_home(tree, pos, origin)
+			if closer.distance_to(origin) + 0.5 < pos.distance_to(origin):
+				bot.chapter = "combat_crystal_mite"
+				bot.objective = "mite approach"
+				bot.stuck_limit = 24
+				if not bot.has_target or bot.gave_up or bot.target.distance_to(closer) > 2.0:
+					bot.set_target(closer)
+				bot.extra_held = PackedStringArray(["sprint"])
+				bot.tick(pos, _yaw(player), dt)
+				return ""
 		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
 		if age >= _Farm.FARM_LIMIT:
