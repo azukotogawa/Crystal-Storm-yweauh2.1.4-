@@ -817,6 +817,22 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
 		return ""
+	if kind == "crystal_mite" and not orbits() and _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH and pos.distance_to(foe) > _Hazard.sword_reach():
+		var away := pos - origin
+		if away.length_squared() < 0.04:
+			away = Vector2(1.0, 0.0)
+		else:
+			away = away.normalized()
+		var shallower := pos
+		var walk := 0.6
+		while walk < 6.0:
+			var at := _Hazard.skirt_goal(tree, pos, pos + away * walk)
+			if _step_on_rim(tree, pos, at):
+				shallower = at
+				break
+			walk += 0.6
+		_step_clear(dt, tree, player, shallower, foe, false)
+		return ""
 	if kind == "crystal_mite" and not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.sword_reach():
 		_strike(dt, player, pos, foe, kind)
 		return ""
@@ -1048,7 +1064,7 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 	if gap.length() < 0.2:
 		return pos
 	var direct := _Hazard.skirt_goal(tree, pos, pos + gap.normalized() * minf(2.6, gap.length()))
-	if not _Hazard.burning(tree, direct) and not _Hazard.enters_burn(tree, pos, direct) and direct.distance_to(foe) + 0.05 < pos.distance_to(foe):
+	if _step_on_rim(tree, pos, direct) and direct.distance_to(foe) + 0.05 < pos.distance_to(foe):
 		return direct
 	var radial := pos
 	if radial.length() < 0.2:
@@ -1061,13 +1077,19 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 	var signs: Array[float] = [1.0, -1.0]
 	for sign in signs:
 		var cand := _Hazard.skirt_goal(tree, pos, pos + side * sign * 2.6)
-		if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
+		if not _step_on_rim(tree, pos, cand):
 			continue
 		var dist := cand.distance_to(foe)
 		if dist + 0.05 < best_d:
 			best = cand
 			best_d = dist
 	return best
+
+
+func _step_on_rim(tree: SceneTree, pos: Vector2, cand: Vector2) -> bool:
+	if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
+		return false
+	return _Hazard.depth_at(tree, cand) < _Hazard.CLEAR_DEPTH
 
 
 func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
