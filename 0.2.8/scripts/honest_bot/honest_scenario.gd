@@ -526,7 +526,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		if _attack_warn(tree) or _Hazard.ring_hot(tree, pos):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
-		var rows := _safe_foes(tree, pos)
+		var rows := _near_foes(tree, pos)
 		fight.set_vitals(float(player.health), float(player.max_health))
 		fight.observe(rows)
 		var foe_id := str(job["foe_id"])
@@ -543,7 +543,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			job["foe_id"] = foe_id
 			job["foe_hp"] = _foe_health(tree, foe_id)
 		if foe_id == "":
-			_step_away(tree, player, bot, origin_xz, delta, pos)
+			_step_toward(bot, player, origin_xz, delta, pos)
 			return ""
 		var aim_at := Vector2.INF
 		for row in rows:
@@ -864,16 +864,6 @@ func _collect_foes(rows: Array, nodes: Array, kind_field: String) -> void:
 			"kind": kind,
 			"xz": Vector2(float(col.x) + 0.5, float(col.y) + 0.5),
 		})
-
-
-func _safe_foes(tree: SceneTree, pos: Vector2) -> Array:
-	var open: Array = []
-	for row in _near_foes(tree, pos):
-		var at: Vector2 = row["xz"]
-		if _Hazard.ring_hot(tree, at):
-			continue
-		open.append(row)
-	return open
 
 
 func _near_foes(tree: SceneTree, pos: Vector2) -> Array:
