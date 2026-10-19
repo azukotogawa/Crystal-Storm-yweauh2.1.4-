@@ -547,6 +547,11 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			if str(row.get("id", "")) == foe_id:
 				aim_at = row["xz"]
 				break
+		if aim_at != Vector2.INF and pos.distance_to(aim_at) > _Hazard.HIT_COLUMNS:
+			_step_toward(bot, player, aim_at, delta, pos)
+			hands.begin_tick()
+			hands.aim_column(player, aim_at.x, aim_at.y)
+			return ""
 		bot.release()
 		if aim_at != Vector2.INF:
 			hands.begin_tick()
