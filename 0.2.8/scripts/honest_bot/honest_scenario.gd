@@ -475,10 +475,11 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 		return ""
 	if tier < 1:
 		job["dodge"] = Vector2.INF
-		if pos.distance_to(origin_xz) > 16.0:
-			_step_toward(bot, player, origin_xz, delta, pos)
-		else:
-			bot.release()
+		var foe := _nearest_foe_xz(tree, pos)
+		if foe != Vector2.INF and pos.distance_to(foe) < 8.0:
+			_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
+			return ""
+		_step_toward(bot, player, _orbit_wait(origin_xz, pos), delta, pos, true)
 		return ""
 	var deep := _deep_stand(crystal, origin, pos)
 	if not deep_here:
@@ -664,10 +665,24 @@ func _step_toward(bot, player: Node, goal: Vector2, delta: float, pos: Vector2, 
 	bot.tick(pos, _yaw(player), delta)
 
 
+func _orbit_wait(origin_xz: Vector2, pos: Vector2) -> Vector2:
+	var offset := pos - origin_xz
+	if offset.length() < 8.0:
+		if offset.length() < 0.2:
+			offset = Vector2(1.0, 0.0)
+		else:
+			offset = offset.normalized()
+		return origin_xz + offset * 12.0
+	var side := Vector2(-offset.y, offset.x)
+	if side.length_squared() < 0.01:
+		side = Vector2(0.0, 1.0)
+	return pos + side.normalized() * 4.0
+
+
 func _leave_attack(tree: SceneTree, player: Node, bot, origin_xz: Vector2, job: Dictionary, delta: float, pos: Vector2) -> void:
 	var foe := _nearest_foe_xz(tree, pos)
 	var away := pos - foe if foe != Vector2.INF else pos - origin_xz
-	var reach := 2.4
+	var reach := 6.0
 	for row in _Hazard.guardian_bubbles(tree):
 		if typeof(row) != TYPE_DICTIONARY or not bool(row.get("hard", false)):
 			continue
