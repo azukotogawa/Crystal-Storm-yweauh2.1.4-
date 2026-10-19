@@ -1082,6 +1082,29 @@ func _check_mite_burn() -> void:
 		return
 	press.release()
 	closing.free()
+	mite.global_position = Vector3(3.0, 0.0, 0.2)
+	var rim_body := _plant_burn_player(player_script, camera_script, Vector3(8.2, 0.0, 0.2), 20.0)
+	var short_step = _Fight.new()
+	short_step._phase = "hunt"
+	short_step._home_arrived = true
+	short_step.bot.set_target(Vector2(8.2, 0.2))
+	short_step.bot.arrived = true
+	short_step.tick(STEP, self, rim_body, Vector2.ZERO)
+	var nudged: Vector2 = short_step.bot.target
+	if not short_step.bot.has_target or short_step.bot.arrived or nudged.length() + 0.3 >= 8.2 or _Hazard.burning(self, nudged) or _Hazard.crosses_burn(self, Vector2(8.2, 0.2), nudged):
+		_fail("arrived rim ignored the short clear step %.1f" % nudged.length())
+		short_step.release()
+		rim_body.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	if _held_sprint(short_step.bot.extra_held):
+		_fail("short rim step sprinted")
+		short_step.release()
+		rim_body.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	short_step.release()
+	rim_body.free()
 	var elite := Node3D.new()
 	elite.set_script(mite_script)
 	elite.enemy_id = &"spawn_elite"

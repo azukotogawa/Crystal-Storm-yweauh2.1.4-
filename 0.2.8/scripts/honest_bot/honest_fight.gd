@@ -1067,10 +1067,11 @@ func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, orig
 func _commit_goal(tree: SceneTree, pos: Vector2, goal: Vector2) -> void:
 	var home_bad: bool = bot.has_target and (_Hazard.burning(tree, bot.home) or _Hazard.enters_burn(tree, pos, bot.home))
 	var stuck: bool = bot.arrived and _Hazard.must_leave(tree, pos)
-	var replace: bool = (not bot.has_target) or bot.gave_up or home_bad or stuck or (bot.home.distance_to(goal) > 2.0)
+	var shift: bool = bot.home.distance_to(goal) > 0.45
+	var replace: bool = (not bot.has_target) or bot.gave_up or home_bad or stuck or (bot.arrived and shift) or (bot.home.distance_to(goal) > 2.0)
 	if not replace:
 		return
-	if bot.has_target and bot.home.distance_to(goal) <= 2.0 and (home_bad or stuck):
+	if bot.has_target and bot.home.distance_to(goal) <= 2.0:
 		bot.home = goal
 		bot.target = goal
 		bot.arrived = false
