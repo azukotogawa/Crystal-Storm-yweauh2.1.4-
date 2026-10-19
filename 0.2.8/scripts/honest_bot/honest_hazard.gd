@@ -283,6 +283,18 @@ static func keep_stand(tree: SceneTree, pos: Vector2, foe: Vector2, previous: Ve
 	return next
 
 
+static func keep_dodge(pos: Vector2, previous: Vector2, proposed: Vector2) -> Vector2:
+	if proposed == Vector2.INF:
+		return previous
+	if previous == Vector2.INF:
+		return proposed
+	if pos.distance_to(previous) <= 1.25:
+		return proposed
+	if pos.distance_to(proposed) + 1.5 < pos.distance_to(previous):
+		return proposed
+	return previous
+
+
 static func stand_ok(tree: SceneTree, foe: Vector2, stand: Vector2, reach: float = -1.0, near: float = 1.15) -> bool:
 	if stand == Vector2.INF:
 		return false

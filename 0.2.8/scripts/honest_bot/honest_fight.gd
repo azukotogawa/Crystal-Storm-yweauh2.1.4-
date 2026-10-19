@@ -77,6 +77,7 @@ var _home_age := 0.0
 var _home_limit := 0.0
 var _home_mark := -1.0
 var _stand := Vector2.INF
+var _dodge := Vector2.INF
 
 
 func release() -> void:
@@ -151,6 +152,8 @@ func reset() -> void:
 	_home_age = 0.0
 	_home_limit = 0.0
 	_home_mark = -1.0
+	_stand = Vector2.INF
+	_dodge = Vector2.INF
 	bot.extra_held = PackedStringArray()
 
 
@@ -226,9 +229,9 @@ func _recover(pos: Vector2, origin: Vector2) -> void:
 
 func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 	var pos := _xz(player)
-	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
-		return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
+		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			return ""
 		return _seek_xp(dt, tree, player, origin, pos)
 	if _home_logged and not _home_arrived:
 		_home_arrived = true
@@ -260,7 +263,10 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
+			_dodge = Vector2.INF
 			return _fight(dt, tree, player, choice, origin)
+		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			return ""
 		if age >= _Farm.FARM_LIMIT:
 			print("FAIL farm short level %d earned %d" % [_level, _Farm.earned(_level, _xp)])
 			bot.release()
@@ -277,8 +283,13 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 		if not threat.is_empty():
 			_pick = false
 			_quiet = 0.0
+			_dodge = Vector2.INF
 			return _fight(dt, tree, player, threat, origin)
+		if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+			return ""
 		return _chip(dt, tree, player, origin)
+	if _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
+		return ""
 	if not _pool_done:
 		_pool_visit += dt
 		_hold_pool(dt, tree, player, origin)
@@ -503,9 +514,12 @@ func _travel_goal(pos: Vector2, origin: Vector2) -> Vector2:
 
 
 func _leave_leash(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vector2) -> bool:
-	var dodge := _Hazard.leash_step(pos, travel, tree)
-	if dodge == Vector2.INF:
+	var proposed := _Hazard.leash_step(pos, travel, tree)
+	if proposed == Vector2.INF:
+		_dodge = Vector2.INF
 		return false
+	var dodge := _Hazard.keep_dodge(pos, _dodge, proposed)
+	_dodge = dodge
 	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
 		bot.set_target(dodge)
@@ -521,9 +535,12 @@ func _slip(dt: float, tree: SceneTree, player: Node, pos: Vector2, travel: Vecto
 			continue
 		if bodies or bool(row.get("hard", false)):
 			threats.append(row)
-	var dodge := _Hazard.dodge_point(pos, travel, threats)
-	if dodge == Vector2.INF:
+	var proposed := _Hazard.dodge_point(pos, travel, threats)
+	if proposed == Vector2.INF:
+		_dodge = Vector2.INF
 		return false
+	var dodge := _Hazard.keep_dodge(pos, _dodge, proposed)
+	_dodge = dodge
 	var flee := _Hazard.flee_toward(pos, dodge, _yaw(player))
 	if not bot.has_target or bot.gave_up or bot.target.distance_to(dodge) > 1.5:
 		bot.set_target(dodge)
@@ -730,7 +747,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 			return ""
 		_back_off(dt, player, pos, foe)
 		return ""
-	if _slip(dt, tree, player, pos, foe, false):
+	if slips_for(kind) and _slip(dt, tree, player, pos, foe, false):
 		return ""
 	if _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
@@ -764,6 +781,10 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		return ""
 	_strike(dt, player, pos, foe, kind)
 	return ""
+
+
+func slips_for(kind: String) -> bool:
+	return kind != "crystal_mite"
 
 
 func prefer_locked(rows: Array, pos: Vector2, radius: float, fallback: Dictionary) -> Dictionary:

@@ -851,6 +851,23 @@ func _check_mite_lock() -> void:
 	if fresh == Vector2.INF or fresh.distance_to(foe) > _Hazard.HIT_COLUMNS:
 		_fail("a bad stand was kept")
 		return
+	var dodge_pos := Vector2(938.9, -965.1)
+	var dodge_a := Vector2(935.3, -961.5)
+	var dodge_b := Vector2(942.7, -968.7)
+	var held_dodge := _Hazard.keep_dodge(dodge_pos, dodge_a, dodge_b)
+	if held_dodge.distance_to(dodge_a) > 0.05:
+		_fail("dodge flipped to %.2f,%.2f" % [held_dodge.x, held_dodge.y])
+		return
+	var closer := Vector2(938.2, -964.4)
+	if _Hazard.keep_dodge(dodge_pos, dodge_a, closer).distance_to(closer) > 0.05:
+		_fail("a much closer dodge was ignored")
+		return
+	if fight.slips_for("crystal_mite"):
+		_fail("mite fight still leaves for a guardian dodge")
+		return
+	if not fight.slips_for("spawn_elite"):
+		_fail("elite fight lost its dodge")
+		return
 	_ok("mite lock keeps one foe and one stand")
 
 
