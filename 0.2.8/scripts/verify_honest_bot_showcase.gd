@@ -1114,8 +1114,12 @@ func _check_mite_burn() -> void:
 	var stayed: Vector2 = hold.bot.target
 	var foe_row: Dictionary = hold._nearest_mite(self, Vector2(8.2, 0.2))
 	var foe_at: Vector2 = foe_row.get("xz", Vector2(8.2, 0.2))
-	if foe_row.is_empty() or not hold.bot.has_target or stayed.distance_to(foe_at) + 0.15 >= Vector2(8.2, 0.2).distance_to(foe_at) or _Hazard.burning(self, stayed):
-		_fail("low hp left the mite %.1f" % stayed.distance_to(foe_at))
+	var gap := Vector2(8.2, 0.2).distance_to(foe_at)
+	var fled: bool = foe_row.is_empty() or _Hazard.burning(self, Vector2(8.2, 0.2))
+	if not fled and gap > _Hazard.sword_reach():
+		fled = (not hold.bot.has_target) or stayed.distance_to(foe_at) + 0.15 >= gap or _Hazard.burning(self, stayed)
+	if fled or _held_sprint(hold.bot.extra_held):
+		_fail("low hp left the mite %.1f" % gap)
 		hold.release()
 		hurt.free()
 		_free_mite_burn(crystal, gm, mite)

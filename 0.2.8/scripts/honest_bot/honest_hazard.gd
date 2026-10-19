@@ -20,6 +20,14 @@ static func aggro_columns() -> float:
 	return float(_Enemy.GUARDIAN_AGGRO_COLUMNS)
 
 
+static func sword_reach() -> float:
+	var row: Dictionary = ItemTypes.ITEMS.get("wooden_sword", {})
+	var reach := float(row.get("range", HIT_COLUMNS))
+	if reach <= 0.0:
+		return HIT_COLUMNS
+	return reach
+
+
 static func leash_columns() -> float:
 	return float(_Enemy.GUARDIAN_LEASH_COLUMNS)
 

@@ -817,6 +817,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
 		return ""
+	if kind == "crystal_mite" and not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.sword_reach():
+		_strike(dt, player, pos, foe, kind)
+		return ""
 	if kind == "crystal_mite" and pos.distance_to(foe) < 1.1:
 		_hold_mite_rim(dt, tree, player, foe, origin)
 		return ""
@@ -916,7 +919,7 @@ func _mite_hit_ready(tree: SceneTree, pos: Vector2, choice: Dictionary) -> bool:
 	if _Hazard.burning(tree, pos):
 		return false
 	var foe: Vector2 = choice.get("xz", pos)
-	if pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
+	if pos.distance_to(foe) > _Hazard.sword_reach():
 		return false
 	var stand := _Hazard.mite_rim(tree, pos, foe)
 	if stand == Vector2.INF or _Hazard.burning(tree, stand):
@@ -1171,7 +1174,10 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	if rot != "":
 		_aim_wait = 0.0
 		return
-	if pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
+	var reach := _Hazard.HIT_COLUMNS
+	if kind == "crystal_mite":
+		reach = _Hazard.sword_reach()
+	if pos.distance_to(foe) > reach:
 		return
 	if not _aim_on_foe(player, foe):
 		_aim_wait += dt
