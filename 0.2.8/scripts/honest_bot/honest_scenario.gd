@@ -272,7 +272,7 @@ func _delta(tree: SceneTree) -> float:
 
 const FEATURE_LIMIT := {
 	"crystals": 90.0,
-	"corruption": 150.0,
+	"corruption": 240.0,
 	"combat": 180.0,
 }
 const FIND_COLUMNS := 8.0
@@ -445,15 +445,14 @@ func _tick_crystals(tree: SceneTree, player: Node, crystal: Node, origin: Vector
 
 
 func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> String:
-	var commit_stand := bool(job["cleansed"]) and int(crystal.get("strength_tier")) >= 1
-	if _attack_warn(tree) and not commit_stand:
-		_step_away(tree, player, bot, origin_xz, delta, pos)
-		return ""
 	var corrupt_now := _corrupt_near(origin, 18)
 	if not bool(job["spread"]) and corrupt_now > int(job["corrupt_boot"]):
 		job["spread"] = true
 		print("HARNESS spread corrupt %d to %d" % [int(job["corrupt_boot"]), corrupt_now])
 	if not bool(job["cleansed"]):
+		if _attack_warn(tree):
+			_step_away(tree, player, bot, origin_xz, delta, pos)
+			return ""
 		if _Corrupt.scar_count() > int(job["scars_boot"]):
 			job["cleansed"] = true
 			job["cell"] = Vector2i(999999, 999999)
@@ -464,13 +463,23 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 	if bool(job["burned"]):
 		bot.release()
 		return ""
+	var tier := int(crystal.get("strength_tier"))
+	if tier < 1:
+		if _attack_warn(tree) or _Hazard.depth_at(tree, pos) >= _Hazard.BURN_DEPTH:
+			_step_away(tree, player, bot, origin_xz, delta, pos)
+			return ""
+		if pos.distance_to(origin_xz) > 16.0:
+			_step_toward(bot, player, origin_xz, delta, pos)
+		else:
+			bot.release()
+		return ""
 	var deep := _deep_stand(crystal, origin, pos)
 	if _Hazard.depth_at(tree, pos) < _Hazard.BURN_DEPTH:
 		_step_toward(bot, player, deep, delta, pos)
 		return ""
 	if not bool(job.get("stand_logged", false)):
 		job["stand_logged"] = true
-		print("HARNESS burn stand tier %d hp %.1f" % [int(crystal.get("strength_tier")), float(player.health)])
+		print("HARNESS burn stand tier %d hp %.1f" % [tier, float(player.health)])
 	bot.release()
 	var burn := tree.root.find_child("BurnWarn", true, false)
 	if burn != null and burn.visible:
