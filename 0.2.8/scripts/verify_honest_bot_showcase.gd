@@ -1091,15 +1091,41 @@ func _check_treasure_stand() -> void:
 	show._tick_detour(STEP)
 	var fled: Vector2 = show.bot.home
 	var held := ",".join(show.bot.input.held_names())
+	if fled.distance_to(Vector2(22.0, 18.0)) <= 2.0:
+		_fail("leash flee stayed the face at %.1f,%.1f" % [fled.x, fled.y])
+		show.bot.release()
+		elite.remove_from_group("crystal_enemy")
+		elite.free()
+		player.free()
+		return
+	if held == "":
+		_fail("treasure return held no keys")
+		show.bot.release()
+		elite.remove_from_group("crystal_enemy")
+		elite.free()
+		player.free()
+		return
+	player.voxel_position = Vector3(2.0, 0.0, 0.0)
+	show._face_only = true
+	show._pose = ""
+	show._pose_age = 0.0
+	show._treasure_clear = false
+	show.bot.set_target(Vector2(22.0, 18.0))
+	show.bot.arrived = true
+	show.bot.input.release_all()
+	for _n in 3:
+		show._tick_detour(STEP)
+	var posed := str(show._pose)
+	var faced: Vector2 = show.bot.home
 	show.bot.release()
 	elite.remove_from_group("crystal_enemy")
 	elite.free()
 	player.free()
-	if fled.distance_to(Vector2(22.0, 18.0)) <= 2.0:
-		_fail("leash flee stayed the face at %.1f,%.1f" % [fled.x, fled.y])
+	if faced.distance_to(Vector2(22.0, 18.0)) <= 2.0:
+		_fail("on-ruin flee stayed the face at %.1f,%.1f" % [faced.x, faced.y])
 		return
-	if held == "":
-		_fail("treasure return held no keys")
+	if posed != "pause" and posed != "turn":
+		_fail("discovered ruin skipped the face pose %s" % posed)
 		return
 	_ok("treasure stand stays inside the ruin")
 

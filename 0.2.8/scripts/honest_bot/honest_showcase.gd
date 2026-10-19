@@ -604,7 +604,7 @@ func _tick_detour(step: float) -> void:
 	_mark_treasure(pos)
 	if _step_off_burn(step):
 		return
-	if _treasure_return(pos):
+	if _treasure_return(pos) or (_treasure_locked() and _treasure_home_is_flee()):
 		_send_treasure_stand(step)
 		return
 	if _resume_treasure_stand(step):
@@ -666,7 +666,7 @@ func _tick_face(pos: Vector2, step: float) -> void:
 		return
 	if _leave_ring(step):
 		return
-	if _treasure_exit_needed(pos):
+	if _treasure_exit_due(pos):
 		_walk_off_treasure(pos, step)
 		return
 	hands.begin_tick()
@@ -1076,6 +1076,12 @@ func _send_treasure_stand(step: float) -> void:
 	bot.tick(pos, _yaw(), step)
 
 
+func _treasure_exit_due(pos: Vector2) -> bool:
+	if _pose != "result" and _pose != "settle":
+		return false
+	return _treasure_exit_needed(pos)
+
+
 func _treasure_exit_needed(pos: Vector2) -> bool:
 	if _seg != "density_treasure" or _treasure_clear:
 		return false
@@ -1091,7 +1097,7 @@ func _walk_off_treasure(pos: Vector2, step: float) -> void:
 	var goal := _detour_face + away.normalized() * TREASURE_SAFE
 	var extras := PackedStringArray(["sprint"])
 	var dodge := _Hazard.dodge_point(pos, goal, _Hazard.guardian_bubbles(tree))
-	if dodge != Vector2.INF:
+	if dodge != Vector2.INF and dodge.distance_to(_detour_face) >= TREASURE_SAFE - 1.2:
 		var flee := _Hazard.flee_toward(pos, dodge, _yaw())
 		extras.append(flee)
 		goal = dodge
