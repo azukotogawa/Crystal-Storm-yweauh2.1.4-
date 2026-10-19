@@ -968,14 +968,7 @@ func _mite_hit_ready(tree: SceneTree, pos: Vector2, choice: Dictionary) -> bool:
 	if _Hazard.burning(tree, pos):
 		return false
 	var foe: Vector2 = choice.get("xz", pos)
-	if pos.distance_to(foe) > _Hazard.sword_reach():
-		return false
-	var stand := _Hazard.mite_rim(tree, pos, foe)
-	if stand == Vector2.INF or _Hazard.burning(tree, stand):
-		return false
-	if _Hazard.crosses_burn(tree, pos, stand):
-		return false
-	return true
+	return pos.distance_to(foe) <= _Hazard.sword_reach()
 
 
 func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
