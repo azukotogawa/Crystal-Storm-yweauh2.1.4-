@@ -40,6 +40,10 @@ var _dead := false
 var _approach_limit := -1.0
 var _alive: Dictionary = {}
 var bow_phase := "off"
+var trace_branch := ""
+var trace_strike := ""
+var trace_heal := ""
+var trace_foe := ""
 var bow_logged := false
 var _bow_age := 0.0
 var _pick := false
@@ -775,6 +779,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 			_demo_age = 0.0
 			_demo_hold = 0.0
 	_foe_age += dt
+	trace_branch = "enter"
+	trace_strike = ""
+	trace_foe = fid
 	if _demo != "":
 		_demo_age += dt
 	if _foe_age > 28.0:
@@ -785,21 +792,27 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		if _demo != "" and _demo_age < 9.0:
 			_demo_hold = 9.0 - _demo_age
 		bot.release()
+		trace_branch = "b1"
 		return ""
 	var pos := _xz(player)
 	bot.input.aim_column(player, foe.x, foe.y)
 	if kind == "spawn_elite":
 		var home := _Roster.pool_goal(pos, origin, 18.0)
 		if orbits() and _leave_leash(dt, tree, player, pos, home):
+			trace_branch = "b2"
 			return ""
 		if orbits() and _slip(dt, tree, player, pos, home, false):
+			trace_branch = "b3"
 			return ""
 		_back_off(dt, player, pos, foe)
+		trace_branch = "b4"
 		return ""
 	if slips_for(kind) and _slip(dt, tree, player, pos, foe, false):
+		trace_branch = "b5"
 		return ""
 	if _Hazard.must_leave(tree, pos) or _note_burn(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
+		trace_branch = "b6"
 		return ""
 	var hold_rim: bool = kind == "crystal_mite" and not orbits()
 	if hold_rim and _ratio(player) <= HEAL_RATIO and _herbs(player) > 0 and _heal_wait <= 0.0:
@@ -807,18 +820,23 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		var drinking := _heal
 		_heal_idle()
 		if _heal != drinking or _heal_wait > 0.0:
+			trace_branch = "b7"
 			return ""
 	elif _ratio(player) <= HEAL_RATIO and _herbs(player) > 0:
+		trace_branch = "b8"
 		return _heal_or_leave(dt, player, foe)
 	if _ratio(player) <= 0.30 and not hold_rim:
+		trace_branch = "b9"
 		return _heal_or_leave(dt, player, foe)
 	if _swing_left > 0.0:
 		_swing_left = maxf(_swing_left - dt, 0.0)
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
+		trace_branch = "b10"
 		return ""
 	if kind == "crystal_mite" and not orbits() and not _Hazard.burning(tree, pos) and pos.distance_to(foe) > _Hazard.sword_reach() and pos.distance_to(foe) <= _Hazard.sword_reach() + 2.0:
 		_face_foe(player, pos, foe)
+		trace_branch = "b11"
 		return ""
 	if kind == "crystal_mite" and not orbits() and _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH and pos.distance_to(foe) > _Hazard.sword_reach():
 		var away := pos - origin
@@ -835,15 +853,19 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 				break
 			walk += 0.6
 		_step_clear(dt, tree, player, shallower, foe, false)
+		trace_branch = "b12"
 		return ""
 	if kind == "crystal_mite" and not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.sword_reach():
 		_strike(dt, player, pos, foe, kind)
+		trace_branch = "b13"
 		return ""
 	if kind == "crystal_mite" and pos.distance_to(foe) < 1.1:
 		_hold_mite_rim(dt, tree, player, foe, origin)
+		trace_branch = "b14"
 		return ""
 	if pos.distance_to(foe) < 1.1:
 		_back_off(dt, player, pos, foe)
+		trace_branch = "b15"
 		return ""
 	var stand := _Hazard.keep_stand(tree, pos, foe, _stand)
 	if kind == "crystal_mite" and not orbits():
@@ -855,8 +877,10 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 			var step := _clear_step_toward(tree, pos, foe)
 			if step.distance_to(pos) < 0.35:
 				_face_foe(player, pos, foe)
+				trace_branch = "b16"
 				return ""
 			_step_clear(dt, tree, player, step, foe, false)
+			trace_branch = "b17"
 			return ""
 	elif kind == "crystal_mite":
 		var rim := _Hazard.mite_rim(tree, pos, foe)
@@ -872,13 +896,17 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 			if _foe_age >= 2.0:
 				_skipped[fid] = true
 				_foe_id = ""
+			trace_branch = "b18"
 			return ""
 		_exit_hazard(dt, tree, player, foe, origin)
+		trace_branch = "b19"
 		return ""
 	if pos.distance_to(stand) > 0.65 or pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
 		_close_in(dt, tree, player, stand, pos.distance_to(stand))
+		trace_branch = "b20"
 		return ""
 	_strike(dt, player, pos, foe, kind)
+	trace_branch = "b21"
 	return ""
 
 
@@ -909,12 +937,14 @@ func _heal_or_leave(dt: float, player: Node, foe: Vector2) -> String:
 	if _heal == 0:
 		if bot.input.pulse("hotbar_6"):
 			_heal = 1
+			trace_heal = "herb_select"
 		return ""
 	if not bot.input.pulse("build_place"):
 		return ""
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false
+	trace_heal = "drink"
 	return ""
 
 
@@ -1198,41 +1228,54 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	bot.input.aim_column(player, foe.x, foe.y)
 	if rot != "" and kind != "crystal_mite":
 		_aim_wait = 0.0
+		trace_strike = "rotate"
 		return
 	var reach := _Hazard.HIT_COLUMNS
 	if kind == "crystal_mite":
 		reach = _Hazard.sword_reach()
 	if pos.distance_to(foe) > reach:
+		trace_strike = "far"
 		return
 	if not _aim_on_foe(player, foe):
 		_aim_wait += dt
 		if _aim_wait < AIM_WAIT:
+			trace_strike = "aim"
 			return
 	else:
 		_aim_wait = 0.0
 	if kind == "crystal_mite" and bow_phase != "off":
 		if bow_phase == "wait":
+			trace_strike = "bow_wait"
 			return
 		if bow_phase == "run":
 			_bow_beat(dt)
+			trace_strike = "bow_run"
 			return
 	if kind == "crystal_mite" and _bow == 0 and bow_phase == "off":
 		if age < 4.2:
+			trace_strike = "bow_arm_age"
 			return
 		bow_phase = "wait"
+		trace_strike = "bow_arm"
 		return
 	if _demo != "" and _demo_age < _Pace.PRE_PAUSE:
+		trace_strike = "demo"
 		return
 	if not _sword:
 		if bot.input.pulse("hotbar_1"):
 			_sword = true
+		trace_strike = "sword_pick"
 		return
 	_attack_wait -= dt
 	if _attack_wait > 0.0:
+		trace_strike = "wait"
 		return
 	if bot.input.pulse("attack"):
 		_attack_wait = _sword_gap()
 		_swing_left = _Pace.action_span("sword_swing")
+		trace_strike = "swing"
+	else:
+		trace_strike = "pace_blocked"
 
 
 func _face_foe(player: Node, pos: Vector2, foe: Vector2) -> void:
@@ -1312,12 +1355,14 @@ func _heal_idle() -> void:
 	if _heal == 0:
 		if bot.input.pulse("hotbar_6"):
 			_heal = 1
+			trace_heal = "herb_select"
 		return
 	if not bot.input.pulse("build_place"):
 		return
 	_heal = 0
 	_heal_wait = 0.45
 	_sword = false
+	trace_heal = "drink"
 
 
 func _nearest_mite(tree: SceneTree, pos: Vector2) -> Dictionary:

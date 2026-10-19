@@ -1148,8 +1148,22 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 				seed_value, _Hazard.depth_at(tree, died_at), died_at.distance_to(origin_xz),
 			]
 			break
+		fight.trace_branch = "none"
+		fight.trace_strike = ""
 		var result := fight.tick(delta, tree, player, origin_xz)
 		var pos := _xz(player)
+		var near_row: Dictionary = fight._nearest_mite(tree, pos)
+		var near_d := -1.0
+		if not near_row.is_empty():
+			near_d = pos.distance_to(near_row.get("xz", pos))
+		print("HARNESS mite frame t %.3f branch %s strike %s heal %s foe_id %s mite %.2f reach %.2f aim %s wait %.2f gap %.2f swing_left %.2f sword %s pace %s pace_ok %s hp %.1f herbs %d depth %.2f" % [
+			elapsed, fight.trace_branch, fight.trace_strike, fight.trace_heal, fight.trace_foe, near_d, _Hazard.sword_reach(),
+			str(fight._aim_on_foe(player, near_row.get("xz", pos))) if not near_row.is_empty() else "na",
+			fight._attack_wait, fight._sword_gap(), fight._swing_left, str(fight._sword), str(fight.bot.input.pace_presses),
+			"%.2f" % float(fight.bot.input._since_press),
+			float(player.health), fight._herbs(player), _Hazard.depth_at(tree, pos),
+		])
+		fight.trace_heal = ""
 		last_pos = pos
 		if _burn_sprint(tree, fight, player, pos):
 			burn_sprint += 1
