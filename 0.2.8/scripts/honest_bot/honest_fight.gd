@@ -1171,7 +1171,7 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 		held.append(rot)
 	bot.input.set_held(held)
 	bot.input.aim_column(player, foe.x, foe.y)
-	if rot != "":
+	if rot != "" and kind != "crystal_mite":
 		_aim_wait = 0.0
 		return
 	var reach := _Hazard.HIT_COLUMNS
