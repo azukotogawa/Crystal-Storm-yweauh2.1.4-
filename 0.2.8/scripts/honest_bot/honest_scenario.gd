@@ -1187,7 +1187,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 			why = "screenshot was not saved"
 			survived = false
 	fight.bot.release()
-	var kept := fight.bot
+	var kept = fight.bot
 	await _drop_game(tree, player)
 	return {
 		"survive": survived and why == "",
