@@ -118,6 +118,68 @@ Export texture manifest is a button, not a stored key: `ui/settings_menu.gd` lin
 
 File path: `player_settings.gd` line 7 `user://player_settings.json`.
 
+# GUIDE.md part 2 — sources
+
+Part 2 is the sections from `## Dig and build` through `## A first route` in `0.2.8/docs/GUIDE.md`. The copy at `D:\LATEST\CrystalStorm\GUIDE.md` is the same file bytes. The beginner route follows `0.2.8/docs/showcase/ROUTE.md` (segments 1–17) in player language. It does not add a teleport, a granted level, or a direct damage call.
+
+## Bosses named in the guide
+
+A boss here is a spawn definition with `is_boss` true, or a creature that binds `BossBrain`. That is the whole set.
+
+| Name | Id | Where it is defined | In GUIDE.md |
+| --- | --- | --- | --- |
+| Origin Heart | `origin_boss` | `config/spawn_point_registry.gd:18` label "Origin Heart", `:22` `is_boss` true, health 500 at `:21`. Not placed while `config/game_config.gd:13` `SINGLE_CRYSTAL` is true. Active list is the released crystal instead: `config/spawn_point_registry.gd:72` and `config/spawn_point_def.gd:31` display name "Crystal", `:36` `is_boss` false. | yes |
+| Origin Warden | `origin_warden` | `entities/entity_brain_registry.gd:56` "Origin Warden", health 240, damage 18. `entities/enemy_spawn_registry.gd:24` display name, `:25` health 240. Spawns at 25% heart health: `entities/boss_brain.gd:6` `BOSS_SPAWN_HEALTH_RATIO`. Two columns off the heart, east then west then +Z then -Z: `entities/crystal_enemy_spawner.gd:105`. Phase 2 at half HP: `entities/boss_brain.gd:5` `PHASE_HP`. Rings: `entities/crystal_enemy.gd:689`. Banner text: `ui/game_overlay.gd:584`. | yes |
+| Shard Tyrant | `spawn_elite` | `entities/entity_brain_registry.gd:59` "Shard Tyrant", health 96, damage 16. `entities/enemy_spawn_registry.gd:34` display name, `:35` health 96. Elite brain, no phase 2: `entities/crystal_enemy.gd:313` and `entities/boss_brain.gd:25`. Guardian of a non-boss spawn: `entities/crystal_enemy_spawner.gd:498`. Grace 28 s: `entities/crystal_enemy_spawner.gd:21`. Cap 24: `:16`. | yes |
+
+Not bosses, named only so they are not mistaken for one: Ruin Shard `ruin_miniboss` (`config/spawn_point_registry.gd:28`, `is_boss` false at `:32`) and Artifact Node `artifact_node` (`:38`, `is_boss` false at `:42`).
+
+Warning timings, all from `config/default_game_feel.tres` (same numbers as `config/game_feel_config.gd:78`): enemy ids mite, boss, burn_pool at `game_feel_config.gd:24`, seconds 0.45, 0.85, 0.60. Boss spawn banner 3.0 s is beat `boss_spawn` (`game_feel_config.gd:21` and `:71`).
+
+## Unlocks named in the guide
+
+The absorption table is `crystal/crystal_evolution.gd` `_builtin_unlocks` lines 77–82. `config/game_config.gd:74` copies that table when the export is empty. Every row is named in the guide.
+
+| Source label | Id | Threshold | Enemy id | Line | In GUIDE.md |
+| --- | --- | --- | --- | --- | --- |
+| Farmland | `farmland` | 2 | `farm_bomber` | `crystal_evolution.gd:77` | yes |
+| Trees | `tree` | 4 | `crystal_stag` | `crystal_evolution.gd:78` | yes |
+| Bushes | `bush` | 6 | `thornling` | `crystal_evolution.gd:79` | yes |
+| Grass | `grass` | 10 | `crystal_mite` | `crystal_evolution.gd:80` (`unlock_at_start` true) | yes |
+| Animals | `animal` | 3 | `corrupted_beast` | `crystal_evolution.gd:81` | yes |
+| Ruins | `ruin` | 1 | `shard_guard` | `crystal_evolution.gd:82` | yes |
+
+Display names for those enemies: `entities/entity_brain_registry.gd:45` Crystal Mite, `:46` Farm Bomber, `:47` Crystal Stag, `:48` Thornling, `:49` Corrupted Beast, `:51` Shard Guard.
+
+Relic granted on unlock (`crystal/crystal_manager.gd:414`): `crystal_mite` → `mason_glove` (not offered, because it is already unlocked: `:434`), `thornling` → `flow_anchor`, `farm_bomber` → `crystal_ward`. Names: `relics/relic_registry.gd:48` Crystal Ward, `:61` Flow Anchor, `:74` Mason's Glove. Stag, beast, and shard guard return an empty relic (`crystal_manager.gd:422`).
+
+The skill catalog is the other unlock table. `systems/skill_service.gd:20` `CATALOG`. Every id is named in the guide.
+
+| Id | Kind | Tree | Line | In GUIDE.md |
+| --- | --- | --- | --- | --- |
+| `dash` | active | fighter | `skill_service.gd:21` | yes |
+| `ground_slam` | active | miner | `skill_service.gd:22` | yes |
+| `crystal_pulse` | active | fighter | `skill_service.gd:23` | yes |
+| `quick_wall` | active | builder | `skill_service.gd:24` | yes |
+| `fighter_passive` | passive | fighter | `skill_service.gd:25` | yes |
+| `miner_passive` | passive | miner | `skill_service.gd:26` | yes |
+| `builder_passive` | passive | builder | `skill_service.gd:27` | yes |
+
+Button titles: `ui/skill_tree_panel.gd:307`. Effects: `player/dash_skill.gd:5`, `player/ground_slam_skill.gd:7`, `player/crystal_pulse_skill.gd:8`, `player/quick_wall_skill.gd:6`, `player/skill_passives.gd:8`.
+
+Level curve: `systems/progression_service.gd:8` base 50, `:9` exponent 1.5, `:65` `xp_to_advance`. One point per level: `:166`. Rewards: `:19` 4 HP, `:20` 0.04 damage, `:21` 0.04 dig speed, applied per level after the first (`:112`). Kill tiers: `:22`. XP amounts: `:10` through `:17`.
+
+## Other part 2 claims
+
+- Multi-block shapes and the tier order: `helpers/item_types.gd:8` and `:13`. Stone pick is the only dig tool, tier 0, shape single: `:79`. Drop cap 4: `world/terrain_edits.gd:9`. Extra-cell delay 0.35: `helpers/item_types.gd:12`. Durability 48: `helpers/item_types.gd:94`. The live stroke uses the shape list, not the bracket brush: `weapons/weapon_controller.gd:762`. Brackets still toast a brush: `:831`.
+- Blueprint sizes and costs: `helpers/structure_blueprints.gd:24`. Craft pays the recipe, or the wood fallback: `helpers/structure_crafting.gd:40`. Structure HP 8 per cell, crystal chip 2: `helpers/structure_integrity.gd:10`. Repair 8 HP per stone: `:247`.
+- One-block place list: `helpers/placeable_catalog.gd:7`. Stone wall, gate, and bridge costs: `building/building_registry.gd:51`, `:82`, `:99`.
+- Heart health 500: `config/spawn_point_def.gd:7`. Corner from the seed: `helpers/world_border.gd:27` (half 1024, inset 72, so 952). Default seed box 12349 is part 1 (`ui` new-world). 12349 mod 4 is corner index 1, `(952, -952)`.
+- Wet conductivity: `crystal/crystal_terrain_query.gd:279`. Biome spread: `config/crystal_sim_config.gd:80`. Tier thresholds: `:50`. Coverage cap 0.72: `:106`. Burn 28 per second and the 0.25 depth gate: `game/game_manager.gd:22` and `:218`. Burn look: `config/burn_pool_look.gd:6`.
+- Corruption plants and animals: `crystal/crystal_corruption.gd:44` and `:54`. Scar 18 s: `config/crystal_sim_config.gd:77`, applied at `crystal/crystal_manager.gd:2250`. Animal tint 3.5 s: `entities/world_entity.gd:461`. Towns, ruins, and player buildings are skipped: `crystal/crystal_corruption.gd:174`.
+- Sword, spear, hammer, bow, sling, pick numbers: `helpers/item_types.gd:23`, `:40`, `:60`, `:79`, `:99`, `:118`. Herb heal 28: `:164`.
+- Route order and the "no teleport, no granted XP" rule: `docs/showcase/ROUTE.md:3` and the segment list from `:66`.
+
 ## Menus
 
 - Main, world list, new world, delete confirm, settings screen: `ui/frontend_root.gd` lines 10, 155, 194, 323, 374, 418.
