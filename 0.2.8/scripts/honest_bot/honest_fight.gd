@@ -277,17 +277,24 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_skipped[str(choice.get("id", ""))] = true
 			choice = {}
 		if not orbits() and not choice.is_empty() and not _mite_ready(tree, pos, choice, origin):
+			if _mite_hit_ready(tree, pos, choice):
+				_quiet = 0.0
+				return _fight(dt, tree, player, choice, origin)
 			choice = {}
 		if not choice.is_empty():
 			_quiet = 0.0
 			return _fight(dt, tree, player, choice, origin)
-		if not orbits() and pos.distance_to(origin) > _Farm.HEART_STAND + 2.0:
-			var closer := _Hazard.skirt_goal(tree, pos, _rim_goal(tree, pos, origin, _Farm.HEART_STAND))
-			if closer.distance_to(origin) + 0.5 < pos.distance_to(origin):
+		if not orbits():
+			var close := _nearest_mite(tree, pos)
+			if _mite_hit_ready(tree, pos, close):
+				return _fight(dt, tree, player, close, origin)
+			var ring := _anchor(tree, pos, origin)
+			var gap := pos.distance_to(origin) - ring.distance_to(origin)
+			if absf(gap) > 1.2:
 				bot.chapter = "combat_crystal_mite"
 				bot.objective = "mite approach"
 				bot.stuck_limit = 24
-				_step_clear(dt, tree, player, closer, origin, true)
+				_step_clear(dt, tree, player, _Hazard.skirt_goal(tree, pos, ring), origin, gap > 1.2)
 				return ""
 		if orbits() and _slip(dt, tree, player, pos, _travel_goal(pos, origin), false):
 			return ""
@@ -892,7 +899,17 @@ func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
 
 
 func _anchor(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
-	return _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
+	var rim := _rim_goal(tree, pos, origin, _Farm.HEART_STAND)
+	var want := maxf(rim.distance_to(origin), _Hazard.aggro_columns() + 1.5)
+	var away := pos - origin
+	if away.length() < 0.2:
+		away = Vector2(1.0, 0.0)
+	else:
+		away = away.normalized()
+	var ring := origin + away * want
+	if tree != null and (_Hazard.burning(tree, ring) or (not _Hazard.burning(tree, pos) and _Hazard.crosses_burn(tree, pos, ring))):
+		return rim
+	return ring
 
 
 func _return_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
