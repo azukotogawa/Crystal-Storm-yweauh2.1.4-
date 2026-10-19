@@ -1042,6 +1042,33 @@ func _check_mite_burn() -> void:
 		return
 	home.release()
 	far.free()
+	var elite := Node3D.new()
+	elite.set_script(mite_script)
+	elite.enemy_id = &"spawn_elite"
+	elite.add_to_group("crystal_enemy")
+	var ring := Node3D.new()
+	ring.name = "TelegraphRing"
+	ring.visible = true
+	ring.scale = Vector3(8.0, 1.0, 8.0)
+	elite.add_child(ring)
+	root.add_child(elite)
+	elite.global_position = Vector3(18.0, 0.0, 1.0)
+	var slammed := _plant_burn_player(player_script, camera_script, Vector3(9.0, 0.0, 0.5), 20.0)
+	var dodge = _Fight.new()
+	dodge._phase = "hunt"
+	dodge._home_arrived = true
+	dodge.tick(STEP, self, slammed, Vector2.ZERO)
+	var escaped: Vector2 = dodge.bot.target
+	if not dodge.bot.has_target or escaped.length() + 0.4 < Vector2(9.0, 0.5).length() or _Hazard.burning(self, escaped):
+		_fail("slam ring did not step out to %.1f" % escaped.length())
+		dodge.release()
+		slammed.free()
+		elite.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	dodge.release()
+	slammed.free()
+	elite.free()
 	_free_mite_burn(crystal, gm, mite)
 	_ok("mite burn fight stays on the clear rim")
 

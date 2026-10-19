@@ -891,11 +891,39 @@ func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin:
 	var away := pos - origin
 	if away.length_squared() < 0.04:
 		away = Vector2(1.0, 0.0)
-	var proposed := _Hazard.slam_exit(pos, away, 3.0, origin)
+	else:
+		away = away.normalized()
+	var reach := _ring_escape(tree, pos)
+	var proposed := _Hazard.slam_exit(pos, away, reach, origin)
 	proposed = _Hazard.skirt_goal(tree, pos, proposed)
-	if _Hazard.burning(tree, proposed) or _Hazard.crosses_burn(tree, pos, proposed) or _off_rim(tree, proposed, origin):
-		proposed = _Hazard.skirt_goal(tree, pos, _anchor(tree, pos, origin))
-	_step_clear(dt, tree, player, proposed, origin, false)
+	if _Hazard.burning(tree, proposed) or _Hazard.crosses_burn(tree, pos, proposed):
+		proposed = _ring_side(tree, pos, away, reach)
+	_step_clear(dt, tree, player, proposed, origin, true)
+
+
+func _ring_escape(tree: SceneTree, pos: Vector2) -> float:
+	var reach := 3.0
+	for row in _Hazard.guardian_bubbles(tree):
+		if typeof(row) != TYPE_DICTIONARY or not bool(row.get("hard", false)):
+			continue
+		var at: Vector2 = row.get("xz", pos)
+		var need := float(row.get("radius", 0.0)) - pos.distance_to(at) + 1.4
+		if need > reach:
+			reach = need
+	return reach
+
+
+func _ring_side(tree: SceneTree, pos: Vector2, away: Vector2, reach: float) -> Vector2:
+	var side := Vector2(-away.y, away.x)
+	var best := pos
+	var signs: Array[float] = [1.0, -1.0]
+	for sign in signs:
+		var cand := _Hazard.skirt_goal(tree, pos, pos + side * sign * (reach + 1.2))
+		if _Hazard.burning(tree, cand) or _Hazard.crosses_burn(tree, pos, cand):
+			continue
+		if cand.distance_to(pos) > best.distance_to(pos):
+			best = cand
+	return best
 
 
 func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
