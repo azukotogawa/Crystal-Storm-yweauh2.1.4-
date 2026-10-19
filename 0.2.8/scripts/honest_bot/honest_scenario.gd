@@ -469,7 +469,7 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 	var warned := _attack_warn(tree) or _Hazard.ring_hot(tree, pos)
 	var deep_here := _Hazard.depth_at(tree, pos) >= _Hazard.BURN_DEPTH
 	var burn := tree.root.find_child("BurnWarn", true, false)
-	var burn_up := burn != null and burn.visible
+	var burn_up: bool = burn != null and bool(burn.visible)
 	if not burn_up and (warned or (tier < 1 and deep_here)):
 		_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
 		return ""
