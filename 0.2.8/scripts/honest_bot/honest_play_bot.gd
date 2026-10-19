@@ -51,6 +51,8 @@ func tick(player_xz: Vector2, yaw_degrees: float, delta: float) -> void:
 	input.begin_tick()
 	if _jump_due and input.pulse(&"jump"):
 		_jump_due = false
+	if arrived and has_target and player_xz.distance_to(home) > _Nav.ARRIVE_COLUMNS:
+		arrived = false
 	if not has_target or arrived or gave_up:
 		input.release_all()
 		return

@@ -1057,12 +1057,49 @@ func _check_treasure_stand() -> void:
 	show._face_only = false
 	show._tick_detour(STEP)
 	var stayed: Vector2 = show.bot.home
+	if stayed.distance_to(Vector2(9.0, 0.0)) > 3.0:
+		_fail("treasure stand left the ruin for %.1f,%.1f" % [stayed.x, stayed.y])
+		show.bot.release()
+		elite.remove_from_group("crystal_enemy")
+		elite.free()
+		player.free()
+		return
+	show._ruins_before = -1
+	show._treasure_visited = true
+	show._treasure_clear = false
+	show._face_only = false
+	show._pose = ""
+	player.voxel_position = Vector3(2.0, 0.0, 0.0)
+	show.bot.set_target(Vector2(9.0, 0.0))
+	show.bot.arrived = false
+	show.bot.gave_up = false
+	show._tick_detour(STEP)
+	var kept: Vector2 = show.bot.home
+	if kept.distance_to(Vector2(9.0, 0.0)) > 3.0:
+		_fail("discovered ruin left the stand for %.1f,%.1f" % [kept.x, kept.y])
+		show.bot.release()
+		elite.remove_from_group("crystal_enemy")
+		elite.free()
+		player.free()
+		return
+	player.voxel_position = Vector3(18.0, 0.0, 14.0)
+	show._face_only = true
+	show._pose = ""
+	show.bot.set_target(Vector2(22.0, 18.0))
+	show.bot.arrived = true
+	show.bot.input.release_all()
+	show._tick_detour(STEP)
+	var fled: Vector2 = show.bot.home
+	var held := ",".join(show.bot.input.held_names())
 	show.bot.release()
 	elite.remove_from_group("crystal_enemy")
 	elite.free()
 	player.free()
-	if stayed.distance_to(Vector2(9.0, 0.0)) > 3.0:
-		_fail("treasure stand left the ruin for %.1f,%.1f" % [stayed.x, stayed.y])
+	if fled.distance_to(Vector2(22.0, 18.0)) <= 2.0:
+		_fail("leash flee stayed the face at %.1f,%.1f" % [fled.x, fled.y])
+		return
+	if held == "":
+		_fail("treasure return held no keys")
 		return
 	_ok("treasure stand stays inside the ruin")
 

@@ -101,6 +101,7 @@ var _pickup_wait := false
 var _pickup_age := 0.0
 var _ruins_before := 0
 var _treasure_clear := false
+var _treasure_visited := false
 var _chain: Dictionary = {}
 var _chain_ready := false
 var _lights_noted := false
@@ -298,6 +299,7 @@ func _open_segment(id: String) -> void:
 	_face_age = 0.0
 	_pickup_wait = false
 	_pickup_age = 0.0
+	_treasure_visited = false
 	_detour_label = ""
 	_detour_resumes = 0
 	_pose = ""
@@ -588,6 +590,7 @@ func _arm_detour(id: String) -> void:
 	_detour_limit = _Walk.leg_limit(float(choice.get("distance", 0.0)))
 	_ruins_before = _ruin_count()
 	_treasure_clear = false
+	_treasure_visited = false
 	bot.stuck_limit = DETOUR_STUCK
 	print("OK %s %s dist %.1f limit %.0f" % [id, kind if kind != "" else "site", float(choice.get("distance", 0.0)), _detour_limit])
 	if not bool(plan.get("walk", false)):
@@ -597,11 +600,16 @@ func _arm_detour(id: String) -> void:
 
 
 func _tick_detour(step: float) -> void:
+	var pos := _xz()
+	_mark_treasure(pos)
 	if _step_off_burn(step):
+		return
+	if _treasure_return(pos):
+		_send_treasure_stand(step)
 		return
 	if _resume_treasure_stand(step):
 		return
-	if not _holding_treasure() and _step_off_leash(step, _clear_goal(_xz(), _detour_goal)):
+	if _allow_leash() and _step_off_leash(step, _clear_goal(pos, _detour_goal)):
 		return
 	if _glow_leg:
 		_tick_glow(step)
@@ -609,7 +617,6 @@ func _tick_detour(step: float) -> void:
 	if _pickup_wait:
 		_tick_pickup(step)
 		return
-	var pos := _xz()
 	if _face_only:
 		_face_age += step
 		_tick_face(pos, step)
@@ -621,7 +628,9 @@ func _tick_detour(step: float) -> void:
 		extras.append("jump")
 	else:
 		extras.append("sprint")
-	var dodge := _Hazard.dodge_point(pos, _detour_goal, _Hazard.guardian_bubbles(tree))
+	var dodge := Vector2.INF
+	if not _treasure_locked():
+		dodge = _Hazard.dodge_point(pos, _detour_goal, _Hazard.guardian_bubbles(tree))
 	if dodge != Vector2.INF and pos.distance_to(_detour_goal) > 8.0:
 		var flee := _Hazard.flee_toward(pos, dodge, _yaw())
 		extras.append(flee)
@@ -630,7 +639,7 @@ func _tick_detour(step: float) -> void:
 	bot.extra_held = extras
 	bot.tick(pos, _yaw(), step)
 	if bot.arrived:
-		if _treasure_needs_stand():
+		if _treasure_needs_stand() or _treasure_return(_xz()) or _treasure_home_is_flee():
 			_send_treasure_stand(step)
 			return
 		bot.release()
@@ -647,10 +656,13 @@ func _tick_detour(step: float) -> void:
 
 
 func _tick_face(pos: Vector2, step: float) -> void:
+	if _treasure_return(pos):
+		_send_treasure_stand(step)
+		return
 	if _treasure_needs_stand():
 		_send_treasure_stand(step)
 		return
-	if not _holding_treasure() and _step_off_leash(step, _clear_goal(pos, _detour_face)):
+	if _allow_leash() and _step_off_leash(step, _clear_goal(pos, _detour_face)):
 		return
 	if _leave_ring(step):
 		return
@@ -1003,6 +1015,35 @@ func _treasure_needs_stand() -> bool:
 
 func _holding_treasure() -> bool:
 	return _seg == "density_treasure" and _ruin_count() <= _ruins_before and _at_treasure(_xz())
+
+
+func _mark_treasure(pos: Vector2) -> void:
+	if _seg == "density_treasure" and _at_treasure(pos):
+		_treasure_visited = true
+
+
+func _treasure_locked() -> bool:
+	return _seg == "density_treasure" and _treasure_visited and not _treasure_clear
+
+
+func _treasure_return(pos: Vector2) -> bool:
+	if not _treasure_locked():
+		return false
+	if _pose == "result" or _pose == "settle":
+		return false
+	return not _at_treasure(pos)
+
+
+func _treasure_home_is_flee() -> bool:
+	if not _treasure_locked() or not bot.has_target:
+		return false
+	if _pose == "result" or _pose == "settle":
+		return false
+	return bot.home.distance_to(_detour_goal) > 3.0 and bot.home.distance_to(_detour_face) > _ruin_radius()
+
+
+func _allow_leash() -> bool:
+	return not _treasure_locked() and not _holding_treasure()
 
 
 func _resume_treasure_stand(step: float) -> bool:
