@@ -391,6 +391,20 @@ static func crosses_burn(tree: SceneTree, fro: Vector2, to: Vector2) -> bool:
 	return false
 
 
+static func enters_burn(tree: SceneTree, fro: Vector2, to: Vector2) -> bool:
+	if tree == null:
+		return false
+	if burning(tree, to):
+		return true
+	var span := fro.distance_to(to)
+	var steps := maxi(ceili(span), 1)
+	for i in range(1, steps):
+		var at := fro.lerp(to, float(i) / float(steps))
+		if burning(tree, at):
+			return true
+	return false
+
+
 static func warn_showing(tree: SceneTree) -> bool:
 	if tree == null:
 		return false
@@ -410,9 +424,9 @@ static func must_leave(tree: SceneTree, pos: Vector2) -> bool:
 static func sprint_allowed(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float) -> bool:
 	if tree == null or goal == Vector2.INF:
 		return ratio >= -0.001
-	if crosses_burn(tree, pos, goal):
-		return false
-	return true
+	if burning(tree, pos):
+		return not burning(tree, goal) and not enters_burn(tree, pos, goal)
+	return not crosses_burn(tree, pos, goal)
 
 
 static func with_sprint(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float, held: PackedStringArray, want: bool) -> PackedStringArray:

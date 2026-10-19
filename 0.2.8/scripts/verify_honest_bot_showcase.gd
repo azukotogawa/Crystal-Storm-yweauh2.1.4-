@@ -1004,6 +1004,12 @@ func _check_mite_burn() -> void:
 		_fail("full hp sprint was allowed across the burn")
 		_free_mite_burn(crystal, gm, mite)
 		return
+	var lip := Vector2(5.6, 0.0)
+	var out := Vector2(6.6, 0.0)
+	if not _Hazard.burning(self, lip) or _Hazard.burning(self, out) or not _Hazard.sprint_allowed(self, lip, out, 1.0):
+		_fail("sprint out of the burn lip was refused")
+		_free_mite_burn(crystal, gm, mite)
+		return
 	mite.global_position = Vector3(11.2, 0.0, 1.0)
 	var glued := _plant_burn_player(player_script, camera_script, Vector3(6.4, 0.0, 0.5), 20.0)
 	var chase = _Fight.new()

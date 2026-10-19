@@ -882,7 +882,7 @@ func _anchor(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
 func _return_rim(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> void:
 	var pos := _xz(player)
 	var goal := _Hazard.skirt_goal(tree, pos, _anchor(tree, pos, origin))
-	if _Hazard.burning(tree, goal) or _Hazard.crosses_burn(tree, pos, goal):
+	if _Hazard.burning(tree, goal) or _Hazard.enters_burn(tree, pos, goal):
 		goal = _Hazard.skirt_goal(tree, pos, _Hazard.leave_goal(tree, pos, origin))
 	_step_clear(dt, tree, player, goal, origin, false)
 
@@ -896,7 +896,7 @@ func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin:
 	var reach := _ring_escape(tree, pos)
 	var proposed := _Hazard.slam_exit(pos, away, reach, origin)
 	proposed = _Hazard.skirt_goal(tree, pos, proposed)
-	if _Hazard.burning(tree, proposed) or _Hazard.crosses_burn(tree, pos, proposed):
+	if _Hazard.burning(tree, proposed) or _Hazard.enters_burn(tree, pos, proposed):
 		proposed = _ring_side(tree, pos, away, reach)
 	_step_clear(dt, tree, player, proposed, origin, true)
 
@@ -919,7 +919,7 @@ func _ring_side(tree: SceneTree, pos: Vector2, away: Vector2, reach: float) -> V
 	var signs: Array[float] = [1.0, -1.0]
 	for sign in signs:
 		var cand := _Hazard.skirt_goal(tree, pos, pos + side * sign * (reach + 1.2))
-		if _Hazard.burning(tree, cand) or _Hazard.crosses_burn(tree, pos, cand):
+		if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand):
 			continue
 		if cand.distance_to(pos) > best.distance_to(pos):
 			best = cand
@@ -949,7 +949,7 @@ func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, orig
 	var best_clear := -1.0
 	for cand in options:
 		var step := _Hazard.skirt_goal(tree, pos, cand)
-		if _Hazard.burning(tree, step) or _Hazard.crosses_burn(tree, pos, step):
+		if _Hazard.burning(tree, step) or _Hazard.enters_burn(tree, pos, step):
 			continue
 		if not orbits() and step.distance_to(origin) > pos.distance_to(origin) + 1.25:
 			continue
@@ -1246,7 +1246,7 @@ func _on_enemy_killed(enemy_id: StringName, _world_pos: Vector2i, player_killed:
 func _exit_hazard(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
 	var pos := _xz(player)
 	var goal := _Hazard.leave_goal(tree, pos, origin)
-	if _Hazard.burning(tree, goal) or _Hazard.crosses_burn(tree, pos, goal):
+	if _Hazard.burning(tree, goal) or _Hazard.enters_burn(tree, pos, goal):
 		goal = _Hazard.skirt_goal(tree, pos, goal)
 	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.2:
 		bot.set_target(goal)

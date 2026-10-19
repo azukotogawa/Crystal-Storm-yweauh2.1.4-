@@ -1143,7 +1143,10 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		fight.bot.input.advance_pace(delta)
 		_note_banner(tree, seen)
 		if float(player.health) <= 0.0:
-			why = "player died seed %d" % seed_value
+			var died_at := _xz(player)
+			why = "player died seed %d depth %.2f dist %.1f" % [
+				seed_value, _Hazard.depth_at(tree, died_at), died_at.distance_to(origin_xz),
+			]
 			break
 		var result := fight.tick(delta, tree, player, origin_xz)
 		var pos := _xz(player)
