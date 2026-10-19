@@ -523,6 +523,9 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
 	if not bool(job["melee"]):
+		if _attack_warn(tree):
+			_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
+			return ""
 		var rows := _near_foes(tree, pos)
 		fight.set_vitals(float(player.health), float(player.max_health))
 		fight.observe(rows)
@@ -870,18 +873,14 @@ func _collect_foes(rows: Array, nodes: Array, kind_field: String) -> void:
 
 func _near_foes(tree: SceneTree, pos: Vector2) -> Array:
 	var close: Array = []
-	var bosses: Array = []
 	for row in _foe_rows(tree):
+		if str(row.get("kind", "")) == "origin_warden":
+			continue
 		var at: Vector2 = row["xz"]
 		if pos.distance_to(at) > 28.0:
 			continue
-		if str(row.get("kind", "")) == "origin_warden":
-			bosses.append(row)
-		else:
-			close.append(row)
-	if not close.is_empty():
-		return close
-	return bosses
+		close.append(row)
+	return close
 
 
 func _nearest_foe_xz(tree: SceneTree, pos: Vector2) -> Vector2:
