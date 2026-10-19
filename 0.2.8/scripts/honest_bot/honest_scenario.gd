@@ -445,6 +445,9 @@ func _tick_crystals(tree: SceneTree, player: Node, crystal: Node, origin: Vector
 
 
 func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> String:
+	if _attack_warn(tree) and not bool(job["burn_seen"]):
+		_step_away(tree, player, bot, origin_xz, delta, pos)
+		return ""
 	var corrupt_now := _corrupt_near(origin, 18)
 	if not bool(job["spread"]) and corrupt_now > int(job["corrupt_boot"]):
 		job["spread"] = true
@@ -520,6 +523,9 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		bot.release()
 		return ""
 	if _points(tree) < 1 and not _unlocked(tree, "dash"):
+		if _attack_warn(tree):
+			_step_away(tree, player, bot, origin_xz, delta, pos)
+			return ""
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
 	if not bool(job["cast_on"]):
@@ -536,6 +542,9 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 
 
 func _swing_film(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, job: Dictionary, delta: float, pos: Vector2, any_film: bool) -> void:
+	if _attack_warn(tree):
+		_step_away(tree, player, bot, origin_xz, delta, pos)
+		return
 	var cell: Vector2i = job["cell"]
 	if cell.x > 900000 or int(job["swings"]) >= 10:
 		cell = _film_cell(crystal, origin, pos, any_film)
