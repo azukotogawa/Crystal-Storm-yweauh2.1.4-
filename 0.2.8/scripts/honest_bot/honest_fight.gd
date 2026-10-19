@@ -1041,6 +1041,7 @@ func _leave_ring(dt: float, tree: SceneTree, player: Node, pos: Vector2, origin:
 	if key == "":
 		_step_clear(dt, tree, player, proposed, aim, pos.distance_to(proposed) > 4.5)
 		return
+	_commit_goal(tree, pos, proposed)
 	bot.input.begin_tick()
 	var held := PackedStringArray([key])
 	held = _Hazard.with_sprint(tree, pos, proposed, _ratio(player), held, true)
