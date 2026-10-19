@@ -977,6 +977,19 @@ func _check_mite_burn() -> void:
 		_free_mite_burn(crystal, gm, mite)
 		return
 	fight.release()
+	var stalled = _Fight.new()
+	stalled._phase = "hunt"
+	stalled._home_arrived = true
+	stalled.bot.set_target(pool)
+	stalled.bot.arrived = true
+	stalled.tick(STEP, self, inside, Vector2.ZERO)
+	if stalled.bot.arrived or _Hazard.burning(self, stalled.bot.home):
+		_fail("arrived burn home was kept at %.2f,%.2f" % [stalled.bot.home.x, stalled.bot.home.y])
+		stalled.release()
+		inside.free()
+		_free_mite_burn(crystal, gm, mite)
+		return
+	stalled.release()
 	inside.free()
 	warn.visible = false
 	var edge := _plant_burn_player(player_script, camera_script, Vector3(rim.x, 0.0, rim.y), 8.0)

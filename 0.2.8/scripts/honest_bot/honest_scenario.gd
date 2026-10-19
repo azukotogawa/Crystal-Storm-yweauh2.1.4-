@@ -1153,6 +1153,11 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		last_pos = pos
 		if _burn_sprint(tree, fight, player, pos):
 			burn_sprint += 1
+		var mark := int(elapsed)
+		if mark > 0 and mark % 5 == 0 and int(elapsed - delta) != mark:
+			print("HARNESS mite trace t %d dist %.1f depth %.2f hp %.0f burn_sprint %d" % [
+				mark, pos.distance_to(origin_xz), _Hazard.depth_at(tree, pos), float(player.health), burn_sprint,
+			])
 		if result == "fail":
 			why = "fight returned fail seed %d" % seed_value
 			break
