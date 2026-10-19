@@ -424,9 +424,9 @@ static func must_leave(tree: SceneTree, pos: Vector2) -> bool:
 static func sprint_allowed(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float) -> bool:
 	if tree == null or goal == Vector2.INF:
 		return ratio >= -0.001
-	if burning(tree, pos):
-		return not burning(tree, goal) and not enters_burn(tree, pos, goal)
-	return not crosses_burn(tree, pos, goal)
+	if burning(tree, pos) or burning(tree, goal) or crosses_burn(tree, pos, goal):
+		return false
+	return true
 
 
 static func with_sprint(tree: SceneTree, pos: Vector2, goal: Vector2, ratio: float, held: PackedStringArray, want: bool) -> PackedStringArray:

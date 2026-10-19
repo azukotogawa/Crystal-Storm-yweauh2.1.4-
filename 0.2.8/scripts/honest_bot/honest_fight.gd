@@ -237,6 +237,9 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 			_leave_ring(dt, tree, player, pos, origin)
 			return ""
 		if _off_rim(tree, pos, origin):
+			var close := _nearest_mite(tree, pos)
+			if _mite_hit_ready(tree, pos, close):
+				return _fight(dt, tree, player, close, origin)
 			_return_rim(dt, tree, player, origin)
 			return ""
 	if not _Farm.demo_ready(_level) and not _home_arrived and pos.distance_to(origin) > _Farm.HOME_COLUMNS:
@@ -867,6 +870,22 @@ func _mite_ready(tree: SceneTree, pos: Vector2, choice: Dictionary, origin: Vect
 	return true
 
 
+func _mite_hit_ready(tree: SceneTree, pos: Vector2, choice: Dictionary) -> bool:
+	if choice.is_empty() or str(choice.get("kind", "")) != "crystal_mite":
+		return false
+	if _Hazard.burning(tree, pos):
+		return false
+	var foe: Vector2 = choice.get("xz", pos)
+	if pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
+		return false
+	var stand := _Hazard.mite_rim(tree, pos, foe)
+	if stand == Vector2.INF or _Hazard.burning(tree, stand):
+		return false
+	if _Hazard.crosses_burn(tree, pos, stand):
+		return false
+	return true
+
+
 func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
 	var anchor := _anchor(tree, pos, origin)
 	return pos.distance_to(origin) > anchor.distance_to(origin) + 3.0
@@ -925,8 +944,11 @@ func _ring_side(tree: SceneTree, pos: Vector2, away: Vector2, reach: float) -> V
 
 func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
 	var pos := _xz(player)
-	if not orbits() and _off_rim(tree, pos, origin):
+	if not orbits() and _off_rim(tree, pos, origin) and pos.distance_to(foe) > _Hazard.HIT_COLUMNS:
 		_return_rim(dt, tree, player, origin)
+		return
+	if not _Hazard.burning(tree, pos) and pos.distance_to(foe) <= _Hazard.HIT_COLUMNS:
+		_strike(dt, player, pos, foe, "crystal_mite")
 		return
 	if _Hazard.must_leave(tree, pos):
 		_exit_hazard(dt, tree, player, foe, origin)
@@ -964,15 +986,18 @@ func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, orig
 
 
 func _commit_goal(tree: SceneTree, pos: Vector2, goal: Vector2) -> void:
-	var unsafe: bool = bot.has_target and (_Hazard.burning(tree, bot.home) or _Hazard.enters_burn(tree, pos, bot.home))
+	var home_bad: bool = bot.has_target and (_Hazard.burning(tree, bot.home) or _Hazard.enters_burn(tree, pos, bot.home))
 	var stuck: bool = bot.arrived and _Hazard.must_leave(tree, pos)
-	if not bot.has_target or bot.gave_up or bot.home.distance_to(goal) > 2.0:
-		bot.set_target(goal)
-	if (unsafe or stuck) and bot.home.distance_to(goal) > 0.35:
+	var replace: bool = (not bot.has_target) or bot.gave_up or home_bad or stuck or (bot.home.distance_to(goal) > 2.0)
+	if not replace:
+		return
+	if bot.has_target and bot.home.distance_to(goal) <= 2.0 and (home_bad or stuck):
 		bot.home = goal
 		bot.target = goal
 		bot.arrived = false
 		bot.gave_up = false
+		return
+	bot.set_target(goal)
 
 
 func _step_clear(dt: float, tree: SceneTree, player: Node, goal: Vector2, aim: Vector2, sprint_now: bool) -> void:
