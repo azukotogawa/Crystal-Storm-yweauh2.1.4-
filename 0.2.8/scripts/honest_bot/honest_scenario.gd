@@ -451,8 +451,8 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 		job["corrupt_seen"] = corrupt_now
 		print("HARNESS spread corrupt %d to %d" % [int(job["corrupt_boot"]), corrupt_now])
 	if not bool(job["cleansed"]):
-		if _attack_warn(tree):
-			_step_away(tree, player, bot, origin_xz, delta, pos)
+		if _attack_warn(tree) or _Hazard.ring_hot(tree, pos):
+			_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
 			return ""
 		if _Corrupt.scar_count() > int(job["scars_boot"]):
 			job["cleansed"] = true
@@ -466,25 +466,31 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 		bot.release()
 		return ""
 	var tier := int(crystal.get("strength_tier"))
+	var warned := _attack_warn(tree) or _Hazard.ring_hot(tree, pos)
+	var deep_here := _Hazard.depth_at(tree, pos) >= _Hazard.BURN_DEPTH
+	var burn := tree.root.find_child("BurnWarn", true, false)
+	var burn_up := burn != null and burn.visible
+	if not burn_up and (warned or (tier < 1 and deep_here)):
+		_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
+		return ""
 	if tier < 1:
-		if _attack_warn(tree) or _Hazard.depth_at(tree, pos) >= _Hazard.BURN_DEPTH:
-			_step_away(tree, player, bot, origin_xz, delta, pos)
-			return ""
+		job["dodge"] = Vector2.INF
 		if pos.distance_to(origin_xz) > 16.0:
 			_step_toward(bot, player, origin_xz, delta, pos)
 		else:
 			bot.release()
 		return ""
 	var deep := _deep_stand(crystal, origin, pos)
-	if _Hazard.depth_at(tree, pos) < _Hazard.BURN_DEPTH:
-		_step_toward(bot, player, deep, delta, pos)
+	if not deep_here:
+		job["dodge"] = Vector2.INF
+		_step_toward(bot, player, deep, delta, pos, true)
 		return ""
 	if not bool(job.get("stand_logged", false)):
 		job["stand_logged"] = true
 		print("HARNESS burn stand tier %d hp %.1f" % [tier, float(player.health)])
+	job["dodge"] = Vector2.INF
 	bot.release()
-	var burn := tree.root.find_child("BurnWarn", true, false)
-	if burn != null and burn.visible:
+	if burn_up:
 		if not bool(job["burn_seen"]):
 			job["burn_seen"] = true
 			job["burn_hp"] = float(player.health)
@@ -645,17 +651,40 @@ func _heart_aimed(player: Node, origin: Vector2i) -> bool:
 	return cell.distance_to(want) <= 1.15
 
 
-func _step_toward(bot, player: Node, goal: Vector2, delta: float, pos: Vector2) -> void:
+func _step_toward(bot, player: Node, goal: Vector2, delta: float, pos: Vector2, sprint_now: bool = false) -> void:
 	if bot.gave_up:
 		var spin := float(bot.stuck_reports + 1)
 		bot.set_target(goal + Vector2(spin, -spin))
 	elif not bot.has_target or bot.target.distance_to(goal) > 1.5:
 		bot.set_target(goal)
 	var extras := PackedStringArray()
-	if pos.distance_to(goal) > 6.0:
+	if sprint_now or pos.distance_to(goal) > 6.0:
 		extras.append("sprint")
 	bot.extra_held = extras
 	bot.tick(pos, _yaw(player), delta)
+
+
+func _leave_attack(tree: SceneTree, player: Node, bot, origin_xz: Vector2, job: Dictionary, delta: float, pos: Vector2) -> void:
+	var foe := _nearest_foe_xz(tree, pos)
+	var away := pos - foe if foe != Vector2.INF else pos - origin_xz
+	var reach := 2.4
+	for row in _Hazard.guardian_bubbles(tree):
+		if typeof(row) != TYPE_DICTIONARY or not bool(row.get("hard", false)):
+			continue
+		reach = maxf(reach, float(row.get("radius", reach)))
+		var at: Vector2 = row.get("xz", pos)
+		var from_ring := pos - at
+		if from_ring.length_squared() > 0.01:
+			away = from_ring
+	var proposed := _Hazard.slam_exit(pos, away, reach, origin_xz)
+	if _Hazard.depth_at(tree, proposed) >= _Hazard.BURN_DEPTH:
+		var clear := _Hazard.leave_goal(tree, pos, origin_xz)
+		if clear != Vector2.INF:
+			proposed = clear
+	var previous: Vector2 = job.get("dodge", Vector2.INF)
+	var goal := _Hazard.keep_dodge(pos, previous, proposed)
+	job["dodge"] = goal
+	_step_toward(bot, player, goal, delta, pos, true)
 
 
 func _step_away(tree: SceneTree, player: Node, bot, origin_xz: Vector2, delta: float, pos: Vector2) -> void:
