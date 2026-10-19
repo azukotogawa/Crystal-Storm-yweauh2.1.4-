@@ -156,6 +156,8 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 			continue
 		if line.begins_with("Gate ") or line.begins_with("Bridge ") or line.begins_with("Trench "):
 			continue
+		if line.begins_with("First steps "):
+			continue
 		return "unexpected banner %s" % line
 	return ""
 

@@ -51,7 +51,7 @@ Plays `HonestBuild` mode `structure_place` until the first stone wall is down (`
 | --- | --- |
 | Terrain | At least one new build tile inside the place snap. |
 | Inventory | Stone count falls (a stone wall spends one stone). |
-| Banner | Opening line. `Wall raised — crystal slows here; it will find another way` is allowed when the wall is near crystal. Gate, bridge, and trench lines are allowed and not required. Any other toast fails. |
+| Banner | Opening line. `Wall raised — crystal slows here; it will find another way` is allowed when the wall is near crystal. Gate, bridge, trench, and `First steps` lines are allowed and not required. Any other toast fails. |
 | HP | Unchanged, label matches. |
 | Shot | `steps/*_build.png` |
 
