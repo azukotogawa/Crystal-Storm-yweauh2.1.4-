@@ -4,6 +4,7 @@ const _Build = preload("res://scripts/honest_bot/honest_build.gd")
 const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Combat = preload("res://scripts/honest_bot/honest_combat.gd")
+const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
@@ -32,6 +33,8 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return _break(tree)
 	if name == "crystals" or name == "corruption" or name == "combat":
 		return await _play_feature(tree, name)
+	if name == "mite_fight":
+		return await _play_mite(tree)
 	if name != "dig" and name != "build":
 		print("FAIL harness unknown scenario %s" % name)
 		return 1
@@ -96,10 +99,11 @@ func _break(tree: SceneTree) -> int:
 	return 1
 
 
-func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray):
+func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_value: int = -1):
+	var use_seed := seed_value if seed_value >= 0 else SEED
 	_Worlds.pending_launch = {
 		"id": "harness-%s" % scenario,
-		"seed": SEED,
+		"seed": use_seed,
 		"name": "Harness",
 	}
 	_Worlds.pending_resume = false
@@ -134,8 +138,8 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray):
 		return null
 	var world = game.get_node_or_null("World")
 	var seeded := int(world.world_seed) if world != null and "world_seed" in world else -1
-	if seeded != SEED:
-		print("FAIL harness seed %d want %d" % [seeded, SEED])
+	if seeded != use_seed:
+		print("FAIL harness seed %d want %d" % [seeded, use_seed])
 		return null
 	print("HARNESS booted seed %d" % seeded)
 	return player
@@ -1054,6 +1058,192 @@ func _print_feature(name: String, before: Dictionary, after: Dictionary, seen: P
 		str(after.get("hp_label", "")),
 		"|".join(seen),
 	])
+
+
+const MITE_LIMIT := 150.0
+const MITE_CLEAR := 16.0
+
+
+func _play_mite(tree: SceneTree) -> int:
+	var seeds: Array = _mite_seeds()
+	var lived := 0
+	var killed_runs := 0
+	for seed_value in seeds:
+		var seed := int(seed_value)
+		var row: Dictionary = await _mite_attempt(tree, seed)
+		var survived: bool = bool(row.get("survive", false))
+		var kills := int(row.get("kills", 0))
+		var sprints := int(row.get("burn_sprint", 0))
+		if survived:
+			lived += 1
+		if kills > 0:
+			killed_runs += 1
+		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d" % [
+			seed, "yes" if survived else "no", kills, sprints,
+		])
+		if not survived or kills < 1 or sprints > 0:
+			var why := str(row.get("why", "mite fight failed"))
+			print("FAIL harness assertion %s" % why)
+			var bot = row.get("bot", null)
+			if bot != null:
+				var at: Vector2 = row.get("pos", Vector2.ZERO)
+				bot.home = at
+				bot.fail_closed(at, why)
+			return 1
+	print("HARNESS mite %d/%d survive %d/%d kill" % [lived, seeds.size(), killed_runs, seeds.size()])
+	return 0
+
+
+func _mite_seeds() -> Array:
+	var one := OS.get_environment("CRYSTALSTORM_HARNESS_SEED").strip_edges()
+	if one != "":
+		return [int(one)]
+	var many := OS.get_environment("CRYSTALSTORM_HARNESS_SEEDS").strip_edges()
+	if many != "":
+		var picked: Array = []
+		for part in many.split(","):
+			var bit := part.strip_edges()
+			if bit != "":
+				picked.append(int(bit))
+		if not picked.is_empty():
+			return picked
+	return [12349, 12350, 12351, 12352, 12353]
+
+
+func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
+	print("HARNESS seed %d" % seed_value)
+	print("HARNESS setup pending_launch harness-mite_fight seed %d resume off" % seed_value)
+	var seen: PackedStringArray = PackedStringArray()
+	var player = await _boot(tree, "mite_fight", seen, seed_value)
+	if player == null:
+		return {"survive": false, "kills": 0, "burn_sprint": 0, "why": "boot failed"}
+	var crystal = tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_origin_cell"):
+		await _drop_game(tree, player)
+		return {"survive": false, "kills": 0, "burn_sprint": 0, "why": "no crystal"}
+	var origin: Vector2i = crystal.get_origin_cell()
+	var origin_xz := Vector2(float(origin.x), float(origin.y))
+	var fight = _Fight.new()
+	fight._phase = "hunt"
+	fight._home_arrived = true
+	fight._home_logged = true
+	fight.finish_bow()
+	fight.bot.chapter = "mite_fight"
+	fight.bot.objective = "kill the crystal mites from the clear rim"
+	fight.bot.stuck_limit = 24
+	fight.bot.input.pace_presses = true
+	var elapsed := 0.0
+	var clear := 0.0
+	var burn_sprint := 0
+	var why := ""
+	var last_pos := Vector2.ZERO
+	while elapsed < MITE_LIMIT:
+		var delta := _delta(tree)
+		elapsed += delta
+		fight.bot.input.advance_pace(delta)
+		_note_banner(tree, seen)
+		if float(player.health) <= 0.0:
+			why = "player died seed %d" % seed_value
+			break
+		var result := fight.tick(delta, tree, player, origin_xz)
+		var pos := _xz(player)
+		last_pos = pos
+		if _burn_sprint(tree, fight, player, pos):
+			burn_sprint += 1
+		if result == "fail":
+			why = "fight returned fail seed %d" % seed_value
+			break
+		var kills := int(fight.killed.get("crystal_mite", 0))
+		var near := _mites_near(tree, origin_xz, MITE_CLEAR)
+		if kills >= 1 and near == 0 and not _Hazard.burning(tree, pos) and not _Hazard.must_leave(tree, pos):
+			clear += delta
+		else:
+			clear = 0.0
+		if clear >= 1.0:
+			break
+		await tree.process_frame
+	var survived := player != null and float(player.health) > 0.0 and why == ""
+	var total := int(fight.killed.get("crystal_mite", 0))
+	if why == "" and not _saw(seen, OPENING_BANNER):
+		why = "opening banner missing"
+		survived = false
+	if why == "" and total < 1:
+		why = "no mite kill seed %d" % seed_value
+	if why == "" and burn_sprint > 0:
+		why = "burn sprint %d seed %d" % [burn_sprint, seed_value]
+	var after := _snap(tree, player)
+	if survived:
+		var want_hp := "%d / %d" % [int(round(float(after.get("hp", 0.0)))), int(round(float(after.get("max", 0.0))))]
+		if str(after.get("hp_label", "")) != want_hp:
+			why = "hp label %s want %s" % [str(after.get("hp_label", "")), want_hp]
+			survived = false
+	print("HARNESS see mite_fight seed %d kills %d burn_sprint %d hp %s" % [
+		seed_value, total, burn_sprint, str(after.get("hp_label", "")),
+	])
+	var shot := ""
+	if survived and why == "":
+		shot = fight.bot.save_view("mite_fight", _xz(player))
+		if shot == "":
+			why = "screenshot was not saved"
+			survived = false
+	fight.bot.release()
+	var kept := fight.bot
+	await _drop_game(tree, player)
+	return {
+		"survive": survived and why == "",
+		"kills": total,
+		"burn_sprint": burn_sprint,
+		"why": why,
+		"bot": kept,
+		"pos": last_pos,
+	}
+
+
+func _burn_sprint(tree: SceneTree, fight, player: Node, pos: Vector2) -> bool:
+	var names: PackedStringArray = fight.bot.input.held_names()
+	var sprinting := false
+	var dashing := false
+	for action in names:
+		if String(action) == "sprint":
+			sprinting = true
+		if String(action) == "skill_1" or String(action) == "dash":
+			dashing = true
+	var goal: Vector2 = fight.bot.home
+	var through := _Hazard.burning(tree, pos) or _Hazard.burning(tree, goal) or _Hazard.crosses_burn(tree, pos, goal)
+	if sprinting and through:
+		return true
+	return dashing and _Hazard.dash_lands_in_burn(tree, pos, _yaw(player))
+
+
+func _mites_near(tree: SceneTree, origin: Vector2, radius: float) -> int:
+	var count := 0
+	if tree == null:
+		return 0
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or str(node.get("enemy_id")) != "crystal_mite":
+			continue
+		if float(node.get("health")) <= 0.0:
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		var at := Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
+		if at.distance_to(origin) <= radius:
+			count += 1
+	return count
+
+
+func _drop_game(tree: SceneTree, player: Node) -> void:
+	var game := player
+	while game != null and game.name != "Game":
+		game = game.get_parent()
+	if game != null and game != tree.root:
+		game.queue_free()
+	for _i in 30:
+		await tree.process_frame
+		if tree.get_first_node_in_group("player") == null:
+			break
 
 
 func _yaw(player: Node) -> float:

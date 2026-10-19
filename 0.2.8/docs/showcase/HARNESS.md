@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`, `mite_fight`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
 
 ## Shared setup
 
@@ -94,6 +94,21 @@ Stands through an enemy `StrikeTelegraph` or `TelegraphRing` until that warning 
 | Banner | Same allowed lines as crystals, plus `Used herb` when the bot drinks one. |
 | HP | Lower than boot, label matches. Death fails the scenario. |
 | Shot | `steps/*_combat.png` |
+
+## mite_fight
+
+Boots a fresh world on each seed and walks to the Origin Heart. The burn pool, the crystal mites, and the heart-bound guardian are the ones that seed spawns. No teleport, no granted XP, and no direct damage. `HonestFight` is already home, the bow chapter is finished, and the wooden sword is the weapon. Default seeds are 12349 through 12353. `CRYSTALSTORM_HARNESS_SEED` runs one seed. `CRYSTALSTORM_HARNESS_SEEDS` runs a comma list.
+
+Each attempt lasts at most 150 seconds. The bot has to kill at least one crystal mite from a clear cell, then hold one second with no living mite inside 16 columns of the heart and with the player out of the burn. A sprint or dash whose path, landing, or current cell is burn fails that seed.
+
+| Check | Pass |
+| --- | --- |
+| Survive | Health stays above zero and the label matches. |
+| Kill | `KILL crystal_mite` at least once, then the heart neighborhood is clear for one second. |
+| Burn sprint | Zero frames where sprint or dash is held into a burn tile. |
+| Banner | The opening dig line is up. |
+| Shot | `steps/*_mite_fight.png` from the last clear moment. |
+| Seeds | One `HARNESS mite seed` line per seed, then `HARNESS mite N/N survive N/N kill`. |
 
 ## Not scripted yet
 

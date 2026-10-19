@@ -65,7 +65,7 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 
 ## Play harness
 
-`bash $S scenario <dig|build|break|crystals|corruption|combat>` runs `0.2.8/scripts/verify_honest_bot_scenario.gd`. The contract is `0.2.8/docs/showcase/HARNESS.md`. World scenarios boot `main.tscn` from seed 12349 and play through `honest_bot` (`HonestInput`, `HonestBuild`, `HonestPlayBot`, `HonestCombat`, `HonestSkillCast`). Pass prints `HARNESS SCENARIO OK <name>`, `HARNESS SHOT`, and `PROBE CAPTURE`, and the shot file must exist. `break` does not boot. It must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`, and the wrapper then prints `SCENARIO BREAK OK`. One line that starts with `FAIL` fails a world scenario. Stuck reports and their screenshots are `HonestPlayBot.fail_closed`.
+`bash $S scenario <dig|build|break|crystals|corruption|combat|mite_fight>` runs `0.2.8/scripts/verify_honest_bot_scenario.gd`. The contract is `0.2.8/docs/showcase/HARNESS.md`. World scenarios boot `main.tscn` from seed 12349 and play through `honest_bot` (`HonestInput`, `HonestBuild`, `HonestPlayBot`, `HonestCombat`, `HonestSkillCast`). Pass prints `HARNESS SCENARIO OK <name>`, `HARNESS SHOT`, and `PROBE CAPTURE`, and the shot file must exist. `mite_fight` loops seeds 12349–12353 (or `CRYSTALSTORM_HARNESS_SEED` / `CRYSTALSTORM_HARNESS_SEEDS`) through `HonestFight`. `break` does not boot. It must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`, and the wrapper then prints `SCENARIO BREAK OK`. One line that starts with `FAIL` fails a world scenario. Stuck reports and their screenshots are `HonestPlayBot.fail_closed`.
 
 ## Drive
 
