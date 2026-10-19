@@ -817,6 +817,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
 		return ""
+	if kind == "crystal_mite" and not orbits() and not _Hazard.burning(tree, pos) and pos.distance_to(foe) > _Hazard.sword_reach() and pos.distance_to(foe) <= _Hazard.sword_reach() + 2.0:
+		_face_foe(player, pos, foe)
+		return ""
 	if kind == "crystal_mite" and not orbits() and _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH and pos.distance_to(foe) > _Hazard.sword_reach():
 		var away := pos - origin
 		if away.length_squared() < 0.04:
