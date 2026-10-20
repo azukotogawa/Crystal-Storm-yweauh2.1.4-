@@ -45,6 +45,7 @@ var trace_strike := ""
 var trace_heal := ""
 var trace_foe := ""
 var trace_hunt := ""
+var _foe_kind := ""
 var bow_logged := false
 var _bow_age := 0.0
 var _pick := false
@@ -789,12 +790,15 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 	var foe: Vector2 = choice.get("xz", Vector2.ZERO)
 	var fid := str(choice.get("id", ""))
 	if fid != _foe_id:
+		var mite_swap := kind == "crystal_mite" and _foe_kind == "crystal_mite"
 		_foe_id = fid
+		_foe_kind = kind
 		_foe_age = 0.0
-		_sword = false
 		_stand = Vector2.INF
 		_dodge = Vector2.INF
-		_attack_wait = _Pace.enemy_span(_telegraph_kind(kind))
+		if not mite_swap:
+			_sword = false
+			_attack_wait = _Pace.enemy_span(_telegraph_kind(kind))
 		if _bow > 0 and _bow < 4:
 			_bow = 0
 		if kind != "" and kind != "crystal_mite":
@@ -1169,7 +1173,12 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 func _step_on_rim(tree: SceneTree, pos: Vector2, cand: Vector2) -> bool:
 	if _Hazard.burning(tree, cand) or _Hazard.enters_burn(tree, pos, cand) or _Hazard.ring_hot(tree, cand):
 		return false
-	return _Hazard.depth_at(tree, cand) < _Hazard.CLEAR_DEPTH
+	var span := pos.distance_to(cand)
+	var steps := maxi(int(ceil(span / 0.5)), 1)
+	for i in range(1, steps + 1):
+		if _Hazard.depth_at(tree, pos.lerp(cand, float(i) / float(steps))) >= _Hazard.CLEAR_DEPTH:
+			return false
+	return true
 
 
 func _hold_mite_rim(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin: Vector2) -> void:
