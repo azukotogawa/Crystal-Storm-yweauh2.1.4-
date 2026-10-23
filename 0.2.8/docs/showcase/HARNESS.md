@@ -83,11 +83,11 @@ Watches the pool until a nearby cell becomes corrupt, breaks one filmed cell wit
 
 ## combat
 
-Stands through an enemy `StrikeTelegraph` or `TelegraphRing` until that warning deals damage, chips film until a skill point exists, spends it on Dash through `HonestSkillCast`, and lands a sword hit that lowers a living foe's health. `HonestCombat` does the sword walk. No XP is granted.
+Stands through a mite `StrikeTelegraph` until that bite lands at 1.45 columns or less, steps away from a boss `TelegraphRing`, chips film until a skill point exists, spends it on Dash through `HonestSkillCast`, and lands a sword hit that lowers a living foe's health. `HonestCombat` does the sword walk. No XP is granted.
 
 | Check | Pass |
 | --- | --- |
-| Warning hit | The disc or ring is visible, then health falls. |
+| Warning hit | A mite `StrikeTelegraph` is visible (`HARNESS attack warning`), then that mite lands `HARNESS mite hit` at 1.45 columns or less. A boss ring is stepped away from and does not count. |
 | Melee | One foe's health is lower after sword swings. |
 | Skill | Dash is bought and the cast slides (`OK dash slide` or `SKILL dash`). |
 | Feedback | `HitMarkers` is live at least once (a sword connection or a crystal chip). |

@@ -619,9 +619,7 @@ func _physics_process(delta: float) -> void:
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
 	var aim_cell := _player_column()
-	var aim_pos := _player_world_pos()
-	var in_reach := global_position.distance_to(aim_pos) <= 1.8
-	var allow_contact := in_reach and (not guardian or _guardian_aggro)
+	var allow_contact := not guardian or _guardian_aggro
 	var did_attack := _resolve_contact(delta, allow_contact, self_cell, aim_cell)
 	_StructureIntegrity.chip_enemy(self_cell, contact_damage, did_attack, brain, self)
 	var winding := _contact_left > 0.0 or (_special != null and _special.windup > 0.0)

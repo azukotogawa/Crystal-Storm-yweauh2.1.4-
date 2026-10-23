@@ -32,6 +32,9 @@ const WALL_BANNER := "Wall raised — crystal slows here; it will find another w
 var _off_film: int = 0
 var _film_bound: Dictionary = {}
 var _film_tree: SceneTree
+var _combat_tree: SceneTree
+var _combat_player: Node
+var _combat_job: Dictionary = {}
 
 
 func play(tree: SceneTree, scenario: String) -> int:
@@ -761,16 +764,21 @@ func _tick_corruption(tree: SceneTree, player: Node, crystal: Node, origin: Vect
 
 func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, fight, cast, job: Dictionary, delta: float, pos: Vector2) -> String:
 	_note_hit_feedback(tree, job)
+	_combat_tree = tree
+	_combat_player = player
+	_combat_job = job
+	if float(job.get("mite_far", -1.0)) >= 0.0:
+		return "mite hit %.2f columns" % float(job["mite_far"])
 	if not bool(job["struck"]):
-		if _attack_warn(tree):
+		if _mite_telegraph_columns(tree, pos, job) < 90.0:
 			bot.release()
 			if float(job["warn_hp"]) < 0.0:
 				job["warn_hp"] = float(player.health)
 				job["warned"] = true
 				print("HARNESS attack warning hp %.1f" % float(player.health))
-			elif float(player.health) < float(job["warn_hp"]) - 0.05:
-				job["struck"] = true
-				print("HARNESS warning hit %.1f to %.1f" % [float(job["warn_hp"]), float(player.health)])
+			return ""
+		if _attack_warn(tree):
+			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
 		if pos.distance_to(origin_xz) > 12.0:
 			_step_toward(bot, player, origin_xz, delta, pos)
@@ -1106,6 +1114,61 @@ func _corrupt_near(origin: Vector2i, radius: int) -> int:
 	return count
 
 
+func _mite_telegraph_columns(tree: SceneTree, pos: Vector2, job: Dictionary) -> float:
+	var aim := Vector2(float(floori(pos.x)), float(floori(pos.y)))
+	var best := 99.0
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or str(node.get("enemy_id")) != "crystal_mite":
+			continue
+		var disc := node.get_node_or_null("StrikeTelegraph")
+		if disc == null or not disc.visible:
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		_watch_mite_hit(node, job)
+		var col: Vector2i = _Move.column_pos(body.global_position)
+		var dist := Vector2(float(col.x), float(col.y)).distance_to(aim)
+		if dist < best:
+			best = dist
+	return best
+
+
+func _watch_mite_hit(node: Node, job: Dictionary) -> void:
+	var seen: Array = job.get("watched_mites", [])
+	var id := node.get_instance_id()
+	if id in seen:
+		return
+	if not node.has_signal("attacked_player"):
+		return
+	seen.append(id)
+	job["watched_mites"] = seen
+	node.attacked_player.connect(_on_mite_attacked.bind(node))
+
+
+func _on_mite_attacked(_damage: float, node: Node) -> void:
+	if _combat_job.is_empty() or bool(_combat_job.get("struck", false)):
+		return
+	if not bool(_combat_job.get("warned", false)):
+		return
+	if _combat_tree == null or _combat_player == null or not is_instance_valid(node):
+		return
+	var pos := _xz(_combat_player)
+	var aim := Vector2(float(floori(pos.x)), float(floori(pos.y)))
+	var body := node as Node3D
+	if body == null:
+		return
+	var col: Vector2i = _Move.column_pos(body.global_position)
+	var cols := Vector2(float(col.x), float(col.y)).distance_to(aim)
+	_combat_job["mite_cols"] = cols
+	var hp := float(_combat_player.health)
+	print("HARNESS mite hit %.2f columns %.1f to %.1f" % [cols, float(_combat_job.get("warn_hp", hp)), hp])
+	if cols > 1.45:
+		_combat_job["mite_far"] = cols
+		return
+	_combat_job["struck"] = true
+
+
 func _attack_warn(tree: SceneTree) -> bool:
 	for node in tree.get_nodes_in_group("crystal_enemy"):
 		if not is_instance_valid(node):
@@ -1243,6 +1306,8 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 		return ""
 	if not bool(job["warned"]):
 		return "attack warning missing"
+	if float(job.get("mite_cols", 99.0)) > 1.45:
+		return "mite hit %.2f columns" % float(job.get("mite_cols", 99.0))
 	if not bool(job["melee"]):
 		return "melee missed"
 	if not bool(job.get("feedback", false)):
