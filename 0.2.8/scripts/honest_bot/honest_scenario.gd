@@ -16,6 +16,8 @@ const _Worlds = preload("res://systems/world_manager.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
 const _Features = preload("res://world/feature_registry.gd")
 const _Corrupt = preload("res://crystal/crystal_corruption.gd")
+const _RelicChoice = preload("res://relics/relic_choice.gd")
+const _RelicPanel = preload("res://ui/relic_choice_panel.gd")
 
 const MAIN_SCENE := "res://scenes/main.tscn"
 const SEED := 12349
@@ -36,6 +38,8 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_feature(tree, name)
 	if name == "mite_fight":
 		return await _play_mite(tree)
+	if name == "relic_esc":
+		return await _play_relic(tree)
 	if name != "dig" and name != "build":
 		print("FAIL harness unknown scenario %s" % name)
 		return 1
@@ -82,6 +86,227 @@ func play(tree: SceneTree, scenario: String) -> int:
 	if shot == "":
 		return _give_up(bot, player, "screenshot was not saved")
 	return 0
+
+
+func _play_relic(tree: SceneTree) -> int:
+	var seeds := _mite_seeds()
+	var held := 0
+	var bot = _Bot.new()
+	bot.chapter = "relic_esc"
+	bot.objective = "keep the relic panel up when Esc is pressed"
+	var last_pos := Vector2.ZERO
+	for seed_value in seeds:
+		var row: Dictionary = await _relic_attempt(tree, int(seed_value))
+		var pause_closed := bool(row.get("pause_closed", false))
+		var panel_held := bool(row.get("panel_held", false))
+		var picked := bool(row.get("picked", false))
+		print("HARNESS relic seed %d pause_closed %s panel_held %s picked %s" % [
+			int(seed_value),
+			"yes" if pause_closed else "no",
+			"yes" if panel_held else "no",
+			"yes" if picked else "no",
+		])
+		if not bool(row.get("ok", false)):
+			var why := str(row.get("why", "relic esc failed"))
+			print("FAIL harness assertion %s" % why)
+			var at: Vector2 = row.get("pos", Vector2.ZERO)
+			bot.home = at
+			bot.fail_closed(at, why)
+			return 1
+		held += 1
+		last_pos = row.get("pos", last_pos)
+	print("HARNESS relic %d/%d pause_closed %d/%d panel_held" % [held, seeds.size(), held, seeds.size()])
+	var shot := bot.save_view("relic_esc", last_pos)
+	if shot == "":
+		print("FAIL harness assertion screenshot was not saved")
+		bot.fail_closed(last_pos, "screenshot was not saved")
+		return 1
+	return 0
+
+
+func _relic_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
+	print("HARNESS seed %d" % seed_value)
+	print("HARNESS setup pending_launch harness-relic_esc seed %d resume off" % seed_value)
+	var seen: PackedStringArray = PackedStringArray()
+	var player = await _boot(tree, "relic_esc", seen, seed_value)
+	if player == null:
+		return {"ok": false, "why": "boot failed"}
+	var relic_mgr = player.get_node_or_null("RelicManager")
+	var pos := _xz(player)
+	if relic_mgr == null:
+		await _drop_game(tree, player)
+		return {"ok": false, "why": "no relic manager", "pos": pos}
+	var before := _equipped_count(relic_mgr)
+	_RelicChoice.present(tree, relic_mgr, seed_value, "Choose a relic")
+	var panel = null
+	for _wait in 8:
+		await tree.process_frame
+		panel = _RelicPanel._open
+		if panel != null and is_instance_valid(panel):
+			break
+	if panel == null or not is_instance_valid(panel):
+		pos = _xz(player)
+		await _drop_game(tree, player)
+		return {"ok": false, "why": "relic panel did not open", "pos": pos}
+	var hands = _Hands.new()
+	var weapon = player.get_node_or_null("WeaponController")
+	var hotbar := -1
+	var cool := 0.0
+	if weapon != null and weapon.has_method("get_active_hotbar_index"):
+		hotbar = int(weapon.get_active_hotbar_index())
+		cool = float(weapon.get("_cooldown_timer"))
+	var body := player as Node3D
+	var origin := body.global_position
+	var pause = tree.get_first_node_in_group("pause_menu")
+	if not hands.pulse("hotbar_4") or not hands.pulse("attack") or not hands.pulse_key(KEY_ESCAPE):
+		pos = _xz(player)
+		await _drop_game(tree, player)
+		return {"ok": false, "why": "esc input was not sent", "pos": pos}
+	hands.set_held(PackedStringArray(["move_forward"]))
+	for _step in 45:
+		await tree.process_frame
+	hands.begin_tick()
+	hands.release_all()
+	var pause_closed := _pause_stays_closed(tree, pause)
+	var still = _RelicPanel._open
+	var panel_held := still != null and is_instance_valid(still) and still == panel
+	var moved := body.global_position.distance_to(origin)
+	var hotbar_same := true
+	var cool_same := true
+	if weapon != null and weapon.has_method("get_active_hotbar_index"):
+		hotbar_same = int(weapon.get_active_hotbar_index()) == hotbar
+		cool_same = float(weapon.get("_cooldown_timer")) <= cool + 0.001
+	var blocked := _GI.modal_open and _GI.blocks_actions()
+	if not pause_closed or not panel_held or not blocked or moved > 0.2 or not hotbar_same or not cool_same:
+		var why := "esc leaked pause %s panel %s blocked %s moved %.3f hotbar %s cooldown %s" % [
+			"closed" if pause_closed else "open",
+			"held" if panel_held else "gone",
+			"yes" if blocked else "no",
+			moved,
+			"same" if hotbar_same else "changed",
+			"same" if cool_same else "started",
+		]
+		pos = _xz(player)
+		await _drop_game(tree, player)
+		return {
+			"ok": false,
+			"why": why,
+			"pos": pos,
+			"pause_closed": pause_closed,
+			"panel_held": panel_held,
+			"picked": false,
+		}
+	var picked := false
+	for _try in 10:
+		if await _click_relic_offer(tree, still, hands, relic_mgr):
+			picked = true
+			break
+		await tree.process_frame
+	for _settle in 8:
+		await tree.process_frame
+		if _RelicPanel._open == null:
+			break
+	var gone := _RelicPanel._open == null or not is_instance_valid(_RelicPanel._open)
+	var pause_after := _pause_stays_closed(tree, pause)
+	var kept := _equipped_count(relic_mgr) >= before and _equipped_count(relic_mgr) > 0
+	var cleared := not _GI.modal_open and not _GI.blocks_actions()
+	pos = _xz(player)
+	print("HARNESS see relic_esc seed %d pause %s panel_after %s equipped %d moved %.3f" % [
+		seed_value,
+		"closed" if pause_after else "open",
+		"gone" if gone else "open",
+		_equipped_count(relic_mgr),
+		moved,
+	])
+	await _drop_game(tree, player)
+	if not picked or not gone or not pause_after or not kept or not cleared:
+		return {
+			"ok": false,
+			"why": "pick leaked pause %s panel %s picked %s equipped %s modal %s" % [
+				"closed" if pause_after else "open",
+				"gone" if gone else "open",
+				"yes" if picked else "no",
+				"kept" if kept else "lost",
+				"clear" if cleared else "stuck",
+			],
+			"pos": pos,
+			"pause_closed": pause_closed,
+			"panel_held": panel_held,
+			"picked": picked,
+		}
+	return {
+		"ok": true,
+		"why": "",
+		"pos": pos,
+		"pause_closed": pause_closed and pause_after,
+		"panel_held": panel_held,
+		"picked": picked,
+	}
+
+
+func _pause_stays_closed(tree: SceneTree, pause) -> bool:
+	if tree != null and tree.paused:
+		return false
+	if pause != null and bool(pause.visible):
+		return false
+	return not _GI.pause_open
+
+
+func _equipped_count(relic_mgr) -> int:
+	if relic_mgr == null or not ("equipped" in relic_mgr):
+		return 0
+	var raw = relic_mgr.equipped
+	if raw is Array:
+		return raw.size()
+	return 0
+
+
+func _offer_button(panel: Node, relic_mgr) -> Button:
+	var fallback: Button = null
+	for node in panel.find_children("*", "Button", true, false):
+		if not node is Button:
+			continue
+		if str(node.get_meta("relic_role", "")) != "offer":
+			continue
+		var button := node as Button
+		if fallback == null:
+			fallback = button
+		var relic_id := str(button.get_meta("relic_id", ""))
+		if relic_id == "" or _has_relic(relic_mgr, relic_id):
+			continue
+		return button
+	return fallback
+
+
+func _has_relic(relic_mgr, relic_id: String) -> bool:
+	if relic_mgr == null or not ("equipped" in relic_mgr):
+		return false
+	var raw = relic_mgr.equipped
+	if not raw is Array:
+		return false
+	for old in raw:
+		if str(old) == relic_id:
+			return true
+	return false
+
+
+func _click_relic_offer(tree: SceneTree, panel: Node, hands, relic_mgr) -> bool:
+	if panel == null or not is_instance_valid(panel):
+		return false
+	var button := _offer_button(panel, relic_mgr)
+	if button == null:
+		return false
+	var rect := button.get_global_rect()
+	if rect.size.x < 4.0 or rect.size.y < 4.0:
+		return false
+	var at := rect.position + rect.size * 0.5
+	if not hands.click_at(button, at, true):
+		return false
+	await tree.process_frame
+	if is_instance_valid(button):
+		hands.click_at(button, at, false)
+	await tree.process_frame
+	return true
 
 
 func _break(tree: SceneTree) -> int:

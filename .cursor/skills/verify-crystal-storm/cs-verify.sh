@@ -769,8 +769,8 @@ telemetry-summary)
 scenario)
   name="${1:-}"
   case "$name" in
-    dig|build|break|crystals|corruption|combat|mite_fight) ;;
-    *) echo "usage: cs-verify.sh scenario <dig|build|break|crystals|corruption|combat|mite_fight>"; exit 2 ;;
+    dig|build|break|crystals|corruption|combat|mite_fight|relic_esc) ;;
+    *) echo "usage: cs-verify.sh scenario <dig|build|break|crystals|corruption|combat|mite_fight|relic_esc>"; exit 2 ;;
   esac
   export CRYSTALSTORM_SCENARIO="$name"
   run_godot "scenario-$name" --headless --path "$ROOT" -s res://scripts/verify_honest_bot_scenario.gd; r=$?
@@ -818,5 +818,5 @@ clip)
     echo "CLIP FAIL rc=$r"; tail -20 "$EVID/movie-pace.log"; exit 1
   fi
   echo "CLIP OK rc=$r" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|scenario <dig|build|break|crystals|corruption|combat|mite_fight>|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|scenario <dig|build|break|crystals|corruption|combat|mite_fight|relic_esc>|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac

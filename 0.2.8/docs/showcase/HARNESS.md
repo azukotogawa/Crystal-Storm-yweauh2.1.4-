@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`, `mite_fight`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
 
 ## Shared setup
 
@@ -109,6 +109,19 @@ Each attempt lasts at most 150 seconds. The bot has to kill at least one crystal
 | Banner | The opening dig line is up. |
 | Shot | `steps/*_mite_fight.png` from the last clear moment. |
 | Seeds | One `HARNESS mite seed` line per seed, then `HARNESS mite N/N survive N/N kill`. |
+
+## relic_esc
+
+Boots a fresh world on each seed. Default seeds are 12349 through 12353. `CRYSTALSTORM_HARNESS_SEED` runs one seed. `CRYSTALSTORM_HARNESS_SEEDS` runs a comma list. After the start region is ready, `RelicChoice.present` opens the offer the game uses when a spawn is destroyed. The bot then sends Escape, holds move, and pulses attack and hotbar through `HonestInput`. No teleport, no granted XP, and no direct damage.
+
+| Check | Pass |
+| --- | --- |
+| Pause | The pause menu stays hidden, the tree stays unpaused, and `pause_open` stays false. |
+| Panel | The same offer is still open after Escape. |
+| Play | The player does not walk, the hotbar slot does not change, and the weapon cooldown does not start. |
+| Pick | A click on an offer closes the panel, leaves a relic equipped, and clears the modal. |
+| Seeds | One `HARNESS relic seed` line per seed, then `HARNESS relic N/N pause_closed N/N panel_held`. |
+| Shot | `steps/*_relic_esc.png` |
 
 ## Not scripted yet
 
