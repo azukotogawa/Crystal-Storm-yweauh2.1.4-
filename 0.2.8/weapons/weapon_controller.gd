@@ -526,7 +526,28 @@ func _query_melee_facing(origin: Vector3, forward: Vector3, range_w: float) -> A
 			_combat_def,
 			180.0
 		)
+	if targets.is_empty():
+		targets = _point_blank_melee(origin, forward)
 	return targets
+
+
+func _point_blank_melee(origin: Vector3, forward: Vector3) -> Array[Node]:
+	var blank_w := _range_world(0.5)
+	if blank_w <= 0.0:
+		return []
+	var flat := Vector3(forward.x, 0.0, forward.z)
+	if flat.length_squared() < 0.0001:
+		return []
+	flat = flat.normalized()
+	var side := Vector3(-flat.z, 0.0, flat.x)
+	var found: Array[Node] = []
+	var dirs: Array[Vector3] = [flat, -flat, side, -side]
+	for dir in dirs:
+		for node in _CombatHitResolver.query_melee(self, origin, dir, blank_w, _combat_def, 90.0):
+			if found.has(node):
+				continue
+			found.append(node)
+	return found
 
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:

@@ -81,6 +81,32 @@ func _run() -> void:
 	else:
 		print("OK weapon uses column crystal targeting")
 
+	entity.remove_from_group("world_entity")
+	var weapon := WeaponController.new()
+	weapon.set_process(false)
+	weapon.set_physics_process(false)
+	holder.add_child(weapon)
+	var behind := _FakeEntity.new()
+	behind.add_to_group("world_entity")
+	holder.add_child(behind)
+	var scale := float(ws.voxel_scale)
+	behind.global_position = origin_world - Vector3(scale * 0.4, 0.0, 0.0)
+	var ahead_far := _FakeEntity.new()
+	ahead_far.add_to_group("world_entity")
+	holder.add_child(ahead_far)
+	ahead_far.global_position = origin_world - Vector3(scale * 0.9, 0.0, 0.0)
+	await process_frame
+	var sword_range := float(2.8 * scale)
+	var blank_hits: Array = weapon._query_melee_facing(origin_world, forward, sword_range)
+	if not blank_hits.has(behind):
+		push_error("point-blank foe 0.4 columns behind the swing must be hit")
+		failed = true
+	elif blank_hits.has(ahead_far):
+		push_error("foe 0.9 columns behind the swing must stay outside the point-blank pass")
+		failed = true
+	else:
+		print("OK point-blank melee includes 0.4 columns and skips 0.9")
+
 	holder.queue_free()
 	if failed:
 		quit(1)
