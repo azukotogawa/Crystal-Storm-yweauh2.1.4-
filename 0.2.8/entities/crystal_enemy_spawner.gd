@@ -380,6 +380,10 @@ func export_enemies() -> Array:
 		}
 		if enemy.has_meta("guard_spawn_id"):
 			row["guard_spawn_id"] = int(enemy.get_meta("guard_spawn_id"))
+		if enemy.has_method("holds_station") and enemy.holds_station() and enemy.has_method("station_cell"):
+			var station: Vector2i = enemy.station_cell()
+			row["station_x"] = station.x
+			row["station_z"] = station.y
 		out.append(row)
 	return out
 
@@ -416,7 +420,12 @@ func import_enemies(rows: Array) -> void:
 			var guard_id := int(row["guard_spawn_id"])
 			enemy.set_meta("guard_spawn_id", guard_id)
 			var heart = _column_for_spawn_id(guard_id)
-			if heart is Vector2i and enemy.has_method("bind_heart"):
+			if heart is Vector2i and row.has("station_x") and enemy.has_method("bind_station"):
+				enemy.bind_station(
+					Vector2i(int(row["station_x"]), int(row.get("station_z", heart.y))),
+					heart
+				)
+			elif heart is Vector2i and enemy.has_method("bind_heart"):
 				enemy.bind_heart(heart)
 		if enemy.has_method("sync_spatial_index"):
 			enemy.sync_spatial_index()
@@ -496,13 +505,51 @@ func _try_spawn_guardians() -> void:
 		if _active.size() >= max_active:
 			return
 		var kind: StringName = &"origin_warden" if bool(spawn.is_boss) else &"spawn_elite"
-		if not spawn_enemy_at_column(kind, spawn.world_pos.x, spawn.world_pos.y, spawn.world_pos):
+		var at := Vector2i(spawn.world_pos)
+		var patrol := Vector2i(spawn.world_pos)
+		if kind == &"spawn_elite":
+			at = _elite_ring_station(at)
+			patrol = at
+		if not spawn_enemy_at_column(kind, at.x, at.y, patrol):
 			continue
 		var enemy: Node = _active[_active.size() - 1]
 		enemy.set_meta("guard_spawn_id", sid)
-		if enemy.has_method("bind_heart"):
+		if kind == &"spawn_elite" and enemy.has_method("bind_station"):
+			enemy.bind_station(at, spawn.world_pos)
+		elif enemy.has_method("bind_heart"):
 			enemy.bind_heart(spawn.world_pos)
 		_guarded_spawn_ids[sid] = true
+
+
+func _elite_ring_station(heart: Vector2i) -> Vector2i:
+	var edge := int(round(spawn_near_player_max))
+	var offsets: Array[Vector2i] = [
+		Vector2i(edge, 0),
+		Vector2i(-edge, 0),
+		Vector2i(0, edge),
+		Vector2i(0, -edge),
+	]
+	if _crystal != null:
+		for off in offsets:
+			var at := heart + off
+			if _crystal.get_depth_at(at.x, at.y) >= require_crystal_depth:
+				return at
+		var sampled := _sample_crystal_ring(
+			float(heart.x) + 0.5,
+			float(heart.y) + 0.5,
+			float(edge),
+			float(edge),
+			16
+		)
+		if sampled != Vector3.ZERO:
+			var ws = _WorldSettings.get_active()
+			var cell := Vector2i(
+				floori(ws.world_to_column(sampled.x)),
+				floori(ws.world_to_column(sampled.z))
+			)
+			if cell != heart and Vector2(cell).distance_to(Vector2(heart)) + 0.01 >= float(edge) - 1.5:
+				return cell
+	return heart + offsets[0]
 
 
 func _claim_living_guardians(spawns: Array) -> void:

@@ -75,6 +75,8 @@ const GUARDIAN_LEASH_COLUMNS := 22.0
 var _guardian_aggro: bool = false
 var _heart_locked: bool = false
 var _locked_heart: Vector2i = Vector2i.ZERO
+var _station: Vector2i = Vector2i.ZERO
+var _station_reach: float = 0.0
 
 
 func _ready() -> void:
@@ -450,6 +452,39 @@ func bind_heart(cell: Vector2i) -> void:
 		brain.target_cell = cell
 
 
+func bind_station(station: Vector2i, heart: Vector2i) -> void:
+	_heart_locked = true
+	_locked_heart = heart
+	_station = station
+	_station_reach = Vector2(station).distance_to(Vector2(heart))
+	_patrol_anchor = station
+	if brain:
+		brain.home_pos = station
+		brain.patrol_anchor = station
+		brain.defend_center = station
+		brain.target_cell = station
+
+
+func station_cell() -> Vector2i:
+	return _station
+
+
+func holds_station() -> bool:
+	return _station_reach > 0.0
+
+
+func _hold_station() -> void:
+	if _station_reach <= 0.0:
+		return
+	var here := _EntityNavigation.column_pos(global_position)
+	if here == _station:
+		return
+	var ws = WorldSettings.get_active()
+	global_position.x = ws.column_to_world(float(_station.x) + 0.5)
+	global_position.z = ws.column_to_world(float(_station.y) + 0.5)
+	_notify_spatial_moved()
+
+
 func _heart_cell() -> Vector2i:
 	if _heart_locked:
 		return _locked_heart
@@ -507,6 +542,8 @@ func _physics_process(delta: float) -> void:
 	var guardian := _is_guardian()
 	if guardian:
 		_refresh_guardian_aggro()
+	if _station_reach > 0.0:
+		_hold_station()
 	if _special and (not guardian or _guardian_aggro):
 		_tick_special(delta)
 	elif guardian:
@@ -541,6 +578,8 @@ func _physics_process(delta: float) -> void:
 	var target_cell := brain.tick(delta, self_cell, player_cell, crystal_sim, nearby_depth)
 	if guardian and not _guardian_aggro:
 		target_cell = _heart_cell()
+	if _station_reach > 0.0:
+		target_cell = _station
 
 	if _knock_left > 0.0:
 		var step := minf(_knock_left, maxf(move_speed, 6.0) * delta * 2.4)
@@ -553,6 +592,7 @@ func _physics_process(delta: float) -> void:
 			global_position = shoved
 			_knock_left = maxf(_knock_left - step, 0.0)
 		_notify_spatial_moved()
+		_hold_station()
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
 		return
@@ -568,6 +608,7 @@ func _physics_process(delta: float) -> void:
 		_crystal
 	)
 	_notify_spatial_moved()
+	_hold_station()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
 
@@ -669,7 +710,10 @@ func _tick_special(delta: float) -> void:
 		_sfx("boss_phase", global_position)
 	var act := StringName(str(intent.get("action", "")))
 	if bool(intent.get("marker_fresh", false)):
-		_ring_anchor = _player_world_pos() if _target else global_position
+		if _station_reach > 0.0:
+			_ring_anchor = global_position
+		else:
+			_ring_anchor = _player_world_pos() if _target else global_position
 		_sfx("boss_telegraph", global_position)
 		_show_ring(act)
 	if bool(intent.get("telegraph", false)):

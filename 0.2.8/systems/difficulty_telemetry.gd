@@ -388,6 +388,9 @@ func _push_death(actor: String) -> void:
 func _note_damage(kind: String, amount: float, source: String, actor: String) -> void:
 	var now := Time.get_ticks_msec()
 	var unix := Time.get_unix_time_from_system()
+	var heart := -1.0
+	if kind == "damage_taken":
+		heart = _heart_columns()
 	if not events.is_empty():
 		var last_i := events.size() - 1
 		var last: Dictionary = events[last_i]
@@ -396,12 +399,33 @@ func _note_damage(kind: String, amount: float, source: String, actor: String) ->
 				last["amount"] = float(last.get("amount", 0.0)) + amount
 				last["t_unix_end"] = unix
 				last["t_msec"] = now
+				if heart >= 0.0:
+					var prev := float(last.get("heart_columns", heart))
+					last["heart_columns"] = minf(prev, heart)
 				events[last_i] = last
 				_touch(false)
 				return
-	events.append(_row(kind, source, actor, amount, unix, now))
+	var row := _row(kind, source, actor, amount, unix, now)
+	if heart >= 0.0:
+		row["heart_columns"] = heart
+	events.append(row)
 	_trim()
 	_touch(false)
+
+
+func _heart_columns() -> float:
+	var tree := get_tree()
+	if tree == null:
+		return -1.0
+	var player := tree.get_first_node_in_group("player")
+	var crystal := tree.get_first_node_in_group("crystal_manager")
+	if player == null or crystal == null:
+		return -1.0
+	if not ("voxel_position" in player) or not crystal.has_method("get_origin_cell"):
+		return -1.0
+	var feet: Vector3 = player.voxel_position
+	var origin: Vector2i = crystal.get_origin_cell()
+	return Vector2(feet.x, feet.z).distance_to(Vector2(float(origin.x), float(origin.y)))
 
 
 func _row(kind: String, source: String, actor: String, amount: float, unix: float, msec: int) -> Dictionary:

@@ -1309,26 +1309,30 @@ func _print_feature(name: String, before: Dictionary, after: Dictionary, seen: P
 
 const MITE_LIMIT := 150.0
 const MITE_CLEAR := 16.0
+const MITE_BOSS_HEART := 4.0
 
 
 func _play_mite(tree: SceneTree) -> int:
 	var seeds: Array = _mite_seeds()
 	var lived := 0
 	var killed_runs := 0
+	var boss_near := 0
 	for seed_value in seeds:
 		var seed := int(seed_value)
 		var row: Dictionary = await _mite_attempt(tree, seed)
 		var survived: bool = bool(row.get("survive", false))
 		var kills := int(row.get("kills", 0))
 		var sprints := int(row.get("burn_sprint", 0))
+		var near := int(row.get("boss_near", 0))
+		boss_near += near
 		if survived:
 			lived += 1
 		if kills > 0:
 			killed_runs += 1
-		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d" % [
-			seed, "yes" if survived else "no", kills, sprints,
+		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d boss_near %d" % [
+			seed, "yes" if survived else "no", kills, sprints, near,
 		])
-		if not survived or kills < 1 or sprints > 0:
+		if not survived or kills < 1 or sprints > 0 or near > 0:
 			var why := str(row.get("why", "mite fight failed"))
 			print("FAIL harness assertion %s" % why)
 			var bot = row.get("bot", null)
@@ -1338,7 +1342,25 @@ func _play_mite(tree: SceneTree) -> int:
 				bot.fail_closed(at, why)
 			return 1
 	print("HARNESS mite %d/%d survive %d/%d kill" % [lived, seeds.size(), killed_runs, seeds.size()])
+	print("HARNESS mite boss_hits_near_heart %d" % boss_near)
 	return 0
+
+
+func _boss_hits_near_heart(tree: SceneTree, limit: float) -> int:
+	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
+	if tele == null or not ("events" in tele):
+		return 0
+	var hits := 0
+	for row in tele.events:
+		if str(row.get("kind", "")) != "damage_taken":
+			continue
+		if str(row.get("source", "")) != "boss":
+			continue
+		if not row.has("heart_columns"):
+			continue
+		if float(row.get("heart_columns", 999.0)) <= limit:
+			hits += 1
+	return hits
 
 
 func _mite_seeds() -> Array:
@@ -1375,6 +1397,9 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	fight._home_arrived = true
 	fight._home_logged = true
 	fight.finish_bow()
+	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
+	if tele != null and tele.has_method("begin_session"):
+		tele.begin_session()
 	fight.bot.chapter = "mite_fight"
 	fight.bot.objective = "kill the crystal mites from the clear rim"
 	fight.bot.stuck_limit = 24
@@ -1468,6 +1493,11 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		why = "no mite kill seed %d" % seed_value
 	if why == "" and burn_sprint > 0:
 		why = "burn sprint %d seed %d" % [burn_sprint, seed_value]
+	var boss_near := _boss_hits_near_heart(tree, MITE_BOSS_HEART)
+	print("HARNESS mite boss_near %d" % boss_near)
+	if why == "" and boss_near > 0:
+		why = "boss hits within 4 columns %d seed %d" % [boss_near, seed_value]
+		survived = false
 	var after := _snap(tree, player)
 	if survived:
 		var want_hp := "%d / %d" % [int(round(float(after.get("hp", 0.0)))), int(round(float(after.get("max", 0.0))))]
@@ -1490,6 +1520,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		"survive": survived and why == "",
 		"kills": total,
 		"burn_sprint": burn_sprint,
+		"boss_near": boss_near,
 		"why": why,
 		"bot": kept,
 		"pos": last_pos,
