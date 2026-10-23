@@ -167,16 +167,16 @@ func _relic_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		await tree.process_frame
 	hands.begin_tick()
 	hands.release_all()
-	var pause_closed := _pause_stays_closed(tree, pause)
+	var pause_closed: bool = _pause_stays_closed(tree, pause)
 	var still = _RelicPanel._open
-	var panel_held := still != null and is_instance_valid(still) and still == panel
+	var panel_held: bool = still != null and is_instance_valid(still) and still == panel
 	var moved := body.global_position.distance_to(origin)
 	var hotbar_same := true
 	var cool_same := true
 	if weapon != null and weapon.has_method("get_active_hotbar_index"):
 		hotbar_same = int(weapon.get_active_hotbar_index()) == hotbar
 		cool_same = float(weapon.get("_cooldown_timer")) <= cool + 0.001
-	var blocked := _GI.modal_open and _GI.blocks_actions()
+	var blocked: bool = _GI.modal_open and _GI.blocks_actions()
 	if not pause_closed or not panel_held or not blocked or moved > 0.2 or not hotbar_same or not cool_same:
 		var why := "esc leaked pause %s panel %s blocked %s moved %.3f hotbar %s cooldown %s" % [
 			"closed" if pause_closed else "open",
@@ -206,10 +206,10 @@ func _relic_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		await tree.process_frame
 		if _RelicPanel._open == null:
 			break
-	var gone := _RelicPanel._open == null or not is_instance_valid(_RelicPanel._open)
-	var pause_after := _pause_stays_closed(tree, pause)
-	var kept := _equipped_count(relic_mgr) >= before and _equipped_count(relic_mgr) > 0
-	var cleared := not _GI.modal_open and not _GI.blocks_actions()
+	var gone: bool = _RelicPanel._open == null or not is_instance_valid(_RelicPanel._open)
+	var pause_after: bool = _pause_stays_closed(tree, pause)
+	var kept: bool = _equipped_count(relic_mgr) >= before and _equipped_count(relic_mgr) > 0
+	var cleared: bool = not _GI.modal_open and not _GI.blocks_actions()
 	pos = _xz(player)
 	print("HARNESS see relic_esc seed %d pause %s panel_after %s equipped %d moved %.3f" % [
 		seed_value,
