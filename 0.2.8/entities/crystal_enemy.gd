@@ -473,6 +473,15 @@ func holds_station() -> bool:
 	return _station_reach > 0.0
 
 
+func _player_in_station_slam() -> bool:
+	if _target == null or not is_instance_valid(_target):
+		return false
+	var there := _player_world_pos()
+	var vs := maxf(WorldSettings.get_active().voxel_scale, 0.001)
+	var flat := Vector2(there.x - global_position.x, there.z - global_position.z).length()
+	return flat <= 2.4 * vs
+
+
 func _hold_station() -> void:
 	if _station_reach <= 0.0:
 		return
@@ -544,7 +553,8 @@ func _physics_process(delta: float) -> void:
 		_refresh_guardian_aggro()
 	if _station_reach > 0.0:
 		_hold_station()
-	if _special and (not guardian or _guardian_aggro):
+	var station_slam := _station_reach <= 0.0 or _player_in_station_slam()
+	if _special and (not guardian or _guardian_aggro) and station_slam:
 		_tick_special(delta)
 	elif guardian:
 		_cancel_guardian_attack()
