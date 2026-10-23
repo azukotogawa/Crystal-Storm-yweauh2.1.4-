@@ -835,7 +835,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			return ""
 		if int(job.get("blank_swings", 0)) == 0:
 			CombatLog.clear()
-		var swings_before := fight.swings
+		var swings_before := int(fight.swings)
 		fight.aim_ready = true
 		fight.strike_point(pos, aim_at, _yaw(player), delta)
 		if fight.swings > swings_before:
