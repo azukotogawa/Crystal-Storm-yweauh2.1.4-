@@ -480,6 +480,30 @@ static func skirt_goal(tree: SceneTree, pos: Vector2, goal: Vector2) -> Vector2:
 	return best
 
 
+static func clear_film_stand(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_foe := 1.0e9
+	var best_walk := 1.0e9
+	var cx := floori(foe.x)
+	var cz := floori(foe.y)
+	for dx in range(-12, 13):
+		for dz in range(-12, 13):
+			var at := Vector2(float(cx + dx) + 0.5, float(cz + dz) + 0.5)
+			if depth_at(tree, at) >= CLEAR_DEPTH:
+				continue
+			if burning(tree, at):
+				continue
+			if not burning(tree, pos) and crosses_burn(tree, pos, at):
+				continue
+			var foe_d := at.distance_to(foe)
+			var walk := at.distance_to(pos)
+			if foe_d + 0.05 < best_foe or (absf(foe_d - best_foe) <= 0.05 and walk < best_walk):
+				best_foe = foe_d
+				best_walk = walk
+				best = at
+	return best
+
+
 static func mite_rim(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 	var melee := strike_stand(tree, pos, foe)
 	if melee != Vector2.INF and not crosses_burn(tree, pos, melee):

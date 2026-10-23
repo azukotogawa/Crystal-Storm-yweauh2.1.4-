@@ -105,11 +105,12 @@ Each attempt lasts at most 150 seconds. The bot has to kill at least one crystal
 | --- | --- |
 | Survive | Health stays above zero and the label matches. |
 | Kill | `KILL crystal_mite` at least once, then the heart neighborhood is clear for one second. |
+| Off film | At least one `HARNESS mite off_film contact` or `HARNESS mite off_film kill` on a mite cell whose depth is under 0.12. The bot holds a clear cell and swings only after that mite steps off the film. |
 | Burn sprint | Zero frames where sprint or dash is held into a burn tile. |
 | Boss | `damage_taken` source `boss` rows carry `heart_columns`. None are within 4 columns of the heart. Each seed prints `HARNESS mite boss_near 0`. |
 | Banner | The opening dig line is up. |
 | Shot | `steps/*_mite_fight.png` from the last clear moment. |
-| Seeds | One `HARNESS mite seed` line per seed, then `HARNESS mite N/N survive N/N kill` and `HARNESS mite boss_hits_near_heart 0`. |
+| Seeds | One `HARNESS mite seed` line per seed, including `off_film`, then `HARNESS mite N/N survive N/N kill` and `HARNESS mite boss_hits_near_heart 0`. |
 
 ## relic_esc
 

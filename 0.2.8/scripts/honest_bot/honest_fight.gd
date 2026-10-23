@@ -84,6 +84,7 @@ var _home_limit := 0.0
 var _home_mark := -1.0
 var _stand := Vector2.INF
 var _dodge := Vector2.INF
+var film_clear := false
 
 
 func release() -> void:
@@ -861,6 +862,9 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_face_foe(player, pos, foe)
 		trace_branch = "b10"
 		return ""
+	if kind == "crystal_mite" and film_clear and not orbits():
+		if _await_off_film(dt, tree, player, pos, foe):
+			return ""
 	if kind == "crystal_mite" and not orbits() and _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH and pos.distance_to(foe) > _Hazard.sword_reach():
 		var away := pos - origin
 		if away.length_squared() < 0.04:
@@ -1168,6 +1172,22 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 			best = cand
 			best_d = dist
 	return best
+
+
+func _await_off_film(dt: float, tree: SceneTree, player: Node, pos: Vector2, foe: Vector2) -> bool:
+	if _Hazard.depth_at(tree, foe) < _Hazard.CLEAR_DEPTH:
+		return false
+	var stand := _Hazard.clear_film_stand(tree, pos, foe)
+	if stand == Vector2.INF:
+		stand = pos
+	if _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH or pos.distance_to(stand) > 0.65:
+		_step_clear(dt, tree, player, stand, foe, false)
+		trace_branch = "b22"
+		return true
+	bot.release()
+	_face_foe(player, pos, foe)
+	trace_branch = "b23"
+	return true
 
 
 func _step_on_rim(tree: SceneTree, pos: Vector2, cand: Vector2) -> bool:

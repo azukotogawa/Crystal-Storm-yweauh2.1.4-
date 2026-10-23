@@ -29,6 +29,10 @@ const BUILD_FRAMES := 7200
 const OPENING_BANNER := "Watch the purple front — dig trenches & walls where it advances"
 const WALL_BANNER := "Wall raised — crystal slows here; it will find another way"
 
+var _off_film: int = 0
+var _film_bound: Dictionary = {}
+var _film_tree: SceneTree
+
 
 func play(tree: SceneTree, scenario: String) -> int:
 	var name := scenario.strip_edges()
@@ -1324,15 +1328,16 @@ func _play_mite(tree: SceneTree) -> int:
 		var kills := int(row.get("kills", 0))
 		var sprints := int(row.get("burn_sprint", 0))
 		var near := int(row.get("boss_near", 0))
+		var off_film := int(row.get("off_film", 0))
 		boss_near += near
 		if survived:
 			lived += 1
 		if kills > 0:
 			killed_runs += 1
-		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d boss_near %d" % [
-			seed, "yes" if survived else "no", kills, sprints, near,
+		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d boss_near %d off_film %d" % [
+			seed, "yes" if survived else "no", kills, sprints, near, off_film,
 		])
-		if not survived or kills < 1 or sprints > 0 or near > 0:
+		if not survived or kills < 1 or sprints > 0 or near > 0 or off_film < 1:
 			var why := str(row.get("why", "mite fight failed"))
 			print("FAIL harness assertion %s" % why)
 			var bot = row.get("bot", null)
@@ -1361,6 +1366,47 @@ func _boss_hits_near_heart(tree: SceneTree, limit: float) -> int:
 		if float(row.get("heart_columns", 999.0)) <= limit:
 			hits += 1
 	return hits
+
+
+func _bind_film_watch(tree: SceneTree) -> void:
+	if tree == null:
+		return
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node):
+			continue
+		if str(node.get("enemy_id")) != "crystal_mite":
+			continue
+		var iid := node.get_instance_id()
+		if _film_bound.has(iid):
+			continue
+		_film_bound[iid] = true
+		if node.has_signal("killed"):
+			node.killed.connect(_on_film_kill)
+		if node.has_signal("attacked_player"):
+			node.attacked_player.connect(_on_film_contact.bind(node))
+
+
+func _on_film_kill(enemy_id: StringName, cell: Vector2i, _player_killed: bool) -> void:
+	if str(enemy_id) != "crystal_mite":
+		return
+	_count_off_film("kill", cell)
+
+
+func _on_film_contact(_damage: float, node: Node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	var body := node as Node3D
+	if body == null:
+		return
+	_count_off_film("contact", _Move.column_pos(body.global_position))
+
+
+func _count_off_film(kind: String, cell: Vector2i) -> void:
+	var depth := _Hazard.depth_at(_film_tree, Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5))
+	if depth >= _Hazard.CLEAR_DEPTH:
+		return
+	_off_film += 1
+	print("HARNESS mite off_film %s depth %.3f cell %d,%d" % [kind, depth, cell.x, cell.y])
 
 
 func _mite_seeds() -> Array:
@@ -1400,9 +1446,13 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
 	if tele != null and tele.has_method("begin_session"):
 		tele.begin_session()
+	fight.film_clear = true
 	fight.bot.chapter = "mite_fight"
 	fight.bot.objective = "kill the crystal mites from the clear rim"
 	fight.bot.stuck_limit = 24
+	_off_film = 0
+	_film_bound = {}
+	_film_tree = tree
 	fight.bot.input.pace_presses = true
 	var elapsed := 0.0
 	var clear := 0.0
@@ -1423,6 +1473,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		fight.trace_branch = "none"
 		fight.trace_hunt = "none"
 		fight.trace_strike = ""
+		_bind_film_watch(tree)
 		var result := fight.tick(delta, tree, player, origin_xz)
 		var pos := _xz(player)
 		var near_row: Dictionary = fight._nearest_mite(tree, pos)
@@ -1498,6 +1549,9 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	if why == "" and boss_near > 0:
 		why = "boss hits within 4 columns %d seed %d" % [boss_near, seed_value]
 		survived = false
+	if why == "" and _off_film < 1:
+		why = "no mite contact or kill off the 0.12 film seed %d" % seed_value
+		survived = false
 	var after := _snap(tree, player)
 	if survived:
 		var want_hp := "%d / %d" % [int(round(float(after.get("hp", 0.0)))), int(round(float(after.get("max", 0.0))))]
@@ -1521,6 +1575,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		"kills": total,
 		"burn_sprint": burn_sprint,
 		"boss_near": boss_near,
+		"off_film": _off_film,
 		"why": why,
 		"bot": kept,
 		"pos": last_pos,
