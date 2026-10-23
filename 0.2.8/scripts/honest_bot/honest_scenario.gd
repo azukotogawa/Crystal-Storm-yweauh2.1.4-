@@ -355,6 +355,8 @@ func _break(tree: SceneTree) -> int:
 
 func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_value: int = -1):
 	var use_seed := seed_value if seed_value >= 0 else SEED
+	var held_scale := Engine.time_scale
+	Engine.time_scale = 0.0
 	_Worlds.pending_launch = {
 		"id": "harness-%s" % scenario,
 		"seed": use_seed,
@@ -363,6 +365,7 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_valu
 	_Worlds.pending_resume = false
 	var packed: PackedScene = load(MAIN_SCENE) as PackedScene
 	if packed == null:
+		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness no main scene")
 		return null
 	var game: Node = packed.instantiate()
@@ -376,6 +379,7 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_valu
 		_note_banner(tree, seen)
 		frames += 1
 	if compose == null or int(compose.stage) < compose.Stage.INITIAL_STREAM_READY:
+		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness start region not ready")
 		return null
 	for _w in 120:
@@ -384,17 +388,21 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_valu
 		if not _GI.blocks_actions():
 			break
 	if _GI.blocks_actions():
+		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness actions still blocked")
 		return null
 	var player = tree.get_first_node_in_group("player")
 	if player == null or not bool(player.get("world_ready")):
+		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness player not world_ready")
 		return null
 	var world = game.get_node_or_null("World")
 	var seeded := int(world.world_seed) if world != null and "world_seed" in world else -1
 	if seeded != use_seed:
+		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness seed %d want %d" % [seeded, use_seed])
 		return null
+	Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 	print("HARNESS booted seed %d" % seeded)
 	return player
 
