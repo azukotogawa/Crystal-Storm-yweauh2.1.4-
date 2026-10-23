@@ -382,6 +382,7 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_valu
 		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 		print("FAIL harness start region not ready")
 		return null
+	Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
 	for _w in 120:
 		await tree.process_frame
 		_note_banner(tree, seen)
