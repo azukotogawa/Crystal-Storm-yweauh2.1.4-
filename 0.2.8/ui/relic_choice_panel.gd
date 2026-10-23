@@ -14,7 +14,6 @@ static var _pending: Array = []
 ## Pre-modal scale, captured only while no panel is open. A queued offer must not save 0.05.
 static var _saved_scale: float = 1.0
 static var _scale_held: bool = false
-static var _modal_paused: bool = false
 
 var _ids: Array[StringName] = []
 var _relic_mgr = null
@@ -86,10 +85,16 @@ func _ready() -> void:
 	z_index = 40
 	_ThemeBuilder.apply(self)
 	Engine.time_scale = SLOW_SCALE
-	if not _GameplayInput.pause_open:
-		_GameplayInput.pause_open = true
-		_modal_paused = true
+	_GameplayInput.modal_open = true
 	_build()
+
+
+func _input(event: InputEvent) -> void:
+	if not _GameplayInput.modal_takes_escape(event):
+		return
+	var vp := get_viewport()
+	if vp:
+		vp.set_input_as_handled()
 
 
 func _exit_tree() -> void:
@@ -295,6 +300,4 @@ func _restore_run() -> void:
 	var restore := _saved_scale if _saved_scale > 0.0 else 1.0
 	Engine.time_scale = restore
 	_scale_held = false
-	if _modal_paused:
-		_GameplayInput.pause_open = false
-		_modal_paused = false
+	_GameplayInput.modal_open = false

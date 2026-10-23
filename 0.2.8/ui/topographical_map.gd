@@ -244,7 +244,7 @@ func is_fullscreen_open() -> bool:
 
 
 func handle_toggle_action(just_pressed: bool) -> void:
-	if _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.pause_open:
+	if _GameplayInput.blocks_menus():
 		if _fullscreen_open:
 			_set_fullscreen_open(false)
 		return

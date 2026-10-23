@@ -20,6 +20,9 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _GameplayInput.modal_takes_escape(event):
+		get_viewport().set_input_as_handled()
+		return
 	if not _is_pause_event(event):
 		return
 	if _GameplayInput.dev_chat_open:

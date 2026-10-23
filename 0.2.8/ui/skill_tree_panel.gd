@@ -53,7 +53,7 @@ func toggle() -> void:
 
 
 func open() -> void:
-	if _GameplayInput.pause_open or _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.map_open:
+	if _GameplayInput.blocks_menus() or _GameplayInput.map_open:
 		return
 	visible = true
 	_GameplayInput.skill_tree_open = true
@@ -185,7 +185,7 @@ func _on_action(act: InputEventAction) -> void:
 
 
 func _blocked() -> bool:
-	return _GameplayInput.pause_open or _GameplayInput.dev_chat_open or _GameplayInput.world_loading or _GameplayInput.map_open
+	return _GameplayInput.blocks_menus() or _GameplayInput.map_open
 
 
 func _mark_handled() -> void:

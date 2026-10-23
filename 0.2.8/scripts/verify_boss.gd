@@ -50,6 +50,7 @@ func _run() -> void:
 		failed = true
 	Engine.time_scale = 1.0
 	_GameplayInput.pause_open = false
+	_GameplayInput.modal_open = false
 	if failed:
 		push_error("Boss tests FAILED")
 		quit(1)
@@ -149,6 +150,7 @@ func _relics() -> bool:
 func _queued_relic_scale() -> bool:
 	Engine.time_scale = 0.8
 	_GameplayInput.pause_open = false
+	_GameplayInput.modal_open = false
 	var overlay := Control.new()
 	overlay.name = "RelicProbeOverlay"
 	overlay.add_to_group("game_overlay")
@@ -178,7 +180,7 @@ func _queued_relic_scale() -> bool:
 		push_error("last relic panel restored %s, want the pre-modal 0.8" % Engine.time_scale)
 		overlay.free()
 		return false
-	if _GameplayInput.pause_open:
+	if _GameplayInput.pause_open or _GameplayInput.modal_open:
 		push_error("pause_open stayed set after the last relic panel")
 		overlay.free()
 		return false
@@ -190,6 +192,7 @@ func _queued_relic_scale() -> bool:
 func _full_slots_replace() -> bool:
 	Engine.time_scale = 1.0
 	_GameplayInput.pause_open = false
+	_GameplayInput.modal_open = false
 	var overlay := Control.new()
 	overlay.name = "RelicFullOverlay"
 	overlay.add_to_group("game_overlay")
