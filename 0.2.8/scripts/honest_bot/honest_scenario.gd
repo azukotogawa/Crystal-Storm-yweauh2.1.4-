@@ -1705,7 +1705,6 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		survived = false
 	elite_hit = _damage_taken_from(tree, "spawn_elite")
 	var boss_src := _damage_taken_from(tree, "boss")
-	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
 	var tele_path := ""
 	if tele != null and tele.has_method("flush"):
 		tele_path = str(tele.flush())
