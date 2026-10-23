@@ -773,7 +773,7 @@ scenario)
     *) echo "usage: cs-verify.sh scenario <dig|build|break|crystals|corruption|combat|mite_fight|relic_esc>"; exit 2 ;;
   esac
   export CRYSTALSTORM_SCENARIO="$name"
-  run_godot "scenario-$name" --headless --path "$ROOT" -s res://scripts/verify_honest_bot_scenario.gd; r=$?
+  run_godot "scenario-$name" --headless --fixed-fps 30 --path "$ROOT" -s res://scripts/verify_honest_bot_scenario.gd; r=$?
   unset CRYSTALSTORM_SCENARIO
   log="$EVID/scenario-$name.log"
   grep -E '^(OK|FAIL|HARNESS|STUCK|PROBE|SHOWCASE)' "$log" | tr -d '\r'

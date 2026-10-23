@@ -89,6 +89,7 @@ func setup(
 	_crystal = crystal_manager
 	brain = _EntityBrain.new(brain_config)
 	brain.reset_at(spawn_cell, defend_center, spawn_cell)
+	brain.bind_identity(brain_config.id, int(world.world_seed) if world != null else 1)
 	_base_tint = tint
 	if not is_inside_tree():
 		push_warning("WorldEntity.setup called before add_child — deferring placement")
@@ -482,6 +483,7 @@ func advance_crystal_conversion(delta: float, in_crystal: bool) -> void:
 	health = next.max_health
 	brain = _EntityBrain.new(next)
 	brain.reset_at(cell, cell, cell)
+	brain.bind_identity(next.id, int(_world.world_seed) if _world != null else 1)
 	_base_tint = crystal_tint
 	_convert_elapsed = 0.0
 	_convert_started = false

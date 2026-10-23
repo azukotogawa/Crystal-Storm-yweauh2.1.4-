@@ -108,6 +108,10 @@ func setup(
 	if patrol_anchor != Vector2i.ZERO:
 		spawn_cell = patrol_anchor
 	brain.reset_at(spawn_cell, Vector2i.ZERO, patrol_anchor if patrol_anchor != Vector2i.ZERO else spawn_cell)
+	var seed_value := 1
+	if _world != null and "world_seed" in _world:
+		seed_value = int(_world.world_seed)
+	brain.bind_identity(id, seed_value)
 
 	if spawn_config:
 		move_speed = spawn_config.move_speed

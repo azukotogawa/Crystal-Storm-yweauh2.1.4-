@@ -150,7 +150,8 @@ func spawn_town_defenders(town: Dictionary, count: int) -> void:
 
 	var to_spawn := mini(count, max_defenders_per_town - current)
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(str(center) + str(Time.get_ticks_msec()))
+	var seed_value := int(world.world_seed) if world != null else 1
+	rng.seed = hash("%s|%d|militia" % [str(center), seed_value])
 	for _i in to_spawn:
 		if _entities.size() >= max_entities:
 			return

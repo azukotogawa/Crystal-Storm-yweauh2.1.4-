@@ -51,7 +51,7 @@ static func get_def(id: StringName) -> _EnemySpawnDef:
 	return _defs.get(id)
 
 
-static func pick_weighted(ids: Array[StringName], tier: int) -> StringName:
+static func pick_weighted(ids: Array[StringName], tier: int, rng: RandomNumberGenerator = null) -> StringName:
 	var pool: Array[StringName] = []
 	var weights: Array[float] = []
 	for enemy_id in ids:
@@ -67,7 +67,7 @@ static func pick_weighted(ids: Array[StringName], tier: int) -> StringName:
 	var total := 0.0
 	for w in weights:
 		total += w
-	var roll := randf() * total
+	var roll := (rng.randf() if rng != null else randf()) * total
 	for i in pool.size():
 		roll -= weights[i]
 		if roll <= 0.0:

@@ -25,6 +25,9 @@ var patrol_anchor: Vector2i = Vector2i.ZERO
 var target_cell: Vector2i = Vector2i.ZERO
 var state_timer: float = 0.0
 var attack_timer: float = 0.0
+var entity_id: StringName = &""
+var world_seed: int = 1
+var _wander_n: int = 0
 const STALKER_CRYSTAL_COLUMNS := 6.0
 static var _crystal_near_bucket: int = -999999
 static var _crystal_near_cache: Dictionary = {}
@@ -42,6 +45,12 @@ func reset_at(pos: Vector2i, defend: Vector2i = Vector2i.ZERO, patrol: Vector2i 
 	state = State.IDLE
 	state_timer = 0.0
 	attack_timer = 0.0
+	_wander_n = 0
+
+
+func bind_identity(id: StringName, seed_value: int) -> void:
+	entity_id = id
+	world_seed = seed_value
 
 
 func tick(
@@ -239,8 +248,9 @@ func _tick_crystal_stalker(
 
 
 func _pick_wander_target() -> void:
+	_wander_n += 1
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(str(home_pos) + str(Time.get_ticks_msec()))
+	rng.seed = hash("%s|%d|%d|%d|%d" % [str(entity_id), world_seed, home_pos.x, home_pos.y, _wander_n])
 	var angle := rng.randf_range(0.0, TAU)
 	var dist := rng.randf_range(2.0, config.wander_radius)
 	target_cell = home_pos + Vector2i(

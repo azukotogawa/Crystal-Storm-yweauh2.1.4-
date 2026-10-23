@@ -32,6 +32,8 @@ var _guarded_spawn_ids: Dictionary = {}
 var _guardian_timer: float = 0.0
 var _crystal_boss_spawned: bool = false
 var _boss_watch_connected: bool = false
+var _roll: RandomNumberGenerator = RandomNumberGenerator.new()
+var _roll_ready: bool = false
 
 
 func _ready() -> void:
@@ -195,7 +197,7 @@ func _process(delta: float) -> void:
 			return
 
 	var tier: int = _crystal.strength_tier if "strength_tier" in _crystal else 0
-	var enemy_id: StringName = _EnemySpawnRegistry.pick_weighted(evolution.unlocked_enemies, tier)
+	var enemy_id: StringName = _EnemySpawnRegistry.pick_weighted(evolution.unlocked_enemies, tier, _spawn_roll())
 	if enemy_id == &"":
 		enemy_id = evolution.unlocked_enemies[0]
 	_spawn_enemy(enemy_id)
@@ -230,7 +232,7 @@ func spawn_enemy_now(enemy_id: StringName = &"") -> bool:
 		if evolution == null or evolution.unlocked_enemies.is_empty():
 			return false
 		var tier: int = _crystal.strength_tier if "strength_tier" in _crystal else 0
-		enemy_id = _EnemySpawnRegistry.pick_weighted(evolution.unlocked_enemies, tier)
+		enemy_id = _EnemySpawnRegistry.pick_weighted(evolution.unlocked_enemies, tier, _spawn_roll())
 		if enemy_id == &"":
 			enemy_id = evolution.unlocked_enemies[0]
 	var before: int = _active.size()
@@ -322,10 +324,22 @@ func _pick_spawn_pos() -> Vector3:
 	return _scan_crystal_near_player(px, pz, int(ceil(spawn_near_player_max)))
 
 
+func _spawn_roll() -> RandomNumberGenerator:
+	if not _roll_ready:
+		_bind()
+		var seed_value := 1
+		if _world != null and "world_seed" in _world:
+			seed_value = int(_world.world_seed)
+		_roll.seed = hash("spawn|%d" % seed_value)
+		_roll_ready = true
+	return _roll
+
+
 func _sample_crystal_ring(px: float, pz: float, dmin: float, dmax: float, attempts: int) -> Vector3:
+	var rng := _spawn_roll()
 	for _attempt in attempts:
-		var angle := randf() * TAU
-		var dist := randf_range(dmin, dmax)
+		var angle := rng.randf() * TAU
+		var dist := rng.randf_range(dmin, dmax)
 		var wx := int(floor(px + cos(angle) * dist))
 		var wz := int(floor(pz + sin(angle) * dist))
 		if _crystal.get_depth_at(wx, wz) < require_crystal_depth:
