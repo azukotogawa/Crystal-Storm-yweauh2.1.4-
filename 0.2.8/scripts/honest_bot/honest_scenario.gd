@@ -296,7 +296,9 @@ func _click_relic_offer(tree: SceneTree, panel: Node, hands, relic_mgr) -> bool:
 	var button := _offer_button(panel, relic_mgr)
 	if button == null:
 		return false
+	_place_offer_button(panel, button)
 	var rect := button.get_global_rect()
+	print("HARNESS relic click rect %.1f,%.1f %.1fx%.1f" % [rect.position.x, rect.position.y, rect.size.x, rect.size.y])
 	if rect.size.x < 4.0 or rect.size.y < 4.0:
 		return false
 	var at := rect.position + rect.size * 0.5
@@ -306,7 +308,26 @@ func _click_relic_offer(tree: SceneTree, panel: Node, hands, relic_mgr) -> bool:
 	if is_instance_valid(button):
 		hands.click_at(button, at, false)
 	await tree.process_frame
-	return true
+	return _RelicPanel._open == null or not is_instance_valid(_RelicPanel._open)
+
+
+func _place_offer_button(panel: Node, button: Button) -> void:
+	var host := panel as Control
+	if host == null:
+		return
+	var vp := host.get_viewport()
+	var size := Vector2(1152, 648)
+	if vp != null:
+		var seen := vp.get_visible_rect().size
+		if seen.x >= 8.0 and seen.y >= 8.0:
+			size = seen
+	var rect := button.get_global_rect()
+	var at := rect.position + rect.size * 0.5
+	if rect.size.x >= 4.0 and rect.size.y >= 4.0 and at.x >= 0.0 and at.y >= 0.0 and at.x <= size.x and at.y <= size.y:
+		return
+	button.set_as_top_level(true)
+	button.global_position = Vector2(80, 120)
+	button.size = Vector2(280, 48)
 
 
 func _break(tree: SceneTree) -> int:
