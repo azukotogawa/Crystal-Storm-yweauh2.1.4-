@@ -25,6 +25,7 @@ var patrol_anchor: Vector2i = Vector2i.ZERO
 var target_cell: Vector2i = Vector2i.ZERO
 var state_timer: float = 0.0
 var attack_timer: float = 0.0
+const STALKER_CRYSTAL_COLUMNS := 6.0
 static var _crystal_near_bucket: int = -999999
 static var _crystal_near_cache: Dictionary = {}
 
@@ -48,7 +49,7 @@ func tick(
 	self_pos: Vector2i,
 	player_pos: Vector2i,
 	crystal_sim: _CrystalFluidSim,
-	crystal_depth_nearby: float = 0.0
+	_crystal_depth_nearby: float = 0.0
 ) -> Vector2i:
 	state_timer += delta
 	attack_timer = maxf(attack_timer - delta, 0.0)
@@ -59,7 +60,7 @@ func tick(
 		_EntityBrainConfig.BehaviorProfile.SHARD_GUARD:
 			_tick_shard_guard(delta, self_pos, player_pos, crystal_sim)
 		_EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER:
-			_tick_crystal_stalker(delta, self_pos, player_pos, crystal_depth_nearby)
+			_tick_crystal_stalker(delta, self_pos, player_pos, crystal_sim)
 		_EntityBrainConfig.BehaviorProfile.TOWN_MILITIA:
 			_tick_town_militia(delta, self_pos, player_pos, crystal_sim)
 		_:
@@ -206,19 +207,22 @@ func _tick_shard_guard(
 
 
 func _tick_crystal_stalker(
-	delta: float,
+	_delta: float,
 	self_pos: Vector2i,
 	player_pos: Vector2i,
-	crystal_depth_nearby: float
+	crystal_sim: _CrystalFluidSim
 ) -> void:
-	if crystal_depth_nearby >= config.crystal_hunt_min_depth and _near(player_pos, self_pos, config.chase_distance):
+	var on_crystal := _crystal_near(self_pos, crystal_sim, STALKER_CRYSTAL_COLUMNS)
+	if on_crystal and _near(player_pos, self_pos, config.chase_distance):
 		state = State.CHASE
 		target_cell = player_pos
 	elif state == State.CHASE:
-		if not _near(player_pos, self_pos, config.chase_distance * 1.1):
+		if not on_crystal or not _near(player_pos, self_pos, config.chase_distance * 1.1):
 			state = State.PATROL
 			target_cell = _patrol_point(home_pos, config.patrol_radius)
 			state_timer = 0.0
+		else:
+			target_cell = player_pos
 	else:
 		match state:
 			State.IDLE:
