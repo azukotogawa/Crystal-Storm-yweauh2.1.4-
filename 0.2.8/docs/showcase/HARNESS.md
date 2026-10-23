@@ -88,7 +88,7 @@ Stands through a mite `StrikeTelegraph` until that bite lands at 1.45 columns or
 | Check | Pass |
 | --- | --- |
 | Warning hit | A mite `StrikeTelegraph` is visible (`HARNESS attack warning`), then that mite lands `HARNESS mite hit` at 1.45 columns or less. A boss ring is stepped away from and does not count. |
-| Melee | One foe's health is lower after sword swings. |
+| Melee | One foe's health is lower after sword swings. The swing that lands is at 0.5 columns or less (`HARNESS point blank`) and does not log `melee … no entity hit`. |
 | Skill | Dash is bought and the cast slides (`OK dash slide` or `SKILL dash`). |
 | Feedback | `HitMarkers` is live at least once (a sword connection or a crystal chip). |
 | Banner | Same allowed lines as crystals, plus `Used herb` when the bot drinks one. |

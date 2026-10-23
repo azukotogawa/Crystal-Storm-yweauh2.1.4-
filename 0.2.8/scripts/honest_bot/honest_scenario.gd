@@ -533,6 +533,7 @@ const FEATURE_LIMIT := {
 	"corruption": 240.0,
 	"combat": 240.0,
 }
+const POINT_BLANK_COLUMNS := 0.5
 const FIND_COLUMNS := 8.0
 const FILM_DEPTH := 0.2
 const SWING_GAP := 0.42
@@ -797,28 +798,51 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			var now_hp := _foe_health(tree, foe_id)
 			var was := float(job["foe_hp"])
 			if was >= 0.0 and (now_hp < 0.0 or now_hp < was - 0.05):
-				job["melee"] = true
-				print("HARNESS melee %s %.1f to %.1f" % [foe_id, was, now_hp])
-				fight.release()
-				return ""
+				var swung := float(job.get("blank_swing", 99.0))
+				if swung > POINT_BLANK_COLUMNS:
+					job["foe_hp"] = now_hp
+				elif _blank_missed():
+					return "melee no entity hit"
+				else:
+					job["melee"] = true
+					job["blank_cols"] = swung
+					print("HARNESS point blank %.2f" % swung)
+					print("HARNESS melee %s %.1f to %.1f" % [foe_id, was, now_hp])
+					fight.release()
+					return ""
+		var picked := _combat_foe(rows, pos)
 		if foe_id == "" or not _foe_alive(tree, foe_id):
-			foe_id = fight.nearest_id(pos)
+			foe_id = str(picked.get("id", ""))
 			job["foe_id"] = foe_id
 			job["foe_hp"] = _foe_health(tree, foe_id)
+			job["blank_swing"] = 99.0
+			job["blank_swings"] = 0
 		if foe_id == "":
 			_step_toward(bot, player, origin_xz, delta, pos)
 			return ""
-		var aim_at := Vector2.INF
-		for row in rows:
-			if str(row.get("id", "")) == foe_id:
-				aim_at = row["xz"]
-				break
+		var aim_at: Vector2 = picked.get("xz", Vector2.INF)
+		if str(picked.get("id", "")) != foe_id:
+			aim_at = _foe_xz(rows, foe_id)
 		bot.release()
-		if aim_at != Vector2.INF:
-			hands.begin_tick()
-			hands.aim_column(player, aim_at.x, aim_at.y)
-			fight.aim_ready = _foe_aimed(player, aim_at)
-		fight.tick(pos, _yaw(player), delta)
+		if aim_at == Vector2.INF:
+			_step_toward(bot, player, origin_xz, delta, pos)
+			return ""
+		var dist := pos.distance_to(aim_at)
+		hands.begin_tick()
+		hands.aim_column(player, aim_at.x, aim_at.y)
+		if dist > POINT_BLANK_COLUMNS:
+			fight.walk_to(_past_contact(pos, aim_at), pos, _yaw(player), delta)
+			return ""
+		if int(job.get("blank_swings", 0)) == 0:
+			CombatLog.clear()
+		var swings_before := fight.swings
+		fight.aim_ready = true
+		fight.strike_point(pos, aim_at, _yaw(player), delta)
+		if fight.swings > swings_before:
+			job["blank_swings"] = int(job["blank_swings"]) + 1
+			job["blank_swing"] = dist
+		if int(job.get("blank_swings", 0)) > 0 and _blank_missed():
+			return "melee no entity hit"
 		return ""
 	if bool(job["skilled"]):
 		bot.release()
@@ -958,6 +982,50 @@ func _note_hit_feedback(tree: SceneTree, job: Dictionary) -> void:
 		return
 	job["feedback"] = true
 	print("HARNESS hit feedback")
+
+
+func _blank_missed() -> bool:
+	return "no entity hit" in CombatLog.get_recent(" ")
+
+
+func _past_contact(pos: Vector2, foe: Vector2) -> Vector2:
+	var away := foe - pos
+	if away.length() < 0.05:
+		away = Vector2(1.0, 0.0)
+	else:
+		away = away.normalized()
+	return foe + away * 1.2
+
+
+func _combat_foe(rows: Array, pos: Vector2) -> Dictionary:
+	var mite := {}
+	var mite_d := INF
+	var other := {}
+	var other_d := INF
+	for row in rows:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		var at: Vector2 = row.get("xz", Vector2.INF)
+		var dist := pos.distance_to(at)
+		if str(row.get("kind", "")) == "crystal_mite":
+			if dist < mite_d:
+				mite_d = dist
+				mite = row
+		elif dist < other_d:
+			other_d = dist
+			other = row
+	if not mite.is_empty():
+		return mite
+	return other
+
+
+func _foe_xz(rows: Array, foe_id: String) -> Vector2:
+	for row in rows:
+		if typeof(row) != TYPE_DICTIONARY:
+			continue
+		if str(row.get("id", "")) == foe_id:
+			return row.get("xz", Vector2.INF)
+	return Vector2.INF
 
 
 func _foe_aimed(player: Node, foe: Vector2) -> bool:
@@ -1310,6 +1378,8 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 		return "mite hit %.2f columns" % float(job.get("mite_cols", 99.0))
 	if not bool(job["melee"]):
 		return "melee missed"
+	if float(job.get("blank_cols", 99.0)) > POINT_BLANK_COLUMNS:
+		return "point blank %.2f" % float(job.get("blank_cols", 99.0))
 	if not bool(job.get("feedback", false)):
 		return "hit feedback missing"
 	if not bool(job["skilled"]):
