@@ -5,6 +5,8 @@ const _Exit = preload("res://scripts/probe_exit.gd")
 
 
 func _init() -> void:
+	Engine.physics_jitter_fix = 0.0
+	Engine.physics_ticks_per_second = 60
 	call_deferred("_run")
 
 
