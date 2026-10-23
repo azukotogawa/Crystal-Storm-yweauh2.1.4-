@@ -1399,10 +1399,12 @@ func _play_mite(tree: SceneTree) -> int:
 			lived += 1
 		if kills > 0:
 			killed_runs += 1
-		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d boss_near %d off_film %d" % [
-			seed, "yes" if survived else "no", kills, sprints, near, off_film,
+		var elite_amt := float(row.get("elite", 0.0))
+		var boss_src := float(row.get("boss_src", 0.0))
+		print("HARNESS mite seed %d survive %s kill %d burn_sprint %d boss_near %d off_film %d spawn_elite %.1f boss_src %.1f" % [
+			seed, "yes" if survived else "no", kills, sprints, near, off_film, elite_amt, boss_src,
 		])
-		if not survived or kills < 1 or sprints > 0 or near > 0 or off_film < 1:
+		if not survived or kills < 1 or sprints > 0 or near > 0 or off_film < 1 or elite_amt <= 0.0 or boss_src > 0.0:
 			var why := str(row.get("why", "mite fight failed"))
 			print("FAIL harness assertion %s" % why)
 			var bot = row.get("bot", null)
@@ -1414,6 +1416,64 @@ func _play_mite(tree: SceneTree) -> int:
 	print("HARNESS mite %d/%d survive %d/%d kill" % [lived, seeds.size(), killed_runs, seeds.size()])
 	print("HARNESS mite boss_hits_near_heart %d" % boss_near)
 	return 0
+
+
+func _elite_stand(tree: SceneTree) -> Vector2:
+	if tree == null:
+		return Vector2.INF
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or str(node.get("enemy_id")) != "spawn_elite":
+			continue
+		if float(node.get("health")) <= 0.0:
+			continue
+		if node.has_method("holds_station") and node.has_method("station_cell") and bool(node.holds_station()):
+			var cell: Vector2i = node.station_cell()
+			return Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5)
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		return Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
+	return Vector2.INF
+
+
+func _approach_elite(tree: SceneTree, fight, player: Node, delta: float) -> bool:
+	var stand := _elite_stand(tree)
+	if stand == Vector2.INF:
+		return false
+	var pos := _xz(player)
+	if pos.distance_to(stand) > 28.0:
+		return false
+	fight.trace_branch = "elite"
+	fight.trace_hunt = "elite"
+	fight.bot.chapter = "mite_fight"
+	fight.bot.objective = "stand in the shard tyrant slam"
+	if pos.distance_to(stand) <= 2.05:
+		fight.bot.gave_up = false
+		fight.bot.extra_held = PackedStringArray()
+		fight.bot.release()
+		return true
+	var step: Vector2 = fight._clear_step_toward(tree, pos, stand)
+	if step.distance_to(stand) + 0.05 >= pos.distance_to(stand):
+		var gap := stand - pos
+		if gap.length() > 0.2:
+			step = pos + gap.normalized() * minf(1.4, gap.length())
+	fight._step_clear(delta, tree, player, step, stand, false)
+	return true
+
+
+func _damage_taken_from(tree: SceneTree, source: String) -> float:
+	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
+	if tele == null or not ("events" in tele):
+		return 0.0
+	var total := 0.0
+	for row in tele.events:
+		if str(row.get("kind", "")) != "damage_taken":
+			continue
+		if str(row.get("source", "")) != source:
+			continue
+		total += float(row.get("amount", 0.0))
+	return total
 
 
 func _boss_hits_near_heart(tree: SceneTree, limit: float) -> int:
@@ -1520,6 +1580,9 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	_film_tree = tree
 	fight.bot.input.pace_presses = true
 	var elapsed := 0.0
+	var seeking_elite := true
+	var elite_hit := 0.0
+	var elite_logged := false
 	var clear := 0.0
 	var burn_sprint := 0
 	var why := ""
@@ -1540,7 +1603,24 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		fight.trace_hunt = "none"
 		fight.trace_strike = ""
 		_bind_film_watch(tree)
-		var result := fight.tick(delta, tree, player, origin_xz)
+		var result := ""
+		if seeking_elite and _approach_elite(tree, fight, player, delta):
+			if fight.bot.gave_up:
+				why = "could not reach the shard tyrant seed %d" % seed_value
+				break
+			elite_hit = _damage_taken_from(tree, "spawn_elite")
+			if elite_hit > 0.0:
+				if not elite_logged:
+					elite_logged = true
+					print("HARNESS mite spawn_elite %.1f" % elite_hit)
+				seeking_elite = false
+				fight.bot.extra_held = PackedStringArray()
+				fight.bot.release()
+				fight.bot.has_target = false
+				fight.bot.arrived = false
+				fight.bot.gave_up = false
+		else:
+			result = fight.tick(delta, tree, player, origin_xz)
 		var pos := _xz(player)
 		var near_row: Dictionary = fight._nearest_mite(tree, pos)
 		var near_d := -1.0
@@ -1603,7 +1683,7 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 			clear += delta
 		else:
 			clear = 0.0
-		if clear >= 1.0:
+		if clear >= 1.0 and not seeking_elite:
 			break
 		await tree.process_frame
 	var survived := player != null and float(player.health) > 0.0 and why == ""
@@ -1622,6 +1702,19 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		survived = false
 	if why == "" and _off_film < 1:
 		why = "no mite contact or kill off the 0.12 film seed %d" % seed_value
+		survived = false
+	elite_hit = _damage_taken_from(tree, "spawn_elite")
+	var boss_src := _damage_taken_from(tree, "boss")
+	var tele = tree.root.get_node_or_null("DifficultyTelemetry")
+	var tele_path := ""
+	if tele != null and tele.has_method("flush"):
+		tele_path = str(tele.flush())
+	print("HARNESS mite telemetry %s spawn_elite %.1f boss %.1f" % [tele_path, elite_hit, boss_src])
+	if why == "" and elite_hit <= 0.0:
+		why = "no spawn_elite damage seed %d" % seed_value
+		survived = false
+	if why == "" and boss_src > 0.0:
+		why = "boss source %.1f is not separate from the tyrant seed %d" % [boss_src, seed_value]
 		survived = false
 	var after := _snap(tree, player)
 	if survived:
@@ -1647,6 +1740,8 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 		"burn_sprint": burn_sprint,
 		"boss_near": boss_near,
 		"off_film": _off_film,
+		"elite": elite_hit,
+		"boss_src": boss_src,
 		"why": why,
 		"bot": kept,
 		"pos": last_pos,

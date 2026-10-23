@@ -817,8 +817,16 @@ func _resolve_contact(delta: float, allow: bool, self_cell: Vector2i, aim_cell: 
 	return false
 
 
+func _player_damage_source(from_special: bool) -> StringName:
+	if enemy_id == &"spawn_elite":
+		return &"spawn_elite"
+	if from_special:
+		return &"boss"
+	return &""
+
+
 func _land_contact() -> void:
-	_damage_player(contact_damage, &"", global_position)
+	_damage_player(contact_damage, _player_damage_source(false), global_position)
 	attacked_player.emit(contact_damage)
 
 
@@ -915,7 +923,7 @@ func _resolve_special(act: StringName, summon: int) -> void:
 		if flat <= reach:
 			var mult := 1.35 if act == &"burst" else 1.0
 			var src := _ring_anchor if act == &"burst" else global_position
-			_damage_player(contact_damage * mult, &"boss", src)
+			_damage_player(contact_damage * mult, _player_damage_source(true), src)
 	if summon > 0:
 		_summon_mites(summon)
 

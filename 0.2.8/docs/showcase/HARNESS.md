@@ -99,7 +99,7 @@ Stands through a mite `StrikeTelegraph` until that bite lands at 1.45 columns or
 
 Boots a fresh world on each seed and walks to the Origin Heart. The burn pool, the crystal mites, and the heart-bound guardian are the ones that seed spawns. The Shard Tyrant stands on the edge of the crystal spawn ring, not on the heart column, and its slam stays on that station. No teleport, no granted XP, and no direct damage. `HonestFight` is already home, the bow chapter is finished, and the wooden sword is the weapon. Default seeds are 12349 through 12353. `CRYSTALSTORM_HARNESS_SEED` runs one seed. `CRYSTALSTORM_HARNESS_SEEDS` runs a comma list.
 
-Each attempt lasts at most 150 seconds. The bot has to kill at least one crystal mite from a clear cell, then hold one second with no living mite inside 16 columns of the heart and with the player out of the burn. A sprint or dash whose path, landing, or current cell is burn fails that seed. A boss hit whose telemetry `heart_columns` is within 4 of the heart fails that seed.
+Each attempt lasts at most 150 seconds. Once the Shard Tyrant is within 28 columns, the bot walks to its station and stands inside the slam until `damage_taken` records source `spawn_elite`. That source stays separate from `boss` (the Origin Warden). The bot then kills at least one crystal mite from a clear cell and holds one second with no living mite inside 16 columns of the heart and with the player out of the burn. A sprint or dash whose path, landing, or current cell is burn fails that seed. A boss hit whose telemetry `heart_columns` is within 4 of the heart fails that seed. A `boss` damage source on this fight also fails it.
 
 | Check | Pass |
 | --- | --- |
@@ -107,6 +107,7 @@ Each attempt lasts at most 150 seconds. The bot has to kill at least one crystal
 | Kill | `KILL crystal_mite` at least once, then the heart neighborhood is clear for one second. |
 | Off film | At least one `HARNESS mite off_film contact` or `HARNESS mite off_film kill` on a mite cell whose depth is under 0.12. The bot holds a clear cell and swings only after that mite steps off the film. |
 | Burn sprint | Zero frames where sprint or dash is held into a burn tile. |
+| Tyrant | `HARNESS mite spawn_elite` prints an amount above zero. The session JSON has `damage_taken` source `spawn_elite` and no `boss` source. |
 | Boss | `damage_taken` source `boss` rows carry `heart_columns`. None are within 4 columns of the heart. Each seed prints `HARNESS mite boss_near 0`. |
 | Banner | The opening dig line is up. |
 | Shot | `steps/*_mite_fight.png` from the last clear moment. |
