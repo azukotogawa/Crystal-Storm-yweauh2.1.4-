@@ -117,6 +117,8 @@ static func _enemy_brain(
 	d.contact_damage = damage
 	d.avoids_crystal = false
 	d.feeds_crystal_on_death = false
+	if profile == _EntityBrainConfig.BehaviorProfile.CRYSTAL_STALKER:
+		d.crystal_flee_depth = d.crystal_hunt_min_depth
 	if profile == _EntityBrainConfig.BehaviorProfile.SUICIDE_BOMBER:
 		d.detonate_on_contact = true
 		d.detonate_radius = 2.8
