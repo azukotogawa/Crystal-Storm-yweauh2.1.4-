@@ -1177,16 +1177,16 @@ func _clear_step_toward(tree: SceneTree, pos: Vector2, foe: Vector2) -> Vector2:
 func _await_off_film(dt: float, tree: SceneTree, player: Node, pos: Vector2, foe: Vector2) -> bool:
 	if _Hazard.depth_at(tree, foe) < _Hazard.CLEAR_DEPTH:
 		return false
-	if _Hazard.depth_at(tree, pos) < _Hazard.CLEAR_DEPTH:
-		bot.release()
-		_face_foe(player, pos, foe)
-		trace_branch = "b23"
-		return true
 	var stand := _Hazard.clear_film_stand(tree, pos, foe)
 	if stand == Vector2.INF:
 		stand = pos
-	_step_clear(dt, tree, player, stand, foe, false)
-	trace_branch = "b22"
+	if _Hazard.depth_at(tree, pos) >= _Hazard.CLEAR_DEPTH or pos.distance_to(stand) > 0.65:
+		_step_clear(dt, tree, player, stand, foe, false)
+		trace_branch = "b22"
+		return true
+	bot.release()
+	_face_foe(player, pos, foe)
+	trace_branch = "b23"
 	return true
 
 

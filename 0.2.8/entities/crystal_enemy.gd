@@ -569,12 +569,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var self_cell := _EntityNavigation.column_pos(global_position)
-	var player_cell := self_cell
-	if guardian:
-		# voxel_position is already column space. column_pos() expects world units.
-		player_cell = _player_column()
-	else:
-		player_cell = _EntityNavigation.column_pos(_target_column_pos())
+	# voxel_position is already column space. column_pos() expects world units.
+	var player_cell := _player_column()
 
 	var target_pos := _target_column_pos()
 	if brain.should_detonate(global_position, target_pos):
