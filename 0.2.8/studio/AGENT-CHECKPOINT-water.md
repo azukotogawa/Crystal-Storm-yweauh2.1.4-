@@ -28,3 +28,8 @@ Env: Godot 4.7.2 headless on a Linux VM, scratch copy with stand-in art, shaders
 - `verify_dev_tools_input` now checks no `channel_water` action, no `try_channel_water` in game code, no duplicate key+modifier actions. It and `verify_dev_chat` pass.
 - Scenario `dev_keys` (HonestInput; `pulse_key` gained a shift flag): Shift+T and plain T leave the terrain snapshot (height deltas and wet cell count) unchanged, plain T opens chat. PASS headless.
 - Found, not changed: first Esc does not close the focused chat box, second does (Q-059).
+
+## cs-water-05
+- Scenario `water_trench` (same state machine as `water_dig`, mode flag): bot walks to a lake, digs a 10-cell trench with normal dig input, asserts levels 7/8..1/8 then three dry cells on flat ground, digs a second layer at cell 8 and asserts the fall continues (cell 8 = 7/8, cells 9 and 10 dry), places a stone wall across cell 4 with build input and asserts the lake-side cells 1-3 keep their levels.
+- Past the wall nothing changes (no receding, Q-058): levels `[0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.875, 0.0, 0.0]` before and after the wall. Two runs gave identical levels.
+- Not judged: the fill and after-wall screenshots (stand-in art, dummy renderer); they need the Dell.

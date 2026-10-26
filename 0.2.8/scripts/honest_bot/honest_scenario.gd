@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -107,13 +107,15 @@ func _objective(name: String) -> String:
 		return "place several blocks in one stroke"
 	if name == "water_dig":
 		return "dig beside a lake and watch it flow"
+	if name == "water_trench":
+		return "dig a trench from a lake, then wall it off"
 	if name == "dev_keys":
 		return "press T and Shift+T and leave the terrain alone"
 	return "dig one column" if name == "dig" else "place one stone wall"
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -447,6 +449,20 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		if int(after.get("shift_changes", 1)) != 0 or int(after.get("t_changes", 1)) != 0:
 			return "T or Shift+T changed terrain"
 		return ""
+	if name == "water_trench":
+		var steps: Array = [0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0, 0.0, 0.0]
+		var fill: Array = after.get("fill_levels", [])
+		if fill != steps:
+			return "trench fill %s want %s" % [str(fill), str(steps)]
+		var down: Array = after.get("step_levels", [])
+		if down.size() != fill.size() or down.slice(0, 7) != fill.slice(0, 7) or float(down[7]) != 0.875 or float(down[8]) != 0.0 or float(down[9]) != 0.0:
+			return "down-step did not continue the flow %s" % str(down)
+		var wall: Array = after.get("wall_levels", [])
+		if wall.size() != fill.size() or wall.slice(0, 3) != fill.slice(0, 3):
+			return "lake side levels changed after the wall %s" % str(wall)
+		if not bool(after.get("wall_built", false)):
+			return "wall was not built across the trench"
+		return ""
 	if name == "water_dig":
 		var levels: Array = after.get("levels", [])
 		var want: Array = [0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0, 0.0, 0.0]
@@ -534,6 +550,15 @@ func _snap(tree: SceneTree, player) -> Dictionary:
 
 
 func _stamp_world(name: String, build, after: Dictionary) -> void:
+	if name == "water_trench":
+		after["fill_levels"] = build.fill_levels
+		after["wall_levels"] = build.wall_levels
+		after["step_levels"] = build.step_levels
+		var wc: Vector2i = build._trench_cell(build.WALL_AT)
+		after["wall_built"] = load("res://world/terrain_edits.gd").get_build_tile(wc.x, wc.y) >= 0
+		print("HARNESS water_trench down-step %s" % str(build.step_levels))
+		print("HARNESS water_trench fill %s after wall %s wall cell %d (cells past the wall are idx %d..)" % [str(build.fill_levels), str(build.wall_levels), build.WALL_AT, build.WALL_AT])
+		return
 	if name == "dev_keys":
 		after["t_chat"] = build.t_opened_chat
 		after["shift_changes"] = 0 if build.shift_signature == build.pre_signature else 1

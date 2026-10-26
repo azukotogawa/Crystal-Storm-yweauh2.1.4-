@@ -19,7 +19,9 @@ const OFFSETS: Array[Vector2i] = [
 const DIG_LIMIT := 48.0
 const PLACE_LIMIT := 130.0
 const BRUSH_LIMIT := 110.0
-const WATER_LIMIT := 420.0
+const WATER_LIMIT := 520.0
+const WALL_AT := 4
+const STEP_AT := 8
 const WATER_SCAN := 260
 const WATER_PROBES := 60
 const WATER_FILL_WAIT := 8.0
@@ -62,6 +64,10 @@ var pre_signature := ""
 var shift_signature := ""
 var t_signature := ""
 var t_opened_chat := false
+var fill_levels: Array = []
+var step_levels: Array = []
+var step_before := 0.0
+var wall_levels: Array = []
 var walker
 var walking := false
 var walk_failed := false
@@ -107,7 +113,7 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _place(dt)
 	if mode == "multi_dig" or mode == "multi_build":
 		return _brush()
-	if mode == "water_dig":
+	if mode == "water_dig" or mode == "water_trench":
 		return _water_dig()
 	if mode == "dev_keys":
 		return _dev_keys()
@@ -611,6 +617,10 @@ func _water_dig() -> String:
 		print("FAIL water_dig timed out at beat %d" % beat)
 		return "fail"
 	chapter_label = "water_dig"
+	if mode == "water_trench":
+		chapter_label = "water_trench_fill" if beat < 8 else "water_trench_wall"
+	if mode == "water_trench" and beat >= 7:
+		return _trench_wall()
 	if beat == 0:
 		if not hands.pulse("hotbar_2"):
 			return ""
@@ -686,6 +696,132 @@ func _water_dig() -> String:
 		if (fill_quiet >= WATER_QUIET and filled) or show_age > WATER_FILL_WAIT:
 			show_age = 0.0
 			beat = 7
+		return ""
+	show_age += step_dt
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	return "pass"
+
+
+func _trench_step() -> String:
+	var cell := _trench_cell(STEP_AT)
+	if beat == 30:
+		if not _walk_to(_trench_stand(STEP_AT)):
+			return ""
+		if walk_failed:
+			return "fail"
+		_stop_move()
+		show_age = 0.0
+		beat = 31
+		return ""
+	if beat == 31:
+		aim = cell
+		_look_at(aim)
+		show_age += step_dt
+		if (_spinning(aim) and show_age < 4.0) or show_age < _Pace.PRE_PAUSE:
+			return ""
+		step_before = _Edits.get_height_delta(cell.x, cell.y)
+		show_age = 0.0
+		beat = 32
+		return ""
+	if beat == 32:
+		_look_at(aim, PackedStringArray(["attack"]))
+		show_age += step_dt
+		if _Edits.get_height_delta(cell.x, cell.y) < step_before - 0.001:
+			_stop_move()
+			show_age = 0.0
+			fill_quiet = 0.0
+			fill_last = -1
+			beat = 33
+			return ""
+		if show_age > 6.0:
+			print("FAIL water_trench could not dig the down-step at %s" % cell)
+			return "fail"
+		return ""
+	show_age += step_dt
+	var count := _water_count()
+	if count == fill_last:
+		fill_quiet += step_dt
+	else:
+		fill_quiet = 0.0
+		fill_last = count
+	if (fill_quiet >= WATER_QUIET and show_age >= 2.0) or show_age > WATER_FILL_WAIT:
+		step_levels = water_levels()
+		show_age = 0.0
+		beat = 8
+	return ""
+
+
+func _trench_wall() -> String:
+	var cell := _trench_cell(WALL_AT)
+	if beat == 7:
+		fill_levels = water_levels()
+		show_age = 0.0
+		beat = 30
+		return ""
+	if beat >= 30:
+		return _trench_step()
+	if beat == 8:
+		if not hands.pulse("hotbar_5"):
+			return ""
+		beat = 9
+		return ""
+	if beat == 9:
+		var weapon := _weapon()
+		if weapon != null and str(weapon.get_place_id()) == "stone_wall":
+			beat = 10
+			return ""
+		if tries > 8:
+			print("FAIL water_trench place cycle missed stone_wall")
+			return "fail"
+		if hands.pulse("place_cycle"):
+			tries += 1
+		return ""
+	if beat == 10:
+		if not _walk_to(_trench_stand(WALL_AT)):
+			return ""
+		if walk_failed:
+			return "fail"
+		_stop_move()
+		show_age = 0.0
+		beat = 11
+		return ""
+	if beat == 11:
+		aim = cell
+		_look_at(aim)
+		show_age += step_dt
+		if (_spinning(aim) and show_age < 4.0) or show_age < _Pace.PRE_PAUSE:
+			return ""
+		if not hands.pulse("build_place"):
+			return ""
+		show_age = 0.0
+		beat = 12
+		return ""
+	if beat == 12:
+		_look_at(aim)
+		show_age += step_dt
+		if _Edits.get_build_tile(cell.x, cell.y) >= 0:
+			show_age = 0.0
+			fill_quiet = 0.0
+			fill_last = -1
+			beat = 13
+			return ""
+		if show_age > 6.0:
+			print("FAIL water_trench wall was not placed across the trench at %s" % cell)
+			return "fail"
+		return ""
+	if beat == 13:
+		show_age += step_dt
+		var count := _water_count()
+		if count == fill_last:
+			fill_quiet += step_dt
+		else:
+			fill_quiet = 0.0
+			fill_last = count
+		if (fill_quiet >= WATER_QUIET and show_age >= 2.0) or show_age > WATER_FILL_WAIT:
+			wall_levels = water_levels()
+			show_age = 0.0
+			beat = 14
 		return ""
 	show_age += step_dt
 	if show_age < _Pace.RESULT_HOLD:
