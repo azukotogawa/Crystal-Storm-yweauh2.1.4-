@@ -457,6 +457,10 @@ static func brush_wear(cell_count: int) -> int:
 	return maxi(1, ceili(float(cell_count) / 3.0))
 
 
+static func rotate_aim(aim: Vector3, quarter: int) -> Vector3:
+	return aim.rotated(Vector3.UP, -float(posmod(quarter, 4)) * PI * 0.5)
+
+
 static func aim_cardinal(aim: Vector3) -> Vector3i:
 	if absf(aim.x) < 0.0001 and absf(aim.z) < 0.0001:
 		return Vector3i(0, 0, 1)

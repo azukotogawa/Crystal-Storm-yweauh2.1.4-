@@ -279,7 +279,7 @@ func _try_dig_tool() -> void:
 	if def.is_empty():
 		return
 	var reach := brush_reach()
-	var aim := _aim_forward(reach)
+	var aim := _brush_aim(reach)
 	var anchor := _dig_anchor_cell(reach)
 	_last_break_cells = _brush_cells(false, anchor, aim) if anchor != Vector3i.ZERO else ([] as Array[Vector3i])
 	_listed_break = ItemTypes.MULTI_BLOCK_BREAK
@@ -490,6 +490,10 @@ func _range_world(range_columns: float) -> float:
 
 func _attack_forward() -> Vector3:
 	return _ActionTargeting.attack_forward(player)
+
+
+func _brush_aim(range_v: float) -> Vector3:
+	return ItemTypes.rotate_aim(_aim_forward(range_v), blueprint_quarter)
 
 
 func _aim_forward(range_v: float) -> Vector3:
@@ -1246,7 +1250,7 @@ func _place_fill(target: Vector3) -> bool:
 		if placed:
 			_note_placed_blocks(1)
 		return placed
-	var ok: bool = _terrain_editor.try_place_brush(target, inventory, brush_shape(), _aim_forward(brush_reach()), player, brush_reach())
+	var ok: bool = _terrain_editor.try_place_brush(target, inventory, brush_shape(), _brush_aim(brush_reach()), player, brush_reach())
 	if ok:
 		var count := int(_terrain_editor.last_place_batch.get("placed_count", 0))
 		var paid := str(_terrain_editor.last_place_batch.get("paid", "stone"))
