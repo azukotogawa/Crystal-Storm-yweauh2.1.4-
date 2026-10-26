@@ -10,7 +10,7 @@ var _assistant: Node
 var _panel: PanelContainer
 var _spacer: Control
 var _history: Label
-var _input: LineEdit
+var _line_edit: LineEdit
 var _open := false
 var _history_lines: PackedStringArray = []
 
@@ -83,12 +83,20 @@ func _build_ui() -> void:
 	_history.text = ""
 	vbox.add_child(_history)
 
-	_input = LineEdit.new()
-	_input.size_flags_vertical = Control.SIZE_SHRINK_END
-	_input.placeholder_text = "Ask the AI assistant or type /help ..."
-	_input.clear_button_enabled = true
-	_input.text_submitted.connect(_on_text_submitted)
-	vbox.add_child(_input)
+	_line_edit = LineEdit.new()
+	_line_edit.size_flags_vertical = Control.SIZE_SHRINK_END
+	_line_edit.placeholder_text = "Ask the AI assistant or type /help ..."
+	_line_edit.clear_button_enabled = true
+	_line_edit.text_submitted.connect(_on_text_submitted)
+	vbox.add_child(_line_edit)
+
+
+## Esc must close the chat even while the LineEdit has focus: LineEdit consumes
+## ui_cancel in gui input, so _unhandled_input never saw it.
+func _input(event: InputEvent) -> void:
+	if _open and event.is_action_pressed("ui_cancel"):
+		_close_chat()
+		get_viewport().set_input_as_handled()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -118,8 +126,8 @@ func _open_chat() -> void:
 	if _assistant == null:
 		_bind_assistant()
 	_sync_panel_height()
-	_input.grab_focus()
-	_input.caret_column = _input.text.length()
+	_line_edit.grab_focus()
+	_line_edit.caret_column = _line_edit.text.length()
 
 
 func _close_chat() -> void:
@@ -127,7 +135,7 @@ func _close_chat() -> void:
 	_GameplayInput.set_dev_chat_open(false)
 	visible = false
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_input.release_focus()
+	_line_edit.release_focus()
 
 
 func _on_text_submitted(text: String) -> void:
@@ -135,7 +143,7 @@ func _on_text_submitted(text: String) -> void:
 	if trimmed.is_empty():
 		return
 	_append_history("You: %s" % trimmed)
-	_input.text = ""
+	_line_edit.text = ""
 	if _assistant == null:
 		_bind_assistant()
 	if _assistant:
