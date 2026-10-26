@@ -124,7 +124,7 @@ func _test_weapon_uses_same_cells() -> void:
 	var at := src.find("func _try_dig_tool")
 	var end := src.find("\nfunc ", at + 10)
 	var body := src.substr(at, maxi(end - at, 0))
-	if "break_cells_for(" not in body or "_aim_forward(" not in body:
+	if "_brush_cells(" not in body or "_aim_forward(" not in body:
 		_fail("_try_dig_tool must resolve break cells toward the aim")
 		return
 	if "MULTI_BLOCK_BREAK" not in body:
@@ -375,7 +375,7 @@ func _test_drops_fx_wear() -> void:
 	var at := src.find("func _do_dig_attack")
 	var end := src.find("\nfunc ", at + 10)
 	var body := src.substr(at, maxi(end - at, 0))
-	if "dig_time_scale(" not in body or "wear_tool(" not in body or "_notify_scaled_break(" not in body:
+	if "brush_extra_sec(" not in body or "wear_tool(" not in body or "_notify_scaled_break(" not in body:
 		_fail("the dig stroke must scale timing, wear, and FX with the cell count")
 	elif "notify_scaled_breaks" not in src:
 		_fail("scaled break FX must go through BlockBreakFx")

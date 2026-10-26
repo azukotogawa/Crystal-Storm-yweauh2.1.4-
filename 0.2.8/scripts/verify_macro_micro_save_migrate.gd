@@ -14,6 +14,7 @@ var _failed: int = 0
 
 
 func _init() -> void:
+	_ChunkData.USE_MICRO_BRICKS = true
 	OS.set_environment("CRYSTALSTORM_MACRO_TERRAIN", "1")
 	OS.set_environment("CRYSTALSTORM_MICRO_TERRAIN", "1")
 	call_deferred("_run")

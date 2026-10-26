@@ -13,6 +13,9 @@ const OFFSETS: Array[Vector2i] = [
 ]
 const DIG_LIMIT := 48.0
 const PLACE_LIMIT := 130.0
+const BRUSH_LIMIT := 110.0
+const BRUSH_MASTERY := 5
+const BRUSH_MIN_BLOCKS := 3
 const CRYSTAL_SKIP := 0.05
 
 var chapter_label := ""
@@ -36,6 +39,9 @@ var spin := 0
 var step_dt := 0.0
 var miss_age := 0.0
 var blocked_cells: Array[Vector2i] = []
+var stone_pre := 0
+var stone_post := 0
+var stroke_count := 0
 
 
 func reset(segment: String) -> void:
@@ -76,6 +82,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _dig()
 	if mode == "structure_place":
 		return _place(dt)
+	if mode == "multi_dig" or mode == "multi_build":
+		return _brush()
 	return "fail"
 
 
@@ -175,6 +183,200 @@ func _dig() -> String:
 		print("SHOWCASE dig column %d %d drop %.3f" % [dug_hold.x, dug_hold.y, drop])
 		show_age = 0.0
 		beat = 6
+		return ""
+	_look_at(aim)
+	show_age += step_dt
+	if show_age < _Pace.SETTLE:
+		return ""
+	return "pass"
+
+
+func _stone() -> int:
+	var inv = player.get("inventory")
+	if inv == null or not inv.has_method("count_item"):
+		return 0
+	return int(inv.count_item("stone"))
+
+
+func _mastery() -> int:
+	var weapon := _weapon()
+	if weapon == null:
+		return 0
+	return int(weapon.brush_mastery())
+
+
+func _brush_ready() -> bool:
+	var weapon := _weapon()
+	return weapon != null and int(weapon.brush_index) >= 1
+
+
+func _dropped_count() -> int:
+	var n := 0
+	for key in heights.keys():
+		var cell: Vector2i = key
+		if _Edits.get_height_delta(cell.x, cell.y) < float(heights[cell]) - 0.01:
+			n += 1
+	return n
+
+
+func _brush_hits() -> int:
+	if mode == "multi_dig":
+		return _dropped_count()
+	return _new_tiles()
+
+
+func _brush() -> String:
+	var building := mode == "multi_build"
+	if age > BRUSH_LIMIT:
+		print("FAIL %s timed out at beat %d" % [mode, beat])
+		return "fail"
+	chapter_label = mode
+	if beat == 0:
+		if not hands.pulse("hotbar_2"):
+			return ""
+		beat = 1
+		return ""
+	if beat == 1:
+		if _mastery() >= BRUSH_MASTERY:
+			_stop_move()
+			beat = 5
+			return ""
+		aim = _dry_near()
+		if aim.x > 900000:
+			hands.set_held(_exit_crystal_held())
+			show_age += step_dt
+			if show_age > 1.4:
+				show_age = 0.0
+				tries += 1
+				if tries > 6:
+					print("FAIL %s no dry cell" % mode)
+					return "fail"
+			return ""
+		_look_at(aim)
+		show_age = 0.0
+		beat = 2
+		return ""
+	if beat == 2:
+		if _spinning(aim) and show_age < 2.4:
+			show_age += step_dt
+			_look_at(aim)
+			return ""
+		_stop_move()
+		_look_at(aim)
+		show_age = 0.0
+		beat = 3
+		return ""
+	if beat == 3:
+		_look_at(aim)
+		show_age += step_dt
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		show_age = 0.0
+		beat = 4
+		return ""
+	if beat == 4:
+		_look_at(aim, PackedStringArray(["attack"]))
+		show_age += step_dt
+		if _mastery() >= BRUSH_MASTERY:
+			_stop_move()
+			show_age = 0.0
+			beat = 5
+			return ""
+		if show_age > 3.0:
+			_stop_move()
+			blocked_cells.append(aim)
+			tries += 1
+			if tries > 10:
+				print("FAIL %s warmup dig missed" % mode)
+				return "fail"
+			show_age = 0.0
+			beat = 1
+		return ""
+	if beat == 5:
+		if building and not hands.pulse("hotbar_5"):
+			return ""
+		show_age = 0.0
+		tries = 0
+		beat = 6
+		return ""
+	if beat == 6:
+		show_age += step_dt
+		if _brush_ready():
+			print("SHOWCASE brush ready index %d mastery %d" % [int(_weapon().brush_index), _mastery()])
+			beat = 8
+			return ""
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		if not hands.pulse("brush_grow"):
+			return ""
+		tries += 1
+		if tries > 6:
+			print("FAIL %s brush did not unlock" % mode)
+			return "fail"
+		show_age = 0.0
+		return ""
+	if beat == 8:
+		blocked_cells = []
+		aim = _free_cell(tries) if building else _dry_near()
+		if aim.x > 900000:
+			print("FAIL %s no stroke cell" % mode)
+			return "fail"
+		_look_at(aim)
+		show_age = 0.0
+		beat = 9
+		return ""
+	if beat == 9:
+		if _spinning(aim) and show_age < 2.4:
+			show_age += step_dt
+			_look_at(aim)
+			return ""
+		_stop_move()
+		_look_at(aim)
+		show_age += step_dt
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		heights = _height_snap()
+		tiles = _tile_snap()
+		stone_pre = _stone()
+		show_age = 0.0
+		beat = 10
+		return ""
+	if beat == 10:
+		if building:
+			if not hands.pulse("build_place"):
+				return ""
+			_look_at(aim)
+		else:
+			_look_at(aim, PackedStringArray(["attack"]))
+		show_age = 0.0
+		beat = 11
+		return ""
+	if beat == 11:
+		_look_at(aim, PackedStringArray(["attack"]) if not building else PackedStringArray())
+		show_age += step_dt
+		stroke_count = _brush_hits()
+		if stroke_count >= BRUSH_MIN_BLOCKS:
+			_stop_move()
+			stone_post = _stone()
+			show_age = 0.0
+			beat = 12
+			return ""
+		if show_age > _Pace.action_span("multi_block_break") + 1.2:
+			_stop_move()
+			tries += 1
+			if tries > 8:
+				print("FAIL %s stroke hit %d of %d" % [mode, stroke_count, BRUSH_MIN_BLOCKS])
+				return "fail"
+			beat = 8
+		return ""
+	if beat == 12:
+		_look_at(aim)
+		show_age += step_dt
+		if show_age < _Pace.RESULT_HOLD:
+			return ""
+		print("SHOWCASE %s blocks %d stone %d to %d" % [mode, stroke_count, stone_pre, stone_post])
+		show_age = 0.0
+		beat = 13
 		return ""
 	_look_at(aim)
 	show_age += step_dt

@@ -25,6 +25,7 @@ const STEP := 1.0 / 60.0
 const BOOT_FRAMES := 2400
 const DIG_FRAMES := 4200
 const BUILD_FRAMES := 7200
+const MULTI_FRAMES := 7200
 
 const OPENING_BANNER := "Watch the purple front — dig trenches & walls where it advances"
 const WALL_BANNER := "Wall raised — crystal slows here; it will find another way"
@@ -47,7 +48,8 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	if name != "dig" and name != "build":
+	var multi := name == "multi_dig" or name == "multi_build"
+	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
 		return 1
 	print("HARNESS seed %d" % SEED)
@@ -58,12 +60,14 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return 1
 	var bot = _Bot.new()
 	bot.chapter = name
-	bot.objective = "dig one column" if name == "dig" else "place one stone wall"
+	bot.objective = _objective(name)
 	var before := _snap(tree, player)
 	var build = _Build.new()
 	var hands = _Hands.new()
-	build.reset("dig_tool" if name == "dig" else "structure_place")
+	build.reset(_segment(name))
 	var cap := DIG_FRAMES if name == "dig" else BUILD_FRAMES
+	if multi:
+		cap = MULTI_FRAMES
 	var result := ""
 	var frames := 0
 	while frames < cap:
@@ -72,7 +76,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		_note_banner(tree, seen)
 		if result == "fail":
 			return _give_up(bot, player, "play returned fail")
-		if name == "dig" and result == "pass":
+		if (name == "dig" or multi) and result == "pass":
 			break
 		if name == "build" and build.beat >= 10:
 			result = "pass"
@@ -93,6 +97,20 @@ func play(tree: SceneTree, scenario: String) -> int:
 	if shot == "":
 		return _give_up(bot, player, "screenshot was not saved")
 	return 0
+
+
+func _objective(name: String) -> String:
+	if name == "multi_dig":
+		return "dig several blocks in one stroke"
+	if name == "multi_build":
+		return "place several blocks in one stroke"
+	return "dig one column" if name == "dig" else "place one stone wall"
+
+
+func _segment(name: String) -> String:
+	if name == "multi_dig" or name == "multi_build":
+		return name
+	return "dig_tool" if name == "dig" else "structure_place"
 
 
 func _play_relic(tree: SceneTree) -> int:
@@ -418,6 +436,27 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "hp changed"
 	if not _saw(seen, OPENING_BANNER):
 		return "opening banner missing"
+	if name == "multi_dig":
+		if int(after.get("columns", 0)) < 3:
+			return "multi dig broke %d columns want 3" % int(after.get("columns", 0))
+		if int(after.get("stone", 0)) <= int(before.get("stone", 0)):
+			return "stone did not increase"
+		return ""
+	if name == "multi_build":
+		var placed := int(after.get("walls", 0))
+		if placed < 3:
+			return "multi build placed %d want 3" % placed
+		if int(after.get("stone_spent", -1)) != placed:
+			return "stone spent %d for %d blocks" % [int(after.get("stone_spent", -1)), placed]
+		for line in seen:
+			if line == OPENING_BANNER or line == WALL_BANNER:
+				continue
+			if line.begins_with("Brush: ") or line.begins_with("New brush unlocked") or line.begins_with("Placed ") or line.begins_with("Broke "):
+				continue
+			if line.begins_with("First steps "):
+				continue
+			return "unexpected banner %s" % line
+		return ""
 	if name == "dig":
 		if int(after.get("stone", 0)) <= int(before.get("stone", 0)):
 			return "stone did not increase"
@@ -476,6 +515,13 @@ func _snap(tree: SceneTree, player) -> Dictionary:
 
 
 func _stamp_world(name: String, build, after: Dictionary) -> void:
+	if name == "multi_dig":
+		after["columns"] = build._dropped_count()
+		return
+	if name == "multi_build":
+		after["walls"] = int(build._new_tiles())
+		after["stone_spent"] = int(build.stone_pre) - int(build.stone_post)
+		return
 	if name == "dig":
 		var cell: Vector2i = build._dropped()
 		if cell.x >= 900000:

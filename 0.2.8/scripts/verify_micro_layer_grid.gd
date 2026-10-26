@@ -10,6 +10,7 @@ const _TerrainDirtyScope = preload("res://helpers/terrain_dirty_scope.gd")
 
 
 func _init() -> void:
+	_ChunkData.USE_MICRO_BRICKS = true
 	call_deferred("_run")
 
 

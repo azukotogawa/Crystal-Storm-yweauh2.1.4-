@@ -14,6 +14,7 @@ const FACE_POS_Z := 6
 
 
 func _init() -> void:
+	_ChunkData.USE_MICRO_BRICKS = true
 	call_deferred("_run")
 
 

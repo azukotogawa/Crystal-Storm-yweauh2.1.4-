@@ -24,6 +24,7 @@ var _failed: int = 0
 
 
 func _init() -> void:
+	_ChunkData.USE_MICRO_BRICKS = true
 	call_deferred("_run")
 
 
