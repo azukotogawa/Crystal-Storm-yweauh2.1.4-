@@ -111,11 +111,11 @@ static func is_water_source_tile(tile: int) -> bool:
 	]
 
 
-static func is_protected_column(wx: int, wz: int, world = null) -> bool:
+static func is_protected_column(wx: int, wz: int, world = null, ignore_fill: bool = false) -> bool:
 	if world != null and world.has_method("get_tile_type"):
 		if is_water_source_tile(int(world.get_tile_type(float(wx), float(wz)))):
 			return true
-	if _TerrainEdits.get_build_tile(wx, wz) >= 0:
+	if not ignore_fill and _TerrainEdits.get_build_tile(wx, wz) >= 0:
 		return true
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	if feat.is_empty():

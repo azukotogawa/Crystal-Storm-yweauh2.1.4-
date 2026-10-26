@@ -773,29 +773,108 @@ func try_fill(world_pos: Vector3, inventory, tile_id: int = -1) -> bool:
 	if not _TerrainEdits.can_edit(wx, wz):
 		last_fail_reason = "Outside playable area"
 		return false
-	var use_tile: int = tile_id
-	var paid := "stone"
-	if use_tile < 0:
-		if inventory.count_item("stone") > 0:
-			use_tile = _VoxelTypes.STONE
-			paid = "stone"
-		elif inventory.count_item("wood") > 0:
-			use_tile = _VoxelTypes.DIRT
-			paid = "wood"
-		else:
-			last_fail_reason = "Need stone or wood"
-			return false
+	var material := _fill_material(inventory, tile_id)
+	if material.is_empty():
+		last_fail_reason = "Need stone or wood"
+		return false
+	var paid := str(material["paid"])
 	if not inventory.consume_item(paid, 1):
 		last_fail_reason = "Need 1 %s" % paid
 		return false
 	_clear_flood_water_block(wx, wz)
-	if not _TerrainEdits.build_wall(wx, wz, use_tile):
+	if not _TerrainEdits.build_wall(wx, wz, int(material["tile"])):
 		inventory.add_item(paid, 1)
 		last_fail_reason = "Stack full"
 		return false
 	_invalidate_and_rebuild(wx, wz)
 	_notify_water_reflow(wx, wz, true)
 	terrain_edited.emit(wx, wz, &"fill")
+	return true
+
+
+func _fill_material(inventory, tile_id: int = -1) -> Dictionary:
+	if inventory == null:
+		return {}
+	if tile_id >= 0:
+		return {"paid": "stone", "tile": tile_id, "have": int(inventory.count_item("stone"))}
+	if inventory.count_item("stone") > 0:
+		return {"paid": "stone", "tile": _VoxelTypes.STONE, "have": int(inventory.count_item("stone"))}
+	if inventory.count_item("wood") > 0:
+		return {"paid": "wood", "tile": _VoxelTypes.DIRT, "have": int(inventory.count_item("wood"))}
+	return {}
+
+
+func brush_place_blocked(wx: int, wz: int) -> String:
+	if _is_water_source_column(wx, wz):
+		return "water"
+	if _LivingForce.is_protected_column(wx, wz, world, true):
+		return "protected"
+	return ""
+
+
+func brush_plan(shape: int, anchor: Vector3i, aim: Vector3, place: bool, range_player: Node = null, reach: float = 0.0) -> Array[Vector3i]:
+	var raw := _TerrainEdits.brush_cells(shape, anchor, aim, world, place)
+	var inside: Array[Vector3i] = []
+	for cell in raw:
+		if range_player != null and reach > 0.0 and not _ActionTargeting._column_in_range(range_player, cell.x, cell.z, reach):
+			continue
+		inside.append(cell)
+	if not place:
+		return _TerrainEdits.clip_brush_dig(inside, world, self)
+	var skip := {}
+	var inventory = null
+	if range_player != null:
+		var feet: Vector3 = range_player.voxel_position
+		skip[Vector2i(floori(feet.x), floori(feet.z))] = true
+		if "inventory" in range_player:
+			inventory = range_player.inventory
+	var planned := _TerrainEdits.clip_brush_place(inside, world, self, skip)
+	if inventory == null:
+		return planned
+	var have := int(_fill_material(inventory).get("have", 0))
+	if planned.size() <= have:
+		return planned
+	planned.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		var da := absi(a.x - anchor.x) + absi(a.z - anchor.z)
+		var db := absi(b.x - anchor.x) + absi(b.z - anchor.z)
+		if da != db:
+			return da < db
+		return a.y < b.y
+	)
+	return planned.slice(0, have)
+
+
+func try_place_brush(world_pos: Vector3, inventory, shape: int, aim: Vector3, range_player: Node, reach: float) -> bool:
+	last_fail_reason = ""
+	last_build_id = &"fill"
+	last_place_batch = {}
+	if world == null or chunk_manager == null or inventory == null:
+		last_fail_reason = "Terrain not ready"
+		return false
+	var material := _fill_material(inventory)
+	if material.is_empty():
+		last_fail_reason = "Need stone or wood"
+		return false
+	var anchor := Vector3i(floori(world_pos.x), 0, floori(world_pos.z))
+	var cells := brush_plan(shape, anchor, aim, true, range_player, reach)
+	if cells.is_empty():
+		last_fail_reason = "Can't place here"
+		return false
+	var paid := str(material["paid"])
+	if not inventory.consume_item(paid, cells.size()):
+		last_fail_reason = "Need %d %s" % [cells.size(), paid]
+		return false
+	for cell in cells:
+		_clear_flood_water_block(cell.x, cell.z)
+	var batch: Dictionary = _TerrainEdits.place_cells(cells, int(material["tile"]), self)
+	if int(batch.get("placed_count", 0)) != cells.size():
+		inventory.add_item(paid, cells.size())
+		if str(last_fail_reason).is_empty():
+			last_fail_reason = "Can't place here"
+		return false
+	batch["paid"] = paid
+	last_place_batch = batch
+	terrain_edited.emit(anchor.x, anchor.z, &"fill")
 	return true
 
 

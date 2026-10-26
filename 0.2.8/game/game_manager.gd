@@ -31,6 +31,7 @@ var spawns_destroyed: int = 0
 var crystal_cells_broken: int = 0
 var enemies_killed: int = 0
 var blocks_mined: int = 0
+var blocks_placed: int = 0
 var structures_placed: int = 0
 var ruins_discovered: int = 0
 var pois_discovered: int = 0
@@ -382,6 +383,10 @@ func note_blocks_mined(count: int = 1) -> void:
 		return
 	blocks_mined += n
 	_grant_xp(_Progression.XP_BLOCK_MINED * n)
+
+
+func note_blocks_placed(count: int = 1) -> void:
+	blocks_placed += maxi(count, 0)
 
 
 func note_structure_placed() -> void:

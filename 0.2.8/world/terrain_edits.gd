@@ -5,6 +5,7 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
 
 const DROP_CAP_PER_SWING := 4
 
@@ -287,26 +288,88 @@ static func clip_breakable_cells(cells: Array, world, editor = null) -> Array[Ve
 	return out
 
 
-static func _cell_break_status(cell: Vector3i, world, editor) -> String:
+static func _cell_break_status(cell: Vector3i, world, editor, already: int = 0) -> String:
 	if not can_edit(cell.x, cell.z):
 		return "skip"
 	if editor != null and editor.has_method("break_cell_blocked"):
 		var block := str(editor.break_cell_blocked(cell.x, cell.z))
 		if not block.is_empty():
 			return block
-	var top := surface_block_y(world, cell.x, cell.z)
+	var top := surface_block_y(world, cell.x, cell.z) - already
 	if cell.y > top:
 		return "air"
 	if cell.y < top:
 		return "buried"
 	if world != null and world.has_method("get_surface_height"):
-		var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
-		if float(world.get_surface_height(float(cell.x), float(cell.z))) <= min_h:
+		var layer: float = _WorldSettings.get_active().layer_height()
+		var min_h: float = -layer * 4.0
+		if float(world.get_surface_height(float(cell.x), float(cell.z))) - layer * float(already) <= min_h:
 			return "floor"
-	var next: int = int(_ws().height_delta.get(Vector2i(cell.x, cell.z), 0)) - 1
+	var next: int = int(_ws().height_delta.get(Vector2i(cell.x, cell.z), 0)) - already - 1
 	if next < -6:
 		return "floor"
 	return "ready"
+
+
+static func brush_cells(shape: int, anchor: Vector3i, aim: Vector3, world, place: bool = false) -> Array[Vector3i]:
+	var forward := _ItemTypes.aim_cardinal(aim)
+	var right := Vector3i(forward.z, 0, -forward.x)
+	var cells: Array[Vector3i] = []
+	for off: Vector3i in _ItemTypes.brush_offsets(shape):
+		var col := anchor + right * off.x + forward * off.z
+		var base := surface_block_y(world, col.x, col.z)
+		var y := base + 1 + off.y if place else base - off.y
+		cells.append(Vector3i(col.x, y, col.z))
+	return cells
+
+
+static func clip_brush_dig(cells: Array, world, editor = null) -> Array[Vector3i]:
+	var ordered: Array[Vector3i] = []
+	var seen := {}
+	for raw in cells:
+		if raw is Vector3i and not seen.has(raw):
+			seen[raw] = true
+			ordered.append(raw)
+	ordered.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return a.y > b.y
+	)
+	var dug := {}
+	var out: Array[Vector3i] = []
+	for cell in ordered:
+		var key := Vector2i(cell.x, cell.z)
+		if _cell_break_status(cell, world, editor, int(dug.get(key, 0))) == "ready":
+			dug[key] = int(dug.get(key, 0)) + 1
+			out.append(cell)
+	return out
+
+
+static func clip_brush_place(cells: Array, world, editor = null, skip_columns: Dictionary = {}) -> Array[Vector3i]:
+	var ordered: Array[Vector3i] = []
+	var seen := {}
+	for raw in cells:
+		if raw is Vector3i and not seen.has(raw):
+			seen[raw] = true
+			ordered.append(raw)
+	ordered.sort_custom(func(a: Vector3i, b: Vector3i) -> bool:
+		return a.y < b.y
+	)
+	var placed := {}
+	var out: Array[Vector3i] = []
+	for cell in ordered:
+		var key := Vector2i(cell.x, cell.z)
+		if skip_columns.has(key) or not can_edit(cell.x, cell.z):
+			continue
+		if editor != null and editor.has_method("brush_place_blocked") and not str(editor.brush_place_blocked(cell.x, cell.z)).is_empty():
+			continue
+		var count := int(placed.get(key, 0))
+		var layers: int = int(_ws().height_delta.get(key, 0))
+		if layers + count + 1 > 8:
+			continue
+		if cell.y != surface_block_y(world, cell.x, cell.z) + 1 + count:
+			continue
+		placed[key] = count + 1
+		out.append(cell)
+	return out
 
 
 static func _dig_listed_cell(cell: Vector3i, world, editor: Object) -> String:

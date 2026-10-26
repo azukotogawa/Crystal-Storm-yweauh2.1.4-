@@ -32,6 +32,9 @@ const LINGER_MAX := 1.50
 const BANNER_MIN := 2.0
 const BANNER_MAX := 3.0
 const SLOW_MO_FLOOR := 0.35
+const BRUSHES: Array[String] = ["single", "line_3", "pad_3x3", "shaft_1x3", "cube_3x3x2"]
+const BRUSH_REACH_MIN := 3.0
+const BRUSH_REACH_MAX := 8.0
 
 @export var action_ids: PackedStringArray = PackedStringArray()
 @export var telegraph_sec: PackedFloat32Array = PackedFloat32Array()
@@ -57,6 +60,13 @@ const SLOW_MO_FLOOR := 0.35
 @export var showcase_phase_wall_sec: float = 150.0
 @export var showcase_progress_sec: float = 2.0
 
+@export var brush_ids: PackedStringArray = PackedStringArray()
+@export var brush_unlock_blocks: PackedInt32Array = PackedInt32Array()
+@export_range(3.0, 8.0, 0.5) var brush_reach: float = 5.0
+@export_range(0.0, 0.5, 0.01) var brush_block_sec: float = 0.1
+@export_range(0.0, 2.0, 0.05) var brush_time_cap_sec: float = 0.6
+@export_range(0.5, 4.0, 0.1) var brush_summary_sec: float = 2.5
+
 
 static func create_default():
 	var cfg = load("res://config/game_feel_config.gd").new()
@@ -80,7 +90,20 @@ static func create_default():
 	cfg.showcase_phase_frames = 180000
 	cfg.showcase_phase_wall_sec = 150.0
 	cfg.showcase_progress_sec = 2.0
+	cfg.brush_ids = PackedStringArray(BRUSHES)
+	cfg.brush_unlock_blocks = PackedInt32Array([0, 5, 20, 45, 80])
+	cfg.brush_reach = 5.0
+	cfg.brush_block_sec = 0.1
+	cfg.brush_time_cap_sec = 0.6
+	cfg.brush_summary_sec = 2.5
 	return cfg
+
+
+static func active():
+	var loaded = load("res://config/default_game_feel.tres")
+	if loaded is GameFeelConfig:
+		return loaded
+	return create_default()
 
 
 func action(id: String) -> Dictionary:
@@ -127,6 +150,18 @@ func enemy(id: String) -> Dictionary:
 		"id": id,
 		"telegraph_sec": enemy_telegraph_sec[index],
 	}
+
+
+func brush_unlock(id: String) -> int:
+	var index := brush_ids.find(id)
+	if index < 0 or index >= brush_unlock_blocks.size():
+		return 1 << 30
+	return brush_unlock_blocks[index]
+
+
+func brush_extra_sec(block_count: int) -> float:
+	var extra := maxi(block_count, 1) - 1
+	return minf(float(extra) * brush_block_sec, brush_time_cap_sec)
 
 
 func _aligned(index: int, rows: Array) -> bool:

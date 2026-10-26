@@ -5,7 +5,7 @@ const _ItemDef = preload("res://config/item_def.gd")
 
 enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
-enum BreakShape { SINGLE, VERTICAL_1X2, LINE_3, FACE_3X3 }
+enum BreakShape { SINGLE, VERTICAL_1X2, LINE_3, FACE_3X3, PAD_3X3, SHAFT_1X3, CUBE_3X3X2 }
 
 const MAX_STACK := 99
 const MULTI_BLOCK_BREAK := true
@@ -15,6 +15,14 @@ const BREAK_SHAPE_ORDER: Array[int] = [
 	BreakShape.VERTICAL_1X2,
 	BreakShape.LINE_3,
 	BreakShape.FACE_3X3,
+]
+
+const BRUSH_ORDER: Array[int] = [
+	BreakShape.SINGLE,
+	BreakShape.LINE_3,
+	BreakShape.PAD_3X3,
+	BreakShape.SHAFT_1X3,
+	BreakShape.CUBE_3X3X2,
 ]
 
 static var _defs: Dictionary = {}
@@ -392,6 +400,61 @@ static func break_shape_name(shape: int) -> String:
 			return "face_3x3"
 		_:
 			return "single"
+
+
+static func brush_id(shape: int) -> String:
+	match shape:
+		BreakShape.LINE_3:
+			return "line_3"
+		BreakShape.PAD_3X3:
+			return "pad_3x3"
+		BreakShape.SHAFT_1X3:
+			return "shaft_1x3"
+		BreakShape.CUBE_3X3X2:
+			return "cube_3x3x2"
+		_:
+			return "single"
+
+
+static func brush_label(shape: int) -> String:
+	match shape:
+		BreakShape.LINE_3:
+			return "Line 3"
+		BreakShape.PAD_3X3:
+			return "Pad 3x3"
+		BreakShape.SHAFT_1X3:
+			return "Shaft 3 deep"
+		BreakShape.CUBE_3X3X2:
+			return "Cube 3x3x2"
+		_:
+			return "Single"
+
+
+static func brush_offsets(shape: int) -> Array[Vector3i]:
+	var out: Array[Vector3i] = []
+	match shape:
+		BreakShape.LINE_3:
+			for r in range(-1, 2):
+				out.append(Vector3i(r, 0, 0))
+		BreakShape.PAD_3X3:
+			for f in range(-1, 2):
+				for r in range(-1, 2):
+					out.append(Vector3i(r, 0, f))
+		BreakShape.SHAFT_1X3:
+			for l in 3:
+				out.append(Vector3i(0, l, 0))
+		BreakShape.CUBE_3X3X2:
+			for l in 2:
+				for f in range(-1, 2):
+					for r in range(-1, 2):
+						out.append(Vector3i(r, l, f))
+		_:
+			out.append(Vector3i.ZERO)
+	return out
+
+
+static func brush_wear(cell_count: int) -> int:
+	return maxi(1, ceili(float(cell_count) / 3.0))
 
 
 static func aim_cardinal(aim: Vector3) -> Vector3i:
