@@ -33,20 +33,39 @@ func _run() -> void:
 	var pitch0: float = cam.pitch_target_degrees
 	var zoom0: float = cam.zoom_level
 
-	# Drive the tap with fixed deltas: headless frame deltas are unbounded (the first
-	# frames after load can exceed camera_tap_sec), which turned the tap into a hold.
 	cam.set_process(false)
 	_key(KEY_E, true)
 	cam._apply_hold_rotate(1.0 / 60.0)
 	cam._apply_hold_rotate(1.0 / 60.0)
 	_key(KEY_E, false)
 	cam._apply_hold_rotate(1.0 / 60.0)
+	var tap := fposmod(cam.yaw_target_degrees - yaw0 + 180.0, 360.0) - 180.0
+	if absf(tap - 3.0) > 0.01:
+		_fail("tap E yaw %.2f want 3.00 with no 90 snap" % tap)
+	_key(KEY_E, true)
+	for i in 30:
+		cam._apply_hold_rotate(1.0 / 60.0)
+	_key(KEY_E, false)
+	cam._apply_hold_rotate(1.0 / 60.0)
+	var held := fposmod(cam.yaw_target_degrees - yaw0 + 180.0, 360.0) - 180.0
+	if absf(held - 48.0) > 0.01:
+		_fail("hold E yaw %.2f want 48.00" % held)
+	cam._smooth_yaw(1.0 / 60.0)
+	var eased := fposmod(cam.yaw_degrees - yaw0 + 180.0, 360.0) - 180.0
+	if eased <= 0.0 or eased >= held:
+		_fail("yaw did not ease toward target (%.2f of %.2f)" % [eased, held])
 	cam.set_process(true)
 	for i in 90:
 		await process_frame
 	var dy := fposmod(cam.yaw_degrees - yaw0 + 180.0, 360.0) - 180.0
-	if absf(dy - 90.0) > 1.0:
-		_fail("tap E yaw %.2f want 90" % dy)
+	if absf(dy - held) > 1.0:
+		_fail("yaw settled %.2f want %.2f" % [dy, held])
+	_key(KEY_Q, true)
+	for i in 30:
+		cam._apply_hold_rotate(1.0 / 60.0)
+	_key(KEY_Q, false)
+	if absf(fposmod(cam.yaw_target_degrees - yaw0 + 180.0, 360.0) - 180.0 - 3.0) > 0.01:
+		_fail("hold Q did not rotate back")
 
 	var mv := InputEventMouseMotion.new()
 	mv.relative = Vector2(0, 40)
@@ -68,7 +87,7 @@ func _run() -> void:
 	if absf(cam.zoom_level - zoom0) > 0.01 or absf(cam.size - zoom0) > 0.01:
 		_fail("Home zoom %.2f want %.2f" % [cam.zoom_level, zoom0])
 	if absf(cam.pitch_degrees - pitch0) > 0.5:
-		_fail("Home pitch not restored")
+		_fail("Home pitch %.2f want %.2f" % [cam.pitch_degrees, pitch0])
 	if absf(fposmod(cam.yaw_degrees - yaw0 + 180.0, 360.0) - 180.0) > 0.5:
 		_fail("Home yaw not restored")
 

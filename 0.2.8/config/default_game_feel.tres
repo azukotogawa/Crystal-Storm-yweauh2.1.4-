@@ -30,7 +30,6 @@ brush_reach = 4.5
 brush_block_sec = 0.1
 brush_time_cap_sec = 0.6
 brush_summary_sec = 2.5
-camera_tap_sec = 0.25
 camera_look_deg = 0.2
 melee_min_range = 5.0
 draw_sec = 0.7

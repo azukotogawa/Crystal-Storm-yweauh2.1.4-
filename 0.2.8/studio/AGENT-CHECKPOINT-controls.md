@@ -13,7 +13,7 @@ Start: branch off cs-sonnet/water, `water-test-fixes.patch` applied with git am 
 - Left: nothing for ctl-01.
 
 ## cs-ctl-02 camera (done)
-- `player/camera.gd`: Q/E tap (<= `camera_tap_sec`) snaps yaw 90 degrees, hold rotates smoothly; MMB (`camera_free_look`) or Alt plus pointer motion adjusts yaw and pitch (`camera_look_deg`) and sets `GameplayInput.free_look`; zoom in/out and `camera_reset` (Home) go through `InputBindings.matches`.
+- `player/camera.gd`: Q/E rotate yaw continuously at `yaw_speed_deg` with `yaw_smooth` easing (no 90 degree snap); MMB (`camera_free_look`) or Alt plus pointer motion adjusts yaw and pitch (`camera_look_deg`) and sets `GameplayInput.free_look`; zoom in/out and `camera_reset` (Home) go through `InputBindings.matches`.
 - `scripts/verify_camera_controls.gd` (tap E, Alt look, =, Home) passes; `verify_camera_default_zoom.gd` now uses Ctrl+wheel and passes.
 - Scenario `camera` is registered (`honest_build._camera`, `HonestInput.motion/wheel`, cs-verify.sh) but cannot run in this cloud stub (full scene needs real shaders/art); needs the Dell.
 - Cursor aim is not yet suspended by `free_look`; wired in cs-ctl-08.
