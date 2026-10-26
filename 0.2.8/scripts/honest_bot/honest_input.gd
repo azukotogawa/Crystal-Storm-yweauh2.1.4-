@@ -2,6 +2,8 @@ extends RefCounted
 
 const _Aim = preload("res://player/action_targeting.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 var pace_presses := false
 var _since_press := 1.0
@@ -103,7 +105,7 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 	if vp == null:
 		return
 	var world = body.get("world")
-	var screen := _Aim.screen_pos_for_column(body, world, col_x, col_z)
+	var screen := _face_screen(body, world, col_x, col_z)
 	var size := vp.get_visible_rect().size
 	var key := Vector2i(floori(col_x), floori(col_z))
 	var seated := _seat_key == key and _seat_at.x >= 0.0 and _cell_at(body, world, _seat_at, size) == key
@@ -264,3 +266,21 @@ func wheel(up: bool, ctrl: bool = false) -> void:
 	released.pressed = false
 	Input.parse_input_event(released)
 	Input.flush_buffered_events()
+
+
+## Screen point of the column's exposed top-face centre, in the same cell units the
+## exact-face pick (FacePick) uses: x/z cell centre, y = surface_block_y. The older
+## walkable_top projection can land off the face (or off screen), and the exact pick
+## has no forward fallback, so the bot would aim at nothing.
+func _face_screen(body: Node, world, col_x: float, col_z: float) -> Vector2:
+	var cam: Camera3D = body.get("camera") as Camera3D if "camera" in body else null
+	if cam == null or world == null:
+		return _Aim.screen_pos_for_column(body, world, col_x, col_z)
+	var s: float = maxf(_WorldSettings.get_active().voxel_scale, 0.001)
+	var cx := floori(col_x)
+	var cz := floori(col_z)
+	var top := _TerrainEdits.surface_block_y(world, cx, cz)
+	var p := Vector3((float(cx) + 0.5) * s, float(top) * s, (float(cz) + 0.5) * s)
+	if cam.is_position_behind(p):
+		return _Aim.screen_pos_for_column(body, world, col_x, col_z)
+	return cam.unproject_position(p)
