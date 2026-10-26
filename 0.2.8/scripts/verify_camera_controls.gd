@@ -33,10 +33,15 @@ func _run() -> void:
 	var pitch0: float = cam.pitch_target_degrees
 	var zoom0: float = cam.zoom_level
 
+	# Drive the tap with fixed deltas: headless frame deltas are unbounded (the first
+	# frames after load can exceed camera_tap_sec), which turned the tap into a hold.
+	cam.set_process(false)
 	_key(KEY_E, true)
-	await process_frame
-	await process_frame
+	cam._apply_hold_rotate(1.0 / 60.0)
+	cam._apply_hold_rotate(1.0 / 60.0)
 	_key(KEY_E, false)
+	cam._apply_hold_rotate(1.0 / 60.0)
+	cam.set_process(true)
 	for i in 90:
 		await process_frame
 	var dy := fposmod(cam.yaw_degrees - yaw0 + 180.0, 360.0) - 180.0
