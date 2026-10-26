@@ -68,6 +68,20 @@ func _run() -> void:
 	else:
 		print("OK gameplay input blocked while chat open")
 
+	overlay._line_edit.grab_focus()
+	await process_frame
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	root.push_input(esc)
+	await process_frame
+	if overlay.visible or _GameplayInput.dev_chat_open or overlay._line_edit.has_focus():
+		push_error("one Esc must close a focused dev chat")
+		failed = true
+	else:
+		print("OK one Esc closes the chat")
+	overlay.call("_open_chat")
 	overlay.call("_close_chat")
 	await process_frame
 	if _GameplayInput.blocks_actions():

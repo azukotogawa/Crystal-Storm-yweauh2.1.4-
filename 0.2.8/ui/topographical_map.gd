@@ -1,5 +1,6 @@
 extends Control
 
+const _HudLayout = preload("res://config/hud_layout.gd")
 const _TopographicalMapConfig = preload("res://config/topographical_map_config.gd")
 const _TopographicalMapBuilder = preload("res://systems/topographical_map_builder.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
@@ -114,7 +115,6 @@ func _build_ui() -> void:
 	_minimap_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	_minimap_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_minimap_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_minimap_rect.position = Vector2(12, 12)
 	_apply_minimap_widget_size(cfg.minimap_size)
 	add_child(_minimap_rect)
 
@@ -172,12 +172,23 @@ func _build_ui() -> void:
 	_fullscreen_rect.add_child(_fullscreen_player_dot)
 
 
+func _place_minimap() -> void:
+	if _minimap_rect == null:
+		return
+	var layout := _HudLayout.load_active()
+	var rect := layout.region(_HudLayout.view_of(self), "minimap", _minimap_rect.size.x)
+	_minimap_rect.position = rect.position
+
+
 func _apply_minimap_widget_size(side: int) -> void:
 	if _minimap_rect == null:
 		return
 	var sz := Vector2(maxi(side, 32), maxi(side, 32))
 	_minimap_rect.custom_minimum_size = sz
 	_minimap_rect.size = sz
+	_place_minimap()
+	if is_inside_tree() and not get_viewport().size_changed.is_connected(_place_minimap):
+		get_viewport().size_changed.connect(_place_minimap)
 	if _player_dot:
 		_player_dot.position = sz * 0.5 - _player_dot.size * 0.5
 	if _map_key_hint:
