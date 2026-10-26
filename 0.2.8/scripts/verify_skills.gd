@@ -52,9 +52,14 @@ func _check_flag_and_shape() -> void:
 	if not project.contains("skill_1=") or not project.contains("skill_2=") or not project.contains("skill_3="):
 		_fail("project input is missing skill hotkeys")
 		return
-	if project.find("physical_keycode\":67") < 0 or project.find("physical_keycode\":72") < 0 or project.find("physical_keycode\":74") < 0:
-		_fail("skill hotkeys must be C, H, and J")
-		return
+	for i in 3:
+		var shifted_digit := false
+		for ev in InputMap.action_get_events("skill_%d" % (i + 1)):
+			if ev is InputEventKey and (ev as InputEventKey).shift_pressed and (ev as InputEventKey).physical_keycode == KEY_1 + i:
+				shifted_digit = true
+		if not shifted_digit:
+			_fail("skill hotkeys must be Shift+1, Shift+2 and Shift+3")
+			return
 	for tree in [_Skills.TREE_FIGHTER, _Skills.TREE_MINER, _Skills.TREE_BUILDER]:
 		var ids: Array = _Skills.new().tree_ids(tree)
 		if ids.size() < 1:

@@ -1,6 +1,7 @@
 extends Camera3D
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _InputBindings = preload("res://systems/input_bindings.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _Cutaway = preload("res://helpers/camera_cutaway.gd")
@@ -374,9 +375,11 @@ func _input(event):
 		apply_pitch_input(-event.relative.y * pitch_drag_deg)
 		get_viewport().set_input_as_handled()
 		return
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			zoom_level = max(zoom_level - ZOOM_STEP, MIN_ZOOM)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			zoom_level = min(zoom_level + ZOOM_STEP, MAX_ZOOM)
+	if not event.is_pressed() or event is InputEventMouseMotion:
+		return
+	if _InputBindings.matches("camera_zoom_in", event):
+		zoom_level = max(zoom_level - ZOOM_STEP, MIN_ZOOM)
+		size = zoom_level
+	elif _InputBindings.matches("camera_zoom_out", event):
+		zoom_level = min(zoom_level + ZOOM_STEP, MAX_ZOOM)
 		size = zoom_level

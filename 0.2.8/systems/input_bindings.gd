@@ -6,9 +6,13 @@ const ACTIONS: PackedStringArray = [
 	"jump", "sprint", "rotate_left", "rotate_right",
 	"camera_pitch_up", "camera_pitch_down", "unstuck",
 	"attack", "build_place", "interact", "inventory_toggle",
-	"plant", "place_cycle",
+	"plant", "place_cycle", "place_variant", "rotate_piece", "rotate_piece_back",
+	"brush_shrink", "brush_grow",
 	"hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4",
 	"hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8",
+	"hotbar_9", "hotbar_10", "hotbar_next", "hotbar_prev",
+	"skill_1", "skill_2", "skill_3", "skill_tree",
+	"camera_zoom_in", "camera_zoom_out", "camera_reset", "camera_free_look",
 	"toggle_map", "quick_save", "quick_load",
 	"pause",
 	"dev_chat_toggle", "debug_overlay_toggle", "bug_report",
@@ -41,6 +45,23 @@ const LABELS := {
 	"hotbar_6": "Hotbar 6",
 	"hotbar_7": "Hotbar 7",
 	"hotbar_8": "Hotbar 8",
+	"hotbar_9": "Hotbar 9",
+	"hotbar_10": "Hotbar 10",
+	"hotbar_next": "Next hotbar slot",
+	"hotbar_prev": "Previous hotbar slot",
+	"skill_1": "Skill 1",
+	"skill_2": "Skill 2",
+	"skill_3": "Skill 3",
+	"skill_tree": "Skill tree",
+	"place_variant": "Place variant",
+	"rotate_piece": "Rotate piece",
+	"rotate_piece_back": "Rotate piece back",
+	"brush_shrink": "Brush smaller",
+	"brush_grow": "Brush bigger",
+	"camera_zoom_in": "Zoom in",
+	"camera_zoom_out": "Zoom out",
+	"camera_reset": "Reset camera",
+	"camera_free_look": "Free look",
 	"toggle_map": "Map",
 	"quick_save": "Quick save",
 	"quick_load": "Quick load",
@@ -184,16 +205,33 @@ static func event_label(event: InputEvent) -> String:
 		return mods + name
 	if event is InputEventMouseButton:
 		var button := event as InputEventMouseButton
+		var text := ""
 		match button.button_index:
 			MOUSE_BUTTON_LEFT:
-				return "Mouse left"
+				text = "Mouse left"
 			MOUSE_BUTTON_RIGHT:
-				return "Mouse right"
+				text = "Mouse right"
 			MOUSE_BUTTON_MIDDLE:
-				return "Mouse middle"
+				text = "Mouse middle"
+			MOUSE_BUTTON_WHEEL_UP:
+				text = "Wheel up"
+			MOUSE_BUTTON_WHEEL_DOWN:
+				text = "Wheel down"
 			_:
-				return "Mouse %d" % button.button_index
+				text = "Mouse %d" % button.button_index
+		return _mouse_mods(button) + text
 	return ""
+
+
+static func _mouse_mods(button: InputEventMouseButton) -> String:
+	var mods := ""
+	if button.ctrl_pressed:
+		mods += "Ctrl+"
+	if button.alt_pressed:
+		mods += "Alt+"
+	if button.shift_pressed:
+		mods += "Shift+"
+	return mods
 
 
 static func _install_defaults() -> void:
@@ -229,7 +267,12 @@ static func _same_bind(a: InputEvent, b: InputEvent) -> bool:
 			and ka.alt_pressed == kb.alt_pressed \
 			and ka.meta_pressed == kb.meta_pressed
 	if a is InputEventMouseButton and b is InputEventMouseButton:
-		return (a as InputEventMouseButton).button_index == (b as InputEventMouseButton).button_index
+		var ma := a as InputEventMouseButton
+		var mb := b as InputEventMouseButton
+		return ma.button_index == mb.button_index \
+			and ma.shift_pressed == mb.shift_pressed \
+			and ma.ctrl_pressed == mb.ctrl_pressed \
+			and ma.alt_pressed == mb.alt_pressed
 	return false
 
 
@@ -250,6 +293,9 @@ static func _pack(event: InputEvent) -> Dictionary:
 		return {
 			"kind": "mouse",
 			"button_index": int(button.button_index),
+			"shift": button.shift_pressed,
+			"ctrl": button.ctrl_pressed,
+			"alt": button.alt_pressed,
 		}
 	return {}
 
@@ -268,5 +314,8 @@ static func _unpack(data: Dictionary) -> InputEvent:
 	if kind == "mouse":
 		var button := InputEventMouseButton.new()
 		button.button_index = int(data.get("button_index", MOUSE_BUTTON_LEFT)) as MouseButton
+		button.shift_pressed = bool(data.get("shift", false))
+		button.ctrl_pressed = bool(data.get("ctrl", false))
+		button.alt_pressed = bool(data.get("alt", false))
 		return button
 	return null

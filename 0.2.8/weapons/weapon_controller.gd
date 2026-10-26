@@ -50,7 +50,6 @@ var _last_fail_toast: String = ""
 var _dig_hold_sec: float = 0.0
 var _audio: Node
 var _build_hold_sec: float = 0.0
-var _brush_left_held: bool = false
 var _brush_right_held: bool = false
 var brush_index: int = 0
 var _brush_known: int = 1
@@ -58,8 +57,7 @@ var place_index: int = 0
 var blueprint_index: int = 0
 var blueprint_quarter: int = 0
 var blueprint_place_armed: bool = false
-var _blueprint_rotate_held: bool = false
-var _blueprint_cycle_held: bool = false
+var build_variant: int = 0
 const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
 var _held: _HeldItemView
 var _aim: _AimIndicator
@@ -179,7 +177,7 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("place_cycle"):
 		place_index = (place_index + 1) % _PlaceableCatalog.count()
 	for i in HOTBAR_INPUTS.size():
-		if Input.is_action_just_pressed(HOTBAR_INPUTS[i]):
+		if Input.is_action_just_pressed(HOTBAR_INPUTS[i], true):
 			_cancel_pending_strike()
 			_active_hotbar_index = i
 			_shown_item = ""
@@ -423,6 +421,7 @@ func _try_use_consumable() -> bool:
 const HOTBAR_INPUTS := [
 	"hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4",
 	"hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8",
+	"hotbar_9", "hotbar_10",
 ]
 
 
@@ -924,21 +923,15 @@ func dig_brush_radius() -> int:
 
 func _poll_dig_brush_keys() -> void:
 	if not _is_active_dig_tool():
-		_brush_left_held = false
-		_brush_right_held = false
 		return
-	var left := Input.is_physical_key_pressed(KEY_BRACKETLEFT)
-	var right := Input.is_physical_key_pressed(KEY_BRACKETRIGHT)
 	var slot = get_active_item()
 	var item_id := str(slot.id) if slot != null else "stone_pick"
-	if left and not _brush_left_held:
+	if Input.is_action_just_pressed("brush_shrink"):
 		_LivingForce.adjust_session_bias(-1, item_id)
 		_toast("Dig brush %d" % dig_brush_radius())
-	if right and not _brush_right_held:
+	if Input.is_action_just_pressed("brush_grow"):
 		_LivingForce.adjust_session_bias(1, item_id)
 		_toast("Dig brush %d" % dig_brush_radius())
-	_brush_left_held = left
-	_brush_right_held = right
 
 
 func selected_blueprint_id() -> StringName:
@@ -1116,14 +1109,13 @@ static func _column_has_build(wx: int, wz: int) -> bool:
 func _poll_blueprint_keys() -> void:
 	if not _StructureBlueprints.LARGE_STRUCTURES:
 		return
-	var turn := Input.is_physical_key_pressed(KEY_Z)
-	if turn and not _blueprint_rotate_held:
+	if Input.is_action_just_pressed("rotate_piece", true):
 		rotate_selected_blueprint(1)
-	_blueprint_rotate_held = turn
-	var cycle := Input.is_physical_key_pressed(KEY_X)
-	if cycle and not _blueprint_cycle_held:
+	if Input.is_action_just_pressed("rotate_piece_back", true):
+		rotate_selected_blueprint(-1)
+	if Input.is_action_just_pressed("place_variant"):
+		build_variant = (build_variant + 1) % 3
 		cycle_selected_blueprint(1)
-	_blueprint_cycle_held = cycle
 
 
 func _structure_ghost_wanted() -> bool:
@@ -1294,9 +1286,9 @@ func _resolve_terrain_target(range_v: float) -> Vector3:
 
 
 func _resolve_buildable_id() -> StringName:
-	if Input.is_key_pressed(KEY_SHIFT):
+	if build_variant == 1:
 		return &"gate"
-	if Input.is_key_pressed(KEY_CTRL):
+	if build_variant == 2:
 		return &"bridge"
 	if inventory and inventory.count_item("stone") > 0:
 		return &"stone_wall"
@@ -1361,9 +1353,9 @@ func _try_plant() -> void:
 	var forward := _attack_forward()
 	var target := player.voxel_position + forward * 2.0
 	var plant_id: StringName
-	if Input.is_key_pressed(KEY_SHIFT):
+	if build_variant == 1:
 		plant_id = &"tree" if inventory.count_item("wood") >= 3 else &"fern"
-	elif Input.is_key_pressed(KEY_CTRL):
+	elif build_variant == 2:
 		plant_id = &"wildflower"
 	elif inventory.count_item("wood") >= 2:
 		plant_id = &"bush"
