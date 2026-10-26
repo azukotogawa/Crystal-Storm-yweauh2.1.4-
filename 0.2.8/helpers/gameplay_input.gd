@@ -6,6 +6,7 @@ static var dev_chat_open := false
 static var world_loading := false
 static var pause_open := false
 static var map_open := false
+static var free_look := false
 static var skill_tree_open := false
 static var modal_open := false
 

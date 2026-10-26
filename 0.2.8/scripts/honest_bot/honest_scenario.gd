@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -111,13 +111,15 @@ func _objective(name: String) -> String:
 		return "walk into a lake, swim across and climb out"
 	if name == "water_trench":
 		return "dig a trench from a lake, then wall it off"
+	if name == "camera":
+		return "snap the view with E, look around with Alt, zoom and reset with Home"
 	if name == "dev_keys":
 		return "press T and Shift+T and leave the terrain alone"
 	return "dig one column" if name == "dig" else "place one stone wall"
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -445,6 +447,18 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "hp changed"
 	if not _saw(seen, OPENING_BANNER):
 		return "opening banner missing"
+	if name == "camera":
+		var c: Dictionary = after.get("cam", {})
+		var dy := fposmod(float(c.yaw1) - float(c.yaw0) + 180.0, 360.0) - 180.0
+		if absf(dy - 90.0) > 1.0:
+			return "tap E yaw changed %.1f want 90" % dy
+		if absf(float(c.pitch1) - float(c.pitch0)) < 1.0:
+			return "Alt look did not change pitch"
+		if float(c.zoom1) >= float(c.zoom0):
+			return "= did not zoom in"
+		if absf(float(c.zoom2) - float(c.zoom0)) > 0.01:
+			return "Home did not restore zoom"
+		return ""
 	if name == "dev_keys":
 		if not bool(after.get("t_chat", false)):
 			return "plain T did not open dev chat"
@@ -571,6 +585,10 @@ func _stamp_world(name: String, build, after: Dictionary) -> void:
 		after["wall_built"] = load("res://world/terrain_edits.gd").get_build_tile(wc.x, wc.y) >= 0
 		print("HARNESS water_trench down-step %s" % str(build.step_levels))
 		print("HARNESS water_trench fill %s after wall %s wall cell %d (cells past the wall are idx %d..)" % [str(build.fill_levels), str(build.wall_levels), build.WALL_AT, build.WALL_AT])
+		return
+	if name == "camera":
+		after["cam"] = build.cam_log
+		print("HARNESS camera %s" % str(build.cam_log))
 		return
 	if name == "dev_keys":
 		after["t_chat"] = build.t_opened_chat

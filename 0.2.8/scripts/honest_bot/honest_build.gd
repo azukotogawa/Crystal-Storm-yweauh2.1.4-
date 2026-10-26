@@ -123,6 +123,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _dev_keys()
 	if mode == "swim":
 		return _swim()
+	if mode == "camera":
+		return _camera()
 	return "fail"
 
 
@@ -619,6 +621,85 @@ func _terrain_signature() -> String:
 func chat_open() -> bool:
 	var chat = tree.get_first_node_in_group("dev_chat_overlay")
 	return chat != null and chat.is_chat_open()
+
+
+var cam_log: Dictionary = {}
+
+
+func _camera() -> String:
+	if age > 60.0:
+		print("FAIL camera timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "camera"
+	show_age += step_dt
+	var cam = player.get("camera")
+	if cam == null:
+		return "fail"
+	if beat == 0:
+		cam_log["yaw0"] = cam.yaw_degrees
+		cam_log["pitch0"] = cam.pitch_degrees
+		cam_log["zoom0"] = cam.zoom_level
+		show_age = 0.0
+		beat = 1
+		return ""
+	if beat == 1:
+		if show_age < 0.5 or not hands.pulse_key(KEY_E):
+			return ""
+		show_age = 0.0
+		beat = 2
+		return ""
+	if beat == 2:
+		if show_age < 1.5:
+			return ""
+		cam_log["yaw1"] = cam.yaw_degrees
+		show_age = 0.0
+		beat = 3
+		return ""
+	if beat == 3:
+		hands.motion(Vector2(0, 40), true)
+		if show_age < 0.2:
+			return ""
+		show_age = 0.0
+		beat = 4
+		return ""
+	if beat == 4:
+		if show_age < 1.0:
+			return ""
+		cam_log["pitch1"] = cam.pitch_degrees
+		show_age = 0.0
+		beat = 5
+		return ""
+	if beat == 5:
+		if not hands.pulse_key(KEY_EQUAL):
+			return ""
+		show_age = 0.0
+		beat = 6
+		return ""
+	if beat == 6:
+		if show_age < 0.3:
+			return ""
+		cam_log["zoom1"] = cam.zoom_level
+		show_age = 0.0
+		beat = 7
+		return ""
+	if beat == 7:
+		if not hands.pulse_key(KEY_HOME):
+			return ""
+		show_age = 0.0
+		beat = 8
+		return ""
+	if beat == 8:
+		if show_age < 1.5:
+			return ""
+		cam_log["zoom2"] = cam.zoom_level
+		cam_log["yaw2"] = cam.yaw_degrees
+		cam_log["pitch2"] = cam.pitch_degrees
+		beat = 9
+		show_age = 0.0
+		return ""
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	return "pass"
 
 
 func _dev_keys() -> String:

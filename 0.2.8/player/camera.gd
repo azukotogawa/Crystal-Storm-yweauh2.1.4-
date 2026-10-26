@@ -2,6 +2,7 @@ extends Camera3D
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 const _Juice = preload("res://systems/juice.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _Cutaway = preload("res://helpers/camera_cutaway.gd")
@@ -36,6 +37,10 @@ var yaw_degrees: float = ISO_YAW0_DEG
 var pitch_target_degrees: float = ISO_PITCH_DEG
 var pitch_degrees: float = ISO_PITCH_DEG
 var _pitch_dragging: bool = false
+var _rotate_dir: float = 0.0
+var _rotate_hold: float = 0.0
+var _rotate_origin: float = 0.0
+var _default_zoom: float = 16.0
 var pitch_save_delay: float = 0.4
 var _pitch_persist_wait: float = -1.0
 var _cutaway_globals_ready: bool = false
@@ -74,6 +79,7 @@ var _scroll_lead: Vector3 = Vector3.ZERO
 func _ready():
 	projection = Camera3D.PROJECTION_ORTHOGONAL
 	size = zoom_level
+	_default_zoom = zoom_level
 	# Ortho directional shadows are sized from this far plane, not shadow_max_distance.
 	far = 520.0
 	
@@ -203,9 +209,26 @@ func _apply_hold_rotate(delta: float) -> void:
 		dir -= 1.0
 	if Input.is_action_pressed("rotate_right"):
 		dir += 1.0
+	var tap_sec: float = _GameFeelConfig.active().camera_tap_sec
 	if is_zero_approx(dir):
+		if _rotate_dir != 0.0 and _rotate_hold <= tap_sec:
+			yaw_target_degrees = _wrap_deg(_rotate_origin + _rotate_dir * 90.0)
+		_rotate_dir = 0.0
 		return
-	yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
+	if _rotate_dir == 0.0:
+		_rotate_dir = dir
+		_rotate_hold = 0.0
+		_rotate_origin = yaw_target_degrees
+	_rotate_hold += delta
+	if _rotate_hold > tap_sec:
+		yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
+
+
+func reset_view() -> void:
+	snap_yaw_degrees(ISO_YAW0_DEG)
+	snap_pitch_degrees(ISO_PITCH_DEG)
+	zoom_level = _default_zoom
+	size = zoom_level
 
 
 func _frame_anchor() -> Vector3:
@@ -363,16 +386,20 @@ func _add_cutaway_global(have: PackedStringArray, param: StringName, type: int, 
 func _input(event):
 	if _GameplayInput.blocks_actions():
 		return
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_MIDDLE:
-			_pitch_dragging = event.pressed
-			if not event.pressed:
-				flush_pitch_save()
-			if event.pressed:
-				get_viewport().set_input_as_handled()
-			return
-	if event is InputEventMouseMotion and _pitch_dragging:
-		apply_pitch_input(-event.relative.y * pitch_drag_deg)
+	if event.is_action("camera_free_look", true) and not event is InputEventMouseMotion:
+		_pitch_dragging = event.is_pressed()
+		_GameplayInput.free_look = _pitch_dragging
+		if not _pitch_dragging:
+			flush_pitch_save()
+		else:
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		_GameplayInput.free_look = _pitch_dragging or event.alt_pressed
+	if event is InputEventMouseMotion and (_pitch_dragging or event.alt_pressed):
+		var look: float = _GameFeelConfig.active().camera_look_deg
+		apply_pitch_input(-event.relative.y * look)
+		yaw_target_degrees = _wrap_deg(yaw_target_degrees - event.relative.x * look)
 		get_viewport().set_input_as_handled()
 		return
 	if not event.is_pressed() or event is InputEventMouseMotion:
@@ -383,3 +410,5 @@ func _input(event):
 	elif _InputBindings.matches("camera_zoom_out", event):
 		zoom_level = min(zoom_level + ZOOM_STEP, MAX_ZOOM)
 		size = zoom_level
+	elif _InputBindings.matches("camera_reset", event):
+		reset_view()

@@ -65,6 +65,7 @@ func _check_default(cam: Camera3D) -> void:
 func _wheel(cam: Camera3D, button: int) -> void:
 	var ev := InputEventMouseButton.new()
 	ev.button_index = button
+	ev.ctrl_pressed = true
 	ev.pressed = true
 	cam._input(ev)
 

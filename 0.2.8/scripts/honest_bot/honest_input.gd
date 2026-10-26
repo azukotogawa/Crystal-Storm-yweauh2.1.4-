@@ -243,3 +243,20 @@ func _on_view(vp: Viewport, at: Vector2) -> bool:
 	if rect.size.x < 8.0 or rect.size.y < 8.0:
 		return true
 	return at.x <= rect.end.x and at.y <= rect.end.y
+
+
+func motion(rel: Vector2, alt: bool = false) -> void:
+	var ev := InputEventMouseMotion.new()
+	ev.relative = rel
+	ev.alt_pressed = alt
+	Input.parse_input_event(ev)
+	Input.flush_buffered_events()
+
+
+func wheel(up: bool, ctrl: bool = false) -> void:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = MOUSE_BUTTON_WHEEL_UP if up else MOUSE_BUTTON_WHEEL_DOWN
+	ev.pressed = true
+	ev.ctrl_pressed = ctrl
+	Input.parse_input_event(ev)
+	Input.flush_buffered_events()
