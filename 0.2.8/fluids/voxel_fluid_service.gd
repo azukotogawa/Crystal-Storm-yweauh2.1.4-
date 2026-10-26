@@ -69,7 +69,6 @@ func _init_water_engine() -> void:
 	)
 	_water_engine.is_cell_active = Callable(self, "_is_cell_active")
 	_water_engine.max_cells_per_tick = 96
-	_water_engine.empty_cell_inflow_cap = 0.25
 
 
 func request_flow(wx: int, wz: int, steps: int = 0) -> void:
@@ -131,17 +130,21 @@ func _tick_water(delta: float) -> void:
 			region[key + dir] = true
 	_last_subset_size = region.size()
 	_water_engine.clear()
-	var layer: float = _layer()
-	var sources := 0
+	var loaded: Dictionary = region.duplicate()
 	for key_variant in region.keys():
+		for dir in _CrystalTypes.NEIGHBOR_DIRS:
+			loaded[key_variant + dir] = true
+	var sources := 0
+	for key_variant in loaded.keys():
 		var pos: Vector2i = key_variant
 		if not _is_cell_active(pos):
 			continue
 		if _is_natural_water_cell(pos):
-			_water_engine.depth[pos] = layer
+			_water_engine.sources[pos] = true
 			sources += 1
 		elif _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
-			_water_engine.depth[pos] = _ChannelRegistry.get_water_level(pos.x, pos.y) * layer
+			var lvl: int = int(round(_ChannelRegistry.get_water_level(pos.x, pos.y) * float(_VoxelFluidEngine.SOURCE_LEVEL)))
+			_water_engine.set_level(pos, clampi(lvl, 1, _VoxelFluidEngine.SOURCE_LEVEL - 1))
 	_last_source_count = sources
 	_water_engine.set_subset_cells(region.keys())
 	var changed: Array = _water_engine.tick_flow(delta)
@@ -153,6 +156,8 @@ func _tick_water(delta: float) -> void:
 		next_dirty[pos] = true
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			next_dirty[pos + dir] = true
+	for pos_variant in _water_engine.leftover:
+		next_dirty[pos_variant] = true
 	_dirty_cells = next_dirty
 	_last_wet_count = _water_engine.cell_count()
 
@@ -164,20 +169,15 @@ func _persist_changes(changed: Array) -> Array:
 		var pos: Vector2i = pos_variant
 		if _is_natural_water_cell(pos):
 			continue
-		var amount: float = _water_engine.get_depth_at(pos.x, pos.y)
-		var had: bool = _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-		if amount < _water_engine.fluid_def.min_depth:
-			if had:
-				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-				out.append(pos)
-				_emit_water_visual(pos)
+		var lvl: int = _water_engine.level_at(pos)
+		if lvl <= 0:
 			continue
-		var level: float = clampf(amount / layer, 0.05, 1.0)
-		if not had:
+		var level: float = float(lvl) / float(_VoxelFluidEngine.SOURCE_LEVEL)
+		if not _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
 			_ChannelRegistry.register_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, level)
 		else:
 			_ChannelRegistry.set_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, level)
-		_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, _visual_bed(pos) + amount)
+		_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, _visual_bed(pos) + level * layer)
 		out.append(pos)
 		_emit_water_visual(pos)
 	if not out.is_empty() and chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
@@ -201,6 +201,8 @@ func _visual_top(pos: Vector2i) -> float:
 
 
 func _is_natural_water_cell(pos: Vector2i) -> bool:
+	if _TerrainEdits.get_height_delta(pos.x, pos.y) != 0.0:
+		return false
 	var tile: int = VoxelTypes.AIR
 	if _terrain_query:
 		tile = _terrain_query.get_tile(pos)

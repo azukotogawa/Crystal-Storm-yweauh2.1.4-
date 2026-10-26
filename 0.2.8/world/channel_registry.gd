@@ -230,8 +230,7 @@ static func sync_depth_from_engine(engine) -> void:
 	for key_variant in all_fluid_positions(FLUID_WATER):
 		var key: Vector2i = key_variant
 		var level: float = get_fluid_level(key.x, key.y, FLUID_WATER)
-		if level >= 0.05:
-			engine.depth[key] = level
+		engine.set_level(key, clampi(int(round(level * float(engine.SOURCE_LEVEL))), 1, engine.SOURCE_LEVEL - 1))
 
 
 static func compute_downhill_dir(world, wx: int, wz: int) -> Vector2i:

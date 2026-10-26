@@ -19,7 +19,7 @@ const OFFSETS: Array[Vector2i] = [
 const DIG_LIMIT := 48.0
 const PLACE_LIMIT := 130.0
 const BRUSH_LIMIT := 110.0
-const WATER_LIMIT := 280.0
+const WATER_LIMIT := 420.0
 const WATER_SCAN := 260
 const WATER_PROBES := 60
 const WATER_FILL_WAIT := 8.0
@@ -52,7 +52,7 @@ var blocked_cells: Array[Vector2i] = []
 var stone_pre := 0
 var stone_post := 0
 var stroke_count := 0
-var trench_len := 1
+var trench_len := 10
 var trench_i := 1
 var lake: Dictionary = {}
 var fill_quiet := 0.0
@@ -602,7 +602,7 @@ func _water_dig() -> String:
 		else:
 			fill_quiet = 0.0
 			fill_last = count
-		var filled: bool = not water_levels().is_empty() and float(water_levels()[0]) >= 0.05
+		var filled: bool = not water_levels().is_empty() and float(water_levels()[0]) >= 0.8
 		if (fill_quiet >= WATER_QUIET and filled) or show_age > WATER_FILL_WAIT:
 			show_age = 0.0
 			beat = 7

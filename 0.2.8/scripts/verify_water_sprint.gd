@@ -47,7 +47,6 @@ func _make_water_engine(heights: Dictionary) -> _VoxelFluidEngine:
 	var terrain := _CrystalTerrainQuery.new()
 	terrain.test_base_heights = heights
 	var engine := _VoxelFluidEngine.new(cfg, terrain, _FluidRegistry.get_def(&"water"))
-	engine.empty_cell_inflow_cap = 0.35
 	engine.max_cells_per_tick = 96
 	return engine
 
@@ -78,7 +77,7 @@ func _test_trench_redirect() -> void:
 		var changed: Array = engine.tick_flow(0.2)
 		for pos_variant in changed:
 			var pos: Vector2i = pos_variant
-			var level: float = float(engine.depth.get(pos, 0.0))
+			var level: float = float(engine.level_at(pos)) / float(engine.SOURCE_LEVEL)
 			if level < 0.05:
 				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
 			elif _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):

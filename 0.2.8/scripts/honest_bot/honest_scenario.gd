@@ -441,8 +441,9 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "opening banner missing"
 	if name == "water_dig":
 		var levels: Array = after.get("levels", [])
-		if levels.is_empty() or float(levels[0]) < 0.05:
-			return "dug cell beside the lake did not fill %s" % str(levels)
+		var want: Array = [0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0, 0.0, 0.0]
+		if levels != want:
+			return "trench levels %s want the 7 cell stepped spread %s" % [str(levels), str(want)]
 		if int(after.get("flow_ticks", 0)) < 1:
 			return "no flow tick ran"
 		return ""
