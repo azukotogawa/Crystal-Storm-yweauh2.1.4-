@@ -723,7 +723,7 @@ func _tour_build(cam, weapon, skills, bar) -> void:
 	var hotbar_seq: Array = []
 	var s: Dictionary = {}
 	tour = [
-		[func(): s["yaw"] = cam.yaw_degrees; s["pitch"] = cam.pitch_degrees; s["zoom"] = cam.zoom_level; s["sig"] = _terrain_signature(); aim = _dry_near(), 0.5, func(): pass],
+		[func(): s["yaw"] = cam.yaw_degrees; s["pitch"] = cam.pitch_degrees; s["zoom"] = cam.zoom_level; s["col"] = _column(); s["sig"] = str(_height_snap_at(s.col)); aim = _dry_near(), 0.5, func(): pass],
 		[func(): hands.pulse_key(KEY_E), 1.5, func(): _tour_note("snap_yaw", absf(fposmod(cam.yaw_degrees - s.yaw + 180.0, 360.0) - 180.0 - 90.0) <= 1.0)],
 		[func(): hands.motion(_alt_look_rel(cam), true), 1.2, func(): _tour_note("alt_look", absf(cam.pitch_degrees - s.pitch) >= 1.0)],
 		[func(): hands.pulse_key(KEY_EQUAL), 0.4, func(): _tour_note("zoom_key", cam.zoom_level < s.zoom); s["z1"] = cam.zoom_level],
@@ -739,7 +739,7 @@ func _tour_build(cam, weapon, skills, bar) -> void:
 		[func(): hands.pulse_key(KEY_Z), 0.4, func(): _tour_note("rotate", weapon.blueprint_quarter == 1)],
 		[func(): hands.pulse("place_cycle"), 0.4, func(): _tour_note("tab_variant", weapon.place_index != 0)],
 		[func(): hands.pulse_key(KEY_X), 0.4, func(): _tour_note("x_variant", weapon.build_variant == 1)],
-		[func(): hands.pulse_key(KEY_T), 0.8, func(): _tour_note("t_chat", chat_open()); _tour_note("t_terrain", _terrain_signature() == s.sig)],
+		[func(): hands.pulse_key(KEY_T), 0.8, func(): _tour_note("t_chat", chat_open()); _tour_note("t_terrain", str(_height_snap_at(s.col)) == s.sig)],
 		[func(): hands.pulse_key(KEY_ESCAPE), 1.2, func(): _tour_note("esc_closes", not chat_open())],
 	]
 
@@ -1676,7 +1676,10 @@ func _yaw() -> float:
 
 
 func _height_snap() -> Dictionary:
-	var origin := _column()
+	return _height_snap_at(_column())
+
+
+func _height_snap_at(origin: Vector2i) -> Dictionary:
 	var snap := {}
 	for dz in range(-8, 9):
 		for dx in range(-8, 9):
