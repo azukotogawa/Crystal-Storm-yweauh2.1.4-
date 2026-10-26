@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "mouse_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -103,7 +103,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 func _objective(name: String) -> String:
 	if name == "multi_dig":
 		return "dig several blocks in one stroke"
-	if name == "multi_build":
+	if name == "multi_build" or name == "mouse_build":
 		return "place several blocks in one stroke"
 	if name == "water_dig":
 		return "dig beside a lake and watch it flow"
@@ -123,7 +123,7 @@ func _objective(name: String) -> String:
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour":
+	if name == "multi_dig" or name == "multi_build" or name == "mouse_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -522,7 +522,7 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		if int(after.get("stone", 0)) <= int(before.get("stone", 0)):
 			return "stone did not increase"
 		return ""
-	if name == "multi_build":
+	if name == "multi_build" or name == "mouse_build":
 		var placed := int(after.get("walls", 0))
 		if placed < 3:
 			return "multi build placed %d want 3" % placed
@@ -632,7 +632,7 @@ func _stamp_world(name: String, build, after: Dictionary) -> void:
 	if name == "multi_dig":
 		after["columns"] = build._dropped_count()
 		return
-	if name == "multi_build":
+	if name == "multi_build" or name == "mouse_build":
 		after["walls"] = int(build._new_tiles())
 		after["stone_spent"] = int(build.stone_pre) - int(build.stone_post)
 		return

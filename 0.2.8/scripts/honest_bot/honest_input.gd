@@ -13,6 +13,7 @@ var _held: Dictionary = {}
 var _pulses: PackedStringArray = PackedStringArray()
 var _keys: Array[int] = []
 var _shift_on := false
+var last_aim := Vector2(-1.0, -1.0)
 var _seat_key := Vector2i(999999, 999999)
 var _seat_at := Vector2(-1.0, -1.0)
 
@@ -154,6 +155,7 @@ func aim_foe(body: Node, col_x: float, col_z: float) -> void:
 
 
 func _warp(vp: Viewport, at: Vector2, size: Vector2) -> void:
+	last_aim = at
 	_Aim.note_event_mouse(at, size)
 	vp.warp_mouse(at)
 	var motion := InputEventMouseMotion.new()
@@ -222,7 +224,7 @@ func _inside(at: Vector2, size: Vector2) -> bool:
 	return at.x >= 0.0 and at.y >= 0.0 and at.x <= size.x and at.y <= size.y
 
 
-func click_at(node: Node, at: Vector2, pressed: bool) -> bool:
+func click_at(node: Node, at: Vector2, pressed: bool, button: MouseButton = MOUSE_BUTTON_LEFT, ctrl: bool = false) -> bool:
 	if node == null:
 		return false
 	var vp := node.get_viewport()
@@ -235,10 +237,12 @@ func click_at(node: Node, at: Vector2, pressed: bool) -> bool:
 	_Aim.note_event_mouse(at, vp.get_visible_rect().size)
 	vp.warp_mouse(at)
 	var ev := InputEventMouseButton.new()
-	ev.button_index = MOUSE_BUTTON_LEFT
+	ev.button_index = button
+	ev.ctrl_pressed = ctrl
 	ev.pressed = pressed
 	_point(ev, at)
-	vp.push_input(ev, true)
+	Input.parse_input_event(ev)
+	Input.flush_buffered_events()
 	return true
 
 
