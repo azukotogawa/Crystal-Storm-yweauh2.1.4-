@@ -59,7 +59,7 @@ func _run() -> void:
 	else:
 		print("OK no water stacked on undug ground")
 
-	_TerrainEdits.dig(3, 2, 1)
+	_TerrainEdits.dig(3, 2, 2)
 	svc.call("request_flow", 3, 2, 6)
 	if not bool(svc.call("is_wet_column", 3, 2)):
 		_fail("dug cell beside a river source must fill")

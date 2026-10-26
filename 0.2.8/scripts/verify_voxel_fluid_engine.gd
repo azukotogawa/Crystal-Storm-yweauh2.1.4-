@@ -38,6 +38,7 @@ func _init() -> void:
 
 	if failed:
 		quit(1)
+		return
 	print("All voxel fluid engine tests OK")
 	quit(0)
 
@@ -135,8 +136,8 @@ func _test_water_post_dig_reflow() -> bool:
 	engine.set_subset_cells(heights.keys())
 	engine.tick_flow(0.1)
 	var level: int = engine.level_at(Vector2i(3, 3))
-	if level != 5:
-		push_error("FAIL post-dig reflow level=%d want 5" % level)
+	if level != _VoxelFluidEngine.FALL_LEVEL:
+		push_error("FAIL post-dig reflow level=%d want %d" % [level, _VoxelFluidEngine.FALL_LEVEL])
 		return true
 	print("OK post-dig reflow level=%d" % level)
 	return false
