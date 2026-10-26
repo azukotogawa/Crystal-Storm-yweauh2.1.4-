@@ -67,6 +67,7 @@ var _orbit_target_deg: float:
 ## Ortho view height. 16 is about a third closer than the old 24 (30–40% band).
 var zoom_level := 16.0
 const ZOOM_STEP := 2.0
+const PAN_ZOOM_STEP := 0.5
 const MIN_ZOOM := 8.0
 const MAX_ZOOM := 140.0
 
@@ -389,6 +390,13 @@ func _input(event):
 		yaw_target_degrees = _wrap_deg(yaw_target_degrees - event.relative.x * look)
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventPanGesture:
+		use_touchpad()
+		zoom_by((event as InputEventPanGesture).delta.y * PAN_ZOOM_STEP)
+		get_viewport().set_input_as_handled()
+		return
+	if _InputBindings.is_touchpad_wheel(event):
+		use_touchpad()
 	if event is InputEventMagnifyGesture:
 		var pinched: float = clampf(zoom_level / maxf((event as InputEventMagnifyGesture).factor, 0.1), MIN_ZOOM, MAX_ZOOM)
 		zoom_level = pinched
@@ -397,10 +405,26 @@ func _input(event):
 	if not event.is_pressed() or event is InputEventMouseMotion:
 		return
 	if _InputBindings.matches("camera_zoom_in", event):
-		zoom_level = max(zoom_level - ZOOM_STEP, MIN_ZOOM)
-		size = zoom_level
+		zoom_by(-ZOOM_STEP * _wheel_scale(event))
 	elif _InputBindings.matches("camera_zoom_out", event):
-		zoom_level = min(zoom_level + ZOOM_STEP, MAX_ZOOM)
-		size = zoom_level
+		zoom_by(ZOOM_STEP * _wheel_scale(event))
 	elif _InputBindings.matches("camera_reset", event):
 		reset_view()
+
+
+func zoom_by(amount: float) -> void:
+	zoom_level = clampf(zoom_level + amount, MIN_ZOOM, MAX_ZOOM)
+	size = zoom_level
+
+
+
+static func use_touchpad() -> void:
+	if _PlayerSettings.control_profile != "laptop":
+		_PlayerSettings.set_control_profile("laptop")
+
+
+func _wheel_scale(event: InputEvent) -> float:
+	var mb := event as InputEventMouseButton
+	if mb == null or mb.factor <= 0.0:
+		return 1.0
+	return clampf(mb.factor, 0.1, 4.0)
