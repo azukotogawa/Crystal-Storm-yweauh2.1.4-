@@ -282,8 +282,8 @@ func _process(delta: float) -> void:
 		hover_col = _ActionTargeting.pick_hover_column(
 			player, world, chunk_manager, range_v
 		)
-		if hover_col == Vector3.ZERO:
-			hover_col = _ActionTargeting.target_column(player, range_v)
+		if hover_col == Vector3.ZERO and not _pointer_on_screen():
+			hover_col = _ActionTargeting._target_column_forward(player, range_v, world, chunk_manager)
 		if _held_is_ranged():
 			var aimed := _ActionTargeting.cursor_cell_under_mouse(player, range_v)
 			if aimed != Vector3.ZERO:
@@ -389,6 +389,13 @@ func _input(event: InputEvent) -> void:
 	if vp == null:
 		return
 	_ActionTargeting.note_event_mouse((event as InputEventMouse).position, vp.get_visible_rect().size)
+
+
+func _pointer_on_screen() -> bool:
+	var vp := get_viewport()
+	if vp == null:
+		return false
+	return vp.get_visible_rect().grow(2.0).has_point(_pointer())
 
 
 func _pointer() -> Vector2:

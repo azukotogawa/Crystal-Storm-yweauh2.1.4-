@@ -74,5 +74,5 @@ static func pick(world, origin: Vector3, dir: Vector3, eye_cells: Vector3, reach
 				return miss
 			if (p + d * t).distance_to(eye_cells) > reach:
 				return miss
-			return {"hit": true, "cell": cell, "normal": normal, "place": cell + normal}
+			return {"hit": true, "cell": cell, "normal": normal, "place": cell + normal, "t": t * scale}
 	return miss
