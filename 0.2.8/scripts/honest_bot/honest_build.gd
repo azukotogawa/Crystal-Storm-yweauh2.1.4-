@@ -602,7 +602,7 @@ func _swim() -> String:
 		beat = 3
 		return ""
 	if beat == 3:
-		if not _walk_to(swim_far):
+		if not _walk_to(swim_far - (lake["axis"] as Vector2i)):
 			swam = swam or _swimming_now()
 			return ""
 		if walk_failed:
