@@ -338,9 +338,28 @@ static func profile_binds(profile: String) -> Dictionary:
 	var minus := InputEventKey.new()
 	minus.physical_keycode = KEY_MINUS
 	minus.keycode = KEY_MINUS
+	var wheel_up := InputEventMouseButton.new()
+	wheel_up.button_index = MOUSE_BUTTON_WHEEL_UP
+	var wheel_down := InputEventMouseButton.new()
+	wheel_down.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	var period := InputEventKey.new()
+	period.physical_keycode = KEY_PERIOD
+	var comma := InputEventKey.new()
+	comma.physical_keycode = KEY_COMMA
 	return {
 		"build_place": [_pack(rmb), _pack(ctrl_lmb)],
 		"camera_free_look": [_pack(alt)],
-		"camera_zoom_in": [_pack(plus)],
-		"camera_zoom_out": [_pack(minus)],
+		"camera_zoom_in": [_pack(plus), _pack(wheel_up)],
+		"camera_zoom_out": [_pack(minus), _pack(wheel_down)],
+		"hotbar_next": [_pack(period)],
+		"hotbar_prev": [_pack(comma)],
 	}
+
+
+static func is_touchpad_wheel(event: InputEvent) -> bool:
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed:
+		return false
+	if mb.button_index != MOUSE_BUTTON_WHEEL_UP and mb.button_index != MOUSE_BUTTON_WHEEL_DOWN:
+		return false
+	return mb.factor > 0.0 and not is_equal_approx(mb.factor, 1.0)
