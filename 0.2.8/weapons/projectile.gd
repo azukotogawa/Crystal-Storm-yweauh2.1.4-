@@ -4,6 +4,7 @@ extends Node3D
 const MAX_LIVE := 32
 const STICK_TIME := 1.15
 
+const _CombatHitbox = preload("res://systems/combat_hitbox.gd")
 const _CombatHitResolver = preload("res://systems/combat_hit_resolver.gd")
 const _WeaponStrike = preload("res://weapons/weapon_strike.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -29,7 +30,9 @@ var crystal_damage := 0.5
 var knockback := 1.0
 var blast_radius := 0.0
 var ttl := 2.8
-var hit_radius := 0.3
+var hit_radius := 0.1
+var last_hit: Dictionary = {}
+var _hit_done := false
 var source_id: StringName = &"shortbow"
 var kind: StringName = &"arrow"
 var active := false
@@ -127,6 +130,8 @@ func _activate(spec: Dictionary) -> void:
 	active = true
 	stuck = false
 	stick_left = 0.0
+	last_hit = {}
+	_hit_done = false
 	visible = true
 	top_level = true
 	kind = StringName(str(spec.get("kind", "arrow")))
@@ -138,7 +143,7 @@ func _activate(spec: Dictionary) -> void:
 	knockback = float(spec.get("knockback", 1.0))
 	blast_radius = float(spec.get("blast_radius", 0.0))
 	ttl = float(spec.get("ttl", 2.8 if kind != &"bomb" else 1.35))
-	hit_radius = float(spec.get("hit_radius", 0.32 if kind != &"bomb" else 0.42))
+	hit_radius = float(spec.get("hit_radius", 0.1 if kind != &"bomb" else 0.3))
 	source_id = StringName(str(spec.get("source", "shortbow")))
 	_crystal = spec.get("crystal")
 	_world = spec.get("world")
@@ -173,12 +178,19 @@ func integrate(delta: float, nodes: Array = []) -> String:
 	ttl -= delta
 	var hit := _trace(prev, nxt, nodes)
 	var hit_kind := str(hit.get("kind", "fly"))
+	if hit_kind != "fly":
+		last_hit = hit
 	if hit_kind == "entity":
-		_damage_entity(hit.get("node"), nxt)
+		var contact: Vector3 = hit.get("pos", nxt)
+		_damage_entity(hit.get("node"), contact)
 		if kind == &"bomb":
-			_explode(nxt)
+			_explode(contact)
+		elif kind == &"stone":
+			global_position = contact
+			velocity = Vector3.ZERO
+			_hit_done = true
 		else:
-			_recycle()
+			_stick_at(contact)
 		return "entity"
 	if hit_kind == "crystal":
 		if kind == &"bomb":
@@ -219,37 +231,23 @@ func _nodes_for_frame() -> Array:
 func _trace(a: Vector3, b: Vector3, nodes: Array) -> Dictionary:
 	var entity_t := INF
 	var entity: Node = null
-	var ab := b - a
-	var ab_len2 := ab.length_squared()
-	for node in nodes:
-		if not is_instance_valid(node):
-			continue
-		if node.has_method("is_combat_alive") and not bool(node.is_combat_alive()):
-			continue
-		var center: Vector3 = node.global_position
-		if node.has_method("get_combat_center"):
-			center = node.get_combat_center()
-		var radius := hit_radius
-		if node.has_method("get_combat_radius"):
-			radius += float(node.get_combat_radius()) * 0.65
-		var t := 0.0
-		if ab_len2 > 0.0001:
-			t = clampf((center - a).dot(ab) / ab_len2, 0.0, 1.0)
-		var closest := a + ab * t
-		if closest.distance_squared_to(center) > radius * radius:
-			continue
-		if t < entity_t:
-			entity_t = t
-			entity = node
+	if not _hit_done:
+		for node in nodes:
+			if not is_instance_valid(node):
+				continue
+			if node.has_method("is_combat_alive") and not bool(node.is_combat_alive()):
+				continue
+			var box: Dictionary = _CombatHitbox.sphere_of(node)
+			var t := _CombatHitbox.segment_entry(a, b, box.center, float(box.radius) + hit_radius)
+			if t < entity_t:
+				entity_t = t
+				entity = node
 	var terrain_t := INF
 	var terrain_pos := b
-	var ground := _ground_y(b)
-	if ground < 9000.0 and b.y <= ground and a.y >= ground - 0.15:
-		var drop := a.y - b.y
-		var t := 0.0 if absf(drop) < 0.0001 else clampf((a.y - ground) / drop, 0.0, 1.0)
-		terrain_t = t
-		terrain_pos = a.lerp(b, t)
-		terrain_pos.y = ground
+	var solid_t := _terrain_entry(a, b)
+	if solid_t < INF:
+		terrain_t = solid_t
+		terrain_pos = a.lerp(b, solid_t)
 	var crystal_t := INF
 	var crystal_cell := Vector2i.ZERO
 	var crystal_pos := b
@@ -267,12 +265,37 @@ func _trace(a: Vector3, b: Vector3, nodes: Array) -> Dictionary:
 				crystal_pos = sample
 				crystal_pos.y = clampf(y, feet, top)
 	if entity != null and entity_t <= terrain_t and entity_t <= crystal_t:
-		return {"kind": "entity", "node": entity}
+		return {"kind": "entity", "node": entity, "pos": a.lerp(b, entity_t)}
 	if crystal_cell != Vector2i.ZERO and crystal_t <= terrain_t:
 		return {"kind": "crystal", "cell": crystal_cell, "pos": crystal_pos}
 	if terrain_t < INF:
 		return {"kind": "terrain", "pos": terrain_pos}
 	return {"kind": "fly"}
+
+
+func _is_solid_at(at: Vector3) -> bool:
+	return at.y < _ground_y(at)
+
+
+func _terrain_entry(a: Vector3, b: Vector3) -> float:
+	if _ground_y(b) > 9000.0:
+		return INF
+	var steps := maxi(ceili(a.distance_to(b) / 0.25), 1)
+	var free_t := 0.0
+	for i in range(1, steps + 1):
+		var t := float(i) / float(steps)
+		if _is_solid_at(a.lerp(b, t)):
+			var lo := free_t
+			var hi := t
+			for _j in 8:
+				var mid := (lo + hi) * 0.5
+				if _is_solid_at(a.lerp(b, mid)):
+					hi = mid
+				else:
+					lo = mid
+			return lo
+		free_t = t
+	return INF
 
 
 func _ground_y(at: Vector3) -> float:

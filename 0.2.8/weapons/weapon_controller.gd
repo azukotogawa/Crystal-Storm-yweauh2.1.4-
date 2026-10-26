@@ -25,6 +25,8 @@ const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _ToolFeel = preload("res://player/tool_feel_cast.gd")
 const _GameFeelConfig = preload("res://config/game_feel_config.gd")
+const _CombatHitbox = preload("res://systems/combat_hitbox.gd")
+const _RangedAim = preload("res://weapons/ranged_aim.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -62,6 +64,12 @@ const TERRAIN_HOLD_REPEAT_START_SEC: float = 0.16
 var _held: _HeldItemView
 var _aim: _AimIndicator
 var _playback = null
+const MELEE_CURSOR_SLACK := 0.4
+var refused_count := 0
+var _drawing := false
+var _draw_sec := 0.0
+var _draw_item := ""
+var _draw_charge := 1.0
 var _pending_mode: int = -1
 var _pending_item: String = ""
 var _pending_def: Dictionary = {}
@@ -149,8 +157,10 @@ func _process(delta: float) -> void:
 				_try_dig_tool()
 	else:
 		_dig_hold_sec = 0.0
-		if Input.is_action_just_pressed("attack", true):
-			if not _try_use_consumable():
+		if _drawing:
+			_tick_draw(delta)
+		elif Input.is_action_just_pressed("attack", true):
+			if not _begin_draw() and not _try_use_consumable():
 				_try_attack()
 
 	var build_held := Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
@@ -470,6 +480,9 @@ func _try_attack() -> void:
 	if kind == ItemTypes.WeaponKind.DIG:
 		_do_dig_attack(item_id, def)
 		return
+	if kind == ItemTypes.WeaponKind.MELEE and not _melee_cursor_ok(def):
+		_refuse_use("Out of range")
+		return
 	var feel_id := _configured_attack_id(item_id, def)
 	if feel_id != "":
 		_offer_tool_action(feel_id, item_id, def)
@@ -481,6 +494,23 @@ func _try_attack() -> void:
 			_arm_clock(item_id, def, 0)
 		ItemTypes.WeaponKind.RANGED:
 			_arm_clock(item_id, def, 1)
+
+
+func _melee_cursor_ok(def: Dictionary) -> bool:
+	var ray := _cursor_ray()
+	if ray.is_empty():
+		return true
+	return _CombatHitbox.cursor_in_reach(ray[0], ray[1], _attack_origin(0.5), _range_world(float(def.get("range", 2.0))))
+
+
+func _refuse_use(reason: String) -> void:
+	refused_count += 1
+	if _fail_toast_cd > 0.0:
+		return
+	_fail_toast_cd = 0.5
+	_toast(reason)
+	if player:
+		_note_attack(_attack_origin(0.5), _HitMarkers.Result.BLOCKED)
 
 
 func _range_world(range_columns: float) -> float:
@@ -497,12 +527,6 @@ func _brush_aim(range_v: float) -> Vector3:
 
 
 func _aim_forward(range_v: float) -> Vector3:
-	if _held_is_ranged():
-		var aimed := _ActionTargeting.cursor_cell_under_mouse(player, range_v)
-		if aimed != Vector3.ZERO and player != null and "voxel_position" in player:
-			var offset := Vector3(aimed.x - float(player.voxel_position.x), 0.0, aimed.z - float(player.voxel_position.z))
-			if offset.length_squared() > 0.04:
-				return offset.normalized()
 	return _ActionTargeting.cursor_aim(player, range_v)
 
 
@@ -562,7 +586,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var saw_target := false
 
 	var range_w := _range_world(range_v)
-	var targets := _query_melee_facing(origin, forward, range_w)
+	var targets := _query_melee_cursor(origin, forward, range_w)
 	for target in targets:
 		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
@@ -588,6 +612,18 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 		_CombatLog.push("melee %s — no entity hit" % item_id)
 
 	attacked.emit(item_id, hit_pos)
+
+
+func _query_melee_cursor(origin: Vector3, forward: Vector3, range_w: float) -> Array[Node]:
+	var ray := _cursor_ray()
+	if ray.is_empty():
+		return _query_melee_facing(origin, forward, range_w)
+	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 3.0)
+	var found: Array[Node] = []
+	var picked := _CombatHitbox.pick_under_ray(nodes, ray[0], ray[1], origin, range_w, MELEE_CURSOR_SLACK)
+	if picked != null:
+		found.append(picked)
+	return found
 
 
 func _query_melee_facing(origin: Vector3, forward: Vector3, range_w: float) -> Array[Node]:
@@ -634,10 +670,72 @@ func _point_blank_melee(origin: Vector3, forward: Vector3) -> Array[Node]:
 	return found
 
 
+func _draw_def() -> Dictionary:
+	var id := _active_item_id()
+	var def := ItemTypes.get_def(id)
+	if def.is_empty() or int(def.get("category", -1)) != ItemTypes.Category.WEAPON:
+		return {}
+	if int(def.get("weapon_kind", -1)) != ItemTypes.WeaponKind.RANGED or bool(def.get("throwable", false)):
+		return {}
+	return def
+
+
+func _begin_draw() -> bool:
+	if _cooldown_timer > 0.0 or player == null or inventory == null:
+		return false
+	var def := _draw_def()
+	if def.is_empty():
+		return false
+	_drawing = true
+	_draw_sec = 0.0
+	_draw_item = _active_item_id()
+	return true
+
+
+func _tick_draw(delta: float) -> void:
+	_draw_sec += delta
+	var charge := _RangedAim.charge_of(_draw_sec)
+	if _held and _held.has_method("_set_string_draw"):
+		_held._set_string_draw(charge)
+	var released := not Input.is_action_pressed("attack", true)
+	var swapped := _active_item_id() != _draw_item
+	if not released and not swapped:
+		return
+	_drawing = false
+	if _held and _held.has_method("_set_string_draw"):
+		_held._set_string_draw(0.0)
+	if swapped or _RangedAim.cancels(charge):
+		return
+	var def := _draw_def()
+	if def.is_empty():
+		return
+	_draw_charge = charge
+	_cooldown_timer = float(def.get("cooldown", 0.5))
+	_arm_clock(_draw_item, def, 1)
+
+
+func _cursor_ray() -> Array:
+	if player == null:
+		return []
+	var cam: Camera3D = player.get("camera") as Camera3D
+	var vp: Viewport = player.get_viewport()
+	if cam == null or vp == null:
+		return []
+	var mouse: Vector2 = _ActionTargeting.pointer_in(vp)
+	return [cam.project_ray_origin(mouse), cam.project_ray_normal(mouse)]
+
+
+func _launch_direction(muzzle: Vector3, fallback: Vector3) -> Vector3:
+	var ray := _cursor_ray()
+	if ray.is_empty():
+		return fallback
+	return _RangedAim.launch_direction(muzzle, ray[0], ray[1])
+
+
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
 	var range_v: float = float(def.get("range", 12.0))
-	var forward := _aim_forward(range_v)
+	var forward := _launch_direction(origin, _attack_forward())
 	var hit_pos := origin + forward * _range_world(range_v)
 	if not _fire_projectile(item_id, def, origin, forward, false):
 		_cooldown_timer = 0.25
@@ -742,8 +840,10 @@ func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward
 	var speed := float(def.get("projectile_speed", 28.0))
 	if speed <= 0.0:
 		speed = 28.0
+	if not lob:
+		speed = _RangedAim.speed_for(_draw_charge, speed)
 	var vel := forward * speed
-	if lob or item_id == "sling":
+	if lob:
 		vel.y += speed * 0.55
 	var kind := "arrow"
 	if item_id == "sling":

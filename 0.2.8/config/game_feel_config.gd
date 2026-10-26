@@ -68,6 +68,12 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0.5, 4.0, 0.1) var brush_summary_sec: float = 2.5
 @export_range(0.1, 0.5, 0.01) var camera_tap_sec: float = 0.25
 @export_range(0.05, 0.5, 0.01) var camera_look_deg: float = 0.2
+@export_range(4.5, 10.0, 0.5) var melee_min_range: float = 5.0
+@export_range(0.2, 2.0, 0.05) var draw_sec: float = 0.7
+@export_range(0.0, 0.6, 0.01) var draw_min_charge: float = 0.2
+@export_range(2.0, 30.0, 0.5) var draw_min_speed: float = 10.0
+@export_range(10.0, 80.0, 0.5) var draw_max_speed: float = 36.0
+@export_range(0.5, 3.0, 0.05) var draw_curve: float = 1.0
 
 
 static func create_default():
@@ -100,6 +106,12 @@ static func create_default():
 	cfg.brush_summary_sec = 2.5
 	cfg.camera_tap_sec = 0.25
 	cfg.camera_look_deg = 0.2
+	cfg.melee_min_range = 5.0
+	cfg.draw_sec = 0.7
+	cfg.draw_min_charge = 0.2
+	cfg.draw_min_speed = 10.0
+	cfg.draw_max_speed = 36.0
+	cfg.draw_curve = 1.0
 	return cfg
 
 
