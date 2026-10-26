@@ -1,6 +1,8 @@
 extends RefCounted
 
 const _Aim = preload("res://player/action_targeting.gd")
+const _Hitbox = preload("res://systems/combat_hitbox.gd")
+const _Resolver = preload("res://systems/combat_hit_resolver.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
@@ -117,6 +119,41 @@ func aim_column(body: Node, col_x: float, col_z: float) -> void:
 		at = _seat_at
 	elif not _on_view(vp, screen):
 		return
+	_warp(vp, at, size)
+
+
+func aim_foe(body: Node, col_x: float, col_z: float) -> void:
+	aim_column(body, col_x, col_z)
+	if body == null:
+		return
+	var vp := body.get_viewport()
+	var cam := vp.get_camera_3d() if vp else null
+	if cam == null:
+		return
+	var s: float = maxf(_WorldSettings.get_active().voxel_scale, 0.001)
+	var at := Vector3(col_x * s, 0.0, col_z * s)
+	var best: Node = null
+	var best_d := 1.5 * s
+	for node in _Resolver._combat_nodes(body, at, 3.0 * s):
+		if node == body or not node is Node3D:
+			continue
+		var c: Vector3 = _Hitbox.sphere_of(node).center
+		var d := Vector2(c.x - at.x, c.z - at.z).length()
+		if d < best_d:
+			best_d = d
+			best = node
+	if best == null:
+		return
+	var center: Vector3 = _Hitbox.sphere_of(best).center
+	if cam.is_position_behind(center):
+		return
+	var screen := cam.unproject_position(center)
+	if not _on_view(vp, screen):
+		return
+	_warp(vp, screen, vp.get_visible_rect().size)
+
+
+func _warp(vp: Viewport, at: Vector2, size: Vector2) -> void:
 	_Aim.note_event_mouse(at, size)
 	vp.warp_mouse(at)
 	var motion := InputEventMouseMotion.new()

@@ -823,7 +823,7 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		trace_branch = "b1"
 		return ""
 	var pos := _xz(player)
-	bot.input.aim_column(player, foe.x, foe.y)
+	bot.input.aim_foe(player, foe.x, foe.y)
 	if kind == "spawn_elite":
 		var home := _Roster.pool_goal(pos, origin, 18.0)
 		if orbits() and _leave_leash(dt, tree, player, pos, home):
@@ -1281,7 +1281,7 @@ func _back_off(dt: float, player: Node, pos: Vector2, foe: Vector2) -> void:
 		bot.set_target(goal)
 	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
-	bot.input.aim_column(player, foe.x, foe.y)
+	bot.input.aim_foe(player, foe.x, foe.y)
 
 
 func _close_in(dt: float, tree: SceneTree, player: Node, foe: Vector2, dist: float) -> void:
@@ -1301,7 +1301,7 @@ func _strike(dt: float, player: Node, pos: Vector2, foe: Vector2, kind: String) 
 	if rot != "":
 		held.append(rot)
 	bot.input.set_held(held)
-	bot.input.aim_column(player, foe.x, foe.y)
+	bot.input.aim_foe(player, foe.x, foe.y)
 	if rot != "" and kind != "crystal_mite":
 		_aim_wait = 0.0
 		trace_strike = "rotate"
@@ -1361,7 +1361,7 @@ func _face_foe(player: Node, pos: Vector2, foe: Vector2) -> void:
 	if rot != "":
 		held.append(rot)
 	bot.input.set_held(held)
-	bot.input.aim_column(player, foe.x, foe.y)
+	bot.input.aim_foe(player, foe.x, foe.y)
 
 
 func arm_bow() -> void:
@@ -1562,7 +1562,7 @@ func _exit_hazard(dt: float, tree: SceneTree, player: Node, foe: Vector2, origin
 	_commit_goal(tree, pos, goal)
 	bot.extra_held = _Hazard.with_sprint(tree, pos, bot.home, _ratio(player), PackedStringArray(), true)
 	bot.tick(pos, _yaw(player), dt)
-	bot.input.aim_column(player, foe.x, foe.y)
+	bot.input.aim_foe(player, foe.x, foe.y)
 	if _ratio(player) <= 0.8 and _herbs(player) > 0 and _heal_wait <= 0.0:
 		_heal_idle()
 

@@ -999,7 +999,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			return ""
 		var dist := pos.distance_to(aim_at)
 		hands.begin_tick()
-		hands.aim_column(player, aim_at.x, aim_at.y)
+		hands.aim_foe(player, aim_at.x, aim_at.y)
 		if dist > POINT_BLANK_COLUMNS:
 			fight.walk_to(_past_contact(pos, aim_at), pos, _yaw(player), delta)
 			return ""
