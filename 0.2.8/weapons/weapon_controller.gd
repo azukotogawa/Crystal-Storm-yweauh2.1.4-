@@ -128,8 +128,8 @@ func _process(delta: float) -> void:
 	# LMB breaks blocks only for the pick and other dig tools.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
 	# Stone, wood, herbs, and other non-dig items do not break blocks.
-	var dig_held := _is_active_dig_tool() and Input.is_action_pressed("attack")
-	if Input.is_action_just_pressed("attack") and _cooldown_timer <= 0.0:
+	var dig_held := _is_active_dig_tool() and Input.is_action_pressed("attack", true)
+	if Input.is_action_just_pressed("attack", true) and _cooldown_timer <= 0.0:
 		if not _is_active_combat_weapon():
 			if _is_active_dig_tool():
 				if _try_remove_at_cursor():
@@ -138,7 +138,7 @@ func _process(delta: float) -> void:
 						profiler.end("weapon_controller")
 					return
 	if dig_held:
-		var dig_edge := Input.is_action_just_pressed("attack")
+		var dig_edge := Input.is_action_just_pressed("attack", true)
 		if dig_edge:
 			_dig_hold_sec = 0.0
 			if _cooldown_timer <= 0.0:
@@ -149,7 +149,7 @@ func _process(delta: float) -> void:
 				_try_dig_tool()
 	else:
 		_dig_hold_sec = 0.0
-		if Input.is_action_just_pressed("attack"):
+		if Input.is_action_just_pressed("attack", true):
 			if not _try_use_consumable():
 				_try_attack()
 
@@ -891,7 +891,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.04
 
-	if Input.is_action_just_pressed("attack") or (_feel_resolving and _feel_hit_entities):
+	if Input.is_action_just_pressed("attack", true) or (_feel_resolving and _feel_hit_entities):
 		var origin := _attack_origin(0.45)
 		var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE) * 0.65
 		var melee_targets := _CombatHitResolver.query_melee(
@@ -1467,7 +1467,7 @@ func _configured_attack_id(item_id: String, def: Dictionary) -> String:
 
 
 func _tool_press_edge() -> bool:
-	return Input.is_action_just_pressed("attack") \
+	return Input.is_action_just_pressed("attack", true) \
 		or Input.is_action_just_pressed("build_place") \
 		or Input.is_action_just_pressed("interact")
 
@@ -1574,7 +1574,7 @@ func _present_held(_delta: float) -> void:
 			_held.show_item(id)
 	if _aim:
 		_aim.tick(id)
-	if _is_active_dig_tool() and Input.is_action_pressed("attack"):
+	if _is_active_dig_tool() and Input.is_action_pressed("attack", true):
 		_crack_fill = minf(_crack_fill + _delta / TERRAIN_HOLD_REPEAT_START_SEC, 0.92)
 		_preview_dig_cracks()
 	elif _crack_fill > 0.0:

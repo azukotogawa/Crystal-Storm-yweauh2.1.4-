@@ -402,6 +402,11 @@ func _input(event):
 		yaw_target_degrees = _wrap_deg(yaw_target_degrees - event.relative.x * look)
 		get_viewport().set_input_as_handled()
 		return
+	if event is InputEventMagnifyGesture:
+		var pinched: float = clampf(zoom_level / maxf((event as InputEventMagnifyGesture).factor, 0.1), MIN_ZOOM, MAX_ZOOM)
+		zoom_level = pinched
+		size = zoom_level
+		return
 	if not event.is_pressed() or event is InputEventMouseMotion:
 		return
 	if _InputBindings.matches("camera_zoom_in", event):

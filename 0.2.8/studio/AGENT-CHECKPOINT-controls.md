@@ -43,3 +43,10 @@ Start: branch off cs-sonnet/water, `water-test-fixes.patch` applied with git am 
 - `rotate_piece` (Z) and `rotate_piece_back` (Shift+Z) drive one quarter counter, `blueprint_quarter`, which already fed blueprint preview and placement (walls, wall corners, stairs, towers come from `StructureBlueprints`, so they rotate through four quarters and the placed piece uses the same quarter as the ghost). Brush footprints now use `ItemTypes.rotate_aim(aim, quarter)` via `WeaponController._brush_aim` for both break and place, so a LINE_3 brush turns 90 degrees per press (the square and shaft shapes are symmetric).
 - `scripts/verify_rotation.gd` passes (Z cycles 1,2,3,0; Shift+Z steps back; brush line footprint per quarter).
 - Not done: ghost front marker, and rotating ramps/corner ramps. Cardinal and corner ramps are oriented from the neighbouring terrain by `TerrainEditor.try_place_cardinal_ramp/corner_ramp`, with no player-chosen direction; making them rotatable needs a direction argument through the editor and ghost. No honest-bot scenario for rotation (covered by the controls tour, ctl-07, if it is reached).
+
+## cs-ctl-06 laptop profile (done)
+- Settings file version is now 2 (`PlayerSettings.SETTINGS_VERSION`); an older file loads as full defaults. New `control_profile` ("standard" or "laptop"), persisted in `player_settings.json`.
+- `InputBindings.profile_binds("laptop")`: `build_place` = right-click plus Ctrl+LMB, `camera_free_look` = Alt, zoom = -/= (pinch is handled in `camera.gd` for every profile). Choosing a profile writes its binds as the saved keybinds; Reset bindings returns to the current profile defaults.
+- `attack` is now polled with exact modifier match so Ctrl+LMB places and never attacks.
+- Controls tab has a Profile dropdown (`ControlProfile`).
+- `verify_ui_settings.gd` extended: select Laptop, reload, right-click and Ctrl+click both match `build_place`, plain left click does not, Ctrl+click is not an attack, reset keeps the profile, old file rebuilds, Standard removes the extras. Passes. An end-to-end block placement with those clicks needs the real world (Dell).

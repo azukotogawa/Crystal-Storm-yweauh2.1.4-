@@ -319,3 +319,28 @@ static func _unpack(data: Dictionary) -> InputEvent:
 		button.alt_pressed = bool(data.get("alt", false))
 		return button
 	return null
+
+
+static func profile_binds(profile: String) -> Dictionary:
+	if profile != "laptop":
+		return {}
+	var rmb := InputEventMouseButton.new()
+	rmb.button_index = MOUSE_BUTTON_RIGHT
+	var ctrl_lmb := InputEventMouseButton.new()
+	ctrl_lmb.button_index = MOUSE_BUTTON_LEFT
+	ctrl_lmb.ctrl_pressed = true
+	var alt := InputEventKey.new()
+	alt.physical_keycode = KEY_ALT
+	alt.keycode = KEY_ALT
+	var plus := InputEventKey.new()
+	plus.physical_keycode = KEY_EQUAL
+	plus.keycode = KEY_EQUAL
+	var minus := InputEventKey.new()
+	minus.physical_keycode = KEY_MINUS
+	minus.keycode = KEY_MINUS
+	return {
+		"build_place": [_pack(rmb), _pack(ctrl_lmb)],
+		"camera_free_look": [_pack(alt)],
+		"camera_zoom_in": [_pack(plus)],
+		"camera_zoom_out": [_pack(minus)],
+	}

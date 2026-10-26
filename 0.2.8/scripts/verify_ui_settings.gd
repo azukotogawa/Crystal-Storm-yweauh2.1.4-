@@ -32,6 +32,7 @@ func _run() -> void:
 	_PlayerSettings.load_settings()
 	_PlayerSettings.apply_runtime()
 	_check_keybinds()
+	_check_profile()
 	await _check_audio_and_scale()
 	_check_display()
 	await _check_reduce_motion()
@@ -258,6 +259,45 @@ func _restore(old_path: String) -> void:
 func _delete_test_file() -> void:
 	if FileAccess.file_exists(_TEST_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(_TEST_PATH))
+
+
+func _click(button: int, ctrl: bool) -> InputEventMouseButton:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button as MouseButton
+	ev.ctrl_pressed = ctrl
+	ev.pressed = true
+	return ev
+
+
+func _check_profile() -> void:
+	_PlayerSettings.set_control_profile("laptop")
+	var data := _PlayerSettings.load_settings()
+	if str(data.control_profile) != "laptop" or int(data.settings_version) != _PlayerSettings.SETTINGS_VERSION:
+		_fail("laptop profile did not persist")
+	_PlayerSettings.apply_runtime()
+	for ev in [_click(MOUSE_BUTTON_RIGHT, false), _click(MOUSE_BUTTON_LEFT, true)]:
+		if not InputMap.event_is_action(ev, "build_place", true):
+			_fail("laptop build_place missing %s" % _InputBindings.event_label(ev))
+	if InputMap.event_is_action(_click(MOUSE_BUTTON_LEFT, false), "build_place", true):
+		_fail("plain left click must not place")
+	if InputMap.event_is_action(_click(MOUSE_BUTTON_LEFT, true), "attack", true):
+		_fail("Ctrl+left click must not attack")
+	if _physical("camera_free_look") != int(KEY_ALT):
+		_fail("laptop free look is not Alt")
+	_PlayerSettings.bind_action("jump", _key(KEY_J))
+	_PlayerSettings.reset_bindings()
+	if _physical("jump") != int(KEY_SPACE) or not InputMap.event_is_action(_click(MOUSE_BUTTON_LEFT, true), "build_place", true):
+		_fail("reset did not return to the laptop profile defaults")
+	var stale := FileAccess.open(_TEST_PATH, FileAccess.WRITE)
+	stale.store_string(JSON.stringify({"settings_version": 1, "control_profile": "laptop", "volume_master": 0.2}))
+	stale.close()
+	var rebuilt := _PlayerSettings.load_settings()
+	if str(rebuilt.control_profile) != "standard" or absf(float(rebuilt.volume_master) - 1.0) > 0.001:
+		_fail("older settings file was not rebuilt to defaults")
+	_PlayerSettings.set_control_profile("standard")
+	_PlayerSettings.apply_runtime()
+	if InputMap.event_is_action(_click(MOUSE_BUTTON_LEFT, true), "build_place", true):
+		_fail("standard profile kept the laptop extra")
 
 
 func _key(code: Key) -> InputEventKey:

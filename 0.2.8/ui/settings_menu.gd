@@ -12,6 +12,7 @@ const _TextureSet = preload("res://helpers/texture_set.gd")
 const RESOLUTIONS: PackedStringArray = ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"]
 
 var _preset: OptionButton
+var _profile: OptionButton
 var _rd: HSlider
 var _veg: HSlider
 var _fx: CheckBox
@@ -119,6 +120,17 @@ func _ready() -> void:
 	hint.text = "Click a binding, then press a key or mouse button. Escape cancels."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(hint)
+	var profile_row := HBoxContainer.new()
+	var profile_label := Label.new()
+	profile_label.text = "Profile"
+	profile_row.add_child(profile_label)
+	_profile = OptionButton.new()
+	_profile.name = "ControlProfile"
+	_profile.add_item("Standard")
+	_profile.add_item("Laptop")
+	_profile.item_selected.connect(_on_profile_selected)
+	profile_row.add_child(_profile)
+	controls.add_child(profile_row)
 	_conflict = Label.new()
 	_conflict.name = "ConflictWarning"
 	_conflict.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -255,6 +267,8 @@ func _add_bind_row(box: VBoxContainer, action: String) -> void:
 
 func sync_from_settings() -> void:
 	var data: Dictionary = _PlayerSettings.load_settings()
+	if _profile != null:
+		_profile.select(maxi(_PlayerSettings.PROFILES.find(str(data.get("control_profile", "standard"))), 0))
 	_set_preset(int(data.get("quality_preset", _PerformanceQualityConfig.Preset.MEDIUM)))
 	_set_slider(_rd, float(data.get("render_distance", 2)))
 	_set_slider(_veg, float(data.get("vegetation_scatter_multiplier", 1.0)))
@@ -375,6 +389,12 @@ func _commit_listen(event: InputEvent) -> void:
 			_conflict.text = ""
 		if _status:
 			_status.text = "Binding saved."
+	_refresh_bindings()
+
+
+func _on_profile_selected(idx: int) -> void:
+	_listen_action = ""
+	_PlayerSettings.set_control_profile(_PlayerSettings.PROFILES[idx])
 	_refresh_bindings()
 
 

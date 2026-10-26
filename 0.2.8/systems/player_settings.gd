@@ -33,6 +33,9 @@ static var camera_pitch_save_count: int = 0
 static var texture_blueprint: bool = false
 static var texture_set: String = "original"
 static var keybinds: Dictionary = {}
+static var control_profile: String = "standard"
+const SETTINGS_VERSION := 2
+const PROFILES: PackedStringArray = ["standard", "laptop"]
 static var display_apply_count: int = 0
 ## True after the first `apply_runtime`. Startup applies once; later reads must not.
 static var runtime_applied: bool = false
@@ -73,6 +76,8 @@ static func defaults() -> Dictionary:
 		"texture_blueprint": false,
 		"texture_set": "original",
 		"keybinds": {},
+		"control_profile": "standard",
+		"settings_version": SETTINGS_VERSION,
 	}
 
 
@@ -86,6 +91,11 @@ static func load_settings() -> Dictionary:
 		_sync_runtime(out)
 		return out
 	var data: Dictionary = parsed
+	if int(data.get("settings_version", 1)) != SETTINGS_VERSION:
+		_sync_runtime(out)
+		return out
+	if data.has("control_profile") and str(data.control_profile) in PROFILES:
+		out["control_profile"] = str(data.control_profile)
 	if data.has("quality_preset"):
 		out["quality_preset"] = int(data.quality_preset)
 	if data.has("render_distance"):
@@ -170,6 +180,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	camera_pitch_degrees = float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
 	texture_blueprint = bool(data.get("texture_blueprint", false))
 	texture_set = _normalize_texture_set(str(data.get("texture_set", "original")))
+	control_profile = str(data.get("control_profile", "standard"))
 	var binds = data.get("keybinds", {})
 	if binds is Dictionary:
 		keybinds = (binds as Dictionary).duplicate(true)
@@ -342,7 +353,17 @@ static func bind_action(action: String, event: InputEvent) -> String:
 
 static func reset_bindings() -> void:
 	var data := load_settings()
-	data["keybinds"] = {}
+	data["keybinds"] = _InputBindings.profile_binds(str(data.get("control_profile", "standard")))
+	save_settings(data)
+	_apply_keybinds_now()
+
+
+static func set_control_profile(profile: String) -> void:
+	if not profile in PROFILES:
+		return
+	var data := load_settings()
+	data["control_profile"] = profile
+	data["keybinds"] = _InputBindings.profile_binds(profile)
 	save_settings(data)
 	_apply_keybinds_now()
 
