@@ -323,9 +323,18 @@ static func _pick_column_from_mouse(
 	if absf(dir.y) < 0.00001:
 		return Vector3.ZERO
 
-	var hit: Dictionary = _FacePick.pick(world, origin, dir, _FacePick.eye(player), range_v)
+	var reach: float = range_v if require_in_range else INF
+	var hit: Dictionary = _FacePick.pick(world, origin, dir, _FacePick.eye(player), reach)
 	last_pick_face = 0
 	last_pick_exact = false
+	var block_t: float = float(hit.get("t", INF)) if bool(hit.get("hit", false)) else INF
+	var body = _hitbox_under_ray(player, origin, dir, block_t)
+	if body != null:
+		var bx := floori(ws.world_to_column(body.global_position.x))
+		var bz := floori(ws.world_to_column(body.global_position.z))
+		if require_in_range and not _column_in_range(player, bx, bz, range_v):
+			return Vector3.ZERO
+		return Vector3(float(bx) + 0.5, player.voxel_position.y, float(bz) + 0.5)
 	if not bool(hit.get("hit", false)):
 		return Vector3.ZERO
 	var cell: Vector3i = hit.cell
@@ -339,6 +348,46 @@ static func _pick_column_from_mouse(
 	if normal.y == 0 and _weapon_mode_from_player(player, building) == &"build":
 		col += Vector2i(normal.x, normal.z)
 	return Vector3(float(col.x) + 0.5, player.voxel_position.y, float(col.y) + 0.5)
+
+
+static func _hitbox_under_ray(player: Node3D, origin: Vector3, dir: Vector3, max_t: float) -> Node3D:
+	if not player.is_inside_tree():
+		return null
+	var ws = _WorldSettings.get_active()
+	var half: float = 0.4 * ws.voxel_scale
+	var height: float = Player.get_player_height()
+	var best: Node3D = null
+	var best_t := max_t
+	for group_name in ["world_entity", "crystal_enemy"]:
+		for node in player.get_tree().get_nodes_in_group(group_name):
+			if not (node is Node3D) or not is_instance_valid(node) or node == player:
+				continue
+			if node.has_method("is_combat_alive") and not node.is_combat_alive():
+				continue
+			var p: Vector3 = node.global_position
+			var box := AABB(Vector3(p.x - half, p.y, p.z - half), Vector3(half * 2.0, height, half * 2.0))
+			var t := _ray_box_t(origin, dir, box)
+			if t >= 0.0 and t < best_t:
+				best_t = t
+				best = node
+	return best
+
+
+static func _ray_box_t(origin: Vector3, dir: Vector3, box: AABB) -> float:
+	var t0 := -INF
+	var t1 := INF
+	for a in 3:
+		if absf(dir[a]) < 0.0000001:
+			if origin[a] < box.position[a] or origin[a] > box.end[a]:
+				return -1.0
+			continue
+		var ta: float = (box.position[a] - origin[a]) / dir[a]
+		var tb: float = (box.end[a] - origin[a]) / dir[a]
+		t0 = maxf(t0, minf(ta, tb))
+		t1 = minf(t1, maxf(ta, tb))
+	if t1 < maxf(t0, 0.0):
+		return -1.0
+	return maxf(t0, 0.0)
 
 
 static func pick_along_ray(
