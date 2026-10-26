@@ -957,7 +957,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
 	if not bool(job["melee"]):
-		if _attack_warn(tree) or _Hazard.ring_hot(tree, pos):
+		if (_attack_warn(tree) and pos.distance_to(_nearest_foe_xz(tree, pos)) > 1.5) or _Hazard.ring_hot(tree, pos):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
 		var rows := _near_foes(tree, pos)
@@ -1021,6 +1021,10 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		if not bool(job.get("farm_logged", false)):
 			job["farm_logged"] = true
 			print("HARNESS skill farm points %d" % _points(tree))
+		var close := _nearest_foe_xz(tree, pos)
+		if close != Vector2.INF and pos.distance_to(close) <= 1.5:
+			_farm_strike(player, bot, hands, job, delta, close)
+			return ""
 		if _attack_warn(tree):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
@@ -1095,6 +1099,21 @@ func _swing_film(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i,
 	if hands.pulse(&"attack"):
 		job["swings"] = int(job["swings"]) + 1
 		job["gap"] = SWING_GAP
+
+
+func _farm_strike(player: Node, bot, hands, job: Dictionary, delta: float, foe: Vector2) -> void:
+	bot.release()
+	hands.begin_tick()
+	hands.aim_foe(player, foe.x, foe.y)
+	if bool(job["pick"]):
+		if hands.pulse(&"hotbar_1"):
+			job["pick"] = false
+		return
+	job["gap"] = float(job["gap"]) - delta
+	if float(job["gap"]) > 0.0:
+		return
+	if hands.pulse(&"attack"):
+		job["gap"] = _Pace.strike_gap("sword_swing")
 
 
 func _swing_heart(tree: SceneTree, player: Node, origin: Vector2i, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> void:
@@ -1576,6 +1595,8 @@ func _banner_allowed(line: String) -> bool:
 		"Maze again",
 		"Level up ",
 		"Skill unlocked",
+		"New brush unlocked",
+		"crystal_mite down",
 		"Relic ",
 		"Discovered ",
 		"Landmark ",
