@@ -660,7 +660,7 @@ func _camera() -> String:
 		beat = 3
 		return ""
 	if beat == 3:
-		hands.motion(Vector2(0, 40), true)
+		hands.motion(_alt_look_rel(cam), true)
 		if show_age < 0.2:
 			return ""
 		show_age = 0.0
@@ -710,6 +710,10 @@ var tour: Array = []
 var tour_checks: Dictionary = {}
 
 
+func _alt_look_rel(cam) -> Vector2:
+	return Vector2(0, 40 if cam.pitch_target_degrees > -48.0 else -40)
+
+
 func _tour_note(key: String, ok: bool) -> void:
 	tour_checks[key] = ok
 	print("TOUR %s %s" % [key, "ok" if ok else "FAIL"])
@@ -721,7 +725,7 @@ func _tour_build(cam, weapon, skills, bar) -> void:
 	tour = [
 		[func(): s["yaw"] = cam.yaw_degrees; s["pitch"] = cam.pitch_degrees; s["zoom"] = cam.zoom_level; s["sig"] = _terrain_signature(); aim = _dry_near(), 0.5, func(): pass],
 		[func(): hands.pulse_key(KEY_E), 1.5, func(): _tour_note("snap_yaw", absf(fposmod(cam.yaw_degrees - s.yaw + 180.0, 360.0) - 180.0 - 90.0) <= 1.0)],
-		[func(): hands.motion(Vector2(0, 40), true), 1.2, func(): _tour_note("alt_look", absf(cam.pitch_degrees - s.pitch) >= 1.0)],
+		[func(): hands.motion(_alt_look_rel(cam), true), 1.2, func(): _tour_note("alt_look", absf(cam.pitch_degrees - s.pitch) >= 1.0)],
 		[func(): hands.pulse_key(KEY_EQUAL), 0.4, func(): _tour_note("zoom_key", cam.zoom_level < s.zoom); s["z1"] = cam.zoom_level],
 		[func(): hands.wheel(true, true), 0.4, func(): _tour_note("ctrl_wheel", cam.zoom_level < s.z1)],
 		[func(): hands.pulse_key(KEY_HOME), 1.5, func(): _tour_note("home_reset", absf(cam.zoom_level - s.zoom) < 0.01)],
