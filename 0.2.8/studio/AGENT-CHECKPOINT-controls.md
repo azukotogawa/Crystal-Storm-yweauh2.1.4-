@@ -23,3 +23,9 @@ Start: branch off cs-sonnet/water, `water-test-fixes.patch` applied with git am 
 - `ui/hotbar.gd`: selected-slot highlight (existing border) plus a fading item-name label (`HotbarItemName`).
 - `scripts/verify_hotbar_controls.gd` passes (3, 0, wheel wrap both ways, period/comma, Shift+2 ignored, plain wheel no zoom, Ctrl+wheel zooms). `verify_inventory_drag` still passes.
 - Scenario `hotbar` registered (cannot run in the cloud stub; needs the Dell).
+
+## cs-ctl-04 skills (done)
+- `skill_service._hotkey_down_now` matches exactly, so Shift+1/2/3 fire skills and never hotbar slots; sprint (Shift alone) and unstuck (V) untouched.
+- New `ui/skill_bar.gd` (node `SkillBar` in `scenes/main.tscn`, above the hotbar): skill name, key from `InputBindings.binding_text`, cooldown number, sweep, dimmed when empty or cooling down.
+- `scripts/verify_skill_bar.gd` passes (Shift+1 fires dash, hotbar index unchanged, cooldown label set then cleared, key text "Shift+1", plain 1 selects slot 1 and fires nothing). `verify_skills` passes.
+- No separate honest-bot scenario; the Shift+1 step is part of the controls tour (cs-ctl-07).

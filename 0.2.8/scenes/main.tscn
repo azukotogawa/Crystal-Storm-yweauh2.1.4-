@@ -26,6 +26,7 @@
 [ext_resource type="Script" uid="uid://bukkta81w7kpj" path="res://world/ruin_manager.gd" id="13_ruin"]
 [ext_resource type="Script" uid="uid://b3auxdki7c73p" path="res://entities/crystal_enemy_spawner.gd" id="13_spawner"]
 [ext_resource type="Script" uid="uid://22sxws7gc0rc" path="res://ui/hotbar.gd" id="14_hotbar"]
+[ext_resource type="Script" path="res://ui/skill_bar.gd" id="14_skillbar"]
 [ext_resource type="Script" uid="uid://dp17tpxqfy85s" path="res://ui/inventory_panel.gd" id="15_inv"]
 [ext_resource type="Script" uid="uid://bojujeqi0g4dm" path="res://systems/save_game_service.gd" id="16_save"]
 [ext_resource type="Script" uid="uid://vwhnq8p6878x" path="res://ui/topographical_map.gd" id="17_map"]
@@ -196,6 +197,11 @@ layer = 100
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("14_hotbar")
+
+[node name="SkillBar" type="Control" parent="CanvasLayer"]
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("14_skillbar")
 
 [node name="InventoryPanel" type="Control" parent="CanvasLayer" unique_id=1276332693]
 layout_mode = 3

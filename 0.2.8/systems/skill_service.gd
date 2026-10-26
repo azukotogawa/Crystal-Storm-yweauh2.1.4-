@@ -222,7 +222,7 @@ func _tick_cooldowns(delta: float) -> void:
 
 func _hotkey_down_now(slot: int) -> bool:
 	var action := HOTKEY_ACTIONS[slot]
-	return InputMap.has_action(action) and Input.is_action_pressed(action)
+	return InputMap.has_action(action) and Input.is_action_pressed(action, true)
 
 
 func _latch_hotkeys() -> void:
