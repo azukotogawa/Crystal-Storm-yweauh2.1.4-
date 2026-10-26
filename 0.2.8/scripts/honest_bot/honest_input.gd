@@ -171,7 +171,7 @@ func _cell_at(body: Node, world, at: Vector2, size: Vector2) -> Vector2i:
 	var chunks: ChunkManager = null
 	if player.is_inside_tree():
 		chunks = player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
-	var col: Vector3 = _Aim.pick_hover_column(player, world, chunks, _Aim.INTERACTION_RANGE)
+	var col: Vector3 = _Aim.pick_hover_column(player, world, chunks, _Aim.reach())
 	if col == Vector3.ZERO:
 		return Vector2i(999999, 999999)
 	return Vector2i(floori(col.x), floori(col.z))

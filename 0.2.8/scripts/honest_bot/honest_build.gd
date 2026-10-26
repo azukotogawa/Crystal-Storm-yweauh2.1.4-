@@ -127,6 +127,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _camera()
 	if mode == "hotbar":
 		return _hotbar()
+	if mode == "controls_tour":
+		return _tour()
 	return "fail"
 
 
@@ -697,6 +699,76 @@ func _camera() -> String:
 		cam_log["yaw2"] = cam.yaw_degrees
 		cam_log["pitch2"] = cam.pitch_degrees
 		beat = 9
+		show_age = 0.0
+		return ""
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	return "pass"
+
+
+var tour: Array = []
+var tour_checks: Dictionary = {}
+
+
+func _tour_note(key: String, ok: bool) -> void:
+	tour_checks[key] = ok
+	print("TOUR %s %s" % [key, "ok" if ok else "FAIL"])
+
+
+func _tour_build(cam, weapon, skills, bar) -> void:
+	var hotbar_seq: Array = []
+	var s: Dictionary = {}
+	tour = [
+		[func(): s["yaw"] = cam.yaw_degrees; s["pitch"] = cam.pitch_degrees; s["zoom"] = cam.zoom_level; s["sig"] = _terrain_signature(); aim = _dry_near(), 0.5, func(): pass],
+		[func(): hands.pulse_key(KEY_E), 1.5, func(): _tour_note("snap_yaw", absf(fposmod(cam.yaw_degrees - s.yaw + 180.0, 360.0) - 180.0 - 90.0) <= 1.0)],
+		[func(): hands.motion(Vector2(0, 40), true), 1.2, func(): _tour_note("alt_look", absf(cam.pitch_degrees - s.pitch) >= 1.0)],
+		[func(): hands.pulse_key(KEY_EQUAL), 0.4, func(): _tour_note("zoom_key", cam.zoom_level < s.zoom); s["z1"] = cam.zoom_level],
+		[func(): hands.wheel(true, true), 0.4, func(): _tour_note("ctrl_wheel", cam.zoom_level < s.z1)],
+		[func(): hands.pulse_key(KEY_HOME), 1.5, func(): _tour_note("home_reset", absf(cam.zoom_level - s.zoom) < 0.01)],
+		[func(): hands.pulse_key(KEY_3), 0.5, func(): hotbar_seq.append(weapon.get_active_hotbar_index())],
+		[func(): hands.pulse_key(KEY_0), 0.5, func(): hotbar_seq.append(weapon.get_active_hotbar_index())],
+		[func(): hands.wheel(false), 0.5, func(): hotbar_seq.append(weapon.get_active_hotbar_index())],
+		[func(): hands.wheel(true), 0.5, func(): hotbar_seq.append(weapon.get_active_hotbar_index()); _tour_note("hotbar_cycle", hotbar_seq == [2, 9, 0, 9]); _tour_note("plain_wheel_no_zoom", absf(cam.zoom_level - s.zoom) < 0.01)],
+		[func(): hands.pulse_key(KEY_2), 0.5, func(): s["slot"] = weapon.get_active_hotbar_index(); skills._unlocked[&"dash"] = true; skills.equip(0, &"dash")],
+		[func(): hands.pulse_key(KEY_1, true), 0.4, func(): _tour_note("skill_shift_1", skills.cooldown_left(0) > 0.0 and weapon.get_active_hotbar_index() == s.slot); _tour_note("skill_hud", bar.slot_text(0).cooldown != "" and bar.slot_text(0).key == "Shift+1")],
+		[func(): pass, 3.5, func(): _tour_note("skill_ready", skills.cooldown_left(0) <= 0.0 and bar.slot_text(0).cooldown == "")],
+		[func(): hands.pulse_key(KEY_Z), 0.4, func(): _tour_note("rotate", weapon.blueprint_quarter == 1)],
+		[func(): hands.pulse("place_cycle"), 0.4, func(): _tour_note("tab_variant", weapon.place_index != 0)],
+		[func(): hands.pulse_key(KEY_X), 0.4, func(): _tour_note("x_variant", weapon.build_variant == 1)],
+		[func(): hands.pulse_key(KEY_T), 0.8, func(): _tour_note("t_chat", chat_open()); _tour_note("t_terrain", _terrain_signature() == s.sig)],
+		[func(): hands.pulse_key(KEY_ESCAPE), 1.2, func(): _tour_note("esc_closes", not chat_open())],
+	]
+
+
+var tour_step_done := false
+
+
+func _tour() -> String:
+	if age > 120.0:
+		print("FAIL controls_tour timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "controls_tour"
+	show_age += step_dt
+	var cam = player.get("camera")
+	var weapon = player.get_node_or_null("WeaponController")
+	var skills = tree.get_first_node_in_group("skill_service")
+	var bar = tree.root.find_child("SkillBar", true, false)
+	if cam == null or weapon == null or skills == null or bar == null:
+		return "fail"
+	if tour.is_empty():
+		_tour_build(cam, weapon, skills, bar)
+	if beat < tour.size():
+		var entry: Array = tour[beat]
+		if not tour_step_done:
+			entry[0].call()
+			tour_step_done = true
+			show_age = 0.0
+			return ""
+		if show_age < float(entry[1]):
+			return ""
+		entry[2].call()
+		tour_step_done = false
+		beat += 1
 		show_age = 0.0
 		return ""
 	if show_age < _Pace.RESULT_HOLD:

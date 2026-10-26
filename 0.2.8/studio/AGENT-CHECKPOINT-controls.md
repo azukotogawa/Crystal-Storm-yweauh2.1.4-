@@ -50,3 +50,12 @@ Start: branch off cs-sonnet/water, `water-test-fixes.patch` applied with git am 
 - `attack` is now polled with exact modifier match so Ctrl+LMB places and never attacks.
 - Controls tab has a Profile dropdown (`ControlProfile`).
 - `verify_ui_settings.gd` extended: select Laptop, reload, right-click and Ctrl+click both match `build_place`, plain left click does not, Ctrl+click is not an attack, reset keeps the profile, old file rebuilds, Standard removes the extras. Passes. An end-to-end block placement with those clicks needs the real world (Dell).
+
+## cs-ctl-07 controls_tour (written, NOT run)
+- Scenario `controls_tour` (`honest_build._tour`, table of do/wait/check steps): E snap, Alt look, `=`, Ctrl+wheel, Home, 3/0/wheel cycling and plain wheel not zooming, Shift+1 skill with HUD cooldown and key text, ready again, Z, Tab, X, T chat with terrain unchanged, Esc. Prints `TOUR <check> ok`, 16 checks, then `CONTROLS TOUR OK` from `_expect`. Registered in `honest_scenario.gd` and `cs-verify.sh`.
+- It could not run here: the cloud stub cannot boot the full world (shaders/art missing), so the runner exits before the bot ticks. It is unproven code until run on the Dell with `cs-verify.sh scenario controls_tour`; evidence under `docs/showcase` is not produced yet.
+- Gaps against the spec: no wall/brush placement after Z, no movement step, no screenshots beyond the framework's own final one.
+- `honest_input.gd` used the removed `INTERACTION_RANGE`; now `reach()`. The bot's pointer seating (`aim_column`) was written for the old fuzzy pick, so water/dig/build scenarios need a re-run on the Dell to confirm the exact-face pick still lands on the cells the bot aims at.
+
+## Status
+Done: 01, 02, 03, 04, 05 (partial: no ramp rotation or front marker), 06, 08. Written but unrun: 07.
