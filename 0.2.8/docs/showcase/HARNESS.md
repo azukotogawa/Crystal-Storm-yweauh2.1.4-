@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `multi_dig`, `multi_build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
 
 ## Shared setup
 
@@ -18,6 +18,10 @@ The showcase bot is the player. A scenario is one feature, started from a fixed 
 | Pass screenshot | `HonestPlayBot.save_view` writes `steps/<n>_<name>.png` and prints `HARNESS SHOT` and `PROBE CAPTURE`. |
 
 The runner is `scripts/honest_bot/honest_scenario.gd`, launched by `scripts/verify_honest_bot_scenario.gd`. Timing stays in `config/default_game_feel.tres` via `honest_pace.gd`. Do not add a second input driver, stuck watch, or screenshot path.
+
+## multi_dig and multi_build
+
+Both play `HonestBuild` modes of the same name. The bot digs single blocks with the pick (`hotbar_2`, held `attack`) until the brush mastery reaches 5, presses `brush_grow` until Line 3 is selected, then makes one stroke. `multi_dig` passes when one stroke lowers at least 3 columns and stone goes up. `multi_build` switches to stone (`hotbar_5`, default Fill), repeats the unlock check, presses `build_place` once, and passes when at least 3 new build tiles appear and the stone spent equals the tiles placed. Both keep HP unchanged and save a screenshot. Allowed banners for `multi_build` also include `Brush: ...`, `New brush unlocked ...`, `Placed ...`, and `Broke ...`. Input only: no teleport, granted XP, direct damage, or cheats.
 
 ## What every scenario asserts
 

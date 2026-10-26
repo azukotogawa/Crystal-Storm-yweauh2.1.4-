@@ -24,6 +24,8 @@ bash $S bot-run         # one live session: boot, nav, combat, progress, crystal
 bash $S bot-showcase    # honest-bot showcase: movement slice of ROUTE.md, timer, chapters sidecar
 bash $S scenario dig    # play harness: seeded dig through the bot input layer
 bash $S scenario build  # play harness: seeded stone wall through the same layer
+bash $S scenario multi_dig    # unlock Line 3 by digging, then one stroke breaks 3 columns
+bash $S scenario multi_build  # same unlock, then one stroke places 3 blocks and spends 3 stone
 bash $S scenario break  # forced dig assertion; must print a stuck report and shot
 bash $S scenario crystals    # find the heart, collect a shard, sword the heart
 bash $S scenario corruption  # spread, burn after the warning, cleanse to a scar
@@ -66,7 +68,7 @@ From a Windows shell (PowerShell eats `$`), put the commands in a `.sh` file and
 
 ## Play harness
 
-`bash $S scenario <dig|build|break|crystals|corruption|combat|mite_fight|relic_esc>` runs `0.2.8/scripts/verify_honest_bot_scenario.gd` at `--fixed-fps 60` with physics jitter fix off. The contract is `0.2.8/docs/showcase/HARNESS.md`. World scenarios boot `main.tscn` from seed 12349 and play through `honest_bot` (`HonestInput`, `HonestBuild`, `HonestPlayBot`, `HonestCombat`, `HonestSkillCast`). Pass prints `HARNESS SCENARIO OK <name>`, `HARNESS SHOT`, and `PROBE CAPTURE`, and the shot file must exist. `mite_fight` loops seeds 12349–12353 (or `CRYSTALSTORM_HARNESS_SEED` / `CRYSTALSTORM_HARNESS_SEEDS`) through `HonestFight`. `relic_esc` uses those same seeds: it opens the relic offer, sends Esc, and keeps the pause menu closed until a relic is picked. `break` does not boot. It must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`, and the wrapper then prints `SCENARIO BREAK OK`. One line that starts with `FAIL` fails a world scenario. Stuck reports and their screenshots are `HonestPlayBot.fail_closed`.
+`bash $S scenario <dig|build|multi_dig|multi_build|break|crystals|corruption|combat|mite_fight|relic_esc>` runs `0.2.8/scripts/verify_honest_bot_scenario.gd` at `--fixed-fps 60` with physics jitter fix off. The contract is `0.2.8/docs/showcase/HARNESS.md`. World scenarios boot `main.tscn` from seed 12349 and play through `honest_bot` (`HonestInput`, `HonestBuild`, `HonestPlayBot`, `HonestCombat`, `HonestSkillCast`). Pass prints `HARNESS SCENARIO OK <name>`, `HARNESS SHOT`, and `PROBE CAPTURE`, and the shot file must exist. `mite_fight` loops seeds 12349–12353 (or `CRYSTALSTORM_HARNESS_SEED` / `CRYSTALSTORM_HARNESS_SEEDS`) through `HonestFight`. `relic_esc` uses those same seeds: it opens the relic offer, sends Esc, and keeps the pause menu closed until a relic is picked. `break` does not boot. It must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`, and the wrapper then prints `SCENARIO BREAK OK`. One line that starts with `FAIL` fails a world scenario. Stuck reports and their screenshots are `HonestPlayBot.fail_closed`.
 
 ## Drive
 
