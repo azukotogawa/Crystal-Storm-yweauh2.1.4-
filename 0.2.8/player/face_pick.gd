@@ -6,10 +6,14 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 
 const MAX_STEPS := 900
 const EYE_HEIGHT := 1.45
+## Lowest block layer the pick walks. Ground tops sit at layer 0 and digs/lake
+## shores go below it (top -1 means the block at y=-2 is the exposed one), so a
+## floor at 0 made every column at or below ground level unpickable.
+const FLOOR_Y := -16
 
 
 static func solid(world, cell: Vector3i) -> bool:
-	return cell.y >= 0 and cell.y < _TerrainEdits.surface_block_y(world, cell.x, cell.z)
+	return cell.y >= FLOOR_Y and cell.y < _TerrainEdits.surface_block_y(world, cell.x, cell.z)
 
 
 static func exposed(world, cell: Vector3i, normal: Vector3i) -> bool:
@@ -63,7 +67,7 @@ static func pick(world, origin: Vector3, dir: Vector3, eye_cells: Vector3, reach
 		normal[axis] = -step[axis]
 		cell[axis] += step[axis]
 		t_max[axis] += t_delta[axis]
-		if cell.y < 0:
+		if cell.y < FLOOR_Y:
 			return miss
 		if solid(world, cell):
 			if not exposed(world, cell, normal):
