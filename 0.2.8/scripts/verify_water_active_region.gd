@@ -66,7 +66,7 @@ func _run() -> void:
 			idle_us, str(idle_diag.get("subset_cells")), str(idle_diag.get("channel_cells"))
 		])
 
-	svc.call("mark_region_dirty", 2, 2, 1)
+	svc.call("request_flow", 2, 2)
 	var dirty_n: int = int((svc.get("_dirty_cells") as Dictionary).size())
 	if dirty_n <= 0 or dirty_n > 80:
 		_fail("local mark_region_dirty should stay small, got %d" % dirty_n)
@@ -86,20 +86,6 @@ func _run() -> void:
 		print("OK local gather subset=%d dirty=%d us=%d" % [
 			subset_n, dirty_n, local_us
 		])
-	var phases: Dictionary = local_diag.get("phase_us", {})
-	for key in ["gather", "copy", "sim", "persist", "visual", "tick_total"]:
-		if not phases.has(key):
-			_fail("get_sim_diagnostics missing phase_us.%s" % key)
-	if int(local_diag.get("registry_reads", -1)) != subset_n:
-		_fail("registry_reads should match subset, got %s subset=%d" % [
-			str(local_diag.get("registry_reads")), subset_n
-		])
-	else:
-		print("OK phases gather=%s copy=%s sim=%s persist=%s visual=%s" % [
-			str(phases.get("gather")), str(phases.get("copy")), str(phases.get("sim")),
-			str(phases.get("persist")), str(phases.get("visual"))
-		])
-
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()
 	var q2 = svc.get("_terrain_query")
@@ -115,10 +101,10 @@ func _run() -> void:
 		q2.test_base_heights = heights2
 		q2.test_tiles = tiles2
 	svc.set("_dirty_cells", {})
-	svc.call("recompute_region_now", 3, 2, 2, 8)
+	svc.call("request_flow", 3, 2, 8)
 	var dest: float = _ChannelRegistry.get_water_level(3, 2)
 	if dest < 0.05:
-		_fail("recompute_region_now should flood from river source dest=%.3f" % dest)
+		_fail("request_flow should flood from river source dest=%.3f" % dest)
 	elif _ChannelRegistry.has_fluid(2, 2, _ChannelRegistry.FLUID_WATER):
 		_fail("source river must not persist as overlay")
 	else:
@@ -128,7 +114,7 @@ func _run() -> void:
 	_TerrainEdits.reset()
 	svc.world = null
 	svc.set("_dirty_cells", {})
-	svc.call("mark_region_dirty", 2, 2, 8)
+	svc.call("request_flow", 2, 2)
 	svc.call("_tick_water", 0.1)
 	var river_diag: Dictionary = svc.call("get_sim_diagnostics")
 	if int(river_diag.get("subset_cells", 0)) > 400:

@@ -81,7 +81,7 @@ func _run() -> void:
 	print("channel_8 us=%d avg_ms=%.3f" % [ch_us, ch_us / 1000.0 / 8.0])
 
 	var te_src: String = (load("res://world/terrain_editor.gd") as GDScript).source_code
-	if "recompute_region_now(wx, wz, 2, 3)" in te_src:
+	if "request_flow(wx, wz, 3)" in te_src:
 		lines.append("- water_immediate_steps=3 (amortized; was 8)")
 		print("OK water immediate steps capped at 3")
 	else:

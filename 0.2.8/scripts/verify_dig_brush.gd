@@ -143,13 +143,7 @@ func _radius_item() -> void:
 
 func _source_contracts() -> void:
 	var editor_src := (_TerrainEditor as GDScript).source_code
-	var dig_fn := editor_src.find("func try_dig")
-	var replace_fn := editor_src.find("func _replace_cell_with_water_block")
-	var dig_body := editor_src.substr(dig_fn, replace_fn - dig_fn) if replace_fn > dig_fn else editor_src
-	var adj := dig_body.find("if _has_adjacent_water")
-	var normal_dig := dig_body.find("TerrainEdits.dig", adj)
-	var branch := dig_body.substr(adj, maxi(normal_dig - adj, 0))
-	_expect(adj >= 0 and "_notify_water_reflow" not in branch, "radius-1 water stamp still skips region reflow")
+	_expect("_replace_cell_with_water_block" not in editor_src and "_has_adjacent_water(wx, wz):\n\t\t_grant_dig_loot" not in editor_src, "dig beside water has no instant water swap")
 	var weapon_src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
 	_expect(weapon_src.count("try_dig_brush(") == 1, "try_dig_brush is only the dig-tool stroke")
 	_expect("KEY_BRACKETLEFT" in weapon_src and "KEY_BRACKETRIGHT" in weapon_src, "bracket keys adjust brush radius")
@@ -358,8 +352,7 @@ func _radius_one_beside_water() -> void:
 	var tile := _FeatureRegistry.get_tile_override(3, 70)
 	var h1 := flat.get_surface_height(3.0, 70.0)
 	var stamped := tile == _VoxelTypes.RIVER or tile == _VoxelTypes.WATER
-	var dry := not _ChannelRegistry.has_fluid(3, 70, _ChannelRegistry.FLUID_WATER)
-	_expect(ok and stamped and absf(h1 - h0) < 0.01 and dry, "radius 1 beside water still stamps a tile and does not dig a hole")
+	_expect(ok and not stamped and h1 < h0 - 0.01, "radius 1 beside water digs a cavity and stamps no tile")
 
 
 func _finish() -> void:

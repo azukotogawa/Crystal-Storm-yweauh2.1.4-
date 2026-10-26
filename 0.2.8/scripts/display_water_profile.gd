@@ -68,8 +68,8 @@ func _run() -> void:
 		elif editor.has_method("try_dig"):
 			edit["ok"] = bool(editor.try_dig(pos))
 			_ChannelRegistry.register_channel(cell.x, cell.y, Vector2i(1, 0), 0.75)
-			if fluid.has_method("recompute_region_now"):
-				fluid.recompute_region_now(cell.x, cell.y, 2, 1)
+			if fluid.has_method("request_flow"):
+				fluid.request_flow(cell.x, cell.y, 1)
 		edit["after_level"] = _ChannelRegistry.get_water_level(cell.x, cell.y)
 		var insp = game.get_node_or_null("LiveWorldInspector")
 		if insp:

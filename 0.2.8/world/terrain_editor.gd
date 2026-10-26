@@ -32,7 +32,6 @@ var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 var sim_config: _CrystalSimConfig = _CrystalSimConfig.create_default()
 
-var _channel_tick_accum: float = 0.0
 var _growth_manager: Node
 var last_fail_reason: String = ""
 var last_build_id: StringName = &""
@@ -91,15 +90,6 @@ func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("terrain_editor")
-	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
-	if fluid_svc == null:
-		_channel_tick_accum += delta
-		if _channel_tick_accum >= 0.25:
-			_channel_tick_accum = 0.0
-			var t0 := Time.get_ticks_usec()
-			_ChannelRegistry.tick_equilibrium(world, sim_config, 0.25)
-			if profiler and profiler.has_method("record_func"):
-				profiler.record_func("ChannelRegistry::tick_equilibrium", Time.get_ticks_usec() - t0)
 	if _LivingForce.pushback_enabled and not _LivingForce.push_watch.is_empty():
 		_living_push_accum += delta
 		if _living_push_accum >= _LivingForce.pushback_interval:
@@ -160,18 +150,6 @@ func try_dig(world_pos: Vector3) -> bool:
 	var player := get_tree().get_first_node_in_group("player")
 	if player and "inventory" in player:
 		inv = player.inventory
-	if _has_adjacent_water(wx, wz):
-		_grant_dig_loot(wx, wz, inv)
-		if not _replace_cell_with_water_block(wx, wz):
-			last_fail_reason = "Can't place water here"
-			return false
-		var profiler_w = get_node_or_null("/root/PerfProfiler")
-		if profiler_w and profiler_w.has_method("inc_frame"):
-			profiler_w.inc_frame("terrain_edits")
-		_invalidate_and_rebuild(wx, wz)
-		_requeue_water_neighbors(wx, wz)
-		terrain_edited.emit(wx, wz, &"water")
-		return true
 	var edited_h: float = world.get_surface_height(float(wx), float(wz))
 	var min_h: float = -_WorldSettings.get_active().layer_height() * 4.0
 	if edited_h <= min_h:
@@ -1265,30 +1243,6 @@ func _has_adjacent_water(wx: int, wz: int) -> bool:
 	return false
 
 
-func _replace_cell_with_water_block(wx: int, wz: int) -> bool:
-	if world == null:
-		return false
-	if _is_water_source_column(wx, wz):
-		return false
-	var tile: int = VoxelTypes.WATER
-	for dx in [-1, 0, 1]:
-		for dz in [-1, 0, 1]:
-			if dx == 0 and dz == 0:
-				continue
-			var nt: int = world.get_tile_type(float(wx + dx), float(wz + dz))
-			if nt in [VoxelTypes.RIVER, VoxelTypes.OCEAN, VoxelTypes.OCEAN2, VoxelTypes.OCEAN3]:
-				tile = VoxelTypes.RIVER
-				break
-		if tile == VoxelTypes.RIVER:
-			break
-	_FeatureRegistry.set_tile_override(wx, wz, tile)
-	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
-		"flood_from_dig": true,
-		"water_tile": tile,
-	})
-	return true
-
-
 func _clear_flood_water_block(wx: int, wz: int) -> void:
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	if not bool(feat.get("flood_from_dig", false)):
@@ -1346,39 +1300,6 @@ func _remesh_cells(cells: Array) -> void:
 			chunk_manager.invalidate_columns_at_world(cell.x, cell.y)
 	if chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
 		chunk_manager.flush_rebuild_pending()
-
-
-func _living_water_inflow(dug: Array) -> void:
-	if not _LivingForce.water_inflow_enabled or dug.is_empty() or world == null:
-		return
-	if not is_inside_tree():
-		return
-	var anchor := Vector2i(-999999, -999999)
-	for cell_v in dug:
-		var cell: Vector2i = cell_v
-		if _dug_below_adjacent_water(cell.x, cell.y):
-			anchor = cell
-			break
-	if anchor.x < -900000:
-		return
-	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
-	if fluid_svc and fluid_svc.has_method("recompute_region_now"):
-		fluid_svc.recompute_region_now(anchor.x, anchor.y, 2, 1)
-
-
-func _dug_below_adjacent_water(wx: int, wz: int) -> bool:
-	var layer: float = _WorldSettings.get_active().layer_height()
-	var top: float = world.get_surface_height(float(wx), float(wz)) + layer
-	for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		var step: Vector2i = dir
-		var nx: int = wx + step.x
-		var nz: int = wz + step.y
-		if not _is_water_source_column(nx, nz):
-			continue
-		var waterline: float = world.get_surface_height(float(nx), float(nz)) + layer
-		if top < waterline - 0.001:
-			return true
-	return false
 
 
 func _living_crystal_node():
@@ -1456,41 +1377,20 @@ func _invalidate_and_rebuild(wx: int, wz: int) -> void:
 		chunk_manager.rebuild_chunk_at_world(float(wx), float(wz))
 
 
-func _requeue_water_neighbors(wx: int, wz: int) -> void:
+func _notify_water_reflow(wx: int, wz: int, _immediate: bool = false) -> void:
 	if not is_inside_tree():
 		return
 	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
-	if fluid_svc and fluid_svc.has_method("requeue_neighbors_on_edit"):
-		fluid_svc.requeue_neighbors_on_edit(wx, wz)
+	if fluid_svc != null:
+		fluid_svc.request_flow(wx, wz)
 
 
-func _notify_water_reflow(wx: int, wz: int, immediate: bool = false) -> void:
-	if not is_inside_tree():
+func _living_water_inflow(dug: Array) -> void:
+	if not _LivingForce.water_inflow_enabled:
 		return
-	var fluid_svc := get_tree().get_first_node_in_group("voxel_fluid_service")
-	if fluid_svc == null:
-		return
-	var near_water := _region_needs_immediate_water(wx, wz)
-	if immediate and near_water and fluid_svc.has_method("recompute_region_now"):
-		fluid_svc.recompute_region_now(wx, wz, 2, 1)
-	elif fluid_svc.has_method("mark_region_dirty"):
-		fluid_svc.mark_region_dirty(wx, wz, 2)
-
-
-func _region_needs_immediate_water(wx: int, wz: int) -> bool:
-	if _is_water_source_column(wx, wz):
-		return true
-	if _ChannelRegistry.has_fluid(wx, wz, _ChannelRegistry.FLUID_WATER):
-		return true
-	for dx in range(-2, 3):
-		for dz in range(-2, 3):
-			if dx == 0 and dz == 0:
-				continue
-			if _is_water_source_column(wx + dx, wz + dz):
-				return true
-			if _ChannelRegistry.has_fluid(wx + dx, wz + dz, _ChannelRegistry.FLUID_WATER):
-				return true
-	return false
+	for cell_v in dug:
+		var cell: Vector2i = cell_v
+		_notify_water_reflow(cell.x, cell.y)
 
 
 func _is_water_source_column(wx: int, wz: int) -> bool:

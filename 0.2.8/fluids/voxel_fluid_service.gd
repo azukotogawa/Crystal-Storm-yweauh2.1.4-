@@ -23,23 +23,13 @@ var _terrain_query: _CrystalTerrainQuery
 var _dirty_cells: Dictionary = {}
 var _tick_accum: float = 0.0
 var _sim_tick_id: int = 0
-var _river_source_cells: Dictionary = {}
 var _sleeping: bool = true
 var _last_tick_us: int = 0
 var _last_load_us: int = 0
 var _last_subset_size: int = 0
 var _last_changed_count: int = 0
-var _last_gather_us: int = 0
-var _last_copy_us: int = 0
-var _last_sim_us: int = 0
-var _last_persist_us: int = 0
-var _last_visual_us: int = 0
 var _last_process_us: int = 0
-var _last_tile_samples: int = 0
-var _last_registry_reads: int = 0
-var _last_offscreen_in_subset: int = 0
 var _last_signal_emits: int = 0
-var _last_body_surface_y: float = 0.0
 var _last_wet_count: int = 0
 var _last_source_count: int = 0
 
@@ -82,75 +72,15 @@ func _init_water_engine() -> void:
 	_water_engine.empty_cell_inflow_cap = 0.25
 
 
-const _EMPTY_WALK_CAP := 96
-const _SETTLE_NEW_CELLS_PER_TICK := 1
-
-
-func mark_region_dirty(wx: int, wz: int, radius: int = 1) -> void:
-	# Only registered water expands to neighbors. Natural river tiles are visual
-	# sources and must not pull a whole marsh into the gather.
-	for dx in range(-radius, radius + 1):
-		for dz in range(-radius, radius + 1):
-			var cell := Vector2i(wx + dx, wz + dz)
-			_dirty_cells[cell] = true
-			if _ChannelRegistry.has_fluid(cell.x, cell.y, _ChannelRegistry.FLUID_WATER):
-				for dir in _CrystalTypes.NEIGHBOR_DIRS:
-					_dirty_cells[cell + dir] = true
-
-
-func requeue_neighbors_on_edit(wx: int, wz: int) -> void:
+func request_flow(wx: int, wz: int, steps: int = 0) -> void:
 	var origin := Vector2i(wx, wz)
-	_queue_cell_and_neighbors(origin)
+	_dirty_cells[origin] = true
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
-		var n: Vector2i = origin + dir
-		if _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER) or _is_natural_water_cell(n):
-			_queue_cell_and_neighbors(n)
+		_dirty_cells[origin + dir] = true
 	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
 	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz if fluid_def else 10.0, 1.0)
-	var prev_cap: int = 0
-	if _water_engine:
-		prev_cap = int(_water_engine.max_cells_per_tick)
-		_water_engine.max_cells_per_tick = mini(maxi(prev_cap, 1), 32)
-	_interactive_local_center = origin
-	_interactive_local_radius = 3
-	_interactive_local_mode = true
-	_tick_water(step_dt)
-	_interactive_local_mode = false
-	if _water_engine:
-		_water_engine.max_cells_per_tick = prev_cap
-
-
-func _queue_cell_and_neighbors(pos: Vector2i) -> void:
-	_dirty_cells[pos] = true
-	for dir in _CrystalTypes.NEIGHBOR_DIRS:
-		_dirty_cells[pos + dir] = true
-
-
-func recompute_region_now(wx: int, wz: int, radius: int = 1, steps: int = 6) -> void:
-	mark_region_dirty(wx, wz, radius)
-	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
-	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz if fluid_def else 10.0, 1.0)
-	# Cap work during interactive reflow so dig/channel do not freeze the main thread.
-	var prev_cap: int = 0
-	if _water_engine:
-		prev_cap = int(_water_engine.max_cells_per_tick)
-		_water_engine.max_cells_per_tick = mini(maxi(prev_cap, 1), 64)
-	# Local-only subset: do not scan every fluid cell in the world on each dig.
-	_interactive_local_center = Vector2i(wx, wz)
-	_interactive_local_radius = maxi(radius + 3, 4)
-	_interactive_local_mode = true
 	for _i in steps:
 		_tick_water(step_dt)
-	_interactive_local_mode = false
-	if _water_engine:
-		_water_engine.max_cells_per_tick = prev_cap
-
-
-var _interactive_local_mode: bool = false
-var _interactive_local_center: Vector2i = Vector2i.ZERO
-var _interactive_local_radius: int = 4
-var _empty_resume: Array = []
-var _empty_searched: Dictionary = {}
 
 
 func _process(delta: float) -> void:
@@ -158,34 +88,19 @@ func _process(delta: float) -> void:
 	if _water_engine == null:
 		return
 	_WaterSurface.advance(delta)
-	var profiler = get_node_or_null("/root/PerfProfiler")
-	if profiler and profiler.has_method("begin"):
-		profiler.begin("voxel_fluid")
 	if GameplayInput.world_loading:
 		_sleeping = true
-		_last_process_us = Time.get_ticks_usec() - t_proc
-		if profiler and profiler.has_method("end"):
-			profiler.end("voxel_fluid")
 		return
 	if chunk_manager == null:
 		chunk_manager = get_tree().get_first_node_in_group("chunk_manager")
 	if world == null:
 		world = get_tree().get_first_node_in_group("world")
-	if _terrain_query:
-		_terrain_query.world = world
-		_terrain_query.chunk_manager = chunk_manager
 	var fluid_def = _FluidRegistry.get_def(_ChannelRegistry.FLUID_WATER)
 	if fluid_def == null:
-		_last_process_us = Time.get_ticks_usec() - t_proc
-		if profiler and profiler.has_method("end"):
-			profiler.end("voxel_fluid")
 		return
 	if _dirty_cells.is_empty():
 		_sleeping = true
 		_tick_accum = 0.0
-		_last_process_us = Time.get_ticks_usec() - t_proc
-		if profiler and profiler.has_method("end"):
-			profiler.end("voxel_fluid")
 		return
 	_tick_accum += delta
 	var step_dt := 1.0 / maxf(fluid_def.update_rate_hz, 1.0)
@@ -193,19 +108,14 @@ func _process(delta: float) -> void:
 		var t0 := Time.get_ticks_usec()
 		_tick_water(step_dt)
 		_last_tick_us = Time.get_ticks_usec() - t0
-		if profiler and profiler.has_method("record_func"):
-			profiler.record_func("VoxelFluidService::_tick_water", _last_tick_us)
 		_tick_accum = 0.0
 	_last_process_us = Time.get_ticks_usec() - t_proc
-	if profiler and profiler.has_method("end"):
-		profiler.end("voxel_fluid")
 
 
-func _tick_water(_delta: float) -> void:
-	if _dirty_cells.is_empty() and not _interactive_local_mode:
+func _tick_water(delta: float) -> void:
+	if _dirty_cells.is_empty():
 		_sleeping = true
 		_last_subset_size = 0
-		_last_registry_reads = 0
 		return
 	_sleeping = false
 	_sim_tick_id += 1
@@ -213,115 +123,67 @@ func _tick_water(_delta: float) -> void:
 		_terrain_query.world = world
 		_terrain_query.chunk_manager = chunk_manager
 		_terrain_query.begin_sim_tick(_sim_tick_id)
-	var t_load := Time.get_ticks_usec()
-	var subset: Dictionary = _collect_active_region()
-	_last_subset_size = subset.size()
-	_last_registry_reads = subset.size()
-	_last_gather_us = Time.get_ticks_usec() - t_load
-	_last_load_us = _last_gather_us
-	var t_copy := Time.get_ticks_usec()
-	var sources: Dictionary = _sources_in_subset(subset)
-	_last_source_count = sources.size()
-	_last_tile_samples = sources.size()
-	_last_copy_us = Time.get_ticks_usec() - t_copy
-	var t_sim := Time.get_ticks_usec()
-	var result: Dictionary = _flood_body(subset, sources)
-	_last_sim_us = Time.get_ticks_usec() - t_sim
-	var t_persist := Time.get_ticks_usec()
-	var changed: Array = _persist_body(subset, sources, result)
+	var region: Dictionary = {}
+	for key_variant in _dirty_cells.keys():
+		var key: Vector2i = key_variant
+		region[key] = true
+		for dir in _CrystalTypes.NEIGHBOR_DIRS:
+			region[key + dir] = true
+	_last_subset_size = region.size()
+	_water_engine.clear()
+	var layer: float = _layer()
+	var sources := 0
+	for key_variant in region.keys():
+		var pos: Vector2i = key_variant
+		if not _is_cell_active(pos):
+			continue
+		if _is_natural_water_cell(pos):
+			_water_engine.depth[pos] = layer
+			sources += 1
+		elif _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
+			_water_engine.depth[pos] = _ChannelRegistry.get_water_level(pos.x, pos.y) * layer
+	_last_source_count = sources
+	_water_engine.set_subset_cells(region.keys())
+	var changed: Array = _water_engine.tick_flow(delta)
 	_last_changed_count = changed.size()
-	_last_wet_count = int(result.get("wet_count", 0))
-	_last_body_surface_y = float(result.get("surface_y", 0.0))
-	_advance_dirty_from_changes(changed)
-	for resume_variant in _empty_resume:
-		_dirty_cells[resume_variant] = true
-	_empty_resume = []
-	_last_persist_us = Time.get_ticks_usec() - t_persist
-	_sync_engine_debug(result)
-	_river_source_cells.clear()
-
-
-func _advance_dirty_from_changes(changed: Array) -> void:
+	var persisted: Array = _persist_changes(changed)
 	var next_dirty: Dictionary = {}
-	for pos_variant in changed:
+	for pos_variant in persisted:
 		var pos: Vector2i = pos_variant
 		next_dirty[pos] = true
 		for dir in _CrystalTypes.NEIGHBOR_DIRS:
 			next_dirty[pos + dir] = true
 	_dirty_cells = next_dirty
+	_last_wet_count = _water_engine.cell_count()
 
 
-func _collect_active_region() -> Dictionary:
-	var cells: Dictionary = {}
-	if _interactive_local_mode:
-		var r: int = _interactive_local_radius
-		var c0: Vector2i = _interactive_local_center
-		for dx in range(-r, r + 1):
-			for dz in range(-r, r + 1):
-				cells[Vector2i(c0.x + dx, c0.y + dz)] = true
-	for key_variant in _dirty_cells.keys():
-		var key: Vector2i = key_variant
-		cells[key] = true
-		for dir in _CrystalTypes.NEIGHBOR_DIRS:
-			cells[key + dir] = true
-	_include_connected_empty(cells)
-	return cells
-
-
-func _is_empty_column(pos: Vector2i) -> bool:
-	return _TerrainEdits.get_height_delta(pos.x, pos.y) < -0.001
-
-
-func _accepts_flow(pos: Vector2i, surface_y: float) -> bool:
-	var top := _visual_top(pos)
-	if top > surface_y + 0.001:
-		return false
-	if top >= surface_y - 0.001:
-		return _is_empty_column(pos)
-	return true
-
-
-func _include_connected_empty(cells: Dictionary) -> void:
-	_empty_resume = []
-	var q: Array = []
-	var seen: Dictionary = {}
-	for searched_variant in _empty_searched.keys():
-		seen[searched_variant] = true
-	for key_variant in _dirty_cells.keys():
-		var pos: Vector2i = key_variant
-		if _is_empty_column(pos) and not seen.has(pos):
-			q.append(pos)
-	var walked := 0
-	var touched_water := false
-	while not q.is_empty() and walked < _EMPTY_WALK_CAP:
-		var cur: Vector2i = q.pop_back()
-		if seen.has(cur):
+func _persist_changes(changed: Array) -> Array:
+	var layer: float = maxf(_layer(), 0.001)
+	var out: Array = []
+	for pos_variant in changed:
+		var pos: Vector2i = pos_variant
+		if _is_natural_water_cell(pos):
 			continue
-		seen[cur] = true
-		_empty_searched[cur] = true
-		cells[cur] = true
-		walked += 1
-		for dir in _CrystalTypes.NEIGHBOR_DIRS:
-			var n: Vector2i = cur + dir
-			if seen.has(n):
-				continue
-			if _is_natural_water_cell(n) or _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER):
-				cells[n] = true
-				seen[n] = true
-				touched_water = true
-				continue
-			if _is_empty_column(n):
-				q.append(n)
-	if touched_water or q.is_empty():
-		_empty_searched = {}
-		return
-	var resume: Dictionary = {}
-	while not q.is_empty():
-		var left: Vector2i = q.pop_back()
-		if seen.has(left):
+		var amount: float = _water_engine.get_depth_at(pos.x, pos.y)
+		var had: bool = _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
+		if amount < _water_engine.fluid_def.min_depth:
+			if had:
+				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
+				out.append(pos)
+				_emit_water_visual(pos)
 			continue
-		resume[left] = true
-	_empty_resume = resume.keys()
+		var level: float = clampf(amount / layer, 0.05, 1.0)
+		if not had:
+			_ChannelRegistry.register_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, level)
+		else:
+			_ChannelRegistry.set_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, level)
+		_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, _visual_bed(pos) + amount)
+		out.append(pos)
+		_emit_water_visual(pos)
+	if not out.is_empty() and chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
+		chunk_manager.flush_rebuild_pending()
+	_last_signal_emits = out.size()
+	return out
 
 
 func _layer() -> float:
@@ -347,156 +209,10 @@ func _is_natural_water_cell(pos: Vector2i) -> bool:
 	return _CrystalTypes.is_water_tile(tile)
 
 
-func _sources_in_subset(subset: Dictionary) -> Dictionary:
-	var sources: Dictionary = {}
-	_last_offscreen_in_subset = 0
-	for key_variant in subset.keys():
-		var key: Vector2i = key_variant
-		if not _is_cell_active(key):
-			_last_offscreen_in_subset += 1
-			continue
-		if _is_natural_water_cell(key):
-			sources[key] = true
-	return sources
-
-
-func _flood_body(subset: Dictionary, sources: Dictionary) -> Dictionary:
-	var empty := {"wet": {}, "surface_y": 0.0, "wet_count": 0}
-	var surface_y := -1.0e9
-	var origins: Dictionary = {}
-	for key_variant in sources.keys():
-		var s: Vector2i = key_variant
-		origins[s] = true
-		surface_y = maxf(surface_y, _visual_top(s))
-	if origins.is_empty():
-		for key_variant in subset.keys():
-			var pos: Vector2i = key_variant
-			if not _is_cell_active(pos):
-				continue
-			if not _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
-				continue
-			var stored: float = _ChannelRegistry.get_runtime_surface_y(pos.x, pos.y)
-			if stored <= 0.01 or _visual_top(pos) >= stored - 0.001:
-				continue
-			origins[pos] = true
-			surface_y = maxf(surface_y, stored)
-	if origins.is_empty() or surface_y < -1.0e8:
-		return empty
-	var cap: int = _SETTLE_NEW_CELLS_PER_TICK
-	if _interactive_local_mode and _water_engine:
-		cap = maxi(int(_water_engine.max_cells_per_tick), _SETTLE_NEW_CELLS_PER_TICK)
-	var wet: Dictionary = {}
-	var q: Array = []
-	for key_variant in origins.keys():
-		var s: Vector2i = key_variant
-		wet[s] = true
-		q.append(s)
-	var qi := 0
-	var new_cells := 0
-	while qi < q.size():
-		var cur: Vector2i = q[qi]
-		qi += 1
-		for dir in _CrystalTypes.NEIGHBOR_DIRS:
-			var n: Vector2i = cur + dir
-			if wet.has(n):
-				continue
-			if not subset.has(n):
-				continue
-			if not _is_cell_active(n):
-				continue
-			if not _accepts_flow(n, surface_y):
-				continue
-			# Already-full cells must not spend the new-cell budget, or the
-			# wave stops on the first empty column past a pool.
-			var already: bool = _ChannelRegistry.has_fluid(n.x, n.y, _ChannelRegistry.FLUID_WATER)
-			wet[n] = true
-			q.append(n)
-			if sources.has(n) or already:
-				continue
-			new_cells += 1
-			if new_cells >= cap:
-				# Cells the wave has not reached yet must stay wet. Drying
-				# them here would erase the pool on every capped frame.
-				for extra_variant in subset.keys():
-					var extra: Vector2i = extra_variant
-					if wet.has(extra):
-						continue
-					if _ChannelRegistry.has_fluid(extra.x, extra.y, _ChannelRegistry.FLUID_WATER):
-						wet[extra] = true
-				qi = q.size()
-				break
-	return {"wet": wet, "surface_y": surface_y, "wet_count": wet.size()}
-
-
-func _persist_body(subset: Dictionary, sources: Dictionary, result: Dictionary) -> Array:
-	var wet: Dictionary = result.get("wet", {})
-	var surface_y: float = float(result.get("surface_y", 0.0))
-	var layer: float = maxf(_layer(), 0.001)
-	var changed: Array = []
-	var emits := 0
-	var vis_us := 0
-	for key_variant in subset.keys():
-		var pos: Vector2i = key_variant
-		var is_source: bool = sources.has(pos)
-		var is_wet: bool = wet.has(pos)
-		if is_source:
-			if _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
-				_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-				changed.append(pos)
-				_emit_water_visual(pos)
-				emits += 1
-			continue
-		if is_wet:
-			var fill: float = clampf((surface_y - _visual_bed(pos)) / layer, 0.05, 1.0)
-			var had: bool = _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-			var old_sy: float = _ChannelRegistry.get_runtime_surface_y(pos.x, pos.y) if had else 0.0
-			var old_lv: float = _ChannelRegistry.get_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER) if had else 0.0
-			if not had:
-				_ChannelRegistry.register_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, fill)
-			elif absf(old_lv - fill) > 0.02:
-				_ChannelRegistry.set_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, fill)
-			if absf(old_sy - surface_y) > 0.02 or not had:
-				_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, surface_y)
-			if not had or absf(old_lv - fill) > 0.02 or absf(old_sy - surface_y) > 0.02:
-				changed.append(pos)
-				var tv := Time.get_ticks_usec()
-				_emit_water_visual(pos)
-				vis_us += Time.get_ticks_usec() - tv
-				emits += 1
-			continue
-		if _ChannelRegistry.has_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER):
-			var stored_sy: float = _ChannelRegistry.get_runtime_surface_y(pos.x, pos.y)
-			var filled_above: bool = stored_sy > 0.01 and _visual_top(pos) >= stored_sy - 0.001
-			if sources.is_empty() and not filled_above:
-				continue
-			_ChannelRegistry.unregister_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER)
-			changed.append(pos)
-			var tv2 := Time.get_ticks_usec()
-			_emit_water_visual(pos)
-			vis_us += Time.get_ticks_usec() - tv2
-			emits += 1
-	_last_visual_us = vis_us
-	_last_signal_emits = emits
-	if emits > 0 and chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
-		chunk_manager.flush_rebuild_pending()
-	return changed
-
-
 func _emit_water_visual(pos: Vector2i) -> void:
 	channel_fluid_changed.emit(pos)
 	if chunk_manager and chunk_manager.has_method("invalidate_columns_at_world"):
 		chunk_manager.invalidate_columns_at_world(pos.x, pos.y)
-
-
-func _sync_engine_debug(result: Dictionary) -> void:
-	if _water_engine == null:
-		return
-	_water_engine.clear()
-	var wet: Dictionary = result.get("wet", {})
-	for key_variant in wet.keys():
-		var key: Vector2i = key_variant
-		_water_engine.depth[key] = 0.95
-	_water_engine.set_subset_cells(wet.keys())
 
 
 func is_persistent_source(wx: int, wz: int) -> bool:
@@ -546,6 +262,7 @@ func get_sim_diagnostics() -> Dictionary:
 		"subset_cells": _last_subset_size,
 		"engine_depth_cells": depth_n,
 		"dirty_cells": _dirty_cells.size(),
+		"tick_id": _sim_tick_id,
 		"max_cells_per_tick": int(_water_engine.max_cells_per_tick) if _water_engine else 0,
 		"active_gate": "dirty_region",
 		"loads_all_channels_each_tick": false,
@@ -553,21 +270,8 @@ func get_sim_diagnostics() -> Dictionary:
 		"last_tick_us": _last_tick_us,
 		"last_load_us": _last_load_us,
 		"last_changed_cells": _last_changed_count,
-		"phase_us": {
-			"process": _last_process_us,
-			"gather": _last_gather_us,
-			"copy": _last_copy_us,
-			"sim": _last_sim_us,
-			"persist": maxi(_last_persist_us - _last_visual_us, 0),
-			"visual": _last_visual_us,
-			"tick_total": _last_tick_us,
-		},
-		"tile_samples": _last_tile_samples,
-		"registry_reads": _last_registry_reads,
-		"offscreen_in_subset": _last_offscreen_in_subset,
 		"signal_emits": _last_signal_emits,
 		"signal_listeners": channel_fluid_changed.get_connections().size(),
-		"body_surface_y": _last_body_surface_y,
 		"wet_count": _last_wet_count,
 		"source_count": _last_source_count,
 	}

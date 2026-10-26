@@ -118,8 +118,8 @@ func _water_pass(cm, world, editor, fluid) -> void:
 		return
 	if cm.has_method("await_rebuild_idle"):
 		await cm.await_rebuild_idle(80)
-	if fluid and fluid.has_method("recompute_region_now"):
-		fluid.recompute_region_now(river.land.x, river.land.y, 2, 8)
+	if fluid and fluid.has_method("request_flow"):
+		fluid.request_flow(river.land.x, river.land.y, 8)
 	for _w in 12:
 		await process_frame
 	_look(river.land.x, river.land.y)
@@ -176,8 +176,8 @@ func _water_pass(cm, world, editor, fluid) -> void:
 		else:
 			if cm.has_method("await_rebuild_idle"):
 				await cm.await_rebuild_idle(80)
-			if fluid and fluid.has_method("recompute_region_now"):
-				fluid.recompute_region_now(river.land.x, river.land.y, 2, 6)
+			if fluid and fluid.has_method("request_flow"):
+				fluid.request_flow(river.land.x, river.land.y, 6)
 			for _ff in 10:
 				await process_frame
 			_shot("water_after_fill")

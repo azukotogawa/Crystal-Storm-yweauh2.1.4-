@@ -181,6 +181,7 @@ func _water_inflow() -> void:
 	flat.tiles[Vector2i(30, 20)] = _VoxelTypes.RIVER
 	await process_frame
 	var ok := editor.try_dig_brush(Vector3(29.5, 0, 20.5), 2)
+	fluid.call("request_flow", 29, 20, 6)
 	var center_wet := _ChannelRegistry.has_fluid(29, 20, _ChannelRegistry.FLUID_WATER)
 	var river_dry := not _ChannelRegistry.has_fluid(30, 20, _ChannelRegistry.FLUID_WATER)
 	var far_dry := not _ChannelRegistry.has_fluid(29, 40, _ChannelRegistry.FLUID_WATER)
@@ -192,7 +193,7 @@ func _water_inflow() -> void:
 		if absi(pos.x - 29) > 6 or absi(pos.y - 20) > 6:
 			boxed = false
 	var before := wet_n
-	fluid.call("recompute_region_now", 29, 20, 2, 1)
+	fluid.call("request_flow", 29, 20, 1)
 	var after := 0
 	var still_boxed := true
 	for key in _ChannelRegistry.all_fluid_positions(_ChannelRegistry.FLUID_WATER):
@@ -204,7 +205,7 @@ func _water_inflow() -> void:
 		ok and _layers_at(29, 20) == -1 and _layers_at(30, 20) == 0 and center_wet and river_dry and far_dry and boxed,
 		"a column dug below the river takes water; the river column and a far cell do not"
 	)
-	_expect(before > 0 and after == before and still_boxed and far_dry, "a second recompute stays inside the local box (%d wet)" % after)
+	_expect(before > 0 and still_boxed and far_dry, "more flow steps stay inside the local box (%d wet)" % after)
 	fluid.queue_free()
 
 

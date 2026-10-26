@@ -48,7 +48,8 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig"
+	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
 		return 1
@@ -104,11 +105,13 @@ func _objective(name: String) -> String:
 		return "dig several blocks in one stroke"
 	if name == "multi_build":
 		return "place several blocks in one stroke"
+	if name == "water_dig":
+		return "dig beside a lake and watch it flow"
 	return "dig one column" if name == "dig" else "place one stone wall"
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -436,6 +439,13 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "hp changed"
 	if not _saw(seen, OPENING_BANNER):
 		return "opening banner missing"
+	if name == "water_dig":
+		var levels: Array = after.get("levels", [])
+		if levels.is_empty() or float(levels[0]) < 0.05:
+			return "dug cell beside the lake did not fill %s" % str(levels)
+		if int(after.get("flow_ticks", 0)) < 1:
+			return "no flow tick ran"
+		return ""
 	if name == "multi_dig":
 		if int(after.get("columns", 0)) < 3:
 			return "multi dig broke %d columns want 3" % int(after.get("columns", 0))
@@ -515,6 +525,13 @@ func _snap(tree: SceneTree, player) -> Dictionary:
 
 
 func _stamp_world(name: String, build, after: Dictionary) -> void:
+	if name == "water_dig":
+		after["levels"] = build.water_levels()
+		var svc = _film_tree.get_first_node_in_group("voxel_fluid_service") if _film_tree != null else null
+		if svc != null:
+			after["flow_ticks"] = int(svc.get_sim_diagnostics().get("tick_id", 0))
+		print("HARNESS water entry request_flow -> VoxelFluidEngine.tick_flow ticks %d levels %s" % [int(after.get("flow_ticks", 0)), str(after.get("levels", []))])
+		return
 	if name == "multi_dig":
 		after["columns"] = build._dropped_count()
 		return

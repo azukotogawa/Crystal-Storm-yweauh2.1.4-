@@ -108,8 +108,8 @@ func _run() -> void:
 	_ChannelRegistry.register_channel(source.x, source.y, Vector2i(1, 0), 0.75)
 	_ChannelRegistry.register_channel(dig_cell.x, dig_cell.y, Vector2i.ZERO, 0.05)
 	var before_water: float = _ChannelRegistry.get_water_level(dig_cell.x, dig_cell.y)
-	if fluid_svc.has_method("recompute_region_now"):
-		fluid_svc.recompute_region_now(source.x, source.y, 2, 10)
+	if fluid_svc.has_method("request_flow"):
+		fluid_svc.request_flow(source.x, source.y, 10)
 	for _w in 20:
 		await process_frame
 	var after_water: float = _ChannelRegistry.get_water_level(dig_cell.x, dig_cell.y)
@@ -143,8 +143,8 @@ func _run() -> void:
 			await chunk_manager.await_rebuild_idle()
 	for _w in 30:
 		await process_frame
-	if fluid_svc.has_method("recompute_region_now"):
-		fluid_svc.recompute_region_now(source.x, source.y, 2, 6)
+	if fluid_svc.has_method("request_flow"):
+		fluid_svc.request_flow(source.x, source.y, 6)
 	for _w in 15:
 		await process_frame
 	var post_wall: float = _ChannelRegistry.get_water_level(source.x, source.y)

@@ -5,6 +5,11 @@ const _Edits = preload("res://world/terrain_edits.gd")
 const _Features = preload("res://world/feature_registry.gd")
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _Pace = preload("res://scripts/honest_bot/honest_pace.gd")
+const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
+const _Channels = preload("res://world/channel_registry.gd")
+const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _WorldBorder = preload("res://helpers/world_border.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 const OFFSETS: Array[Vector2i] = [
 	Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
@@ -14,6 +19,11 @@ const OFFSETS: Array[Vector2i] = [
 const DIG_LIMIT := 48.0
 const PLACE_LIMIT := 130.0
 const BRUSH_LIMIT := 110.0
+const WATER_LIMIT := 280.0
+const WATER_SCAN := 260
+const WATER_PROBES := 60
+const WATER_FILL_WAIT := 8.0
+const WATER_QUIET := 1.2
 const BRUSH_MASTERY := 5
 const BRUSH_MIN_BLOCKS := 3
 const CRYSTAL_SKIP := 0.05
@@ -42,6 +52,15 @@ var blocked_cells: Array[Vector2i] = []
 var stone_pre := 0
 var stone_post := 0
 var stroke_count := 0
+var trench_len := 1
+var trench_i := 1
+var lake: Dictionary = {}
+var fill_quiet := 0.0
+var fill_last := -1
+var water_ticks_before := 0
+var walker
+var walking := false
+var walk_failed := false
 
 
 func reset(segment: String) -> void:
@@ -84,6 +103,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _place(dt)
 	if mode == "multi_dig" or mode == "multi_build":
 		return _brush()
+	if mode == "water_dig":
+		return _water_dig()
 	return "fail"
 
 
@@ -381,6 +402,213 @@ func _brush() -> String:
 	_look_at(aim)
 	show_age += step_dt
 	if show_age < _Pace.SETTLE:
+		return ""
+	return "pass"
+
+
+func _world():
+	return player.get("world") if player != null else null
+
+
+func _is_lake(cell: Vector2i) -> bool:
+	var world = _world()
+	if world == null:
+		return false
+	var tile := int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5))
+	if _WorldBorder.is_ocean_tile(tile):
+		return false
+	return _CrystalTypes.is_water_tile(tile)
+
+
+func _is_wet(cell: Vector2i) -> bool:
+	var world = _world()
+	return _CrystalTypes.is_water_tile(int(world.get_tile_type(float(cell.x) + 0.5, float(cell.y) + 0.5)))
+
+
+func _ground_h(cell: Vector2i) -> float:
+	return float(_world().get_surface_height(float(cell.x) + 0.5, float(cell.y) + 0.5))
+
+
+func _trench_ok(source: Vector2i, axis: Vector2i, length: int) -> bool:
+	var perp := Vector2i(-axis.y, axis.x)
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var h1 := _ground_h(source + axis)
+	for i in range(1, length + 1):
+		var cell := source + axis * i
+		if _is_wet(cell) or not _open_ground(cell):
+			return false
+		if absf(_ground_h(cell) - h1) > 0.01:
+			return false
+		for side in [perp, -perp]:
+			var lateral: Vector2i = cell + side
+			if _is_wet(lateral) or _ground_h(lateral) < h1 - 0.01:
+				return false
+		var stand := cell + perp * 2
+		if _is_wet(stand) or not _open_ground(stand) or absf(_ground_h(stand) - h1) > layer * 0.6:
+			return false
+	var past := source + axis * (length + 1)
+	return not _is_wet(past) and _ground_h(past) >= h1 - 0.01
+
+
+func _find_lake(length: int) -> Dictionary:
+	var origin := _column()
+	var coarse: Array = []
+	for dz in range(-WATER_SCAN, WATER_SCAN + 1, 4):
+		for dx in range(-WATER_SCAN, WATER_SCAN + 1, 4):
+			var cell := origin + Vector2i(dx, dz)
+			if _is_lake(cell):
+				coarse.append([float(dx * dx + dz * dz), cell])
+	coarse.sort_custom(func(a, b): return float(a[0]) < float(b[0]))
+	var best := {}
+	var best_d := 1.0e9
+	var tried := 0
+	for entry in coarse:
+		if tried >= WATER_PROBES or float(entry[0]) > best_d + 400.0:
+			break
+		tried += 1
+		var hub: Vector2i = entry[1]
+		for dz in range(-6, 7):
+			for dx in range(-6, 7):
+				var source := hub + Vector2i(dx, dz)
+				var d := float((source - origin).length_squared())
+				if d >= best_d or not _is_lake(source):
+					continue
+				for axis in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					if _trench_ok(source, axis, length):
+						best = {"source": source, "axis": axis}
+						best_d = d
+						break
+	return best
+
+
+func _trench_cell(i: int) -> Vector2i:
+	return (lake["source"] as Vector2i) + (lake["axis"] as Vector2i) * i
+
+
+func _trench_stand(i: int) -> Vector2i:
+	var axis: Vector2i = lake["axis"]
+	return _trench_cell(i) + Vector2i(-axis.y, axis.x) * 2
+
+
+func _walk_to(cell: Vector2i) -> bool:
+	if walker == null:
+		walker = _Bot.new()
+		walker.stuck_limit = 6
+	walker.input = hands
+	if not walking:
+		walker.has_target = false
+		walker.set_target(Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5))
+		walking = true
+	walker.tick(_xz(), _yaw(), step_dt)
+	if walker.gave_up:
+		print("FAIL water_dig walker stuck: %s" % "|".join(walker.stuck_lines))
+		walking = false
+		walk_failed = true
+		return true
+	if walker.arrived:
+		walking = false
+		_stop_move()
+		return true
+	return false
+
+
+func water_levels() -> Array:
+	var out: Array = []
+	if lake.is_empty():
+		return out
+	for i in range(1, trench_len + 1):
+		var c := _trench_cell(i)
+		out.append(snappedf(_Channels.get_water_level(c.x, c.y), 0.001) if _Channels.has_fluid(c.x, c.y, _Channels.FLUID_WATER) else 0.0)
+	return out
+
+
+func _water_count() -> int:
+	return _Channels.all_fluid_positions(_Channels.FLUID_WATER).size()
+
+
+func _water_dig() -> String:
+	if age > WATER_LIMIT:
+		print("FAIL water_dig timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "water_dig"
+	if beat == 0:
+		if not hands.pulse("hotbar_2"):
+			return ""
+		beat = 1
+		return ""
+	if beat == 1:
+		lake = _find_lake(trench_len)
+		if lake.is_empty():
+			print("FAIL water_dig no lake with a %d cell dry strip within %d" % [trench_len, WATER_SCAN])
+			return "fail"
+		print("SHOWCASE water_dig lake %s axis %s cells %d" % [lake["source"], lake["axis"], trench_len])
+		trench_i = 1
+		show_age = 0.0
+		beat = 2
+		return ""
+	if beat == 2:
+		show_age += step_dt
+		if not _walk_to(_trench_stand(trench_i)):
+			return ""
+		if walk_failed:
+			return "fail"
+		_stop_move()
+		show_age = 0.0
+		beat = 3
+		return ""
+	if beat == 3:
+		var cell := _trench_cell(trench_i)
+		aim = cell
+		_look_at(aim)
+		show_age += step_dt
+		if _spinning(aim) and show_age < 4.0:
+			return ""
+		if show_age < _Pace.PRE_PAUSE:
+			return ""
+		heights = _height_snap()
+		show_age = 0.0
+		beat = 4
+		return ""
+	if beat == 4:
+		_look_at(aim, PackedStringArray(["attack"]))
+		show_age += step_dt
+		if _dropped() == aim:
+			_stop_move()
+			show_age = 0.0
+			beat = 5
+			return ""
+		if show_age > 6.0:
+			print("FAIL water_dig could not dig trench cell %s" % aim)
+			return "fail"
+		return ""
+	if beat == 5:
+		show_age += step_dt
+		if show_age < _Pace.action_span("multi_block_break") + 0.3:
+			return ""
+		show_age = 0.0
+		if trench_i < trench_len:
+			trench_i += 1
+			beat = 2
+			return ""
+		fill_quiet = 0.0
+		fill_last = -1
+		beat = 6
+		return ""
+	if beat == 6:
+		show_age += step_dt
+		var count := _water_count()
+		if count == fill_last:
+			fill_quiet += step_dt
+		else:
+			fill_quiet = 0.0
+			fill_last = count
+		var filled: bool = not water_levels().is_empty() and float(water_levels()[0]) >= 0.05
+		if (fill_quiet >= WATER_QUIET and filled) or show_age > WATER_FILL_WAIT:
+			show_age = 0.0
+			beat = 7
+		return ""
+	show_age += step_dt
+	if show_age < _Pace.RESULT_HOLD:
 		return ""
 	return "pass"
 
