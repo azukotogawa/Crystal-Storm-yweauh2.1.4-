@@ -545,7 +545,7 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return ""
 	if int(after.get("walls", 0)) < 1:
 		return "stone wall missing"
-	if int(after.get("stone", 0)) >= int(before.get("stone", 0)):
+	if int(after.get("stone_spent", 0)) < 1:
 		return "stone was not spent"
 	for line in seen:
 		if line == OPENING_BANNER or line == WALL_BANNER:
@@ -644,6 +644,7 @@ func _stamp_world(name: String, build, after: Dictionary) -> void:
 		after["drop"] = was - _Edits.get_height_delta(cell.x, cell.y)
 		return
 	after["walls"] = int(build._new_tiles())
+	after["stone_spent"] = int(build.stone_pre) - int(build.stone_post)
 
 
 func _note_banner(tree: SceneTree, seen: PackedStringArray) -> void:
