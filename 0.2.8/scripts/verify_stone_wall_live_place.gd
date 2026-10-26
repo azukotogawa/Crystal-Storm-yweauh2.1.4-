@@ -10,6 +10,7 @@ const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _SmokeProbeHelpers = preload("res://scripts/smoke_probe_helpers.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 const STONE_MESH_PATH := "res://assets/structures/stone_wall/stone_wall.obj"
 const WOOD_MESH_PATH := "res://assets/structures/wood_wall/wood_wall.obj"
@@ -224,10 +225,18 @@ func _check_blueprint_live(editor, world, player, feat_layer) -> void:
 	var stone_before: int = inv.count_item("stone")
 	weapon.blueprint_index = 0
 	weapon.blueprint_quarter = 0
+	weapon.blueprint_place_armed = true
 	weapon._cooldown_timer = 0.0
 	if weapon.has_method("set_active_hotbar_index"):
 		weapon.set_active_hotbar_index(0)
 	hl._action_column = Vector3(float(anchor.x) + 0.5, 0.0, float(anchor.y) + 0.5)
+	var settle := 0
+	while _GameplayInput.blocks_actions() and settle < 1200:
+		await process_frame
+		settle += 1
+	if _GameplayInput.blocks_actions():
+		_fail("actions still blocked: loading %s chat %s pause %s modal %s map %s tree %s" % [_GameplayInput.world_loading, _GameplayInput.dev_chat_open, _GameplayInput.pause_open, _GameplayInput.modal_open, _GameplayInput.map_open, _GameplayInput.skill_tree_open])
+		return
 	weapon._try_place_selected()
 	var guard := 0
 	while guard < 90:
@@ -290,7 +299,7 @@ func _blueprint_run_clear(world, player, ax: int, az: int) -> bool:
 	var height: float = world.get_surface_height(float(ax), float(az))
 	for x in 3:
 		var wx := ax + x
-		if not _ActionTargeting._column_in_range(player, wx, az, 8.0):
+		if not _ActionTargeting._column_in_range(player, wx, az, _ActionTargeting.reach()):
 			return false
 		if not _TerrainEdits.can_edit(wx, az):
 			return false
