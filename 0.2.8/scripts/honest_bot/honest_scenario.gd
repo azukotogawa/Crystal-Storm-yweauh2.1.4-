@@ -1603,6 +1603,7 @@ func _banner_allowed(line: String) -> bool:
 		"Skill unlocked",
 		"New brush unlocked",
 		"crystal_mite down",
+		"Can't dig here",
 		"Relic ",
 		"Discovered ",
 		"Landmark ",
