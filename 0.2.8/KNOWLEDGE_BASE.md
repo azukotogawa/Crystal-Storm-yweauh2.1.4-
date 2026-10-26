@@ -160,7 +160,6 @@ Declared in `project.godot`:
 - `interact`: R
 - `build_place`: mouse right
 - `plant`: G
-- `channel_water`: Shift+T
 - `dev_chat_toggle`: T
 - `debug_overlay_toggle`: F3
 - `bug_report`: F11
@@ -482,7 +481,6 @@ Actions:
 - `try_dig`
 - `try_build` / `try_build_wall`
 - `try_plant`
-- `try_channel_water`
 
 Dig:
 

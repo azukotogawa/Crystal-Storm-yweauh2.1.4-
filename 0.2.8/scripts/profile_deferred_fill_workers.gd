@@ -185,7 +185,7 @@ func _play_step(i: int, player, editor, crystal, dig_ms: Array, build_ms: Array,
 		build_ms.append(float(Time.get_ticks_usec() - t1) / 1000.0)
 	elif cycle < 44 and editor:
 		var t2 := Time.get_ticks_usec()
-		editor.try_channel_water(Vector3(floor(col.x) + float(cycle % 3) + 0.5, 0, floor(col.z) + 8.5), player.get("inventory"))
+		editor.try_dig(Vector3(floor(col.x) + float(cycle % 3) + 0.5, 0, floor(col.z) + 8.5))
 		water_ms.append(float(Time.get_ticks_usec() - t2) / 1000.0)
 	elif cycle < 50 and crystal and crystal.has_method("damage_spawn_at_world"):
 		crystal.damage_spawn_at_world(Vector2i(-10, 10), 3.0, 3.0)

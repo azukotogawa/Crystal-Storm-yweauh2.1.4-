@@ -178,14 +178,12 @@ func _run() -> void:
 	await _shot("audit_ramps")
 
 	var water_cell := origin + Vector2i(3, 6)
-	if editor.has_method("try_channel_water"):
+	if editor.has_method("try_dig"):
 		var wy: float = world.get_surface_height(float(water_cell.x), float(water_cell.y))
-		var wok: bool = editor.try_channel_water(
-			Vector3(float(water_cell.x) + 0.5, wy, float(water_cell.y) + 0.5), inv
-		)
-		_actions.append({"op": "channel", "ok": wok, "reason": editor.last_fail_reason})
+		var wok: bool = editor.try_dig(Vector3(float(water_cell.x) + 0.5, wy, float(water_cell.y) + 0.5))
+		_actions.append({"op": "dig_water_edge", "ok": wok, "reason": editor.last_fail_reason})
 		await _idle(cm)
-		_classify("channel", water_cell, _LiveWorldQuery.inspect_cell(self, water_cell.x, water_cell.y))
+		_classify("dig_water_edge", water_cell, _LiveWorldQuery.inspect_cell(self, water_cell.x, water_cell.y))
 	_sample_natural_water(world, origin)
 	var fluid = get_first_node_in_group("voxel_fluid_service")
 	if fluid and fluid.has_method("get_sim_diagnostics"):

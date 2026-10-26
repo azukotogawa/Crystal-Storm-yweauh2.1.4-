@@ -109,9 +109,51 @@ func _run() -> void:
 	overlay.call("_close_chat")
 	await process_frame
 
+	if InputMap.has_action("channel_water"):
+		push_error("channel_water action must not exist")
+		failed = true
+	else:
+		print("OK no channel_water action")
+
+	var leaked: Array = []
+	for dir in ["world", "weapons", "systems", "ui", "player", "helpers", "fluids", "scripts"]:
+		_scan_for_channel_tool("res://" + dir, leaked)
+	if not leaked.is_empty():
+		push_error("try_channel_water still referenced in %s" % str(leaked))
+		failed = true
+	else:
+		print("OK no try_channel_water in game code")
+
+	var seen: Dictionary = {}
+	var clashes: Array = []
+	for action in InputMap.get_actions():
+		if str(action).begins_with("ui_"):
+			continue
+		for ev in InputMap.action_get_events(action):
+			if not ev is InputEventKey:
+				continue
+			var key := "%d|%s|%s|%s|%s" % [ev.physical_keycode, ev.shift_pressed, ev.ctrl_pressed, ev.alt_pressed, ev.meta_pressed]
+			if seen.has(key) and seen[key] != action:
+				clashes.append("%s/%s" % [seen[key], action])
+			seen[key] = action
+	if not clashes.is_empty():
+		push_error("duplicate key plus modifier actions %s" % str(clashes))
+		failed = true
+	else:
+		print("OK no duplicate key plus modifier actions")
+
 	if failed:
 		print("Dev tools input tests FAILED")
 		quit(1)
 		return
 	print("All dev tools input tests OK")
 	quit(0)
+
+func _scan_for_channel_tool(path: String, leaked: Array) -> void:
+	for file in DirAccess.get_files_at(path):
+		if not file.ends_with(".gd") or file == "verify_dev_tools_input.gd" or file == "verify_water_body.gd":
+			continue
+		if "try_channel_water" in FileAccess.get_file_as_string(path + "/" + file):
+			leaked.append(path + "/" + file)
+	for sub in DirAccess.get_directories_at(path):
+		_scan_for_channel_tool(path + "/" + sub, leaked)

@@ -316,11 +316,10 @@ func _do_active_step(
 		if bok:
 			action_ok["build"] = int(action_ok["build"]) + 1
 	elif cycle < 62 and editor:
-		var inv2 = player.get("inventory")
 		var wx3 := int(floor(col.x)) + (cycle % 4)
 		var wz3 := int(floor(col.z)) + 8
 		var t2 := Time.get_ticks_usec()
-		var wok: bool = editor.try_channel_water(Vector3(float(wx3) + 0.5, 0.0, float(wz3) + 0.5), inv2)
+		var wok: bool = editor.try_dig(Vector3(float(wx3) + 0.5, 0.0, float(wz3) + 0.5))
 		water_ms.append(float(Time.get_ticks_usec() - t2) / 1000.0)
 		if wok:
 			action_ok["water"] = int(action_ok["water"]) + 1

@@ -58,6 +58,10 @@ var lake: Dictionary = {}
 var fill_quiet := 0.0
 var fill_last := -1
 var water_ticks_before := 0
+var pre_signature := ""
+var shift_signature := ""
+var t_signature := ""
+var t_opened_chat := false
 var walker
 var walking := false
 var walk_failed := false
@@ -105,6 +109,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _brush()
 	if mode == "water_dig":
 		return _water_dig()
+	if mode == "dev_keys":
+		return _dev_keys()
 	return "fail"
 
 
@@ -524,6 +530,80 @@ func water_levels() -> Array:
 
 func _water_count() -> int:
 	return _Channels.all_fluid_positions(_Channels.FLUID_WATER).size()
+
+
+func _terrain_signature() -> String:
+	return "%s|%d" % [str(_height_snap()), _water_count()]
+
+
+func chat_open() -> bool:
+	var chat = tree.get_first_node_in_group("dev_chat_overlay")
+	return chat != null and chat.is_chat_open()
+
+
+func _dev_keys() -> String:
+	if age > 60.0:
+		print("FAIL dev_keys timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "dev_keys"
+	show_age += step_dt
+	if beat == 0:
+		if not hands.pulse("hotbar_2"):
+			return ""
+		aim = _dry_near()
+		pre_signature = _terrain_signature()
+		show_age = 0.0
+		beat = 1
+		return ""
+	if beat == 1:
+		_look_at(aim)
+		if show_age < _Pace.PRE_PAUSE or not hands.pulse_key(KEY_T, true):
+			return ""
+		show_age = 0.0
+		beat = 2
+		return ""
+	if beat == 2:
+		if show_age < 0.5:
+			return ""
+		shift_signature = _terrain_signature()
+		beat = 3
+		return ""
+	if beat == 3:
+		if not _esc_chat():
+			return ""
+		show_age = 0.0
+		beat = 4
+		return ""
+	if beat == 4:
+		if show_age < 0.5 or not hands.pulse_key(KEY_T):
+			return ""
+		show_age = 0.0
+		beat = 5
+		return ""
+	if beat == 5:
+		if show_age < 0.5:
+			return ""
+		t_opened_chat = chat_open()
+		t_signature = _terrain_signature()
+		beat = 6
+		return ""
+	if beat == 6:
+		if not _esc_chat():
+			return ""
+		show_age = 0.0
+		beat = 7
+		return ""
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	return "pass"
+
+
+func _esc_chat() -> bool:
+	if not chat_open():
+		return true
+	if show_age >= 1.0 and hands.pulse_key(KEY_ESCAPE):
+		show_age = 0.0
+	return false
 
 
 func _water_dig() -> String:

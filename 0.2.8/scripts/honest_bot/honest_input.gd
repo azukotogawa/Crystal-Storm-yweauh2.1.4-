@@ -8,6 +8,7 @@ var _since_press := 1.0
 var _held: Dictionary = {}
 var _pulses: PackedStringArray = PackedStringArray()
 var _keys: Array[int] = []
+var _shift_on := false
 var _seat_key := Vector2i(999999, 999999)
 var _seat_at := Vector2(-1.0, -1.0)
 
@@ -26,6 +27,7 @@ func begin_tick() -> void:
 	for code in _keys:
 		_send_key(code, false)
 	_keys.clear()
+	_shift_on = false
 
 
 func pulse(action: StringName) -> bool:
@@ -80,7 +82,7 @@ func is_held(action: String) -> bool:
 	return false
 
 
-func pulse_key(code: int) -> bool:
+func pulse_key(code: int, shift: bool = false) -> bool:
 	if code == 0:
 		return false
 	for existing in _keys:
@@ -89,6 +91,7 @@ func pulse_key(code: int) -> bool:
 	if not _press_slot():
 		return false
 	_keys.append(code)
+	_shift_on = shift
 	_send_key(code, true)
 	return true
 
@@ -222,6 +225,7 @@ func _send_key(code: int, pressed: bool) -> void:
 	ev.physical_keycode = code as Key
 	ev.keycode = code as Key
 	ev.pressed = pressed
+	ev.shift_pressed = _shift_on
 	ev.echo = false
 	Input.parse_input_event(ev)
 	Input.flush_buffered_events()

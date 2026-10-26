@@ -62,11 +62,7 @@ static func apply(tree: SceneTree, ox: int = 24, oz: int = 24) -> Dictionary:
 		_stamp_build(cells.adj_b, "wood_wall", true)
 		_stamp_build(cells.ns_a, "stone_wall", true)
 		_stamp_build(cells.ns_b, "stone_wall", true)
-	if editor and editor.has_method("try_channel_water"):
-		var wy: float = world.get_surface_height(float(cells.water.x), float(cells.water.y)) if world else 0.0
-		editor.try_channel_water(Vector3(float(cells.water.x) + 0.5, wy, float(cells.water.y) + 0.5), inv)
-	else:
-		_TerrainEdits.dig(cells.water.x, cells.water.y, 1)
+	_TerrainEdits.dig(cells.water.x, cells.water.y, 1)
 	_seed_crystal(tree, cells.crystal)
 	if editor:
 		for key in ["flat", "raised", "wood_wall", "stone_wall", "gate", "bridge", "water", "crystal", "dig_one"]:

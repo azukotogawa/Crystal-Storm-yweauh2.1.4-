@@ -63,9 +63,7 @@ func _run() -> void:
 		if inv and inv.has_method("add_item"):
 			inv.add_item("stone", 8)
 		edit["before_level"] = _ChannelRegistry.get_water_level(cell.x, cell.y)
-		if editor.has_method("try_channel_water"):
-			edit["ok"] = bool(editor.try_channel_water(pos, inv))
-		elif editor.has_method("try_dig"):
+		if editor.has_method("try_dig"):
 			edit["ok"] = bool(editor.try_dig(pos))
 			_ChannelRegistry.register_channel(cell.x, cell.y, Vector2i(1, 0), 0.75)
 			if fluid.has_method("request_flow"):
@@ -89,8 +87,8 @@ func _run() -> void:
 		river_edit["tile"] = int(world.get_tile_type(24.0, 24.0))
 		var ry: float = world.get_surface_height(24.0, 24.0)
 		var rpos := Vector3(24.5, ry, 24.5)
-		if editor.has_method("try_channel_water"):
-			river_edit["ok"] = bool(editor.try_channel_water(rpos, player.get("inventory")))
+		if editor.has_method("try_dig"):
+			river_edit["ok"] = bool(editor.try_dig(rpos))
 		river_edit["cell"] = [24, 24]
 	var after_river: Dictionary = await _sample_window(25)
 	var inspect: Dictionary = {}

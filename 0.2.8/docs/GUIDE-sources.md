@@ -39,7 +39,6 @@ Every action in `0.2.8/project.godot` under `[input]` (the section starts at lin
 | `interact` | R (82) | `project.godot:102` | Same place path: `weapons/weapon_controller.gd:155` | yes |
 | `build_place` | Mouse right (button 2) | `project.godot:107` | `weapons/weapon_controller.gd:155` | yes |
 | `plant` | G (71) | `project.godot:112` | `weapons/weapon_controller.gd:1236` | yes |
-| `channel_water` | Shift+T (84, shift) | `project.godot:117` | Pick only, Shift raises: `weapons/weapon_controller.gd:1257` | yes |
 | `place_cycle` | Tab (4194306) | `project.godot:122` | `weapons/weapon_controller.gd:178` | yes |
 | `dev_chat_toggle` | T (84) | `project.godot:127` | Action name: `systems/input_bindings.gd:49`. Chat panel: `ui/dev_chat_overlay.gd:1` | yes |
 | `hotbar_1` | 1 (49) | `project.godot:132` | Slots: `weapons/weapon_controller.gd:180` | yes |

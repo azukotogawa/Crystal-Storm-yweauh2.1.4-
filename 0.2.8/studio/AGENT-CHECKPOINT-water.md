@@ -21,3 +21,10 @@ Env: Godot 4.7.2 headless on a Linux VM, scratch copy with stand-in art, shaders
 - `SaveSchema.CURRENT_VERSION` and `MIN_SUPPORTED_VERSION` are 3; `migrate` and `_migrate_v1_to_v2` deleted. An older save returns `message` "world from an older version, create a new world", which `apply_snapshot_transactional` emits on `save_failed`.
 - `verify_save_architecture`: old-version-refused case and a wet-cells save/JSON/reload case (7 flowed cells, identical levels). `verify_save_transaction` and `verify_macro_micro_save_migrate` moved to version 3 fixtures. All pass.
 - Not run: the Continue/world-list UI showing the message to a player (needs the Dell and real UI art). `continue` simply finds no valid save for an old world.
+
+## cs-water-04
+- Deleted: `channel_water` action (project.godot, input_bindings), `_try_channel_water`, `_try_channel_water_at_target` and the Shift/Ctrl-dig route in weapon_controller, `try_channel_water`, `ChannelMode`, `_channel_*`, `_update_channel_metadata` and `get_channel_delay` in terrain_editor, and the doc lines for the channel key. T stays `dev_chat_toggle` with no modifier.
+- Callers moved to `try_dig`: validation_yard, display_water_profile, profile_deferred_fill_workers/gameplay, autonomous_gameplay_audit. `try_channel_water` is banned in verify_water_body.
+- `verify_dev_tools_input` now checks no `channel_water` action, no `try_channel_water` in game code, no duplicate key+modifier actions. It and `verify_dev_chat` pass.
+- Scenario `dev_keys` (HonestInput; `pulse_key` gained a shift flag): Shift+T and plain T leave the terrain snapshot (height deltas and wet cell count) unchanged, plain T opens chat. PASS headless.
+- Found, not changed: first Esc does not close the focused chat box, second does (Q-059).

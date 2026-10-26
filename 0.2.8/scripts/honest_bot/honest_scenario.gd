@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -107,11 +107,13 @@ func _objective(name: String) -> String:
 		return "place several blocks in one stroke"
 	if name == "water_dig":
 		return "dig beside a lake and watch it flow"
+	if name == "dev_keys":
+		return "press T and Shift+T and leave the terrain alone"
 	return "dig one column" if name == "dig" else "place one stone wall"
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -439,6 +441,12 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "hp changed"
 	if not _saw(seen, OPENING_BANNER):
 		return "opening banner missing"
+	if name == "dev_keys":
+		if not bool(after.get("t_chat", false)):
+			return "plain T did not open dev chat"
+		if int(after.get("shift_changes", 1)) != 0 or int(after.get("t_changes", 1)) != 0:
+			return "T or Shift+T changed terrain"
+		return ""
 	if name == "water_dig":
 		var levels: Array = after.get("levels", [])
 		var want: Array = [0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0, 0.0, 0.0]
@@ -526,6 +534,12 @@ func _snap(tree: SceneTree, player) -> Dictionary:
 
 
 func _stamp_world(name: String, build, after: Dictionary) -> void:
+	if name == "dev_keys":
+		after["t_chat"] = build.t_opened_chat
+		after["shift_changes"] = 0 if build.shift_signature == build.pre_signature else 1
+		after["t_changes"] = 0 if build.t_signature == build.pre_signature else 1
+		print("HARNESS dev_keys plain T chat %s, terrain unchanged after Shift+T %s and T %s" % [str(build.t_opened_chat), str(build.shift_signature == build.pre_signature), str(build.t_signature == build.pre_signature)])
+		return
 	if name == "water_dig":
 		after["levels"] = build.water_levels()
 		var svc = _film_tree.get_first_node_in_group("voxel_fluid_service") if _film_tree != null else null

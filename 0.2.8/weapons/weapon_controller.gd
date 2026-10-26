@@ -175,8 +175,6 @@ func _process(delta: float) -> void:
 		_build_hold_sec = 0.0
 	if Input.is_action_just_pressed("plant"):
 		_try_plant()
-	if Input.is_action_just_pressed("channel_water"):
-		_try_channel_water()
 
 	if Input.is_action_just_pressed("place_cycle"):
 		place_index = (place_index + 1) % _PlaceableCatalog.count()
@@ -816,9 +814,6 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 		push_warning("WeaponController: terrain_editor not found for dig")
 		return
 	var range_v: float = _ActionTargeting.INTERACTION_RANGE
-	if Input.is_key_pressed(KEY_SHIFT) or Input.is_key_pressed(KEY_CTRL):
-		_try_channel_water_at_target(range_v)
-		return
 	var forward := _aim_forward(float(def.get("range", 2.0)))
 	var crystal_cell := _crystal_target_cell(range_v)
 	if _try_break_crystal_mass(crystal_cell, def):
@@ -1378,30 +1373,6 @@ func _try_plant() -> void:
 		plant_id = &"grass_tuft"
 	if _terrain_editor.try_plant(target, inventory, plant_id):
 		_cooldown_timer = _terrain_editor.get_plant_delay()
-
-
-func _try_channel_water() -> void:
-	_try_channel_water_at_target(_ActionTargeting.INTERACTION_RANGE)
-
-
-func _try_channel_water_at_target(range_v: float) -> void:
-	if _cooldown_timer > 0.0 or player == null or _terrain_editor == null:
-		return
-	var slot = get_active_item()
-	var using_pick: bool = slot != null and str(slot.id) == "stone_pick"
-	if not using_pick:
-		return
-	var forward := _ActionTargeting.attack_toward_column(player, range_v)
-	var target := _ActionTargeting.target_column(player, range_v)
-	if target == Vector3.ZERO:
-		target = player.voxel_position + forward * range_v
-	var mode: int = TerrainEditor.ChannelMode.DIG
-	if Input.is_key_pressed(KEY_SHIFT):
-		mode = TerrainEditor.ChannelMode.RAISE
-	elif Input.is_key_pressed(KEY_CTRL):
-		mode = TerrainEditor.ChannelMode.REDIRECT
-	if _terrain_editor.try_channel_water(target, inventory if inventory else null, mode, forward):
-		_cooldown_timer = maxf(_cooldown_timer, _terrain_editor.get_channel_delay(target))
 
 
 func begin_animation_clock(item_id: String) -> void:

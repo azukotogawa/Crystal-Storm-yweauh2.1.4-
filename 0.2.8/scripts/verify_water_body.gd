@@ -89,7 +89,7 @@ func _run() -> void:
 	var svc_src: String = (_VoxelFluidService as GDScript).source_code
 	var editor_src: String = (_TerrainEditor as GDScript).source_code
 	var registry_src: String = (load("res://world/channel_registry.gd") as GDScript).source_code
-	var banned := ["_flood_body", "_persist_body", "tick_equilibrium", "recompute_region_now"]
+	var banned := ["_flood_body", "_persist_body", "tick_equilibrium", "recompute_region_now", "try_channel_water"]
 	var leaks := []
 	for word in banned:
 		if word in svc_src or word in editor_src or word in registry_src:

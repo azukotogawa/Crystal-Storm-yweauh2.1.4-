@@ -1,7 +1,6 @@
 class_name TerrainEditor
 extends Node
 
-enum ChannelMode { DIG, RAISE, LOWER, REDIRECT }
 
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
@@ -110,14 +109,6 @@ func get_dig_delay(world_pos: Vector3) -> float:
 		if player and player.has_method("get_stat"):
 			dig_speed = maxf(player.get_stat(_StatIds.DIG_SPEED), 0.1)
 	return minf(base_delay / dig_speed, 0.14)
-
-
-func get_channel_delay(world_pos: Vector3) -> float:
-	var channel_speed := 1.0
-	var player := get_tree().get_first_node_in_group("player")
-	if player and player.has_method("get_stat"):
-		channel_speed = maxf(player.get_stat(_StatIds.CHANNEL_SPEED), 0.1)
-	return get_dig_delay(world_pos) / channel_speed
 
 
 func get_build_delay(_world_pos: Vector3 = Vector3.ZERO) -> float:
@@ -1094,116 +1085,6 @@ func try_plant(world_pos: Vector3, inventory, plant_id: StringName = &"grass_tuf
 		_growth_manager.register_plant(wx, wz, plant_id)
 	_invalidate_and_rebuild(wx, wz)
 	return true
-
-
-func try_channel_water(
-	world_pos: Vector3,
-	inventory = null,
-	mode: int = ChannelMode.DIG,
-	face_dir: Vector3 = Vector3.ZERO
-) -> bool:
-	if world == null or chunk_manager == null:
-		return false
-	var wx := floori(world_pos.x)
-	var wz := floori(world_pos.z)
-	if not _TerrainEdits.can_edit(wx, wz):
-		return false
-
-	match mode:
-		ChannelMode.RAISE:
-			return _channel_raise(wx, wz, inventory)
-		ChannelMode.LOWER:
-			return _channel_lower(wx, wz, inventory)
-		ChannelMode.REDIRECT:
-			return _channel_redirect(wx, wz, face_dir)
-		_:
-			return _channel_dig(wx, wz, inventory)
-
-
-func _channel_dig(wx: int, wz: int, inventory) -> bool:
-	var surf: float = world.get_surface_height(float(wx), float(wz))
-	if surf > 52.0 and not _has_adjacent_water(wx, wz) and not _ChannelRegistry.is_channel(wx, wz):
-		return false
-	if inventory and not inventory.consume_item("stone", 1):
-		return false
-	if not _TerrainEdits.dig(wx, wz, 1):
-		if inventory:
-			inventory.add_item("stone", 1)
-		return false
-
-	var flow_dir := _ChannelRegistry.compute_downhill_dir(world, wx, wz)
-	var water_level := 0.55
-	if _ChannelRegistry.is_channel(wx, wz):
-		water_level = _ChannelRegistry.get_water_level(wx, wz)
-	_ChannelRegistry.register_channel(wx, wz, flow_dir, water_level)
-
-	var tile := VoxelTypes.RIVER if _has_adjacent_water(wx, wz) or flow_dir != Vector2i.ZERO else VoxelTypes.WATER
-	_FeatureRegistry.set_tile_override(wx, wz, tile)
-	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
-		"channel": true,
-		"flow_dir": [flow_dir.x, flow_dir.y],
-		"water_level": water_level,
-	})
-	_invalidate_and_rebuild(wx, wz)
-	_notify_water_reflow(wx, wz, true)
-	return true
-
-
-func _channel_raise(wx: int, wz: int, inventory) -> bool:
-	if not _ChannelRegistry.is_channel(wx, wz) and not _has_adjacent_water(wx, wz):
-		return _channel_dig(wx, wz, inventory)
-	if inventory and not inventory.consume_item("stone", 1):
-		return false
-	var step: float = sim_config.channel_raise_step
-	var new_level := _ChannelRegistry.adjust_water_level(wx, wz, step)
-	if new_level <= 0.0:
-		_ChannelRegistry.register_channel(wx, wz, _ChannelRegistry.compute_downhill_dir(world, wx, wz), 0.55)
-		new_level = _ChannelRegistry.get_water_level(wx, wz)
-	_update_channel_metadata(wx, wz, new_level)
-	_invalidate_and_rebuild(wx, wz)
-	_notify_water_reflow(wx, wz, true)
-	return true
-
-
-func _channel_lower(wx: int, wz: int, inventory) -> bool:
-	if not _ChannelRegistry.is_channel(wx, wz):
-		return false
-	if inventory and not inventory.consume_item("stone", 1):
-		return false
-	var step: float = sim_config.channel_lower_step
-	var new_level := _ChannelRegistry.adjust_water_level(wx, wz, -step)
-	if new_level <= 0.06:
-		_ChannelRegistry.unregister_channel(wx, wz)
-		_FeatureRegistry.clear_tile_override(wx, wz)
-		_FeatureRegistry.clear_feature(wx, wz)
-	else:
-		_update_channel_metadata(wx, wz, new_level)
-	_invalidate_and_rebuild(wx, wz)
-	_notify_water_reflow(wx, wz, true)
-	return true
-
-
-func _channel_redirect(wx: int, wz: int, face_dir: Vector3) -> bool:
-	if not _ChannelRegistry.is_channel(wx, wz):
-		if not _channel_dig(wx, wz, null):
-			return false
-	var flow_dir := _ChannelRegistry.cardinal_from_vector(face_dir)
-	if flow_dir == Vector2i.ZERO:
-		flow_dir = _ChannelRegistry.compute_downhill_dir(world, wx, wz)
-	_ChannelRegistry.set_flow_dir(wx, wz, flow_dir)
-	_update_channel_metadata(wx, wz, _ChannelRegistry.get_water_level(wx, wz))
-	_invalidate_and_rebuild(wx, wz)
-	_notify_water_reflow(wx, wz, true)
-	return true
-
-
-func _update_channel_metadata(wx: int, wz: int, water_level: float) -> void:
-	var flow_dir := _ChannelRegistry.get_flow_dir(wx, wz)
-	_FeatureRegistry.register_feature(wx, wz, _WorldFeatureTypes.FeatureKind.NONE, {
-		"channel": true,
-		"flow_dir": [flow_dir.x, flow_dir.y],
-		"water_level": water_level,
-	})
 
 
 func _can_plant_at(wx: int, wz: int) -> bool:

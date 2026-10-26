@@ -81,7 +81,6 @@ Aim with the mouse. The highlighted ground cell is where a dig, a hit, or a plac
 | `interact` | R | Same place / right-click path as the right mouse button. |
 | `place_cycle` | Tab | Cycle the place list (fill, ramps, gate, bridge, wall, and the rest of that catalog). |
 | `plant` | G | Plant on the ground ahead of you. With 2 wood you plant a bush. With 2 herbs you plant tall grass. Otherwise you plant a grass tuft. |
-| `channel_water` | Shift+T | With the stone pick selected, edit a water channel on the aimed cell. Because this default key already holds Shift, the edit raises the channel. |
 | `hotbar_1` | 1 | Select hotbar slot 1. |
 | `hotbar_2` | 2 | Select hotbar slot 2. |
 | `hotbar_3` | 3 | Select hotbar slot 3. |
@@ -123,8 +122,6 @@ Weapons and tools swing on a short wind-up so you can see the hit coming. Enemy 
 | `[` and `]` | With a dig tool in hand, shrink or grow the dig brush for this session. A toast shows the new size. |
 | Shift+G | Plant a tree if you have 3 wood, otherwise a fern. |
 | Ctrl+G | Plant a wildflower. |
-| Ctrl held while the channel key fires, without Shift | Redirect a channel. The default channel key is Shift+T, so this needs a different bind. |
-| Channel key with neither Shift nor Ctrl | Dig a channel. The default Shift+T bind does not do this. |
 
 Click a skill button in the tree with the mouse. Click a craft button in the bag to make a structure piece. Left-drag stacks between the bag and the hotbar to swap or combine them. A short click on a bag stack files it into the hotbar.
 
@@ -336,7 +333,6 @@ No item in the catalog has a tier above 0. The 3×3 you can actually perform is 
 
 The aimed cell stays the orange box. Any extra cells in a wider shape use the smaller preview marks. A preview only keeps cells the stroke can dig: a surface voxel, inside the border, not water, not a protected town or ruin, and not below the dig floor.
 
-Shift or Ctrl while the dig fires edits a water channel instead of breaking the block. The dedicated channel key is covered in part 1.
 
 Digging next to a river or a pool lets water creep into open cells at that waterline or lower. Solid ground at the line stays dry. A dug column whose top is still above the line stays dry.
 

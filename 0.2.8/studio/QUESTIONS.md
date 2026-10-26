@@ -66,3 +66,4 @@ Cole answers inline. Once answered, the decision moves to `studio/DECISIONS.md` 
 - Q-056 | 2026-10-16 | game feel | [UI] Ordinary toasts now use the shared 2.5 s banner (was 4 s). Should a milestone use its own 2.2-3.0 s banner instead of that toast, or stack a second line? | answer:
 - Q-057 | 2026-10-16 | game feel | [combat] Hit-stop still dips the whole world to 0.02 for 50-100 ms. Is that short enough, or should emphasis be camera-only so a 30 fps recording does not hitch? | answer:
 - Q-058 | 2026-10-25 | water | [water] Every water cell is a permanent source for now (Cole 2026-10-25: "lets decide later if they will drain or not"). Should cut-off flowing water drain, and should any placed or dug water ever stop being a source? | answer:
+- Q-059 | 2026-10-26 | input | [dev chat] With the chat box focused the first Esc does not close it; a second Esc does (seen in the dev_keys bot run). Is that wanted, or should one Esc close it? | answer:
