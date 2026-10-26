@@ -184,7 +184,7 @@ func try_dig_brush(world_pos: Vector3, radius: int = 1, range_player: Node = nul
 		return false
 	var cx := floori(world_pos.x)
 	var cz := floori(world_pos.z)
-	if range_player != null and not _ActionTargeting._column_in_range(range_player, cx, cz, _ActionTargeting.INTERACTION_RANGE):
+	if range_player != null and not _ActionTargeting._column_in_range(range_player, cx, cz, _ActionTargeting.reach()):
 		last_fail_reason = "Out of range"
 		return false
 	var cells: Array = _LivingForce.footprint(cx, cz, r, world)
@@ -201,7 +201,7 @@ func try_dig_brush(world_pos: Vector3, radius: int = 1, range_player: Node = nul
 	var considered := 0
 	for cell_v in cells:
 		var cell: Vector2i = cell_v
-		if range_player != null and not _ActionTargeting._column_in_range(range_player, cell.x, cell.y, _ActionTargeting.INTERACTION_RANGE):
+		if range_player != null and not _ActionTargeting._column_in_range(range_player, cell.x, cell.y, _ActionTargeting.reach()):
 			continue
 		considered += 1
 		var why := _brush_dig_cell(cell.x, cell.y, inv)

@@ -22,7 +22,7 @@ func _ok(msg: String) -> void:
 
 
 func _run() -> void:
-	if absf(_ActionTargeting.INTERACTION_RANGE - 8.0) > 0.001:
+	if absf(_ActionTargeting.reach() - 4.5) > 0.001:
 		_fail("interaction range changed")
 	var world = load("res://world/InfiniteNoiseWorld.gd").new()
 	root.add_child(world)
@@ -116,8 +116,8 @@ func _run() -> void:
 	var hl = load("res://player/target_highlight.gd").new()
 	root.add_child(hl)
 	await process_frame
-	var outline := hl.get_node_or_null("TargetBox/TargetOutline") as MeshInstance3D
-	var face_node := hl.get_node_or_null("TargetBox/TargetFace") as MeshInstance3D
+	var outline := hl.get_node_or_null("TargetBox/TargetFacePivot/TargetOutline") as MeshInstance3D
+	var face_node := hl.get_node_or_null("TargetBox/TargetFacePivot/TargetFace") as MeshInstance3D
 	if outline == null or outline.mesh == null:
 		_fail("highlight outline mesh was not reused")
 	elif outline.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
@@ -135,12 +135,13 @@ func _run() -> void:
 	if face_node == null:
 		_fail("highlight face marker missing")
 	else:
+		var pivot := face_node.get_parent() as Node3D
 		hl.apply_face_marker(2)
-		if face_node.position.x < 0.4:
-			_fail("+X face marker at %s" % face_node.position)
+		if pivot.position.x < 0.4:
+			_fail("+X face marker at %s" % pivot.position)
 		hl.apply_face_marker(0)
-		if face_node.position.y < 0.4:
-			_fail("top face marker at %s" % face_node.position)
+		if pivot.position.y < 0.4:
+			_fail("top face marker at %s" % pivot.position)
 		elif face_node.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			_fail("face marker casts shadows")
 		else:

@@ -101,7 +101,7 @@ func _run() -> void:
 		origin = aim + Vector3(0.15, 8.0 + absf(pitch) * 0.05, 0.1)
 		var dir: Vector3 = (aim - origin).normalized()
 		var pick: Dictionary = _ActionTargeting.pick_along_ray(
-			origin, dir, player, world, null, _ActionTargeting.INTERACTION_RANGE, true
+			origin, dir, player, world, null, 8.0, true
 		)
 		if not bool(pick.get("hit", false)):
 			_fail("pitch %.1f ray missed the cell" % pitch)

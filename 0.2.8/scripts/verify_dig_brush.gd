@@ -270,7 +270,7 @@ func _range_partial() -> void:
 	var skipped := 0
 	for c in fp:
 		var cell: Vector2i = c
-		if _ActionTargeting._column_in_range(player, cell.x, cell.y, _ActionTargeting.INTERACTION_RANGE):
+		if _ActionTargeting._column_in_range(player, cell.x, cell.y, _ActionTargeting.reach()):
 			expect.append(cell)
 		else:
 			skipped += 1

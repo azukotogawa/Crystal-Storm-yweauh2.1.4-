@@ -17,8 +17,6 @@ var player: Player
 var world: InfiniteNoiseWorld
 var chunk_manager: ChunkManager
 
-const BUILD_PREVIEW_RANGE := 8.0
-const HOVER_PICK_RANGE := 14.0
 const DISPLAY_SNAP_SPEED := 64.0
 const HOVER_PULSE_HZ := 2.4
 
@@ -27,6 +25,7 @@ var _mat: StandardMaterial3D
 var _outline: MeshInstance3D
 var _outline_mat: StandardMaterial3D
 var _face: MeshInstance3D
+var _face_pivot: Node3D
 var _face_mat: StandardMaterial3D
 var _ghost: MeshInstance3D
 var _ghost_mat: StandardMaterial3D
@@ -88,9 +87,6 @@ func _ready() -> void:
 func _build_mesh() -> void:
 	_mesh = MeshInstance3D.new()
 	_mesh.name = "TargetBox"
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE
-	_mesh.mesh = box
 	_mat = StandardMaterial3D.new()
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -120,10 +116,9 @@ func _build_outline() -> void:
 	var h := 0.5
 	var t: float = _marker_look().edge_thickness
 	var corners: Array[Vector3] = [
-		Vector3(-h, -h, -h), Vector3(h, -h, -h), Vector3(h, -h, h), Vector3(-h, -h, h),
-		Vector3(-h, h, -h), Vector3(h, h, -h), Vector3(h, h, h), Vector3(-h, h, h),
+		Vector3(-h, -h, 0.0), Vector3(h, -h, 0.0), Vector3(h, h, 0.0), Vector3(-h, h, 0.0),
 	]
-	var edges: Array[int] = [0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7]
+	var edges: Array[int] = [0, 1, 1, 2, 2, 3, 3, 0]
 	for i in range(0, edges.size(), 2):
 		_add_edge(st, corners[edges[i]], corners[edges[i + 1]], t)
 	_outline.mesh = st.commit()
@@ -141,7 +136,10 @@ func _build_outline() -> void:
 	_outline_mat = mat
 	_outline.material_override = mat
 	_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_mesh.add_child(_outline)
+	_face_pivot = Node3D.new()
+	_face_pivot.name = "TargetFacePivot"
+	_mesh.add_child(_face_pivot)
+	_face_pivot.add_child(_outline)
 
 
 func _add_edge(st: SurfaceTool, a: Vector3, b: Vector3, thickness: float) -> void:
@@ -177,7 +175,7 @@ func _build_face_marker() -> void:
 	_face = MeshInstance3D.new()
 	_face.name = "TargetFace"
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.72, 0.72)
+	quad.size = Vector2(1.0, 1.0)
 	_face.mesh = quad
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -193,33 +191,33 @@ func _build_face_marker() -> void:
 	_face_mat = mat
 	_face.material_override = mat
 	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_mesh.add_child(_face)
+	_face_pivot.add_child(_face)
 	apply_face_marker(0)
 
 
 func apply_face_marker(face: int) -> void:
-	if _face == null:
+	if _face_pivot == null:
 		return
-	var lift := 0.53
+	var lift := 0.502
 	match clampi(face, 0, 5):
 		0:
-			_face.position = Vector3(0.0, lift, 0.0)
-			_face.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+			_face_pivot.position = Vector3(0.0, lift, 0.0)
+			_face_pivot.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 		1:
-			_face.position = Vector3(0.0, -lift, 0.0)
-			_face.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+			_face_pivot.position = Vector3(0.0, -lift, 0.0)
+			_face_pivot.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		2:
-			_face.position = Vector3(lift, 0.0, 0.0)
-			_face.rotation_degrees = Vector3(0.0, 90.0, 0.0)
+			_face_pivot.position = Vector3(lift, 0.0, 0.0)
+			_face_pivot.rotation_degrees = Vector3(0.0, 90.0, 0.0)
 		3:
-			_face.position = Vector3(-lift, 0.0, 0.0)
-			_face.rotation_degrees = Vector3(0.0, -90.0, 0.0)
+			_face_pivot.position = Vector3(-lift, 0.0, 0.0)
+			_face_pivot.rotation_degrees = Vector3(0.0, -90.0, 0.0)
 		4:
-			_face.position = Vector3(0.0, 0.0, lift)
-			_face.rotation_degrees = Vector3.ZERO
+			_face_pivot.position = Vector3(0.0, 0.0, lift)
+			_face_pivot.rotation_degrees = Vector3.ZERO
 		5:
-			_face.position = Vector3(0.0, 0.0, -lift)
-			_face.rotation_degrees = Vector3(0.0, 180.0, 0.0)
+			_face_pivot.position = Vector3(0.0, 0.0, -lift)
+			_face_pivot.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 
 
 func _build_ghost() -> void:
@@ -270,8 +268,6 @@ func _process(delta: float) -> void:
 
 	var range_v := _active_range()
 	var build_held := _build_preview_held()
-	if build_held and not _brush_tool_active():
-		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
 
 	var hover_col: Vector3
 	var stable_col: Vector3
@@ -284,12 +280,12 @@ func _process(delta: float) -> void:
 	else:
 		_aim_from_cache = false
 		hover_col = _ActionTargeting.pick_hover_column(
-			player, world, chunk_manager, maxf(range_v, HOVER_PICK_RANGE)
+			player, world, chunk_manager, range_v
 		)
 		if hover_col == Vector3.ZERO:
 			hover_col = _ActionTargeting.target_column(player, range_v)
 		if _held_is_ranged():
-			var aimed := _ActionTargeting.cursor_cell_under_mouse(player, maxf(range_v, HOVER_PICK_RANGE))
+			var aimed := _ActionTargeting.cursor_cell_under_mouse(player, range_v)
 			if aimed != Vector3.ZERO:
 				hover_col = aimed
 
@@ -949,13 +945,13 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 func _active_range() -> float:
 	var weapon := player.get_node_or_null("WeaponController")
 	if weapon == null or not weapon.has_method("get_active_item"):
-		return _ActionTargeting.INTERACTION_RANGE
+		return _ActionTargeting.reach()
 	var slot = weapon.get_active_item()
 	if slot == null:
-		return _ActionTargeting.INTERACTION_RANGE
+		return _ActionTargeting.reach()
 	var def := _ItemTypes.get_def(str(slot.id))
 	if def.is_empty():
-		return _ActionTargeting.INTERACTION_RANGE
+		return _ActionTargeting.reach()
 	var category := int(def.get("category", -1))
 	var kind := int(def.get("weapon_kind", -1))
 	if category == _ItemTypes.Category.WEAPON \
@@ -963,4 +959,4 @@ func _active_range() -> float:
 		return float(def.get("range", 2.0))
 	if weapon.has_method("action_reach"):
 		return float(weapon.action_reach())
-	return _ActionTargeting.INTERACTION_RANGE
+	return _ActionTargeting.reach()

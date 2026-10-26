@@ -23,7 +23,7 @@ static func inspect_targeted(tree: SceneTree) -> Dictionary:
 		return {"ok": false, "error": "no_player"}
 	var world0 = tree.get_first_node_in_group("world")
 	var cm0 = tree.get_first_node_in_group("chunk_manager")
-	var info: Dictionary = _ActionTargeting.resolve_action(player, world0, cm0, _ActionTargeting.INTERACTION_RANGE)
+	var info: Dictionary = _ActionTargeting.resolve_action(player, world0, cm0, _ActionTargeting.reach())
 	var cell: Vector2i = info.get("cell", Vector2i.ZERO) if not info.is_empty() else Vector2i.ZERO
 	if info.is_empty() or cell == Vector2i.ZERO:
 		if player.has_method("get_voxel_position"):

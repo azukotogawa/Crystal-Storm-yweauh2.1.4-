@@ -59,12 +59,12 @@ static func reach_columns(item_id: String) -> float:
 	var style := aim_style(item_id)
 	var item_range := float(def.get("range", 0.0))
 	if style == Style.TOOL:
-		return _ActionTargeting.INTERACTION_RANGE
+		return _ActionTargeting.reach()
 	if style == Style.MELEE:
-		return minf(maxf(item_range, 0.5), _ActionTargeting.INTERACTION_RANGE)
+		return minf(maxf(item_range, 0.5), _ActionTargeting.reach())
 	if style == Style.RANGED:
 		if bool(def.get("throwable", false)):
-			return minf(6.0, _ActionTargeting.INTERACTION_RANGE)
+			return minf(6.0, _ActionTargeting.reach())
 		return maxf(item_range, 1.0)
 	return 0.0
 
@@ -72,7 +72,7 @@ static func reach_columns(item_id: String) -> float:
 static func aim_direction(player: Node3D, range_columns: float = -1.0) -> Vector3:
 	var reach := range_columns
 	if reach < 0.0:
-		reach = _ActionTargeting.INTERACTION_RANGE
+		reach = _ActionTargeting.reach()
 	return _ActionTargeting.cursor_aim(player, reach)
 
 
@@ -142,7 +142,7 @@ func _tool_cell(dir: Vector3, reach_c: float) -> Vector2i:
 			flat = flat.normalized()
 		var at := origin + Vector2(flat.x, flat.z) * reach_c
 		cell = Vector2i(floori(at.x), floori(at.y))
-	return _clamp_cell(origin, cell, _ActionTargeting.INTERACTION_RANGE)
+	return _clamp_cell(origin, cell, _ActionTargeting.reach())
 
 
 func _player_column() -> Vector2:

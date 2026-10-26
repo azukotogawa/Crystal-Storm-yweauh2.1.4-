@@ -308,7 +308,7 @@ func _check_aim() -> void:
 		var cell: Vector2i = log.cells[0]
 		var origin := Vector2(rig.voxel_position.x, rig.voxel_position.z)
 		var dist := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5).distance_to(origin)
-		if dist > _ActionTargeting.INTERACTION_RANGE + 0.05:
+		if dist > _ActionTargeting.reach() + 0.05:
 			_fail("tool cell %s is past interaction range (%s)" % [cell, dist])
 	if aim.get_node("MeleeReticle").visible or aim.get_node("AimLine").visible:
 		_fail("tool aim drew its own block marker")
@@ -320,7 +320,7 @@ func _check_aim() -> void:
 	var ring: MeshInstance3D = aim.get_node("MeleeReticle")
 	if not ring.visible:
 		_fail("melee aim hid the reticle")
-	var sword_reach := minf(2.8, _ActionTargeting.INTERACTION_RANGE) * vs
+	var sword_reach := minf(2.8, _ActionTargeting.reach()) * vs
 	var flat_d := _horiz(ring.global_position, rig.global_position)
 	if flat_d > sword_reach + 0.3 or absf(flat_d - sword_reach) > 0.35:
 		_fail("melee reticle distance %s, reach %s" % [flat_d, sword_reach])
@@ -374,7 +374,7 @@ func _check_aim_clamp(ws, vs: float) -> void:
 	var cell: Vector2i = log.cells[0]
 	var origin := Vector2(10.0, 20.0)
 	var dist := Vector2(float(cell.x) + 0.5, float(cell.y) + 0.5).distance_to(origin)
-	if dist > _ActionTargeting.INTERACTION_RANGE + 0.05:
+	if dist > _ActionTargeting.reach() + 0.05:
 		_fail("highlight cell was not clamped (%s dist %s)" % [cell, dist])
 	if vs <= 0.0:
 		_fail("voxel scale missing")

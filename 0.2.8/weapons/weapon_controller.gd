@@ -225,7 +225,7 @@ func _try_remove_at_cursor() -> bool:
 		_bind_terrain_editor()
 	if _terrain_editor == null or inventory == null:
 		return false
-	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
+	var target := _resolve_terrain_target(_ActionTargeting.reach())
 	if target == Vector3.ZERO:
 		return false
 	if not _terrain_editor.has_method("can_remove") or not _terrain_editor.can_remove(target):
@@ -332,7 +332,7 @@ func brush_tool_active() -> bool:
 func action_reach() -> float:
 	if brush_tool_active():
 		return brush_reach()
-	return _ActionTargeting.INTERACTION_RANGE
+	return _ActionTargeting.reach()
 
 
 func _poll_brush_actions() -> void:
@@ -513,12 +513,12 @@ func _held_is_ranged() -> bool:
 func _held_aim_range() -> float:
 	var def := ItemTypes.get_def(_active_item_id())
 	if def.is_empty():
-		return _ActionTargeting.INTERACTION_RANGE
+		return _ActionTargeting.reach()
 	var category := int(def.get("category", -1))
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
 	if category == ItemTypes.Category.WEAPON and (kind == ItemTypes.WeaponKind.MELEE or kind == ItemTypes.WeaponKind.RANGED):
 		return float(def.get("range", 2.0))
-	return _ActionTargeting.INTERACTION_RANGE
+	return _ActionTargeting.reach()
 
 
 func _face_held() -> void:
@@ -820,7 +820,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 	if _terrain_editor == null:
 		push_warning("WeaponController: terrain_editor not found for dig")
 		return
-	var range_v: float = _ActionTargeting.INTERACTION_RANGE
+	var range_v: float = _ActionTargeting.reach()
 	var forward := _aim_forward(float(def.get("range", 2.0)))
 	var crystal_cell := _crystal_target_cell(range_v)
 	if _try_break_crystal_mass(crystal_cell, def):
@@ -1579,7 +1579,7 @@ func _present_held(_delta: float) -> void:
 
 
 func _preview_dig_cracks() -> void:
-	var target := _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
+	var target := _resolve_terrain_target(_ActionTargeting.reach())
 	if target == Vector3.ZERO:
 		return
 	var fx := _break_fx()

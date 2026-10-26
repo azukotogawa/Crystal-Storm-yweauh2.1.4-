@@ -151,7 +151,7 @@ func _run() -> void:
 	var dug := false
 	var dig_wx := -1
 	var dig_wz := -1
-	var range_v: float = _ActionTargeting.INTERACTION_RANGE
+	var range_v: float = _ActionTargeting.reach()
 	var aimed := Vector3.ZERO
 	if weapon != null and not pick_def.is_empty() and weapon.has_method("_do_dig_attack") and weapon.has_method("_resolve_terrain_target"):
 		aimed = await _aim_dry_dig_column(player, world, chunk_manager, terrain, crystal, weapon, range_v)

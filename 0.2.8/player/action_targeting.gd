@@ -7,8 +7,16 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _FacePick = preload("res://player/face_pick.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 
-const INTERACTION_RANGE := 8.0
+static var last_pick_cell := Vector3i.ZERO
+static var last_pick_normal := Vector3i.ZERO
+
+
+static func reach() -> float:
+	return _GameFeelConfig.active().brush_reach
 ## Slack as a fraction of voxel_scale. Just under half a column, so a ray through
 ## a cell center is not stolen by a neighbor.
 const PICK_TOLERANCE_SCALE := 0.45
@@ -294,7 +302,7 @@ static func _pick_column_from_mouse(
 	chunk_manager: ChunkManager,
 	require_in_range: bool = true
 ) -> Vector3:
-	if player == null:
+	if player == null or _GameplayInput.free_look:
 		return Vector3.ZERO
 	var cam: Camera3D = player.get("camera") as Camera3D
 	var vp: Viewport = player.get_viewport()
@@ -315,64 +323,22 @@ static func _pick_column_from_mouse(
 	if absf(dir.y) < 0.00001:
 		return Vector3.ZERO
 
-	var plane_y: float = player.global_position.y
-	var best := Vector3.ZERO
-	var max_abs_t: float = 400.0
-	for _refine in 5:
-		var t_plane: float = (plane_y - origin.y) / dir.y
-		if t_plane < 0.0 or t_plane > max_abs_t:
-			break
-		var hit: Vector3 = origin + dir * t_plane
-		var wx: int = floori(ws.world_to_column(hit.x))
-		var wz: int = floori(ws.world_to_column(hit.z))
-		var col_x: float = float(wx) + 0.5
-		var col_z: float = float(wz) + 0.5
-		var in_range: bool = _column_in_range(player, wx, wz, range_v)
-		if require_in_range and not in_range:
-			if world != null:
-				plane_y = _walkable_top(world, chunk_manager, col_x, col_z)
-			continue
-		# Always lock the column under the mouse when in range — solid checks must not
-		# discard the pick (missed digs/placements). try_dig/try_build validate later.
-		best = Vector3(col_x, player.voxel_position.y, col_z)
-		if world != null:
-			var next_y: float = _walkable_top(world, chunk_manager, col_x, col_z)
-			if absf(next_y - plane_y) < 0.02:
-				break
-			plane_y = next_y
-		else:
-			break
-	if best != Vector3.ZERO:
-		return _snap_near_miss(origin, dir, best, player, world, chunk_manager, range_v, require_in_range)
-
-	var ray_pick: Dictionary = pick_along_ray(
-		origin, dir, player, world, chunk_manager, range_v, require_in_range
-	)
-	if bool(ray_pick.get("hit", false)):
-		return ray_pick.get("column", Vector3.ZERO)
-
-	if world != null:
-		var step: float = ws.voxel_scale * 0.15
-		var max_dist: float = minf((range_v + 3.0) * ws.voxel_scale * 3.5, 120.0)
-		var t: float = 0.0
-		var best_t: float = INF
-		while t <= max_dist:
-			var p: Vector3 = origin + dir * t
-			var wxm: int = floori(ws.world_to_column(p.x))
-			var wzm: int = floori(ws.world_to_column(p.z))
-			var in_r: bool = _column_in_range(player, wxm, wzm, range_v)
-			if not require_in_range or in_r:
-				var hits_slab := _ray_y_hits_surface_slab(world, chunk_manager, wxm, wzm, p.y)
-				var hits_entity := _entity_column_near(player, wxm, wzm, range_v)
-				if (hits_slab and _is_solid_column(world, chunk_manager, wxm, wzm)) or hits_entity:
-					if t < best_t:
-						best_t = t
-						best = Vector3(float(wxm) + 0.5, player.voxel_position.y, float(wzm) + 0.5)
-			t += step
-	if best != Vector3.ZERO:
-		last_pick_face = 0
-		last_pick_exact = false
-	return best
+	var hit: Dictionary = _FacePick.pick(world, origin, dir, _FacePick.eye(player), range_v)
+	last_pick_face = 0
+	last_pick_exact = false
+	if not bool(hit.get("hit", false)):
+		return Vector3.ZERO
+	var cell: Vector3i = hit.cell
+	var normal: Vector3i = hit.normal
+	last_pick_face = _FacePick.face_code(normal)
+	last_pick_exact = true
+	last_pick_cell = cell
+	last_pick_normal = normal
+	var col := Vector2i(cell.x, cell.z)
+	var building := Input.is_action_pressed("interact") or Input.is_action_pressed("build_place")
+	if normal.y == 0 and _weapon_mode_from_player(player, building) == &"build":
+		col += Vector2i(normal.x, normal.z)
+	return Vector3(float(col.x) + 0.5, player.voxel_position.y, float(col.y) + 0.5)
 
 
 static func pick_along_ray(
@@ -827,10 +793,10 @@ static func cursor_cell_under_mouse(player: Node3D, range_v: float) -> Vector3:
 	return Vector3(float(seed_x) + 0.5, py, float(seed_z) + 0.5)
 
 
-static func cursor_aim(player: Node3D, range_v: float = INTERACTION_RANGE) -> Vector3:
+static func cursor_aim(player: Node3D, range_v: float = reach()) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
-	var col := _cursor_column(player, maxf(range_v, INTERACTION_RANGE))
+	var col := _cursor_column(player, maxf(range_v, reach()))
 	if col != Vector3.ZERO and "voxel_position" in player:
 		var origin_x := float(player.voxel_position.x)
 		var origin_z := float(player.voxel_position.z)
@@ -867,7 +833,7 @@ static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector
 static func column_toward_cursor(player: Node3D, hit_range: float) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
-	var col := _cursor_column(player, maxf(hit_range, INTERACTION_RANGE))
+	var col := _cursor_column(player, maxf(hit_range, reach()))
 	if col == Vector3.ZERO or not ("voxel_position" in player):
 		var world := _player_world(player)
 		var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") if player.is_inside_tree() else null
@@ -897,9 +863,9 @@ static func target_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 				if _column_in_range(player, sx, sz, range_v):
 					return Vector3(float(sx) + 0.5, shared.y, float(sz) + 0.5)
 				return Vector3.ZERO
-	var mouse_col := _pick_column_from_mouse(player, range_v, world, chunk_manager, true)
-	if mouse_col != Vector3.ZERO:
-		return mouse_col
+	var cam: Camera3D = player.get("camera") as Camera3D
+	if cam != null and player.is_inside_tree():
+		return _pick_column_from_mouse(player, range_v, world, chunk_manager, true)
 	return _target_column_forward(player, range_v, world, chunk_manager)
 
 
