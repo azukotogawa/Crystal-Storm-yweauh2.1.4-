@@ -124,7 +124,9 @@ func _test_weapon_uses_same_cells() -> void:
 	var at := src.find("func _try_dig_tool")
 	var end := src.find("\nfunc ", at + 10)
 	var body := src.substr(at, maxi(end - at, 0))
-	if "_brush_cells(" not in body or "_aim_forward(" not in body:
+	var aim_at := src.find("func _brush_aim")
+	var aim_body := src.substr(aim_at, maxi(src.find("\nfunc ", aim_at + 10) - aim_at, 0))
+	if "_brush_cells(" not in body or "_brush_aim(" not in body or "_dig_anchor_cell(" not in body or "_aim_forward(" not in aim_body:
 		_fail("_try_dig_tool must resolve break cells toward the aim")
 		return
 	if "MULTI_BLOCK_BREAK" not in body:
