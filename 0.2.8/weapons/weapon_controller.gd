@@ -557,6 +557,15 @@ func _face_held() -> void:
 	_held.pose_rig(aim)
 
 
+func _surface_point(col_x: float, col_z: float, fallback_y: float, source: Object = null) -> Vector3:
+	var ws = _WorldSettings.get_active()
+	var y := fallback_y
+	var terrain: Object = source if source != null else world
+	if terrain != null and terrain.has_method("get_surface_height"):
+		y = float(terrain.get_surface_height(col_x, col_z))
+	return Vector3(ws.column_to_world(col_x), y, ws.column_to_world(col_z))
+
+
 func _attack_origin(chest_ratio: float = 0.5) -> Vector3:
 	return _ActionTargeting.attack_origin_world(player, chest_ratio)
 
@@ -580,7 +589,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 		target_col = _ActionTargeting.target_column(player, range_v)
 	var forward := _ActionTargeting.attack_toward_column(player, range_v)
 	var ws = _WorldSettings.get_active()
-	var hit_pos := Vector3(ws.column_to_world(target_col.x), origin.y, ws.column_to_world(target_col.z))
+	var hit_pos := _surface_point(target_col.x, target_col.z, origin.y)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var connected := false
 	var saw_target := false
@@ -772,7 +781,7 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 			connected = true
 	var ws = _WorldSettings.get_active()
 	var aim := _crystal_target_cell(range_v)
-	var thrust_pos := Vector3(ws.column_to_world(float(aim.x) + 0.5), origin.y, ws.column_to_world(float(aim.y) + 0.5))
+	var thrust_pos := _surface_point(float(aim.x) + 0.5, float(aim.y) + 0.5, origin.y)
 	if not connected:
 		_note_attack(thrust_pos, _HitMarkers.Result.BLOCKED if saw_target else _HitMarkers.Result.MISS)
 	attacked.emit(item_id, thrust_pos)
@@ -806,11 +815,7 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 			entity_hit.emit(target, dealt, item_id)
 			shoved += 1
 	var ws = _WorldSettings.get_active()
-	var hammer_pos := Vector3(
-		ws.column_to_world(float(cell.x) + 0.5),
-		origin.y,
-		ws.column_to_world(float(cell.y) + 0.5)
-	)
+	var hammer_pos := _surface_point(float(cell.x) + 0.5, float(cell.y) + 0.5, origin.y)
 	if not connected and shoved == 0 and targets.is_empty():
 		_note_attack(hammer_pos, _HitMarkers.Result.MISS)
 	attacked.emit(item_id, hammer_pos)
@@ -935,11 +940,10 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 				1.8
 			)
 		_cooldown_timer = maxf(float(def.get("cooldown", 0.1)), 0.08)
-		var ws_hit = _WorldSettings.get_active()
-		attacked.emit(item_id, Vector3(
-			ws_hit.column_to_world(float(crystal_cell.x) + 0.5),
-			player.voxel_position.y if player else 0.0,
-			ws_hit.column_to_world(float(crystal_cell.y) + 0.5)
+		attacked.emit(item_id, _surface_point(
+			float(crystal_cell.x) + 0.5,
+			float(crystal_cell.y) + 0.5,
+			player.voxel_position.y if player else 0.0
 		))
 		return
 	var target := _resolve_terrain_target(range_v)

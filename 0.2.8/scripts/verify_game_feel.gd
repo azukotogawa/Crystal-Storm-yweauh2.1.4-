@@ -48,7 +48,7 @@ func _check_config(cfg, label: String) -> void:
 		if telegraph <= 0.0:
 			_fail("%s %s telegraph is zero" % [label, id])
 		elif _outside(telegraph, _Config.TELEGRAPH_MIN, _Config.TELEGRAPH_MAX):
-			_fail("%s %s telegraph %.3f outside 0.15-0.40" % [label, id, telegraph])
+			_fail("%s %s telegraph %.3f outside 0.09-0.40" % [label, id, telegraph])
 		if linger <= 0.0:
 			_fail("%s %s linger is zero" % [label, id])
 		elif _outside(linger, _Config.LINGER_MIN, _Config.LINGER_MAX):

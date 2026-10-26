@@ -147,13 +147,13 @@ func show_swing(item_id: String, origin: Vector3, forward: Vector3) -> void:
 	match style:
 		"spear":
 			mesh_i.mesh = _spear()
-			mesh_i.global_position = origin + flat * (1.15 * vs) + Vector3(0.0, vs * 0.35, 0.0)
+			mesh_i.global_position = origin + flat * (0.0 * vs) + Vector3(0.0, vs * 0.35, 0.0)
 			mesh_i.rotation = Vector3(0.0, atan2(flat.x, flat.z), 0.0)
 			mesh_i.scale = Vector3(0.08 * vs, 0.08 * vs, 2.4 * vs)
 			life = 0.10
 		"hammer":
 			mesh_i.mesh = _hammer()
-			mesh_i.global_position = origin + flat * (0.9 * vs) + Vector3(0.0, vs * 0.08, 0.0)
+			mesh_i.global_position = origin + flat * (0.0 * vs) + Vector3(0.0, vs * 0.08, 0.0)
 			mesh_i.rotation = Vector3.ZERO
 			mesh_i.scale = Vector3(vs * 0.85, 1.0, vs * 0.85)
 			life = 0.18

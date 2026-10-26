@@ -128,7 +128,7 @@ func _check_pick(weapon: WeaponController, view: Node3D) -> void:
 		_fail("pick has no HeldItem on the attack path")
 		return
 	var ready := held.transform.basis
-	await _press_attack(weapon, 0.13)
+	await _press_attack(weapon, 0.08)
 	var chopped := _angle(ready, held.transform.basis)
 	if chopped < 0.7:
 		_fail("pick mesh did not chop on attack (rotation %.2f rad)" % chopped)
