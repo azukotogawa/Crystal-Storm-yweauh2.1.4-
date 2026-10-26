@@ -149,7 +149,7 @@ func _build_ui() -> void:
 	vbox.add_child(_armor_button)
 
 	_grid = GridContainer.new()
-	_grid.columns = 8
+	_grid.columns = _Inventory.HOTBAR_SIZE
 	_grid.add_theme_constant_override("h_separation", 4)
 	_grid.add_theme_constant_override("v_separation", 4)
 	vbox.add_child(_grid)

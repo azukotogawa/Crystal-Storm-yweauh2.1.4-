@@ -19,6 +19,11 @@ var _slot_nodes: Array[PanelContainer] = []
 var _icon_nodes: Array[TextureRect] = []
 var _label_nodes: Array[Label] = []
 var _registry: _GameVisualRegistry
+var _name_label: Label
+var _name_age := 0.0
+var _last_active := -1
+
+const NAME_SHOW_SEC := 1.4
 
 
 func _ready() -> void:
@@ -58,6 +63,7 @@ func _build_slots() -> void:
 	z_index = 2
 	z_as_relative = false
 	_add_backing(total_w)
+	_build_name_label()
 	for i in _Inventory.HOTBAR_SIZE:
 		var panel := PanelContainer.new()
 		panel.custom_minimum_size = Vector2(SLOT_SIZE, SLOT_SIZE)
@@ -98,6 +104,29 @@ func _build_slots() -> void:
 		_slot_nodes.append(panel)
 		_icon_nodes.append(icon)
 		_label_nodes.append(label)
+
+
+func _build_name_label() -> void:
+	_name_label = Label.new()
+	_name_label.name = "HotbarItemName"
+	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_label.size = Vector2(size.x if size.x > 0.0 else custom_minimum_size.x, 20)
+	_name_label.position = Vector2(0, -34)
+	_name_label.add_theme_font_size_override("font_size", 14)
+	_name_label.modulate.a = 0.0
+	add_child(_name_label)
+
+
+func name_text() -> String:
+	return _name_label.text if _name_label != null else ""
+
+
+func _process(delta: float) -> void:
+	if _name_label == null:
+		return
+	_name_age += delta
+	_name_label.modulate.a = clampf((NAME_SHOW_SEC - _name_age) * 2.0, 0.0, 1.0)
 
 
 func _add_backing(total_w: float) -> void:
@@ -158,6 +187,11 @@ func _refresh() -> void:
 	if _weapon:
 		active = _weapon.get_active_hotbar_index()
 
+	if active != _last_active:
+		_last_active = active
+		var picked = _player.inventory.get_hotbar_item(active)
+		_name_label.text = _ItemTypes.display_name(str(picked.id)) if picked != null else ""
+		_name_age = 0.0
 	for i in _Inventory.HOTBAR_SIZE:
 		var slot = _player.inventory.get_hotbar_item(i)
 		var panel := _slot_nodes[i]
@@ -174,7 +208,7 @@ func _refresh() -> void:
 		var label := _label_nodes[i]
 		if slot == null:
 			icon.texture = null
-			label.text = str(i + 1)
+			label.text = str((i + 1) % 10)
 		else:
 			var tex: Texture2D = null
 			if _registry and _registry.has_method("get_item_texture"):

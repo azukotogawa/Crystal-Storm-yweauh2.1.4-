@@ -17,3 +17,9 @@ Start: branch off cs-sonnet/water, `water-test-fixes.patch` applied with git am 
 - `scripts/verify_camera_controls.gd` (tap E, Alt look, =, Home) passes; `verify_camera_default_zoom.gd` now uses Ctrl+wheel and passes.
 - Scenario `camera` is registered (`honest_build._camera`, `HonestInput.motion/wheel`, cs-verify.sh) but cannot run in this cloud stub (full scene needs real shaders/art); needs the Dell.
 - Cursor aim is not yet suspended by `free_look`; wired in cs-ctl-08.
+
+## cs-ctl-03 hotbar (done)
+- `Inventory.HOTBAR_SIZE` is 10 (bag and panel grid follow the constant; slot 10 labelled 0). `WeaponController.select_hotbar` is the one selection path for number keys, `hotbar_next/prev` (plain wheel, period/comma, wrap) and polls with exact match so Shift+number and Ctrl+wheel never change the slot.
+- `ui/hotbar.gd`: selected-slot highlight (existing border) plus a fading item-name label (`HotbarItemName`).
+- `scripts/verify_hotbar_controls.gd` passes (3, 0, wheel wrap both ways, period/comma, Shift+2 ignored, plain wheel no zoom, Ctrl+wheel zooms). `verify_inventory_drag` still passes.
+- Scenario `hotbar` registered (cannot run in the cloud stub; needs the Dell).

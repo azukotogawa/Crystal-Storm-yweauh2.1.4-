@@ -260,3 +260,7 @@ func wheel(up: bool, ctrl: bool = false) -> void:
 	ev.ctrl_pressed = ctrl
 	Input.parse_input_event(ev)
 	Input.flush_buffered_events()
+	var released := ev.duplicate() as InputEventMouseButton
+	released.pressed = false
+	Input.parse_input_event(released)
+	Input.flush_buffered_events()

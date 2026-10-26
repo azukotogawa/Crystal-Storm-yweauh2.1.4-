@@ -125,6 +125,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _swim()
 	if mode == "camera":
 		return _camera()
+	if mode == "hotbar":
+		return _hotbar()
 	return "fail"
 
 
@@ -695,6 +697,57 @@ func _camera() -> String:
 		cam_log["yaw2"] = cam.yaw_degrees
 		cam_log["pitch2"] = cam.pitch_degrees
 		beat = 9
+		show_age = 0.0
+		return ""
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	return "pass"
+
+
+const HOTBAR_STEPS := [
+	["key", KEY_3, 2],
+	["key", KEY_0, 9],
+	["wheel", false, 0],
+	["wheel", true, 9],
+]
+
+
+func _hotbar() -> String:
+	if age > 60.0:
+		print("FAIL hotbar timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "hotbar"
+	show_age += step_dt
+	var cam = player.get("camera")
+	var weapon = player.get_node_or_null("WeaponController")
+	if cam == null or weapon == null:
+		return "fail"
+	if beat == 0:
+		cam_log["zoom0"] = cam.zoom_level
+		cam_log["hotbar"] = []
+		show_age = 0.0
+		beat = 1
+		return ""
+	if beat <= HOTBAR_STEPS.size():
+		var step: Array = HOTBAR_STEPS[beat - 1]
+		if show_age < 0.6:
+			return ""
+		if beat > 1 and cam_log["hotbar"].size() < beat - 1:
+			cam_log["hotbar"].append(weapon.get_active_hotbar_index())
+		if step[0] == "key":
+			if not hands.pulse_key(step[1]):
+				return ""
+		else:
+			hands.wheel(step[1])
+		show_age = 0.0
+		beat += 1
+		return ""
+	if beat == HOTBAR_STEPS.size() + 1:
+		if show_age < 0.6:
+			return ""
+		cam_log["hotbar"].append(weapon.get_active_hotbar_index())
+		cam_log["zoom1"] = cam.zoom_level
+		beat += 1
 		show_age = 0.0
 		return ""
 	if show_age < _Pace.RESULT_HOLD:

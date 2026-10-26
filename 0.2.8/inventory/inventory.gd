@@ -7,7 +7,7 @@ signal changed
 signal hotbar_changed(index: int)
 signal armor_changed(armor_id: String)
 
-const HOTBAR_SIZE := 8
+const HOTBAR_SIZE := 10
 const BAG_SIZE := 24
 const TOTAL_SLOTS := HOTBAR_SIZE + BAG_SIZE
 

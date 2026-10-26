@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -111,6 +111,8 @@ func _objective(name: String) -> String:
 		return "walk into a lake, swim across and climb out"
 	if name == "water_trench":
 		return "dig a trench from a lake, then wall it off"
+	if name == "hotbar":
+		return "pick slots with 3, 0 and the wheel, wrapping both ways"
 	if name == "camera":
 		return "snap the view with E, look around with Alt, zoom and reset with Home"
 	if name == "dev_keys":
@@ -119,7 +121,7 @@ func _objective(name: String) -> String:
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -447,6 +449,13 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		return "hp changed"
 	if not _saw(seen, OPENING_BANNER):
 		return "opening banner missing"
+	if name == "hotbar":
+		var h: Dictionary = after.get("cam", {})
+		if h.get("hotbar", []) != [2, 9, 0, 9]:
+			return "hotbar sequence %s want [2, 9, 0, 9]" % str(h.get("hotbar", []))
+		if absf(float(h.zoom1) - float(h.zoom0)) > 0.001:
+			return "plain wheel changed zoom"
+		return ""
 	if name == "camera":
 		var c: Dictionary = after.get("cam", {})
 		var dy := fposmod(float(c.yaw1) - float(c.yaw0) + 180.0, 360.0) - 180.0
@@ -586,7 +595,7 @@ func _stamp_world(name: String, build, after: Dictionary) -> void:
 		print("HARNESS water_trench down-step %s" % str(build.step_levels))
 		print("HARNESS water_trench fill %s after wall %s wall cell %d (cells past the wall are idx %d..)" % [str(build.fill_levels), str(build.wall_levels), build.WALL_AT, build.WALL_AT])
 		return
-	if name == "camera":
+	if name == "camera" or name == "hotbar":
 		after["cam"] = build.cam_log
 		print("HARNESS camera %s" % str(build.cam_log))
 		return

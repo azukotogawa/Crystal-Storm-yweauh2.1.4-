@@ -178,11 +178,11 @@ func _process(delta: float) -> void:
 		place_index = (place_index + 1) % _PlaceableCatalog.count()
 	for i in HOTBAR_INPUTS.size():
 		if Input.is_action_just_pressed(HOTBAR_INPUTS[i], true):
-			_cancel_pending_strike()
-			_active_hotbar_index = i
-			_shown_item = ""
-			if inventory:
-				inventory.hotbar_changed.emit(i)
+			select_hotbar(i)
+	if Input.is_action_just_pressed("hotbar_next", true):
+		select_hotbar(posmod(_active_hotbar_index + 1, _Inventory.HOTBAR_SIZE))
+	if Input.is_action_just_pressed("hotbar_prev", true):
+		select_hotbar(posmod(_active_hotbar_index - 1, _Inventory.HOTBAR_SIZE))
 	# Poses and ranged release share this clock. Hammer damage stays on its wind-up frame.
 	_tick_animation_clock(delta)
 	_present_held(delta)
@@ -433,6 +433,14 @@ func get_active_item() -> Variant:
 
 func get_active_hotbar_index() -> int:
 	return _active_hotbar_index
+
+
+func select_hotbar(index: int) -> void:
+	_cancel_pending_strike()
+	_active_hotbar_index = clampi(index, 0, _Inventory.HOTBAR_SIZE - 1)
+	_shown_item = ""
+	if inventory:
+		inventory.hotbar_changed.emit(_active_hotbar_index)
 
 
 func set_active_hotbar_index(index: int) -> void:
