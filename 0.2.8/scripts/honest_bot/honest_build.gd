@@ -1091,7 +1091,7 @@ func _trench_wall() -> String:
 			beat = 13
 			return ""
 		if show_age > 6.0:
-			print("FAIL water_trench wall was not placed across the trench at %s" % cell)
+			print("FAIL water_trench wall was not placed across the trench at %s from %s (%s)" % [cell, str(_column()), str(tree.get_first_node_in_group("terrain_editor").last_fail_reason)])
 			return "fail"
 		return ""
 	if beat == 13:
@@ -1186,6 +1186,7 @@ func _single_wall() -> String:
 		if show_age < _Pace.PRE_PAUSE:
 			return ""
 		tiles = _tile_snap()
+		stone_pre = _stone()
 		if not hands.pulse("build_place"):
 			return ""
 		show_age = 0.0
@@ -1212,7 +1213,8 @@ func _single_wall() -> String:
 		show_age += step_dt
 		if show_age < _Pace.RESULT_HOLD:
 			return ""
-		print("SHOWCASE structure stone_wall placed")
+		stone_post = _stone()
+		print("SHOWCASE structure stone_wall placed stone %d to %d" % [stone_pre, stone_post])
 		show_age = 0.0
 		beat = 5
 		return ""
