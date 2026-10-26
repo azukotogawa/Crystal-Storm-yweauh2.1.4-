@@ -8,6 +8,10 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _LivingForce = preload("res://world/living_force.gd")
 const _MarkerLook = preload("res://config/target_marker_look.gd")
+const _FACE_NORMALS: Array[Vector3i] = [
+	Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0),
+	Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1),
+]
 
 var player: Player
 var world: InfiniteNoiseWorld
@@ -60,6 +64,11 @@ const STRUCTURE_GHOST_POOL := 24
 var _structure_marks: Array[MeshInstance3D] = []
 var _structure_mats: Array[StandardMaterial3D] = []
 var _structure_edges: Array[StandardMaterial3D] = []
+var _brush_outline: MeshInstance3D
+var _outline_fill_mat: StandardMaterial3D
+var _outline_edge_mat: StandardMaterial3D
+var _outline_key: String = ""
+var _outline_dirty: bool = true
 
 
 func _ready() -> void:
@@ -72,6 +81,7 @@ func _ready() -> void:
 	_build_mesh()
 	_build_ghost()
 	_build_brush_pool()
+	_build_brush_outline()
 	_build_structure_pool()
 
 
@@ -260,7 +270,7 @@ func _process(delta: float) -> void:
 
 	var range_v := _active_range()
 	var build_held := _build_preview_held()
-	if build_held:
+	if build_held and not _brush_tool_active():
 		range_v = maxf(range_v, BUILD_PREVIEW_RANGE)
 
 	var hover_col: Vector3
@@ -346,10 +356,8 @@ func _process(delta: float) -> void:
 	_paint_marker(mode, pulse, place_boost, blocked)
 
 	_update_prediction(info, range_v, layer, scale, pulse)
-	if mode == &"dig":
-		_update_brush_footprint(cell, layer, scale)
-	else:
-		_hide_brush_marks()
+	_hide_brush_marks()
+	_update_brush_outline(mode, cell, layer, scale, pulse, place_boost, blocked)
 
 	if profiler and profiler.has_method("end"):
 		profiler.end("target_highlight")
@@ -357,6 +365,7 @@ func _process(delta: float) -> void:
 
 func pulse_place_success() -> void:
 	_place_flash_t = 0.18
+	_outline_dirty = true
 
 
 func get_action_column() -> Vector3:
@@ -607,12 +616,201 @@ func _build_brush_pool() -> void:
 
 
 func _hide_brush_marks() -> void:
+	_hide_brush_outline()
 	if not _brush_shown:
 		return
 	_brush_shown = false
 	_brush_key = Vector3i(999999, 999999, -1)
 	for mark in _brush_marks:
 		mark.visible = false
+
+
+func _weapon():
+	if player == null:
+		return null
+	return player.get_node_or_null("WeaponController")
+
+
+func _brush_tool_active() -> bool:
+	var weapon = _weapon()
+	return weapon != null and weapon.has_method("brush_tool_active") and bool(weapon.brush_tool_active())
+
+
+func _hide_brush_outline() -> void:
+	if _brush_outline != null:
+		_brush_outline.visible = false
+	_outline_key = ""
+
+
+func _build_brush_outline() -> void:
+	_brush_outline = MeshInstance3D.new()
+	_brush_outline.name = "BrushOutline"
+	_brush_outline.top_level = true
+	_brush_outline.visible = false
+	_brush_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_brush_outline.sorting_offset = 4.2
+	_outline_fill_mat = StandardMaterial3D.new()
+	_outline_fill_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_fill_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_outline_fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_fill_mat.no_depth_test = true
+	_outline_fill_mat.render_priority = 125
+	_outline_fill_mat.emission_enabled = true
+	_outline_edge_mat = StandardMaterial3D.new()
+	_outline_edge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_outline_edge_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_outline_edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_outline_edge_mat.no_depth_test = true
+	_outline_edge_mat.render_priority = 126
+	_outline_edge_mat.emission_enabled = true
+	add_child(_brush_outline)
+
+
+static func exposed_faces(cells: Array) -> Array:
+	var held := {}
+	for raw in cells:
+		held[raw] = true
+	var faces: Array = []
+	for raw in cells:
+		var cell: Vector3i = raw
+		for normal in _FACE_NORMALS:
+			if not held.has(cell + normal):
+				faces.append({"cell": cell, "normal": normal})
+	return faces
+
+
+static func face_corners(cell: Vector3i, normal: Vector3i) -> Array[Vector3i]:
+	var x := cell.x
+	var y := cell.y
+	var z := cell.z
+	if normal.x != 0:
+		var fx := x + 1 if normal.x > 0 else x
+		return [Vector3i(fx, y, z), Vector3i(fx, y + 1, z), Vector3i(fx, y + 1, z + 1), Vector3i(fx, y, z + 1)]
+	if normal.y != 0:
+		var fy := y + 1 if normal.y > 0 else y
+		return [Vector3i(x, fy, z), Vector3i(x + 1, fy, z), Vector3i(x + 1, fy, z + 1), Vector3i(x, fy, z + 1)]
+	var fz := z + 1 if normal.z > 0 else z
+	return [Vector3i(x, y, fz), Vector3i(x + 1, y, fz), Vector3i(x + 1, y + 1, fz), Vector3i(x, y + 1, fz)]
+
+
+static func outline_edges(faces: Array) -> Array:
+	var seen := {}
+	for raw in faces:
+		var face: Dictionary = raw
+		var normal: Vector3i = face["normal"]
+		var corners := face_corners(face["cell"], normal)
+		for i in 4:
+			var a: Vector3i = corners[i]
+			var b: Vector3i = corners[(i + 1) % 4]
+			var key := _edge_key(a, b)
+			if not seen.has(key):
+				seen[key] = {"a": a, "b": b, "normals": []}
+			(seen[key]["normals"] as Array).append(normal)
+	var edges: Array = []
+	for key in seen:
+		var edge: Dictionary = seen[key]
+		var normals: Array = edge["normals"]
+		if normals.size() == 2 and normals[0] == normals[1]:
+			continue
+		edges.append(edge)
+	return edges
+
+
+static func _edge_key(a: Vector3i, b: Vector3i) -> String:
+	var lo := a
+	var hi := b
+	if b.x < a.x or (b.x == a.x and (b.y < a.y or (b.y == a.y and b.z < a.z))):
+		lo = b
+		hi = a
+	return "%d,%d,%d|%d,%d,%d" % [lo.x, lo.y, lo.z, hi.x, hi.y, hi.z]
+
+
+func _lattice_world(point: Vector3i, layer: float) -> Vector3:
+	var ws = _WorldSettings.get_active()
+	return Vector3(ws.column_to_world(float(point.x)), float(point.y) * layer, ws.column_to_world(float(point.z)))
+
+
+func _rebuild_brush_outline(cells: Array, layer: float, scale: float) -> void:
+	var faces := exposed_faces(cells)
+	var fill := SurfaceTool.new()
+	fill.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var lift: float = scale * 0.012
+	for raw in faces:
+		var face: Dictionary = raw
+		var normal: Vector3i = face["normal"]
+		var corners := face_corners(face["cell"], normal)
+		var push := Vector3(normal) * lift
+		var p: Array[Vector3] = []
+		for corner in corners:
+			p.append(_lattice_world(corner, layer) + push)
+		fill.add_vertex(p[0])
+		fill.add_vertex(p[1])
+		fill.add_vertex(p[2])
+		fill.add_vertex(p[0])
+		fill.add_vertex(p[2])
+		fill.add_vertex(p[3])
+	var lines := SurfaceTool.new()
+	lines.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var thickness: float = _marker_look().edge_thickness
+	for raw in outline_edges(faces):
+		var edge: Dictionary = raw
+		_add_edge(lines, _lattice_world(edge["a"], layer), _lattice_world(edge["b"], layer), thickness)
+	var mesh: ArrayMesh = fill.commit()
+	lines.commit(mesh)
+	mesh.surface_set_material(0, _outline_fill_mat)
+	mesh.surface_set_material(1, _outline_edge_mat)
+	_brush_outline.mesh = mesh
+
+
+func _outline_cells(mode: StringName, cell: Vector2i) -> Array:
+	var weapon = _weapon()
+	if weapon == null or not weapon.has_method("brush_shape") or world == null:
+		return []
+	var place := mode == &"build"
+	if mode != &"dig" and not place:
+		return []
+	if place and (weapon.get_place_id() != "fill" or weapon.active_blueprint_id() != &""):
+		return []
+	if not place and not _ItemTypes.breaks_blocks(_active_item_id()):
+		return []
+	var shape := int(weapon.brush_shape())
+	if shape == _ItemTypes.BreakShape.SINGLE:
+		return []
+	var editor = get_tree().get_first_node_in_group("terrain_editor") if is_inside_tree() else null
+	if editor == null or not editor.has_method("brush_plan"):
+		return []
+	var anchor := Vector3i(cell.x, _TerrainEdits.surface_block_y(world, cell.x, cell.y), cell.y)
+	return editor.brush_plan(shape, anchor, _break_preview_aim(), place, player, float(weapon.brush_reach()))
+
+
+func _update_brush_outline(mode: StringName, cell: Vector2i, layer: float, scale: float, pulse: float, place_boost: float, blocked: bool) -> void:
+	if _brush_outline == null:
+		return
+	var weapon = _weapon()
+	var shape := int(weapon.brush_shape()) if weapon != null and weapon.has_method("brush_shape") else 0
+	var key := "%s|%d|%d,%d|%s|%s" % [String(mode), shape, cell.x, cell.y, _active_item_id(), str(_ItemTypes.aim_cardinal(_break_preview_aim()))]
+	if _outline_dirty or key != _outline_key:
+		var cells := _outline_cells(mode, cell)
+		_outline_key = key
+		_outline_dirty = false
+		if cells.is_empty():
+			_brush_outline.visible = false
+			_brush_outline.mesh = null
+		else:
+			_rebuild_brush_outline(cells, layer, scale)
+			_brush_outline.visible = true
+	if not _brush_outline.visible:
+		return
+	_mesh.visible = false
+	var look = _marker_look()
+	var fill_color: Color = look.fill_albedo(mode, pulse, place_boost, blocked)
+	fill_color.a = clampf(fill_color.a * 1.6, 0.0, 0.5)
+	_outline_fill_mat.albedo_color = fill_color
+	_outline_fill_mat.emission = look.fill_emission(mode, place_boost, blocked)
+	_outline_fill_mat.emission_energy_multiplier = look.fill_energy(mode, pulse, place_boost, blocked)
+	_outline_edge_mat.albedo_color = look.edge_albedo(mode, blocked)
+	_outline_edge_mat.emission = look.edge_emission(mode, blocked)
+	_outline_edge_mat.emission_energy_multiplier = look.edge_energy(mode, blocked)
 
 
 static func break_preview_cells(item_id: String, anchor: Vector3i, aim: Vector3, world, editor = null) -> Array[Vector3i]:
@@ -763,4 +961,6 @@ func _active_range() -> float:
 	if category == _ItemTypes.Category.WEAPON \
 			and (kind == _ItemTypes.WeaponKind.MELEE or kind == _ItemTypes.WeaponKind.RANGED):
 		return float(def.get("range", 2.0))
+	if weapon.has_method("action_reach"):
+		return float(weapon.action_reach())
 	return _ActionTargeting.INTERACTION_RANGE

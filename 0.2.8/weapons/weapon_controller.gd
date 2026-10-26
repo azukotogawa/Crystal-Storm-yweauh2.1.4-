@@ -24,6 +24,7 @@ const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _StructureBlueprints = preload("res://helpers/structure_blueprints.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _ToolFeel = preload("res://player/tool_feel_cast.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 
 signal attacked(item_id: String, hit_pos: Vector3)
 signal dig_attempted(world_pos: Vector3)
@@ -51,6 +52,8 @@ var _audio: Node
 var _build_hold_sec: float = 0.0
 var _brush_left_held: bool = false
 var _brush_right_held: bool = false
+var brush_index: int = 0
+var _brush_known: int = 1
 var place_index: int = 0
 var blueprint_index: int = 0
 var blueprint_quarter: int = 0
@@ -121,7 +124,7 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("weapon_controller")
 		return
-	_poll_dig_brush_keys()
+	_poll_brush_actions()
 	_poll_blueprint_keys()
 
 	# LMB breaks blocks only for the pick and other dig tools.
@@ -279,12 +282,84 @@ func _try_dig_tool() -> void:
 	var def := ItemTypes.get_def(item_id)
 	if def.is_empty():
 		return
-	var reach := float(def.get("range", _ActionTargeting.INTERACTION_RANGE))
+	var reach := brush_reach()
 	var aim := _aim_forward(reach)
 	var anchor := _dig_anchor_cell(reach)
-	_last_break_cells = break_cells_for(item_id, anchor, aim)
+	_last_break_cells = _brush_cells(false, anchor, aim) if anchor != Vector3i.ZERO else ([] as Array[Vector3i])
 	_listed_break = ItemTypes.MULTI_BLOCK_BREAK
 	_offer_tool_action("multi_block_break", item_id, def)
+
+
+func _brush_cells(place: bool, anchor: Vector3i, aim: Vector3) -> Array[Vector3i]:
+	if _terrain_editor == null:
+		_bind_terrain_editor()
+	if _terrain_editor == null:
+		return [anchor]
+	return _terrain_editor.brush_plan(brush_shape(), anchor, aim, place, player, brush_reach())
+
+
+func brush_shape() -> int:
+	var order := ItemTypes.BRUSH_ORDER
+	return order[clampi(brush_index, 0, order.size() - 1)]
+
+
+func brush_reach() -> float:
+	return _GameFeelConfig.active().brush_reach
+
+
+func brush_mastery() -> int:
+	if not is_inside_tree():
+		return 0
+	var gm = get_tree().get_first_node_in_group("game_manager")
+	if gm == null:
+		return 0
+	return int(gm.get("blocks_mined")) + int(gm.get("blocks_placed"))
+
+
+func brush_unlocked_count() -> int:
+	var cfg = _GameFeelConfig.active()
+	var mastery := brush_mastery()
+	var count := 0
+	for shape in ItemTypes.BRUSH_ORDER:
+		if mastery < cfg.brush_unlock(ItemTypes.brush_id(shape)):
+			break
+		count += 1
+	return maxi(count, 1)
+
+
+func brush_tool_active() -> bool:
+	if _is_active_dig_tool():
+		return true
+	return _is_build_material() and active_blueprint_id() == &"" and get_place_id() == "fill"
+
+
+func action_reach() -> float:
+	if brush_tool_active():
+		return brush_reach()
+	return _ActionTargeting.INTERACTION_RANGE
+
+
+func _poll_brush_actions() -> void:
+	if not brush_tool_active():
+		return
+	var step := 0
+	if Input.is_action_just_pressed("brush_grow"):
+		step = 1
+	elif Input.is_action_just_pressed("brush_shrink"):
+		step = -1
+	if step == 0:
+		return
+	brush_index = posmod(brush_index + step, brush_unlocked_count())
+	_toast("Brush: %s" % ItemTypes.brush_label(brush_shape()))
+
+
+func _announce_brush_unlock() -> void:
+	var count := brush_unlocked_count()
+	if count <= _brush_known:
+		return
+	_brush_known = count
+	var shape: int = ItemTypes.BRUSH_ORDER[count - 1]
+	_toast("New brush unlocked: %s. Press ] to use it" % ItemTypes.brush_label(shape))
 
 
 func break_cells_for(item_id: String, anchor: Vector3i, aim: Vector3) -> Array[Vector3i]:
@@ -795,12 +870,15 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			mined = cells
 		if mined > 0:
 			_note_mined_blocks(mined)
-		_cooldown_timer = _terrain_editor.get_dig_delay(target) * ItemTypes.dig_time_scale(broken)
+		_cooldown_timer = _terrain_editor.get_dig_delay(target) + _GameFeelConfig.active().brush_extra_sec(broken)
 		_flash_dig_feedback(target)
 		if listed:
 			_notify_scaled_break(batch.get("dug", []), target)
+			if broken > 1:
+				_toast("Broke %d blocks" % broken)
 			if inventory != null:
-				inventory.wear_tool(_active_hotbar_index, ItemTypes.wear_for_cells(broken))
+				inventory.wear_tool(_active_hotbar_index, ItemTypes.brush_wear(broken))
+			_announce_brush_unlock()
 		else:
 			_notify_block_break(target)
 	else:
@@ -1120,7 +1198,7 @@ func _try_place_selected() -> bool:
 	var game_manager := get_tree().get_first_node_in_group("game_manager")
 	if game_manager and game_manager.run_state != _GameManager.RunState.PLAYING:
 		return false
-	var target := _feel_target if _feel_resolving and _feel_target != Vector3.ZERO else _resolve_terrain_target(_ActionTargeting.INTERACTION_RANGE)
+	var target := _feel_target if _feel_resolving and _feel_target != Vector3.ZERO else _resolve_terrain_target(action_reach())
 	if target == Vector3.ZERO:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
@@ -1141,7 +1219,7 @@ func _try_place_selected() -> bool:
 	else:
 		match place_id:
 			"fill":
-				ok = _terrain_editor.try_fill(target, inventory)
+				ok = _place_fill(target)
 			"cardinal_ramp":
 				ok = _terrain_editor.try_place_cardinal_ramp(target, inventory)
 			"corner_ramp":
@@ -1154,6 +1232,8 @@ func _try_place_selected() -> bool:
 				ok = _terrain_editor.try_build(target, inventory, &"stone_wall")
 	if ok:
 		_cooldown_timer = _terrain_editor.get_build_delay(target)
+		if built_id == &"fill" and brush_shape() != ItemTypes.BreakShape.SINGLE:
+			_cooldown_timer += _GameFeelConfig.active().brush_extra_sec(int(_terrain_editor.last_place_batch.get("placed_count", 1)))
 		structure_built.emit(built_id, target)
 		_flash_build_feedback(target, built_id)
 		_sync_impact_pose(_place_anim_id())
@@ -1163,6 +1243,38 @@ func _try_place_selected() -> bool:
 		_notify_terrain_fail()
 		_cooldown_timer = 0.035
 	return ok
+
+
+func _place_fill(target: Vector3) -> bool:
+	if brush_shape() == ItemTypes.BreakShape.SINGLE:
+		var placed: bool = _terrain_editor.try_fill(target, inventory)
+		if placed:
+			_note_placed_blocks(1)
+		return placed
+	var ok: bool = _terrain_editor.try_place_brush(target, inventory, brush_shape(), _aim_forward(brush_reach()), player, brush_reach())
+	if ok:
+		var count := int(_terrain_editor.last_place_batch.get("placed_count", 0))
+		var paid := str(_terrain_editor.last_place_batch.get("paid", "stone"))
+		_note_placed_blocks(count)
+		_toast("Placed %d blocks, spent %d %s" % [count, count, paid])
+		var fx := _break_fx()
+		if fx != null and fx.has_method("notify_place"):
+			var shown := 0
+			for cell in _terrain_editor.last_place_batch.get("placed", []):
+				if shown >= _BlockBreakFx.SWING_FX_CAP:
+					break
+				fx.notify_place(_cell_fx_pos(cell), Color(0.45, 0.82, 0.42))
+				shown += 1
+		_announce_brush_unlock()
+	return ok
+
+
+func _note_placed_blocks(count: int) -> void:
+	if count <= 0 or not is_inside_tree():
+		return
+	var gm = get_tree().get_first_node_in_group("game_manager")
+	if gm and gm.has_method("note_blocks_placed"):
+		gm.note_blocks_placed(count)
 
 
 func _try_build_wall() -> void:
