@@ -146,7 +146,7 @@ func _source_contracts() -> void:
 	_expect("_replace_cell_with_water_block" not in editor_src and "_has_adjacent_water(wx, wz):\n\t\t_grant_dig_loot" not in editor_src, "dig beside water has no instant water swap")
 	var weapon_src := (load("res://weapons/weapon_controller.gd") as GDScript).source_code
 	_expect(weapon_src.count("try_dig_brush(") == 1, "try_dig_brush is only the dig-tool stroke")
-	_expect("KEY_BRACKETLEFT" in weapon_src and "KEY_BRACKETRIGHT" in weapon_src, "bracket keys adjust brush radius")
+	_expect("is_action_just_pressed(\"brush_grow\")" in weapon_src and "is_action_just_pressed(\"brush_shrink\")" in weapon_src, "brush_grow/brush_shrink actions adjust brush radius")
 	_expect("_is_active_combat_weapon" in weapon_src, "combat weapons stay off the dig path")
 	_expect("func _try_dig_tool_or_fill_remove" not in weapon_src, "non-dig items have no fill dig path")
 	var weapon_dig_at := weapon_src.find("func _do_dig_attack")
@@ -264,7 +264,7 @@ func _range_partial() -> void:
 	_wipe()
 	var player := ColumnPlayer.new()
 	player.at = Vector3.ZERO
-	var center := Vector2i(7, 0)
+	var center := Vector2i(3, 0)  # inside reach() (4.5 since ctl-03) so the stroke starts; radius-3 edge cells fall outside
 	var fp: Array = _LivingForce.footprint(center.x, center.y, 3, flat)
 	var expect: Array = []
 	var skipped := 0
@@ -274,7 +274,7 @@ func _range_partial() -> void:
 			expect.append(cell)
 		else:
 			skipped += 1
-	var ok: bool = await _stroke(Vector3(7.5, 0, 0.5), 3, player)
+	var ok: bool = await _stroke(Vector3(3.5, 0, 0.5), 3, player)
 	var good := ok and skipped > 0 and expect.size() > 0 and _layers_at(center.x, center.y) == -1
 	for c in expect:
 		var cell: Vector2i = c
