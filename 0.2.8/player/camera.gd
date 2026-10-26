@@ -84,7 +84,7 @@ func _ready():
 	far = 520.0
 	
 	target = get_tree().get_first_node_in_group("player")
-	player = target
+	player = target as Player
 	
 	if not target:
 		call_deferred("_find_target")
@@ -94,7 +94,7 @@ func _ready():
 
 func _find_target():
 	target = get_tree().get_first_node_in_group("player")
-	player = target
+	player = target as Player
 	if target == null:
 		return
 	_update_camera_transform()
