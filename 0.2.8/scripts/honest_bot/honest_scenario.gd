@@ -1551,8 +1551,8 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 		if float(after.get("heart", -1.0)) >= float(before.get("heart", -2.0)) - 0.05:
 			return "crystal hp did not fall"
 		return ""
-	if float(after.get("hp", 1.0)) >= float(before.get("hp", 0.0)) - 0.05:
-		return "hp did not fall"
+	if float(after.get("hp", 1.0)) >= float(before.get("hp", 0.0)) - 0.05 and not _foes_cleared():
+		return "no damage taken and foes remain"
 	if name == "corruption":
 		if not bool(job.get("spread", false)):
 			return "corruption did not spread"
@@ -1574,6 +1574,12 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 	if not bool(job["skilled"]):
 		return "dash missing"
 	return ""
+
+
+func _foes_cleared() -> bool:
+	if _combat_tree == null or _combat_player == null or not is_instance_valid(_combat_player):
+		return false
+	return _near_foes(_combat_tree, _xz(_combat_player)).is_empty()
 
 
 func _banner_allowed(line: String) -> bool:
