@@ -140,11 +140,20 @@ func _test_sample(world, layer: float, waterline: float) -> void:
 		print("OK taller body floats lower %.2f" % float(tall.float_y))
 
 	var river_bed := _feet(world, 60.5, 60.5)
-	var wade: Dictionary = _Water.sample(world, 60, 60, river_bed, river_bed)
-	if bool(wade.get("submerged", false)) or not bool(wade.get("wading", false)):
-		_fail("river tile should wade, not swim: %s" % str(wade))
+	var lake: Dictionary = _Water.sample(world, 60, 60, river_bed, river_bed)
+	if not bool(lake.get("deep", false)) or not bool(lake.get("submerged", false)):
+		_fail("lake tile at depth >= 2 layers should be deep and submerged: %s" % str(lake))
 	else:
-		print("OK river wade speed=%.2f" % float(wade.speed_mult))
+		print("OK lake tile deep=%s submerged=%s speed=%.2f" % [str(lake.deep), str(lake.submerged), float(lake.speed_mult)])
+
+	var shallow_bed := _feet(world, 62.5, 61.5)
+	_ChannelRegistry.register_channel(62, 61, Vector2i.ZERO, 1.0)
+	_ChannelRegistry.set_runtime_surface_y(62, 61, shallow_bed + layer)
+	var wade: Dictionary = _Water.sample(world, 62, 61, shallow_bed, shallow_bed)
+	if bool(wade.get("submerged", false)) or not bool(wade.get("wading", false)):
+		_fail("1-layer water should wade, not swim: %s" % str(wade))
+	else:
+		print("OK 1-layer water wades speed=%.2f" % float(wade.speed_mult))
 
 	var ocean: Dictionary = _Water.sample(world, 70, 70, _feet(world, 70.5, 70.5), _feet(world, 70.5, 70.5))
 	if bool(ocean.get("in_water", false)):
@@ -195,10 +204,10 @@ func _test_entities(world, layer: float, waterline: float) -> void:
 	var river_from := _at(60.5, river_y, 60.5)
 	var river_to := _EntityNavigation.step_toward_cell(river_from, Vector2i(65, 60), 8.0, 0.05, world, null, null)
 	var river_step := river_to.distance_to(river_from)
-	if river_step > dry_step * 0.85 or river_step < dry_step * 0.45:
-		_fail("wade step %.3f should be slower than dry %.3f" % [river_step, dry_step])
+	if river_step > dry_step * 0.5 or river_step < dry_step * 0.3:
+		_fail("lake swim step %.3f should be under half of dry %.3f" % [river_step, dry_step])
 	else:
-		print("OK wade step %.3f" % river_step)
+		print("OK lake swim step %.3f" % river_step)
 
 	var sea_y := _feet(world, 70.5, 70.5)
 	var sea_from := _at(70.5, sea_y, 70.5)

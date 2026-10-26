@@ -5,6 +5,7 @@ const _ChannelRegistry = preload("res://world/channel_registry.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _VoxelFluidEngine = preload("res://fluids/voxel_fluid_engine.gd")
 const _WorldState = preload("res://world/world_state.gd")
 
 const SWIM_SPEED_MULT := 0.42
@@ -12,11 +13,13 @@ const WADE_SPEED_MULT := 0.68
 const SWIM_ACCEL_MULT := 0.5
 const SWIM_FRICTION_MULT := 1.45
 const BUOYANCY_RATE := 6.0
+const DEEP_LAYERS := 2.0
 
 
 static func dry(ground_y: float) -> Dictionary:
 	return {
 		"in_water": false,
+		"deep": false,
 		"submerged": false,
 		"wading": false,
 		"surface_y": 0.0,
@@ -41,16 +44,16 @@ static func sample(
 	body_height: float = -1.0
 ) -> Dictionary:
 	var layer: float = _WorldSettings.get_active().layer_height()
-	var surface := _surface_y(world, col_x, col_z, ground_y, layer)
-	if is_nan(surface):
+	var cell := _cell_water(world, col_x, col_z, ground_y, layer)
+	if cell.is_empty():
 		return dry(ground_y)
-	var column_depth := surface - ground_y
-	var deep := column_depth > layer * 0.28
+	var surface: float = cell.surface
+	var bed: float = cell.bed
+	var deep := surface - bed >= layer * DEEP_LAYERS - 0.001
 	var submerged := deep and feet_y <= surface + layer * 0.04
 	var wading := false
-	if not submerged and _is_inland_water_tile(world, col_x, col_z):
-		if absf(feet_y - ground_y) <= layer * 0.85:
-			wading = true
+	if not submerged and absf(feet_y - ground_y) <= layer * 0.85:
+		wading = true
 	if not submerged and not wading:
 		return dry(ground_y)
 	var float_y := ground_y
@@ -61,6 +64,7 @@ static func sample(
 		float_y = maxf(ground_y, surface - sink)
 	return {
 		"in_water": true,
+		"deep": deep,
 		"submerged": submerged,
 		"wading": wading and not submerged,
 		"surface_y": surface,
@@ -78,16 +82,16 @@ static func settle_y(current_y: float, info: Dictionary, delta: float) -> float:
 	return lerpf(current_y, target, k)
 
 
-static func _surface_y(world, col_x: int, col_z: int, ground_y: float, layer: float) -> float:
+static func _cell_water(world, col_x: int, col_z: int, ground_y: float, layer: float) -> Dictionary:
 	var level := _channel_level(col_x, col_z)
 	if level >= 0.05:
 		var sy: float = _ChannelRegistry.get_runtime_surface_y(col_x, col_z)
-		if sy > 0.01:
-			return sy
-		return ground_y + layer * clampf(level, 0.35, 1.0)
+		if sy <= 0.01:
+			sy = ground_y + layer * clampf(level, 0.35, 1.0)
+		return {"surface": sy, "bed": ground_y}
 	if _is_inland_water_tile(world, col_x, col_z):
-		return ground_y
-	return NAN
+		return {"surface": ground_y, "bed": ground_y - float(_VoxelFluidEngine.SOURCE_DEPTH_LAYERS) * layer}
+	return {}
 
 
 static func _channel_level(col_x: int, col_z: int) -> float:

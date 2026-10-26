@@ -48,7 +48,7 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
-	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench"
+	var multi := name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
 		print("FAIL harness unknown scenario %s" % name)
@@ -107,6 +107,8 @@ func _objective(name: String) -> String:
 		return "place several blocks in one stroke"
 	if name == "water_dig":
 		return "dig beside a lake and watch it flow"
+	if name == "swim":
+		return "walk into a lake, swim across and climb out"
 	if name == "water_trench":
 		return "dig a trench from a lake, then wall it off"
 	if name == "dev_keys":
@@ -115,7 +117,7 @@ func _objective(name: String) -> String:
 
 
 func _segment(name: String) -> String:
-	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench":
+	if name == "multi_dig" or name == "multi_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim":
 		return name
 	return "dig_tool" if name == "dig" else "structure_place"
 
@@ -449,6 +451,12 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 		if int(after.get("shift_changes", 1)) != 0 or int(after.get("t_changes", 1)) != 0:
 			return "T or Shift+T changed terrain"
 		return ""
+	if name == "swim":
+		if not bool(after.get("swam", false)):
+			return "player never swam in the lake"
+		if not bool(after.get("climbed_out", false)):
+			return "player did not climb out on the far bank"
+		return ""
 	if name == "water_trench":
 		var steps: Array = [0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.0, 0.0, 0.0]
 		var fill: Array = after.get("fill_levels", [])
@@ -550,6 +558,11 @@ func _snap(tree: SceneTree, player) -> Dictionary:
 
 
 func _stamp_world(name: String, build, after: Dictionary) -> void:
+	if name == "swim":
+		after["swam"] = build.swam
+		after["climbed_out"] = build.climbed_out
+		print("HARNESS swim swam %s climbed out %s crossing %d cells" % [str(build.swam), str(build.climbed_out), build.swim_width])
+		return
 	if name == "water_trench":
 		after["fill_levels"] = build.fill_levels
 		after["wall_levels"] = build.wall_levels

@@ -10,6 +10,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const SOURCE_LEVEL := 8
 const FALL_LEVEL := 7
 const FALL_STEP := 0.5
+const SOURCE_DEPTH_LAYERS := 2
 
 var config: _CrystalSimConfig
 var terrain: _CrystalTerrainQuery
@@ -79,13 +80,15 @@ func _layer() -> float:
 func bed_at(pos: Vector2i) -> float:
 	var h: float = terrain.get_terrain_height(pos)
 	if sources.has(pos):
-		return h - _layer()
+		return h - float(SOURCE_DEPTH_LAYERS) * _layer()
 	return h
 
 
 func surface_at(pos: Vector2i) -> float:
 	var level := level_at(pos)
 	if level <= 0:
+		return terrain.get_terrain_height(pos)
+	if sources.has(pos):
 		return terrain.get_terrain_height(pos)
 	return bed_at(pos) + float(level) / float(SOURCE_LEVEL) * _layer()
 

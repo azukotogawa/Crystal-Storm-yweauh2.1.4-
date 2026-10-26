@@ -33,3 +33,9 @@ Env: Godot 4.7.2 headless on a Linux VM, scratch copy with stand-in art, shaders
 - Scenario `water_trench` (same state machine as `water_dig`, mode flag): bot walks to a lake, digs a 10-cell trench with normal dig input, asserts levels 7/8..1/8 then three dry cells on flat ground, digs a second layer at cell 8 and asserts the fall continues (cell 8 = 7/8, cells 9 and 10 dry), places a stone wall across cell 4 with build input and asserts the lake-side cells 1-3 keep their levels.
 - Past the wall nothing changes (no receding, Q-058): levels `[0.875, 0.75, 0.625, 0.5, 0.375, 0.25, 0.125, 0.875, 0.0, 0.0]` before and after the wall. Two runs gave identical levels.
 - Not judged: the fill and after-wall screenshots (stand-in art, dummy renderer); they need the Dell.
+
+## cs-swim-01
+- `water_locomotion` now reads one cell record: registry cells give surface = runtime surface and bed = floor; natural lake cells give surface = column top and bed = `VoxelFluidEngine.SOURCE_DEPTH_LAYERS` (2) layers below, the same depth the flow engine uses for sources. Deep means depth >= `DEEP_LAYERS` (2) layers; shallower wet cells wade. Sampling result gained `deep`.
+- `verify_swim`: lake tile gives deep and submerged true; 1-layer registry water gives wading; the old river-wades and wade-step cases now expect a lake swim. All pass.
+- Scenario `swim` (HonestInput walker): walks to a lake, enters, asserts the player sampled as submerged, crosses 5 cells, climbs out on the far bank. PASS headless.
+- Not judged: the visual of the body floating at the lake top (stand-in art); lake depth of 2 layers is my reading of "depth >= 2 layers", see Q-060.

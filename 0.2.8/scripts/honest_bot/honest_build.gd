@@ -64,6 +64,10 @@ var pre_signature := ""
 var shift_signature := ""
 var t_signature := ""
 var t_opened_chat := false
+var swim_far := Vector2i(999999, 999999)
+var swim_width := 0
+var swam := false
+var climbed_out := false
 var fill_levels: Array = []
 var step_levels: Array = []
 var step_before := 0.0
@@ -117,6 +121,8 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _water_dig()
 	if mode == "dev_keys":
 		return _dev_keys()
+	if mode == "swim":
+		return _swim()
 	return "fail"
 
 
@@ -536,6 +542,74 @@ func water_levels() -> Array:
 
 func _water_count() -> int:
 	return _Channels.all_fluid_positions(_Channels.FLUID_WATER).size()
+
+
+func _swimming_now() -> bool:
+	return bool(player._water_here().get("submerged", false))
+
+
+func _swim() -> String:
+	if age > WATER_LIMIT:
+		print("FAIL swim timed out at beat %d" % beat)
+		return "fail"
+	chapter_label = "swim"
+	if beat == 0:
+		lake = _find_lake(1)
+		if lake.is_empty():
+			print("FAIL swim found no lake within %d" % WATER_SCAN)
+			return "fail"
+		var source: Vector2i = lake["source"]
+		var back: Vector2i = -(lake["axis"] as Vector2i)
+		swim_far = Vector2i(999999, 999999)
+		for k in range(1, 60):
+			var cell := source + back * k
+			if not _is_wet(cell):
+				if k >= 3 and _open_ground(cell):
+					swim_far = cell
+					swim_width = k
+				break
+		if swim_far.x > 900000:
+			print("FAIL swim lake at %s is not crossable along %s" % [source, back])
+			return "fail"
+		print("SHOWCASE swim lake %s crossing %d cells to %s" % [source, swim_width, swim_far])
+		beat = 1
+		return ""
+	if beat == 1:
+		if not _walk_to((lake["source"] as Vector2i) + (lake["axis"] as Vector2i)):
+			return ""
+		if walk_failed:
+			return "fail"
+		_stop_move()
+		show_age = 0.0
+		beat = 2
+		return ""
+	if beat == 2:
+		var mid := (lake["source"] as Vector2i) - (lake["axis"] as Vector2i) * (swim_width / 2)
+		if not _walk_to(mid):
+			swam = swam or _swimming_now()
+			return ""
+		if walk_failed:
+			return "fail"
+		swam = swam or _swimming_now()
+		_stop_move()
+		show_age = 0.0
+		beat = 3
+		return ""
+	if beat == 3:
+		if not _walk_to(swim_far):
+			swam = swam or _swimming_now()
+			return ""
+		if walk_failed:
+			return "fail"
+		_stop_move()
+		show_age = 0.0
+		beat = 4
+		return ""
+	show_age += step_dt
+	if show_age < _Pace.RESULT_HOLD:
+		return ""
+	climbed_out = not _swimming_now() and not _is_wet(_column())
+	return "pass"
 
 
 func _terrain_signature() -> String:
