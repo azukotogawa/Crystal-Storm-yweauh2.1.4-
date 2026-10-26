@@ -115,7 +115,7 @@ func tick(step: float, host: SceneTree, body: Node, pad: RefCounted, log: RefCou
 		return _dig()
 	if mode == "structure_place":
 		return _place(dt)
-	if mode == "multi_dig" or mode == "multi_build":
+	if mode == "multi_dig" or mode == "multi_build" or mode == "mouse_build":
 		return _brush()
 	if mode == "water_dig" or mode == "water_trench":
 		return _water_dig()
@@ -271,7 +271,7 @@ func _brush_hits() -> int:
 
 
 func _brush() -> String:
-	var building := mode == "multi_build"
+	var building := mode == "multi_build" or mode == "mouse_build"
 	if age > BRUSH_LIMIT:
 		print("FAIL %s timed out at beat %d" % [mode, beat])
 		return "fail"
@@ -388,7 +388,10 @@ func _brush() -> String:
 		return ""
 	if beat == 10:
 		if building:
-			if not hands.pulse("build_place"):
+			if mode == "mouse_build":
+				if not hands.click_at(player, hands.last_aim, true, MOUSE_BUTTON_RIGHT):
+					return ""
+			elif not hands.pulse("build_place"):
 				return ""
 			_look_at(aim)
 		else:
@@ -397,6 +400,8 @@ func _brush() -> String:
 		beat = 11
 		return ""
 	if beat == 11:
+		if mode == "mouse_build" and show_age == 0.0:
+			hands.click_at(player, hands.last_aim, false, MOUSE_BUTTON_RIGHT)
 		_look_at(aim, PackedStringArray(["attack"]) if not building else PackedStringArray())
 		show_age += step_dt
 		stroke_count = _brush_hits()
