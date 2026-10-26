@@ -37,9 +37,6 @@ var yaw_degrees: float = ISO_YAW0_DEG
 var pitch_target_degrees: float = ISO_PITCH_DEG
 var pitch_degrees: float = ISO_PITCH_DEG
 var _pitch_dragging: bool = false
-var _rotate_dir: float = 0.0
-var _rotate_hold: float = 0.0
-var _rotate_origin: float = 0.0
 var _default_zoom: float = 16.0
 var pitch_save_delay: float = 0.4
 var _pitch_persist_wait: float = -1.0
@@ -209,19 +206,9 @@ func _apply_hold_rotate(delta: float) -> void:
 		dir -= 1.0
 	if Input.is_action_pressed("rotate_right"):
 		dir += 1.0
-	var tap_sec: float = _GameFeelConfig.active().camera_tap_sec
 	if is_zero_approx(dir):
-		if _rotate_dir != 0.0 and _rotate_hold <= tap_sec:
-			yaw_target_degrees = _wrap_deg(_rotate_origin + _rotate_dir * 90.0)
-		_rotate_dir = 0.0
 		return
-	if _rotate_dir == 0.0:
-		_rotate_dir = dir
-		_rotate_hold = 0.0
-		_rotate_origin = yaw_target_degrees
-	_rotate_hold += delta
-	if _rotate_hold > tap_sec:
-		yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
+	yaw_target_degrees = _wrap_deg(yaw_target_degrees + dir * yaw_speed_deg * delta)
 
 
 func reset_view() -> void:

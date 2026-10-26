@@ -66,7 +66,6 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0.0, 0.5, 0.01) var brush_block_sec: float = 0.1
 @export_range(0.0, 2.0, 0.05) var brush_time_cap_sec: float = 0.6
 @export_range(0.5, 4.0, 0.1) var brush_summary_sec: float = 2.5
-@export_range(0.1, 0.5, 0.01) var camera_tap_sec: float = 0.25
 @export_range(0.05, 0.5, 0.01) var camera_look_deg: float = 0.2
 @export_range(4.5, 10.0, 0.5) var melee_min_range: float = 5.0
 @export_range(0.2, 2.0, 0.05) var draw_sec: float = 0.7
@@ -104,7 +103,6 @@ static func create_default():
 	cfg.brush_block_sec = 0.1
 	cfg.brush_time_cap_sec = 0.6
 	cfg.brush_summary_sec = 2.5
-	cfg.camera_tap_sec = 0.25
 	cfg.camera_look_deg = 0.2
 	cfg.melee_min_range = 5.0
 	cfg.draw_sec = 0.7
