@@ -157,8 +157,8 @@ func _run() -> void:
 	var before_corrupt: Dictionary = _WorldState.get_active().capture_overlay_snapshot()
 	var bad_ok: bool = await save_svc.apply_snapshot_transactional({"version": 1, "checksum": "nope", "terrain_edits": {}})
 	var sealed: Dictionary = _SaveSchema.attach_integrity({
-		"schema_version": 2,
-		"version": 2,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
+		"version": _SaveSchema.CURRENT_VERSION,
 		"world_state": {"height_delta": {}, "build_tile": {}, "channels": {}},
 		"terrain_edits": {"height_delta": {}, "build_tile": {}},
 	})

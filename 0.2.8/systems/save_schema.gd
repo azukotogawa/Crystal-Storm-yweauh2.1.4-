@@ -1,18 +1,17 @@
 class_name SaveSchema
 extends RefCounted
-## schema_version 1 = legacy flat terrain_edits/features/channels
-## schema_version 2 = world_state authority block + revisions + integrity
+## schema_version 3 = world_state authority block + revisions + integrity + integer water levels; older saves are refused
 ## Terrain overlay contract (macro/micro):
 ## - Persist only WorldState height_delta / build_tile (and features/channels).
 ## - Micro bricks are runtime-derived from overlays on generate/rebuild — never saved.
-## - v1→v2 migration lifts flat terrain_edits into world_state; load rebuild re-derives micro.
 
 const _MicroColumnBrick = preload("res://helpers/micro_column_brick.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
 
 const FORMAT_ID := "crystalstorm_save"
-const CURRENT_VERSION := 2
-const MIN_SUPPORTED_VERSION := 1
+const CURRENT_VERSION := 3
+const MIN_SUPPORTED_VERSION := 3
+const OLDER_VERSION_MESSAGE := "world from an older version, create a new world"
 
 const REQUIRED_TOP_KEYS_V2 := ["schema_version", "world_state"]
 const _MICRO_PAYLOAD_KEYS: Array[String] = ["micro_bricks", "micro_grid", "micro_brick", "bricks"]
@@ -78,7 +77,7 @@ static func validate_and_migrate(raw) -> Dictionary:
 	if ver <= 0:
 		return {"ok": false, "reason": "missing_version", "data": {}}
 	if ver < MIN_SUPPORTED_VERSION:
-		return {"ok": false, "reason": "version_too_old_%d" % ver, "data": {}}
+		return {"ok": false, "reason": "version_too_old_%d" % ver, "message": OLDER_VERSION_MESSAGE, "data": {}}
 	if ver > CURRENT_VERSION:
 		return {"ok": false, "reason": "version_too_new_%d" % ver, "data": {}}
 
@@ -87,12 +86,6 @@ static func validate_and_migrate(raw) -> Dictionary:
 		var actual: String = content_hash(data)
 		if expected != "" and expected != actual:
 			return {"ok": false, "reason": "checksum_mismatch", "data": {}}
-
-	if ver < CURRENT_VERSION:
-		var migrated: Dictionary = migrate(data, ver, CURRENT_VERSION)
-		if migrated.is_empty():
-			return {"ok": false, "reason": "migration_failed_%d_to_%d" % [ver, CURRENT_VERSION], "data": {}}
-		data = migrated
 
 	var structural: Dictionary = validate_structure(data)
 	if not bool(structural.get("ok", false)):
@@ -117,58 +110,6 @@ static func validate_structure(data: Dictionary) -> Dictionary:
 		if not wsd.has("height_delta") and not wsd.has("build_tile") and not data.has("terrain_edits"):
 			pass
 	return {"ok": true, "reason": "ok", "data": data}
-
-
-static func migrate(data: Dictionary, from_ver: int, to_ver: int) -> Dictionary:
-	var cur: Dictionary = data.duplicate(true)
-	var v: int = from_ver
-	while v < to_ver:
-		match v:
-			1:
-				cur = _migrate_v1_to_v2(cur)
-			_:
-				return {}
-		v += 1
-		if cur.is_empty():
-			return {}
-	return cur
-
-
-static func _migrate_v1_to_v2(data: Dictionary) -> Dictionary:
-	var out: Dictionary = data.duplicate(true)
-	out["schema_version"] = 2
-	out["format"] = FORMAT_ID
-	out["version"] = 2
-	if not out.has("world_state") or not out.world_state is Dictionary:
-		var terrain: Dictionary = out.get("terrain_edits", {})
-		var features: Dictionary = out.get("features", {})
-		var channels_wrap: Dictionary = out.get("channels", {})
-		out["world_state"] = {
-			"revision": int(out.get("world_state_revision", 0)),
-			"terrain_revision": 0,
-			"feature_revision": 0,
-			"feature_tile_revision": 0,
-			"channel_revision": 0,
-			"height_delta": terrain.get("height_delta", {}),
-			"build_tile": terrain.get("build_tile", {}),
-			"tile_overrides": features.get("tile_overrides", {}),
-			"feature_cells": features.get("feature_cells", {}),
-			"towns": features.get("towns", []),
-			"entity_spawns": features.get("entity_spawns", []),
-			"channels": channels_wrap.get("channels", channels_wrap),
-		}
-	if not out.has("world"):
-		out["world"] = {
-			"seed": int(out.get("world_seed", 0)),
-			"metadata": {},
-		}
-	else:
-		var w: Dictionary = out.world if out.world is Dictionary else {}
-		if not w.has("seed"):
-			w["seed"] = int(out.get("world_seed", 0))
-		out["world"] = w
-	_sync_flat_aliases_from_world_state(out)
-	return out
 
 
 static func _sync_flat_aliases_from_world_state(out: Dictionary) -> void:

@@ -33,45 +33,29 @@ func _run() -> void:
 	_test_schema_migration_and_corruption()
 	_test_world_state_persistence_roundtrip()
 	_test_json_disk_vector2i_roundtrip()
+	_test_wet_cells_roundtrip()
 	_test_deterministic_restore()
 	_test_checkpoint_rollback()
 	_test_integrity_attach()
 
 
 func _test_schema_migration_and_corruption() -> void:
-	var v1 := {
-		"version": 1,
+	var old := {
+		"version": _SaveSchema.CURRENT_VERSION - 1,
 		"world_seed": 42,
-		"terrain_edits": {
-			"height_delta": {"3,4": -1},
-			"build_tile": {},
-		},
-		"features": {
-			"tile_overrides": {"1,1": 5},
-			"feature_cells": {},
-		},
-		"channels": {
-			"channels": {
-				"0,0": {"water_level": 0.5, "flow_dir": [1, 0]},
-			},
-		},
+		"world_state": {"height_delta": {}, "build_tile": {}, "channels": {}},
 	}
-	var mig: Dictionary = _SaveSchema.validate_and_migrate(v1)
-	if not bool(mig.get("ok", false)):
-		_fail("v1 migration failed: %s" % str(mig.get("reason")))
-		return
-	var data: Dictionary = mig.get("data", {})
-	if int(data.get("schema_version", 0)) != _SaveSchema.CURRENT_VERSION:
-		_fail("migrated schema_version wrong")
-	if not data.has("world_state"):
-		_fail("migration must produce world_state block")
-	var ws_block: Dictionary = data.world_state
-	if not ws_block.has("height_delta"):
-		_fail("world_state missing height_delta after migrate")
+	var refused: Dictionary = _SaveSchema.validate_and_migrate(old)
+	if bool(refused.get("ok", true)):
+		_fail("older save version must be refused")
+	elif str(refused.get("message", "")) != _SaveSchema.OLDER_VERSION_MESSAGE:
+		_fail("older save must carry the create-a-new-world message got %s" % str(refused.get("message")))
+	else:
+		print("OK old version refused: ", refused.get("message"))
 
 	var good: Dictionary = _SaveSchema.attach_integrity({
-		"schema_version": 2,
-		"version": 2,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
+		"version": _SaveSchema.CURRENT_VERSION,
 		"world_state": {"height_delta": {}, "build_tile": {}, "channels": {}},
 		"terrain_edits": {"height_delta": {}, "build_tile": {}},
 	})
@@ -151,8 +135,8 @@ func _test_json_disk_vector2i_roundtrip() -> void:
 	_FeatureRegistry.register_town(Vector2i(20, 20), 2, "TestTown")
 	var bundle: Dictionary = _WorldState.get_active().export_persistence_bundle()
 	var sealed: Dictionary = _SaveSchema.attach_integrity({
-		"schema_version": 2,
-		"version": 2,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
+		"version": _SaveSchema.CURRENT_VERSION,
 		"format": _SaveSchema.FORMAT_ID,
 		"world_state": bundle,
 		"terrain_edits": {
@@ -222,6 +206,33 @@ func _test_json_disk_vector2i_roundtrip() -> void:
 	print("OK JSON/disk Vector2i roundtrip (features, spawns, towns)")
 
 
+func _test_wet_cells_roundtrip() -> void:
+	_WorldState.replace_active()
+	for i in 7:
+		_ChannelRegistry.register_fluid(20 + i, 5, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, float(7 - i) / 8.0)
+	var before: Dictionary = {}
+	for key in _ChannelRegistry.all_fluid_positions(_ChannelRegistry.FLUID_WATER):
+		before[key] = _ChannelRegistry.get_fluid_level(key.x, key.y, _ChannelRegistry.FLUID_WATER)
+	var bundle: Dictionary = _WorldState.get_active().export_persistence_bundle()
+	var sealed: Dictionary = _SaveSchema.attach_integrity({
+		"schema_version": _SaveSchema.CURRENT_VERSION,
+		"world_state": bundle,
+	})
+	var check: Dictionary = _SaveSchema.validate_and_migrate(JSON.parse_string(JSON.stringify(sealed)))
+	if not bool(check.get("ok", false)):
+		_fail("wet cells save failed validation: %s" % str(check.get("reason")))
+		return
+	_WorldState.replace_active()
+	_WorldState.get_active().import_persistence_bundle(check.get("data", {}).get("world_state", {}))
+	var after: Dictionary = {}
+	for key in _ChannelRegistry.all_fluid_positions(_ChannelRegistry.FLUID_WATER):
+		after[key] = _ChannelRegistry.get_fluid_level(key.x, key.y, _ChannelRegistry.FLUID_WATER)
+	if before.size() != 7 or str(before) != str(after):
+		_fail("wet cells changed across save and load before=%s after=%s" % [str(before), str(after)])
+		return
+	print("OK new world saves and reloads the same %d wet cells" % after.size())
+
+
 func _test_deterministic_restore() -> void:
 	_WorldState.replace_active()
 	_TerrainEdits.dig(1, 2, 1)
@@ -255,7 +266,7 @@ func _test_checkpoint_rollback() -> void:
 
 func _test_integrity_attach() -> void:
 	var payload := {
-		"schema_version": 2,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
 		"world_state": {
 			"height_delta": {},
 			"build_tile": {},

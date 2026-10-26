@@ -15,7 +15,7 @@ signal load_completed(slot: int)
 signal save_failed(slot: int, reason: String)
 signal load_transaction_stage(stage: String)
 
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 
 const STAGE_IDLE := "idle"
 const STAGE_VALIDATE := "validate"
@@ -415,7 +415,7 @@ func apply_snapshot_transactional(raw) -> bool:
 	if not bool(check.get("ok", false)):
 		_set_stage(STAGE_IDLE)
 		_transaction_active = false
-		save_failed.emit(-1, "validate_%s" % str(check.get("reason", "fail")))
+		save_failed.emit(-1, str(check.get("message", "validate_%s" % str(check.get("reason", "fail")))))
 		return false
 	var data: Dictionary = check.get("data", {})
 

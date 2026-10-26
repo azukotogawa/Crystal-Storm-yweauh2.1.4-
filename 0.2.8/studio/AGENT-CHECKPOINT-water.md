@@ -16,3 +16,8 @@ Env: Godot 4.7.2 headless on a Linux VM, scratch copy with stand-in art, shaders
 - Rewrote the engine cases in `verify_voxel_fluid_engine`, `verify_water_sprint`, `verify_terrain_loop_complete`.
 - Simplification: horizontal spread goes to every lower neighbour, not only toward the nearest drop.
 - `verify_water_body` exits 1 in this scratch copy only because `water_surface.gd` cannot load with stand-in shaders; its assertions need the Dell.
+
+## cs-water-03
+- `SaveSchema.CURRENT_VERSION` and `MIN_SUPPORTED_VERSION` are 3; `migrate` and `_migrate_v1_to_v2` deleted. An older save returns `message` "world from an older version, create a new world", which `apply_snapshot_transactional` emits on `save_failed`.
+- `verify_save_architecture`: old-version-refused case and a wet-cells save/JSON/reload case (7 flowed cells, identical levels). `verify_save_transaction` and `verify_macro_micro_save_migrate` moved to version 3 fixtures. All pass.
+- Not run: the Continue/world-list UI showing the message to a player (needs the Dell and real UI art). `continue` simply finds no valid save for an old world.

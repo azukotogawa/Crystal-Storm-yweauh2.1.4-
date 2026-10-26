@@ -128,17 +128,9 @@ func _test_dig_micro_not_in_export() -> void:
 func _test_v1_migrate_rederive_micro() -> void:
 	_TerrainEdits.reset()
 	var v1 := {
-		"version": 1,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
 		"world_seed": 4242,
-		"terrain_edits": {
-			"height_delta": {"6,8": -2},
-			"build_tile": {},
-		},
-		"features": {
-			"tile_overrides": {},
-			"feature_cells": {},
-		},
-		"channels": {"channels": {}},
+		"world_state": {"height_delta": {"6,8": -2}, "build_tile": {}},
 	}
 	var mig: Dictionary = _SaveSchema.validate_and_migrate(v1)
 	if not bool(mig.get("ok", false)):
@@ -158,7 +150,7 @@ func _test_v1_migrate_rederive_micro() -> void:
 	if layers != -2:
 		_fail("import after migrate height_delta want -2 got %d" % layers)
 		return
-	print("OK v1→v2 migrate + import height_delta=-2 at (6,8)")
+	print("OK validate + import height_delta=-2 at (6,8)")
 
 	var data := _make_chunk(4242)
 	data.derive_micro_from_terrain_edits()
@@ -189,7 +181,7 @@ func _test_v1_migrate_rederive_micro() -> void:
 
 func _test_flag_off_collapses_micro_to_whole_blocks() -> void:
 	var raw := {
-		"schema_version": 2,
+		"schema_version": _SaveSchema.CURRENT_VERSION,
 		"world_seed": 4242,
 		"world_state": {
 			"height_delta": {
