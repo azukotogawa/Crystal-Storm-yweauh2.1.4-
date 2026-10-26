@@ -652,8 +652,10 @@ func _camera() -> String:
 		beat = 1
 		return ""
 	if beat == 1:
-		if show_age < 0.5 or not hands.pulse_key(KEY_E):
+		hands.set_held(PackedStringArray(["rotate_right"]))
+		if show_age < 0.5:
 			return ""
+		hands.set_held(PackedStringArray())
 		show_age = 0.0
 		beat = 2
 		return ""
@@ -729,7 +731,7 @@ func _tour_build(cam, weapon, skills, bar) -> void:
 	var s: Dictionary = {}
 	tour = [
 		[func(): s["yaw"] = cam.yaw_degrees; s["pitch"] = cam.pitch_degrees; s["zoom"] = cam.zoom_level; s["col"] = _column(); s["sig"] = str(_height_snap_at(s.col)); aim = _dry_near(), 0.5, func(): pass],
-		[func(): hands.pulse_key(KEY_E), 1.5, func(): _tour_note("snap_yaw", absf(fposmod(cam.yaw_degrees - s.yaw + 180.0, 360.0) - 180.0 - 90.0) <= 1.0)],
+		[func(): hands.set_held(PackedStringArray(["rotate_right"])), 0.5, func(): hands.set_held(PackedStringArray()); s["dyaw"] = fposmod(cam.yaw_target_degrees - s.yaw + 180.0, 360.0) - 180.0; _tour_note("smooth_yaw", s.dyaw > 5.0 and s.dyaw < 85.0)],
 		[func(): hands.motion(_alt_look_rel(cam), true), 1.2, func(): _tour_note("alt_look", absf(cam.pitch_degrees - s.pitch) >= 1.0)],
 		[func(): hands.pulse_key(KEY_EQUAL), 0.4, func(): _tour_note("zoom_key", cam.zoom_level < s.zoom); s["z1"] = cam.zoom_level],
 		[func(): hands.wheel(true, true), 0.4, func(): _tour_note("ctrl_wheel", cam.zoom_level < s.z1)],

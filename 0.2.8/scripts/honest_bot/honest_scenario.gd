@@ -473,8 +473,8 @@ func _expect(name: String, before: Dictionary, after: Dictionary, seen: PackedSt
 	if name == "camera":
 		var c: Dictionary = after.get("cam", {})
 		var dy := fposmod(float(c.yaw1) - float(c.yaw0) + 180.0, 360.0) - 180.0
-		if absf(dy - 90.0) > 1.0:
-			return "tap E yaw changed %.1f want 90" % dy
+		if dy < 5.0 or dy > 85.0:
+			return "held E yaw changed %.1f want a smooth 5..85" % dy
 		if absf(float(c.pitch1) - float(c.pitch0)) < 1.0:
 			return "Alt look did not change pitch"
 		if float(c.zoom1) >= float(c.zoom0):
