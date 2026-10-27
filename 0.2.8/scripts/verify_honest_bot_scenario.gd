@@ -14,6 +14,7 @@ func _run() -> void:
 	var name := OS.get_environment("CRYSTALSTORM_SCENARIO").strip_edges()
 	if name == "":
 		name = "dig"
+	GameFeelConfig.pace_override = 1.0
 	var run = _Run.new()
 	var code: int = await run.play(self, name)
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
