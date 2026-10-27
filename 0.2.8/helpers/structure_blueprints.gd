@@ -2,6 +2,7 @@ class_name StructureBlueprints
 extends RefCounted
 
 const _Registry = preload("res://building/building_registry.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 const LARGE_STRUCTURES := true
 
@@ -10,6 +11,7 @@ const WALL_CORNER := &"wall_corner"
 const GATE := &"gate"
 const STAIRS := &"stairs"
 const SMALL_TOWER := &"small_tower"
+const FILL := "fill"
 
 
 static func ids() -> Array[StringName]:
@@ -22,15 +24,15 @@ static func get_blueprint(id: StringName) -> Dictionary:
 	if not LARGE_STRUCTURES:
 		return {}
 	if id == WALL_SEGMENT:
-		return _make(WALL_SEGMENT, 3, 2, 1, _segment_cells(), "stone_wall")
+		return _make(WALL_SEGMENT, 3, 2, 1, _segment_cells())
 	if id == WALL_CORNER:
-		return _make(WALL_CORNER, 2, 2, 2, _corner_cells(), "stone_wall")
+		return _make(WALL_CORNER, 2, 2, 2, _corner_cells())
 	if id == GATE:
 		return _gate()
 	if id == STAIRS:
-		return _make(STAIRS, 3, 3, 1, _stair_cells(), "stairs")
+		return _make(STAIRS, 3, 3, 1, _stair_cells())
 	if id == SMALL_TOWER:
-		return _make(SMALL_TOWER, 2, 3, 2, _tower_cells(), "small_tower")
+		return _make(SMALL_TOWER, 2, 3, 2, _tower_cells())
 	return {}
 
 
@@ -73,7 +75,7 @@ static func _gate() -> Dictionary:
 	for y in 2:
 		posts.append(Vector3i(0, y, 0))
 		posts.append(Vector3i(2, y, 0))
-	var bp := _make(GATE, 3, 2, 1, posts, "stone_wall")
+	var bp := _make(GATE, 3, 2, 1, posts)
 	var gate = _Registry.get_def(&"gate")
 	bp["passages"] = [{
 		"x": 1,
@@ -92,10 +94,10 @@ static func _gate() -> Dictionary:
 	return bp
 
 
-static func _make(id: StringName, w: int, h: int, d: int, mask: Array[Vector3i], build_id: String) -> Dictionary:
+static func _make(id: StringName, w: int, h: int, d: int, mask: Array[Vector3i]) -> Dictionary:
 	_Registry.ensure_builtins()
 	var wall = _Registry.get_def(&"stone_wall")
-	var tile := int(wall.tile_id)
+	var tile := _VoxelTypes.STONE
 	var per := maxi(1, int(wall.material_count))
 	var wood_each := maxi(0, int(wall.wood_fallback_count))
 	var cells: Array[Dictionary] = []
@@ -105,7 +107,7 @@ static func _make(id: StringName, w: int, h: int, d: int, mask: Array[Vector3i],
 			"y": cell.y,
 			"z": cell.z,
 			"tile": tile,
-			"build": build_id,
+			"build": FILL,
 			"role": "wall",
 		})
 	var count := cells.size() * per
@@ -114,7 +116,7 @@ static func _make(id: StringName, w: int, h: int, d: int, mask: Array[Vector3i],
 		"footprint": {"w": w, "h": h, "d": d},
 		"cells": cells,
 		"passages": [],
-		"build_id": build_id,
+		"build_id": FILL,
 		"cost": {
 			"id": str(wall.material_id),
 			"count": count,
