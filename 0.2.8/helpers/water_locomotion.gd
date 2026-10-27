@@ -73,6 +73,13 @@ static func sample(
 	}
 
 
+static func visual_drop(info: Dictionary, feet_y: float, body_height: float, depth: float) -> float:
+	if not bool(info.get("submerged", false)):
+		return 0.0
+	var surface := float(info.get("surface_y", feet_y))
+	return maxf(0.0, feet_y - (surface - body_height * depth))
+
+
 static func settle_y(current_y: float, info: Dictionary, delta: float) -> float:
 	if not bool(info.get("submerged", false)):
 		return float(info.get("ground_y", current_y))

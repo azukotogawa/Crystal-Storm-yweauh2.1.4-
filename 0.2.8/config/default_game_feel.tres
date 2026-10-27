@@ -37,3 +37,4 @@ draw_min_charge = 0.2
 draw_min_speed = 10.0
 draw_max_speed = 36.0
 draw_curve = 1.0
+swim_visual_depth = 0.8

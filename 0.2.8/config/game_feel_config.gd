@@ -73,6 +73,7 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(2.0, 30.0, 0.5) var draw_min_speed: float = 10.0
 @export_range(10.0, 80.0, 0.5) var draw_max_speed: float = 36.0
 @export_range(0.5, 3.0, 0.05) var draw_curve: float = 1.0
+@export_range(0.0, 1.0, 0.05) var swim_visual_depth: float = 0.8
 
 
 static func create_default():
@@ -110,6 +111,7 @@ static func create_default():
 	cfg.draw_min_speed = 10.0
 	cfg.draw_max_speed = 36.0
 	cfg.draw_curve = 1.0
+	cfg.swim_visual_depth = 0.8
 	return cfg
 
 

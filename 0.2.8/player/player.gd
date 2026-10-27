@@ -1315,8 +1315,13 @@ func _apply_walk_bob(delta: float) -> void:
 		_locomotion.apply(player_mesh, pose, _bob_phase)
 	else:
 		_PlayerBodyMesh.play_pose(player_mesh, pose, _bob_phase)
-	player_mesh.position.y = _mesh_rest_y
+	player_mesh.position.y = _mesh_rest_y - _swim_visual_drop()
 	player_mesh.scale = Vector3.ONE
+
+
+func _swim_visual_drop() -> float:
+	var feet := voxel_position.y
+	return _Water.visual_drop(_water_here(feet), feet, _player_height(), GameFeelConfig.active().swim_visual_depth)
 
 
 func _tick_feet_water() -> void:
