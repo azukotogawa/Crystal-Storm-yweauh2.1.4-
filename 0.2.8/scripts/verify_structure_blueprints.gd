@@ -3,6 +3,7 @@ extends SceneTree
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _Registry = preload("res://building/building_registry.gd")
 const _Edits = preload("res://world/terrain_edits.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _Weapon = preload("res://weapons/weapon_controller.gd")
 const _Highlight = preload("res://player/target_highlight.gd")
 const _Features = preload("res://world/feature_registry.gd")
@@ -110,8 +111,8 @@ func _test_gate() -> void:
 	var seen := {}
 	for cell in bp["cells"]:
 		seen[Vector3i(int(cell["x"]), int(cell["y"]), int(cell["z"]))] = str(cell.get("build", ""))
-	if seen.get(Vector3i(0, 0, 0), "") != "stone_wall" or seen.get(Vector3i(2, 1, 0), "") != "stone_wall":
-		_fail("gate posts must be stone walls")
+	if seen.get(Vector3i(0, 0, 0), "") != "fill" or seen.get(Vector3i(2, 1, 0), "") != "fill":
+		_fail("gate posts must be fill blocks")
 		return
 	if seen.has(Vector3i(1, 0, 0)):
 		_fail("gate opening must not be a stacked wall cell")
@@ -137,8 +138,8 @@ func _test_stairs() -> void:
 		return
 	var heights := [0, 0, 0]
 	for cell in bp["cells"]:
-		if str(cell.get("build", "")) != "stairs":
-			_fail("stairs cells must use the stairs build")
+		if str(cell.get("build", "")) != "fill":
+			_fail("stairs cells must be fill blocks")
 			return
 		heights[int(cell["x"])] += 1
 	if heights != [1, 2, 3]:
@@ -155,8 +156,8 @@ func _test_tower() -> void:
 	if not _expect_box(bp, "small_tower", 2, 3, 2, 12):
 		return
 	for cell in bp["cells"]:
-		if str(cell.get("build", "")) != "small_tower":
-			_fail("tower cells must use the small tower build")
+		if str(cell.get("build", "")) != "fill":
+			_fail("tower cells must be fill blocks")
 			return
 	var stone = _Registry.get_def(&"stone_wall")
 	if not _expect_cost(bp, stone, 12):
@@ -432,8 +433,8 @@ func _place_gate_stairs_tower(editor, world) -> bool:
 		_fail("gate opening must keep the gate visual")
 		return false
 	var post: Dictionary = _Features.get_feature(4, 12)
-	if str(post.get("build_id", "")) != "stone_wall" or str(post.get("visual_id", "")) != "stone_wall":
-		_fail("gate posts must keep the stone wall visual")
+	if str(post.get("visual_id", "")) != "" or _Edits.get_build_tile(4, 12) != _VoxelTypes.STONE:
+		_fail("gate posts must be plain fill blocks: %s" % str(post))
 		return false
 	var placed_stairs: bool = editor.try_place_blueprint(Vector3(4.2, 0.0, 16.2), inv, _Blueprints.STAIRS, 0)
 	if not placed_stairs or int(editor.last_place_batch.get("placed_count", 0)) != 6:
@@ -443,8 +444,8 @@ func _place_gate_stairs_tower(editor, world) -> bool:
 		_fail("stairs must leave layers 1, 2, and 3")
 		return false
 	var step: Dictionary = _Features.get_feature(6, 16)
-	if str(step.get("build_id", "")) != "stairs" or str(step.get("visual_id", "")) != "stairs":
-		_fail("stairs columns must use the stairs visual")
+	if str(step.get("visual_id", "")) != "" or _Edits.get_build_tile(6, 16) != _VoxelTypes.STONE:
+		_fail("stairs columns must be plain fill blocks: %s" % str(step))
 		return false
 	var placed_tower: bool = editor.try_place_blueprint(Vector3(10.2, 0.0, 16.2), inv, _Blueprints.SMALL_TOWER, 0)
 	if not placed_tower or int(editor.last_place_batch.get("placed_count", 0)) != 12:
@@ -454,8 +455,8 @@ func _place_gate_stairs_tower(editor, world) -> bool:
 		_fail("small tower must raise a 2x2 by three layers")
 		return false
 	var crown: Dictionary = _Features.get_feature(11, 17)
-	if str(crown.get("build_id", "")) != "small_tower" or str(crown.get("visual_id", "")) != "small_tower":
-		_fail("small tower columns must use the tower visual")
+	if str(crown.get("visual_id", "")) != "" or _Edits.get_build_tile(11, 17) != _VoxelTypes.STONE:
+		_fail("small tower columns must be plain fill blocks: %s" % str(crown))
 		return false
 	print("OK gate, stairs, and small tower place from their blueprints")
 	return true

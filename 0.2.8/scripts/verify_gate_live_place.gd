@@ -206,7 +206,8 @@ func _check_blueprint_live(editor, world, player, feat_layer, inv) -> void:
 	if _layers_at(gate_at.x + 1, gate_at.y) != before_open:
 		_fail("live gate opening changed the ground")
 	_expect_live_mesh(feat_layer, Vector2i(gate_at.x + 1, gate_at.y), "gate", GATE_MESH_PATH)
-	_expect_live_mesh(feat_layer, gate_at, "stone_wall", STONE_MESH_PATH)
+	_expect_plain_fill(feat_layer, gate_at, "gate post")
+	_expect_plain_fill(feat_layer, Vector2i(gate_at.x + 2, gate_at.y), "gate post")
 	_ok("live gate blueprint placed the authored passage")
 	var stair_at := _find_clear(world, player, 3, 1)
 	if stair_at.x < -100000:
@@ -219,8 +220,9 @@ func _check_blueprint_live(editor, world, player, feat_layer, inv) -> void:
 	await process_frame
 	if _layers_at(stair_at.x, stair_at.y) != stair_before + 1 or _layers_at(stair_at.x + 1, stair_at.y) != stair_before + 2 or _layers_at(stair_at.x + 2, stair_at.y) != stair_before + 3:
 		_fail("live stairs did not rise 1, 2, 3")
-	_expect_live_mesh(feat_layer, stair_at, "stairs", STONE_MESH_PATH)
-	_ok("live stairs placed the authored step mesh")
+	for i in 3:
+		_expect_plain_fill(feat_layer, Vector2i(stair_at.x + i, stair_at.y), "stairs")
+	_ok("live stairs are plain fill blocks")
 	var tower_at := _find_clear(world, player, 2, 2)
 	if tower_at.x < -100000:
 		_fail("no flat pad for the live small tower")
@@ -232,8 +234,16 @@ func _check_blueprint_live(editor, world, player, feat_layer, inv) -> void:
 	await process_frame
 	if _layers_at(tower_at.x, tower_at.y) != tower_before + 3 or _layers_at(tower_at.x + 1, tower_at.y + 1) != tower_before + 3:
 		_fail("live small tower did not rise three layers")
-	_expect_live_mesh(feat_layer, tower_at, "small_tower", TOWER_MESH_PATH)
-	_ok("live small tower placed the authored pillar mesh")
+	for i in 4:
+		_expect_plain_fill(feat_layer, Vector2i(tower_at.x + i % 2, tower_at.y + i / 2), "small tower")
+	_ok("live small tower is plain fill blocks")
+
+
+func _expect_plain_fill(feat_layer, cell: Vector2i, what: String) -> void:
+	if feat_layer._nodes_by_cell.get(cell) != null:
+		_fail("%s at %s has a building mesh on top of the fill blocks" % [what, str(cell)])
+	if str(_FeatureRegistry.get_feature(cell.x, cell.y).get("build_id", "")) != "":
+		_fail("%s at %s is stamped as %s" % [what, str(cell), _FeatureRegistry.get_feature(cell.x, cell.y).get("build_id", "")])
 
 
 func _expect_live_mesh(feat_layer, cell: Vector2i, visual: String, path: String) -> void:

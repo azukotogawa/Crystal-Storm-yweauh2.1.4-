@@ -9,6 +9,7 @@ const _ProbeExit = preload("res://scripts/probe_exit.gd")
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _Settings = preload("res://config/world_settings.gd")
 const _Registry = preload("res://systems/game_visual_registry.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 const STONE_MESH := "res://assets/structures/stone_wall/stone_wall.obj"
 const GATE_MESH := "res://assets/structures/gate/gate.obj"
@@ -121,7 +122,7 @@ func _check_segment(editor, feat, world, player, probe, inv) -> void:
 		var col := Vector2i(at.x + x, at.y)
 		if _layers_at(col.x, col.y) != before + 2:
 			rose = false
-		_expect_mesh(feat, col, "stone_wall", STONE_MESH)
+		_expect_fill(feat, col)
 		if _can_enter(probe, Vector2i(col.x, col.y - 1), col):
 			_fail("wall segment column %s does not block" % str(col))
 	if _layers_at(at.x + 3, at.y) != beside:
@@ -150,7 +151,7 @@ func _check_corner(editor, feat, world, player, probe, inv) -> void:
 	for col in solid:
 		if _layers_at(col.x, col.y) != before + 2:
 			rose = false
-		_expect_mesh(feat, col, "stone_wall", STONE_MESH)
+		_expect_fill(feat, col)
 		var front := Vector2i(col.x, col.y - 1) if col.y == at.y else Vector2i(col.x - 1, col.y)
 		if _can_enter(probe, front, col):
 			_fail("wall corner column %s does not block" % str(col))
@@ -179,8 +180,8 @@ func _check_gate(editor, feat, world, player, probe, inv) -> void:
 		_fail("gate posts did not rise two layers")
 	if _layers_at(open.x, open.y) != open_before:
 		_fail("gate opening changed the ground")
-	_expect_mesh(feat, at, "stone_wall", STONE_MESH)
-	_expect_mesh(feat, Vector2i(at.x + 2, at.y), "stone_wall", STONE_MESH)
+	_expect_fill(feat, at)
+	_expect_fill(feat, Vector2i(at.x + 2, at.y))
 	_expect_mesh(feat, open, "gate", GATE_MESH)
 	if _can_enter(probe, Vector2i(at.x, at.y - 1), at):
 		_fail("gate post does not block")
@@ -203,9 +204,9 @@ func _check_stairs(editor, feat, world, player, probe, inv) -> void:
 	var high := Vector2i(at.x + 2, at.y)
 	if _layers_at(low.x, low.y) != before + 1 or _layers_at(mid.x, mid.y) != before + 2 or _layers_at(high.x, high.y) != before + 3:
 		_fail("stairs did not rise 1, 2, 3")
-	_expect_mesh(feat, low, "stairs", STONE_MESH)
-	_expect_mesh(feat, mid, "stairs", STONE_MESH)
-	_expect_mesh(feat, high, "stairs", STONE_MESH)
+	_expect_fill(feat, low)
+	_expect_fill(feat, mid)
+	_expect_fill(feat, high)
 	if not _can_enter(probe, Vector2i(low.x, low.y - 1), low):
 		_fail("first stair does not accept a step")
 	if not _can_enter(probe, low, mid) or not _can_enter(probe, mid, high):
@@ -234,7 +235,7 @@ func _check_tower(editor, feat, world, player, probe, inv) -> void:
 	for col in cols:
 		if _layers_at(col.x, col.y) != before + 3:
 			rose = false
-		_expect_mesh(feat, col, "small_tower", TOWER_MESH)
+		_expect_fill(feat, col)
 		var outside := Vector2i(col.x - 1, col.y) if col.x == at.x else Vector2i(col.x + 1, col.y)
 		if _can_enter(probe, outside, col):
 			_fail("tower column %s does not block" % str(col))
@@ -268,6 +269,13 @@ func _expect_mesh(feat, cell: Vector2i, visual: String, path: String) -> void:
 		return
 	if str(mesh.get_meta("authored_resource_path", "")) != path:
 		_fail("live %s path %s" % [visual, mesh.get_meta("authored_resource_path", "")])
+
+
+func _expect_fill(feat, cell: Vector2i) -> void:
+	if feat._nodes_by_cell.get(cell) != null:
+		_fail("fill column %s has a building visual" % str(cell))
+	if _TerrainEdits.get_build_tile(cell.x, cell.y) != _VoxelTypes.STONE:
+		_fail("fill column %s is not a stone fill block" % str(cell))
 
 
 func _can_enter(probe, frm: Vector2i, to: Vector2i) -> bool:
