@@ -10,7 +10,8 @@ func _init() -> void:
 	var ws = _WorldSettings.get_active()
 	var height: float = ws.player_height()
 	var layer: float = ws.layer_height()
-	var depth: float = GameFeelConfig.active().swim_visual_depth
+	var cfg = GameFeelConfig.active()
+	var depth: float = float(cfg.get("swim_visual_depth")) if "swim_visual_depth" in cfg else 0.0
 	var helper = _Water.new()
 	var has_drop: bool = helper.has_method("visual_drop")
 	for surface in [10.0, 12.0, 20.0]:
@@ -20,7 +21,7 @@ func _init() -> void:
 			var drop: float = helper.call("visual_drop", info, feet, height, depth) if has_drop else 0.0
 			var shown: float = feet - drop
 			var above: float = (shown + height - surface) / height
-			if above > 1.0 - depth + 0.001:
+			if above > 0.25:
 				_fail("surface %.1f feet %.2f: %.0f%% of the body above water" % [surface, feet, above * 100.0])
 			else:
 				print("OK surface %.1f feet %.2f drop %.2f above %.0f%%" % [surface, feet, drop, above * 100.0])
