@@ -898,9 +898,9 @@ func _show_swing(item_id: String, hit_pos: Vector3) -> void:
 	if not is_instance_valid(_player):
 		_player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
 	var origin := hit_pos
+	var forward := Vector3.ZERO
 	if _player:
-		origin = _player.global_position + Vector3(0.0, _vox(0.7), 0.0)
-	var forward := hit_pos - origin
+		forward = hit_pos - (_player.global_position + Vector3(0.0, _vox(0.7), 0.0))
 	if forward.length() > 48.0 and _player and "locked_yaw_degrees" in _player:
 		var yaw := deg_to_rad(float(_player.locked_yaw_degrees))
 		forward = Vector3(sin(yaw), 0.0, cos(yaw))

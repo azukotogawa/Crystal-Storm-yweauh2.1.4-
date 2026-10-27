@@ -23,7 +23,7 @@ const BEATS: Array[String] = [
 ]
 const ENEMIES: Array[String] = ["mite", "boss", "burn_pool"]
 
-const TELEGRAPH_MIN := 0.15
+const TELEGRAPH_MIN := 0.09
 const TELEGRAPH_MAX := 0.40
 const HIT_STOP_MIN := 0.05
 const HIT_STOP_MAX := 0.10
@@ -78,12 +78,12 @@ const BRUSH_REACH_MAX := 8.0
 static func create_default():
 	var cfg = load("res://config/game_feel_config.gd").new()
 	cfg.action_ids = PackedStringArray(ACTIONS)
-	cfg.telegraph_sec = PackedFloat32Array([0.18, 0.32, 0.28, 0.20, 0.35, 0.40, 0.22, 0.16])
+	cfg.telegraph_sec = PackedFloat32Array([0.18, 0.32, 0.28, 0.20, 0.21, 0.40, 0.22, 0.10])
 	cfg.hit_stop_sec = PackedFloat32Array([0.05, 0.09, 0.07, 0.05, 0.08, 0.05, 0.06, 0.05])
 	cfg.shake = PackedFloat32Array([0.22, 0.70, 0.40, 0.18, 0.48, 0.12, 0.28, 0.16])
 	cfg.flash = PackedFloat32Array([0.15, 0.55, 0.65, 0.25, 0.40, 0.10, 0.35, 0.30])
 	cfg.linger_sec = PackedFloat32Array([0.55, 0.90, 1.10, 0.80, 0.70, 0.60, 0.50, 0.85])
-	cfg.recovery_sec = PackedFloat32Array([0.12, 0.28, 0.22, 0.16, 0.24, 0.20, 0.14, 0.12])
+	cfg.recovery_sec = PackedFloat32Array([0.12, 0.28, 0.22, 0.16, 0.14, 0.20, 0.14, 0.07])
 	cfg.beat_ids = PackedStringArray(BEATS)
 	cfg.banner_beats = PackedFloat32Array([2.4, 2.6, 2.2, 2.8, 2.5, 2.2, 3.0, 3.0])
 	cfg.slow_mo_scale = PackedFloat32Array([0.55, 0.60, 0.70, 0.50, 0.75, 0.45, 0.40, 0.35])
