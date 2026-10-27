@@ -268,10 +268,6 @@ func remesh_break_chunk(_chunk: Vector2i, columns: Array) -> void:
 
 
 func update_break_water(_chunk: Vector2i, columns: Array) -> void:
-	if columns.is_empty():
-		return
-	var col: Vector2i = columns[0]
-	_notify_water_reflow(col.x, col.y, true)
 	_living_water_inflow(columns)
 
 
