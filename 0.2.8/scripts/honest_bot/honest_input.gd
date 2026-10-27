@@ -321,7 +321,7 @@ func _face_screen(body: Node, world, col_x: float, col_z: float) -> Vector2:
 	var cx := floori(col_x)
 	var cz := floori(col_z)
 	var top := _TerrainEdits.surface_block_y(world, cx, cz)
-	var p := Vector3((float(cx) + 0.5) * s, float(top) * s, (float(cz) + 0.5) * s)
+	var p := Vector3((float(cx) + 0.5) * s, float(top + 1) * s, (float(cz) + 0.5) * s)
 	if cam.is_position_behind(p):
 		return _Aim.screen_pos_for_column(body, world, col_x, col_z)
 	return cam.unproject_position(p)
