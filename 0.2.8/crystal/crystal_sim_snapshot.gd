@@ -17,6 +17,7 @@ var grass_absorb_rate: float = 0.15
 var bush_absorb_rate: float = 0.12
 var tree_absorb_rate: float = 0.08
 var farmland_absorb_rate: float = 0.10
+var content_pace: float = 1.0
 var min_depth: float = 0.04
 var spatial_query = null
 var ruin_centers: Array = []

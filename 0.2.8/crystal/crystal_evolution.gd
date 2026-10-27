@@ -55,8 +55,8 @@ func _check_unlocks(source_id: StringName) -> Dictionary:
 		enemy_unlocked.emit(enemy_id)
 		result = {
 			"enemy_id": enemy_id,
-			"bonus_power": def.bonus_power,
-			"spawn_burst": def.spawn_burst,
+			"bonus_power": def.bonus_power * GameFeelConfig.pace(),
+			"spawn_burst": GameFeelConfig.paced_count(def.spawn_burst, GameFeelConfig.pace()),
 		}
 	return result
 

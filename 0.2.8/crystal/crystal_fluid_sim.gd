@@ -354,7 +354,7 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		if not _cell_active(pos):
 			continue
 		var current: float = float(depth.get(pos, 0.0))
-		var added: float = spawn.emit_rate * mult * delta
+		var added: float = spawn.emit_rate * GameFeelConfig.pace() * mult * delta
 		var room := depth_cap(pos) - current
 		if room <= 0.0:
 			continue

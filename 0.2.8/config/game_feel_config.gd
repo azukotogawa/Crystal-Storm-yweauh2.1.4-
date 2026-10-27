@@ -74,6 +74,10 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(10.0, 80.0, 0.5) var draw_max_speed: float = 36.0
 @export_range(0.5, 3.0, 0.05) var draw_curve: float = 1.0
 @export_range(0.0, 1.0, 0.05) var swim_visual_depth: float = 0.8
+@export_range(0.1, 2.0, 0.05) var content_pace: float = 0.45
+
+static var pace_override: float = -1.0
+static var _pace_cache: float = -1.0
 
 
 static func create_default():
@@ -112,7 +116,40 @@ static func create_default():
 	cfg.draw_max_speed = 36.0
 	cfg.draw_curve = 1.0
 	cfg.swim_visual_depth = 0.8
+	cfg.content_pace = 0.45
 	return cfg
+
+
+static func pace() -> float:
+	if pace_override > 0.0:
+		return pace_override
+	if _pace_cache <= 0.0:
+		_pace_cache = float(active().content_pace)
+	return _pace_cache
+
+
+static func paced_interval(sec: float, p: float) -> float:
+	return sec / maxf(p, 0.01)
+
+
+static func paced_cap(n: int, p: float) -> int:
+	return maxi(mini(n, 6), roundi(float(n) * p))
+
+
+static func paced_mult(m: float, p: float) -> float:
+	return 1.0 + (m - 1.0) * p
+
+
+static func paced_count(n: int, p: float) -> int:
+	if n <= 0:
+		return n
+	return maxi(1, ceili(float(n) * p - 0.0001))
+
+
+static func paced_summon(n: int, p: float) -> int:
+	if n <= 0:
+		return n
+	return maxi(1, roundi(float(n) * p))
 
 
 static func active():

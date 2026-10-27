@@ -157,7 +157,7 @@ func _process(delta: float) -> void:
 			profiler.end("enemy_spawner")
 		return
 	_grace_elapsed += delta
-	var in_grace := _grace_elapsed < spawn_grace_sec
+	var in_grace := _grace_elapsed < paced_grace()
 	_tick_guardians(delta, in_grace)
 	if in_grace:
 		if profiler and profiler.has_method("end"):
@@ -168,14 +168,14 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("enemy_spawner")
 		return
-	if _active.size() >= max_active:
+	if _active.size() >= paced_cap():
 		if profiler and profiler.has_method("end"):
 			profiler.end("enemy_spawner")
 		return
 
-	var interval := spawn_interval
+	var interval := paced_interval()
 	if _game_manager and _game_manager.phase == GameManager.Phase.ASSAULT:
-		interval /= assault_spawn_mult
+		interval /= paced_assault_mult()
 	interval /= _spawn_pressure_mult()
 	interval /= _biome_mob_mult()
 
@@ -207,7 +207,7 @@ func _process(delta: float) -> void:
 
 func _on_enemy_unlocked(enemy_id: StringName) -> void:
 	# Don't dump a death burst during early orientation grace.
-	if _grace_elapsed < spawn_grace_sec:
+	if _grace_elapsed < paced_grace():
 		return
 	var def = _EnemySpawnRegistry.get_def(enemy_id)
 	var burst := 1
@@ -215,10 +215,10 @@ func _on_enemy_unlocked(enemy_id: StringName) -> void:
 		var evo = _crystal.get_evolution()
 		for entry in evo.unlock_table:
 			if entry.enemy_id == enemy_id:
-				burst = maxi(int(entry.spawn_burst), 1)
+				burst = maxi(GameFeelConfig.paced_count(int(entry.spawn_burst), GameFeelConfig.pace()), 1)
 				break
 	for _i in burst:
-		if _active.size() >= max_active:
+		if _active.size() >= paced_cap():
 			break
 		_spawn_enemy(enemy_id)
 
@@ -250,7 +250,7 @@ func spawn_enemy_at_column(enemy_id: StringName, wx: int, wz: int, patrol: Vecto
 	var spawn_def = _EnemySpawnRegistry.get_def(enemy_id)
 	if spawn_def == null:
 		return false
-	if not ignore_cap and _active.size() >= max_active:
+	if not ignore_cap and _active.size() >= paced_cap():
 		return false
 	var spawn_pos := _world_pos_for_column(wx, wz)
 	if spawn_pos == Vector3.ZERO:
@@ -516,7 +516,7 @@ func _try_spawn_guardians() -> void:
 		var sid := int(spawn.id)
 		if _guarded_spawn_ids.has(sid):
 			continue
-		if _active.size() >= max_active:
+		if _active.size() >= paced_cap():
 			return
 		var kind: StringName = &"origin_warden" if bool(spawn.is_boss) else &"spawn_elite"
 		var at := Vector2i(spawn.world_pos)
@@ -607,7 +607,27 @@ func _spawn_pressure_mult() -> float:
 	if total <= 0:
 		return 1.0
 	var destroyed_ratio: float = float(total - active) / float(total)
-	return 1.0 + destroyed_ratio * 1.25
+	return 1.0 + destroyed_ratio * pressure_coeff()
+
+
+func paced_interval() -> float:
+	return GameFeelConfig.paced_interval(spawn_interval, GameFeelConfig.pace())
+
+
+func paced_cap() -> int:
+	return GameFeelConfig.paced_cap(max_active, GameFeelConfig.pace())
+
+
+func paced_grace() -> float:
+	return GameFeelConfig.paced_interval(spawn_grace_sec, GameFeelConfig.pace())
+
+
+func paced_assault_mult() -> float:
+	return GameFeelConfig.paced_mult(assault_spawn_mult, GameFeelConfig.pace())
+
+
+func pressure_coeff() -> float:
+	return 1.25 * GameFeelConfig.pace()
 
 
 func _biome_mob_mult() -> float:

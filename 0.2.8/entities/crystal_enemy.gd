@@ -939,7 +939,7 @@ func _summon_mites(count: int) -> void:
 	if spawner == null or not spawner.has_method("spawn_enemy_at_column"):
 		return
 	var cell := _EntityNavigation.column_pos(global_position)
-	var n := mini(count, 3)
+	var n := GameFeelConfig.paced_summon(mini(count, 3), GameFeelConfig.pace())
 	for i in n:
 		spawner.spawn_enemy_at_column(&"crystal_mite", cell.x + i - 1, cell.y + 2, cell)
 

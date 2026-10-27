@@ -608,9 +608,9 @@ record_trap() {
 }
 
 declare -A SUITE=( [full-map]=verify_full_map_toggle [water]=verify_water_body
-  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow [water-remesh]=verify_water_flow_remesh [highlight]=verify_highlight_block_under_cursor [swim-visual]=verify_swim_visual_depth )
+  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow [water-remesh]=verify_water_flow_remesh [highlight]=verify_highlight_block_under_cursor [swim-visual]=verify_swim_visual_depth [content-pace]=verify_content_pace )
 declare -A MARK=( [full-map]="All full map toggle tests OK" [water]="All water body tests OK"
-  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" [water-remesh]="All water flow remesh tests OK" [highlight]="All highlight block under cursor tests OK" [swim-visual]="All swim visual depth tests OK" )
+  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" [water-remesh]="All water flow remesh tests OK" [highlight]="All highlight block under cursor tests OK" [swim-visual]="All swim visual depth tests OK" [content-pace]="All content pace tests OK" )
 declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 
 bad(){ grep -qE 'SCRIPT ERROR|Parse Error|Failed to load script' "$1"; }

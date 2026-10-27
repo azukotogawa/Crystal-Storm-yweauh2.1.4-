@@ -1357,11 +1357,13 @@ func _build_sim_snapshot(delta: float):
 	snap.terrain = _terrain_query
 	snap.absorption_scan_cells = _absorption_cells_per_tick
 	snap.absorption_scan_offset = _absorption_scan_offset
+	var pace := GameFeelConfig.pace()
+	snap.content_pace = pace
 	if sim_config:
-		snap.grass_absorb_rate = sim_config.grass_absorb_rate
-		snap.bush_absorb_rate = sim_config.bush_absorb_rate
-		snap.tree_absorb_rate = sim_config.tree_absorb_rate
-		snap.farmland_absorb_rate = sim_config.farmland_absorb_rate
+		snap.grass_absorb_rate = sim_config.grass_absorb_rate * pace
+		snap.bush_absorb_rate = sim_config.bush_absorb_rate * pace
+		snap.tree_absorb_rate = sim_config.tree_absorb_rate * pace
+		snap.farmland_absorb_rate = sim_config.farmland_absorb_rate * pace
 		snap.min_depth = sim_config.min_depth
 	snap.ruin_centers = _FeatureRegistry.get_ruin_centers()
 	snap.feature_at = Callable(self, "_feature_at_for_snapshot")
