@@ -13,7 +13,7 @@ const WADE_SPEED_MULT := 0.68
 const SWIM_ACCEL_MULT := 0.5
 const SWIM_FRICTION_MULT := 1.45
 const BUOYANCY_RATE := 6.0
-const DEEP_LAYERS := 2.0
+const SWIM_DEPTH_LAYERS := 0.5
 
 
 static func dry(ground_y: float) -> Dictionary:
@@ -48,8 +48,7 @@ static func sample(
 	if cell.is_empty():
 		return dry(ground_y)
 	var surface: float = cell.surface
-	var bed: float = cell.bed
-	var deep := surface - bed >= layer * DEEP_LAYERS - 0.001
+	var deep := surface - float(cell.bed) >= layer * SWIM_DEPTH_LAYERS - 0.001
 	var submerged := deep and feet_y <= surface + layer * 0.04
 	var wading := false
 	if not submerged and absf(feet_y - ground_y) <= layer * 0.85:

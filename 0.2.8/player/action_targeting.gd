@@ -7,6 +7,7 @@ const _TerrainEdits = preload("res://world/terrain_edits.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _ChannelRegistry = preload("res://world/channel_registry.gd")
 
 const INTERACTION_RANGE := 8.0
 ## Slack as a fraction of voxel_scale. Just under half a column, so a ray through
@@ -116,7 +117,7 @@ static func _is_solid_column(
 	if world == null:
 		return true
 	var tile: int = world.get_tile_type(float(wx), float(wz))
-	if _is_fluid_tile(tile):
+	if _is_fluid_tile(tile) or _ChannelRegistry.has_fluid(wx, wz, _ChannelRegistry.FLUID_WATER):
 		return false
 	var surf: float = world.get_surface_height(float(wx), float(wz))
 	return world.get_solid(float(wx), surf, float(wz))

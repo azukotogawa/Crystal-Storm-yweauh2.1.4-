@@ -11,6 +11,9 @@ const _InfiniteNoiseWorld = preload("res://world/InfiniteNoiseWorld.gd")
 const _VoxelFluidService = preload("res://fluids/voxel_fluid_service.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _WorldState = preload("res://world/world_state.gd")
+const _Water = preload("res://helpers/water_locomotion.gd")
+const _ActionTargeting = preload("res://player/action_targeting.gd")
+const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 
 var RIVER := Vector2i(2, 2)
 var BLOCK := Vector2i(3, 2)
@@ -128,3 +131,14 @@ func _case(label: String, brk: Callable, up: int) -> void:
 		_fail("%s RENDER: water top %.2f must sit inside the hole above its floor %.2f" % [label, water_top, hb1 + layer])
 	else:
 		print("OK %s break beside water fills and renders water" % label)
+	if not wet:
+		return
+	var feet: float = _EntityNavigation.walkable_y_light(world, null, null, float(BLOCK.x) + 0.5, float(BLOCK.y) + 0.5)
+	var swim: Dictionary = _Water.sample(world, BLOCK.x, BLOCK.y, feet, feet)
+	print("INFO %s player feet=%.2f swim=%s" % [label, feet, str(swim)])
+	if not bool(swim.get("submerged", false)):
+		_fail("%s PLAYER: standing in the filled hole must swim" % label)
+	elif _ActionTargeting._is_solid_column(world, null, BLOCK.x, BLOCK.y):
+		_fail("%s PLAYER: targeting must treat the filled hole as water" % label)
+	else:
+		print("OK %s filled hole swims and targets as water" % label)
