@@ -352,8 +352,8 @@ func _bootstrap_when_ready() -> void:
 		if _stop_bootstrap or not is_inside_tree():
 			return
 	if _crystal_measure_enabled():
-		print("[CrystalStartupMeasure] waiting start region t_ms=%d" % Time.get_ticks_msec())
-	while not chunk_manager.is_start_region_ready():
+		print("[CrystalStartupMeasure] waiting player chunk t_ms=%d" % Time.get_ticks_msec())
+	while not chunk_manager.spawn_area_ready(chunk_manager.get_player_chunk_coord().x, chunk_manager.get_player_chunk_coord().y):
 		if _stop_bootstrap or not is_inside_tree():
 			return
 		await get_tree().process_frame
