@@ -2249,7 +2249,7 @@ func damage_crystal_at(cell: Vector2i, amount: float) -> Dictionary:
 		_sim.set_depth(cell, 0.0 if broken else after, spawn_id, false)
 	if broken:
 		_on_sim_depth_cleared(cell)
-		var heal_s := sim_config.scar_heal_seconds if sim_config else 18.0
+		var heal_s := GameFeelConfig.paced_interval(sim_config.scar_heal_seconds if sim_config else 18.0, GameFeelConfig.pace())
 		_CrystalCorruption.begin_scar(cell, heal_s)
 		_refresh_feature_visual(cell)
 	else:

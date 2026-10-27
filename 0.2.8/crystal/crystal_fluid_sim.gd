@@ -795,6 +795,8 @@ func get_last_mesh_dirty() -> Array:
 func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos: Vector2i) -> float:
 	if _prof_enabled:
 		_prof_conductivity_calls += 1
+	if CrystalCorruption.has_scar(to_pos):
+		return 0.0
 	var out_factor: float = terrain.get_flow_factor_at(from_pos, from_tile)
 	var in_factor: float = terrain.get_flow_factor_at(to_pos, to_tile)
 	var combined: float = sqrt(out_factor * in_factor)

@@ -60,8 +60,11 @@ var _base_tint: Color = Color(0.72, 0.2, 0.95)
 var _mesh_radius: float = 0.22
 var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
+const KNOCK_SPEED := 9.0
+const KNOCK_STAGGER := 0.45
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
+var _stagger_left := 0.0
 var _special: _BossBrain
 var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
@@ -592,7 +595,7 @@ func _physics_process(delta: float) -> void:
 		target_cell = _station
 
 	if _knock_left > 0.0:
-		var step := minf(_knock_left, maxf(move_speed, 6.0) * delta * 2.4)
+		var step := minf(_knock_left, KNOCK_SPEED * delta)
 		var shoved := _EntityNavigation.knockback_step(
 			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
 		)
@@ -602,6 +605,13 @@ func _physics_process(delta: float) -> void:
 			global_position = shoved
 			_knock_left = maxf(_knock_left - step, 0.0)
 		_notify_spatial_moved()
+		_hold_station()
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
+
+	if _stagger_left > 0.0:
+		_stagger_left = maxf(_stagger_left - delta, 0.0)
 		_hold_station()
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
@@ -697,6 +707,7 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 		return
 	_knock_dir = flat.normalized()
 	_knock_left = distance
+	_stagger_left = KNOCK_STAGGER
 
 
 func _tick_hurt_lock(delta: float) -> void:

@@ -130,6 +130,10 @@ static func begin_scar(pos: Vector2i, heal_seconds: float) -> void:
 		_scar_order.append(pos)
 
 
+static func has_scar(pos: Vector2i) -> bool:
+	return _scars.has(pos)
+
+
 static func tick_scars(delta: float, budget: int = 8) -> Array:
 	var healed: Array[Vector2i] = []
 	if _scar_order.is_empty() or budget <= 0 or delta <= 0.0:
