@@ -390,12 +390,7 @@ func _boot(tree: SceneTree, scenario: String, seen: PackedStringArray, seed_valu
 	var use_seed := seed_value if seed_value >= 0 else SEED
 	var held_scale := Engine.time_scale
 	Engine.time_scale = 0.0
-	_Worlds.pending_launch = {
-		"id": "harness-%s" % scenario,
-		"seed": use_seed,
-		"name": "Harness",
-	}
-	_Worlds.pending_resume = false
+	_Worlds.start_fresh_run(use_seed)
 	var packed: PackedScene = load(MAIN_SCENE) as PackedScene
 	if packed == null:
 		Engine.time_scale = held_scale if held_scale > 0.0 else 1.0
