@@ -5,7 +5,7 @@ const _SG = preload("res://systems/save_game_service.gd")
 const _WM = preload("res://systems/world_manager.gd")
 
 const PLAYABLE_SEC := 120.0
-const MAP_TEX_SEC := 15.0
+const MAP_TEX_FRAMES := 900
 
 var _failed := 0
 var _t0 := 0
@@ -88,14 +88,16 @@ func _check_map(label: String) -> void:
 		return
 	var start := Time.get_ticks_msec()
 	var rect: TextureRect = m.get("_fullscreen_rect")
-	while float(Time.get_ticks_msec() - start) / 1000.0 < MAP_TEX_SEC:
+	var waited := 0
+	while waited < MAP_TEX_FRAMES:
 		if rect != null and rect.texture != null and rect.is_visible_in_tree():
 			break
 		await process_frame
+		waited += 1
 	if rect == null or rect.texture == null or not rect.is_visible_in_tree():
-		_fail("%s: map opened but showed no picture in %.0fs" % [label, MAP_TEX_SEC])
+		_fail("%s: map opened but showed no picture in %d frames (%.1fs)" % [label, MAP_TEX_FRAMES, float(Time.get_ticks_msec() - start) / 1000.0])
 	else:
-		_ok("%s map shown after %.2fs" % [label, float(Time.get_ticks_msec() - start) / 1000.0])
+		_ok("%s map shown after %d frames %.2fs" % [label, waited, float(Time.get_ticks_msec() - start) / 1000.0])
 	await _press_map()
 	if m.is_fullscreen_open():
 		_fail("%s: M did not close the map" % label)
