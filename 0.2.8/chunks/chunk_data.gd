@@ -282,13 +282,15 @@ func _capture_water_lid_snapshot(ws) -> void:
 		return
 	for x in range(-1, SIZE + 1):
 		for z in range(-1, SIZE + 1):
-			var wkey := Vector2i(position.x * SIZE + x, position.y * SIZE + z)
-			var entry: Dictionary = ws.channels.get(wkey, {})
-			if entry.is_empty():
-				continue
-			if not entry.has("water_level") or float(entry.get("water_level", 0.0)) < 0.05:
-				continue
-			_worker_water_lid[Vector2i(x, z)] = float(entry.get("surface_y", 0.0))
+			_refresh_water_lid_cell(ws, x, z)
+
+
+func _refresh_water_lid_cell(ws, x: int, z: int) -> void:
+	var entry: Dictionary = ws.channels.get(Vector2i(position.x * SIZE + x, position.y * SIZE + z), {})
+	if float(entry.get("water_level", 0.0)) < 0.05:
+		_worker_water_lid.erase(Vector2i(x, z))
+		return
+	_worker_water_lid[Vector2i(x, z)] = float(entry.get("surface_y", 0.0))
 
 
 func _ensure_worker_overlay_storage() -> void:
@@ -644,6 +646,7 @@ func refresh_worker_snapshot_for_cells(local_cells: Array) -> void:
 			_worker_force_ramp[Vector2i(x, z)] = feat_entry.duplicate()
 		else:
 			_worker_force_ramp.erase(Vector2i(x, z))
+		_refresh_water_lid_cell(ws, x, z)
 		_refresh_worker_halo_deltas_around(x, z, ws, layer_h)
 		_refresh_halo_for_local_cell(x, z)
 

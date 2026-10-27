@@ -608,9 +608,9 @@ record_trap() {
 }
 
 declare -A SUITE=( [full-map]=verify_full_map_toggle [water]=verify_water_body
-  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow )
+  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow [water-remesh]=verify_water_flow_remesh )
 declare -A MARK=( [full-map]="All full map toggle tests OK" [water]="All water body tests OK"
-  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" )
+  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" [water-remesh]="All water flow remesh tests OK" )
 declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 
 bad(){ grep -qE 'SCRIPT ERROR|Parse Error|Failed to load script' "$1"; }
