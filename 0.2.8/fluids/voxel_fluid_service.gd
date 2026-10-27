@@ -177,7 +177,7 @@ func _persist_changes(changed: Array) -> Array:
 			_ChannelRegistry.register_fluid(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, Vector2i.ZERO, level)
 		else:
 			_ChannelRegistry.set_fluid_level(pos.x, pos.y, _ChannelRegistry.FLUID_WATER, level)
-		_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, _visual_bed(pos) + level * layer)
+		_ChannelRegistry.set_runtime_surface_y(pos.x, pos.y, _visual_top(pos) + level * layer)
 		out.append(pos)
 		_emit_water_visual(pos)
 	if not out.is_empty() and chunk_manager and chunk_manager.has_method("flush_rebuild_pending"):
