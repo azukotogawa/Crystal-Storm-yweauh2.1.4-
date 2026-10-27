@@ -75,6 +75,8 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0.5, 3.0, 0.05) var draw_curve: float = 1.0
 @export_range(0.0, 1.0, 0.05) var swim_visual_depth: float = 0.8
 @export_range(0.1, 2.0, 0.05) var content_pace: float = 0.45
+@export_range(1.0, 32.0, 0.5) var map_open_budget_scale: float = 8.0
+@export_range(0.05, 1.0, 0.05) var map_preview_sec: float = 0.25
 
 static var pace_override: float = -1.0
 static var _pace_cache: float = -1.0

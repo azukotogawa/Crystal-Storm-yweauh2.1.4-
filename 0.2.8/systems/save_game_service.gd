@@ -218,6 +218,18 @@ static func clear_continue() -> void:
 		DirAccess.remove_absolute(path)
 
 
+static func wipe_world_saves() -> int:
+	clear_continue()
+	var dir := DirAccess.open("user://saves")
+	if dir == null:
+		return 0
+	var removed := 0
+	for file in dir.get_files():
+		if file.begins_with("world_") and DirAccess.remove_absolute("user://saves".path_join(file)) == OK:
+			removed += 1
+	return removed
+
+
 static func world_save_path(world_id: String) -> String:
 	if world_id.strip_edges().is_empty():
 		return ""

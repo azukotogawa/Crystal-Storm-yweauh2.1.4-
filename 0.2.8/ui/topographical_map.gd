@@ -7,6 +7,7 @@ const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _WorldState = preload("res://world/world_state.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 
 @export var map_config: Resource
 
@@ -26,6 +27,7 @@ var _crystal_overlay_timer: float = 0.0
 var _last_center := Vector2i.ZERO
 var _minimap_tex: ImageTexture
 var _full_tex: ImageTexture
+var _full_preview_due_ms: int = 0
 var _minimap_enabled: bool = true
 var _fullscreen_map_enabled: bool = true
 var _map_pixel_budget: int = 256
@@ -373,12 +375,15 @@ func _step_map_job() -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
 		profiler.begin("map_build")
+	var budget_scale: float = _GameFeelConfig.active().map_open_budget_scale if _fullscreen_open else 1.0
 	var done: bool = _TopographicalMapBuilder.process_job(
-		_active_map_job, _map_pixel_budget, _map_time_budget_us
+		_active_map_job, int(_map_pixel_budget * budget_scale), int(_map_time_budget_us * budget_scale)
 	)
 	if profiler and profiler.has_method("end"):
 		profiler.end("map_build")
 	if not done:
+		if _fullscreen_open and _full_tex == null and bool(_active_map_job.get("fullscreen", false)):
+			_show_full_preview(_active_map_job)
 		return
 	_apply_finished_map_job(_active_map_job)
 	_map_job_queue.pop_front()
@@ -405,6 +410,18 @@ func _step_crystal_overlay_job() -> void:
 		_minimap_rect.texture = _minimap_tex
 	_idle_minimap_job = _TopographicalMapBuilder.clone_job_state(_crystal_overlay_job)
 	_crystal_overlay_job = {}
+
+
+
+func _show_full_preview(job: Dictionary) -> void:
+	var now := Time.get_ticks_msec()
+	if now < _full_preview_due_ms or _fullscreen_rect == null:
+		return
+	var image: Image = job.get("image")
+	if image == null:
+		return
+	_full_preview_due_ms = now + int(_GameFeelConfig.active().map_preview_sec * 1000.0)
+	_fullscreen_rect.texture = ImageTexture.create_from_image(image)
 
 
 func _apply_finished_map_job(job: Dictionary) -> void:

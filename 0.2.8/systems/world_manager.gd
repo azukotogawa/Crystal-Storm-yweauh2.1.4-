@@ -201,6 +201,7 @@ static func take_pending_launch() -> Dictionary:
 static func wipe_worlds() -> int:
 	var dir_path := catalog_path.get_base_dir()
 	var removed := _wipe_dir(ProjectSettings.globalize_path(dir_path))
+	removed += load("res://systems/save_game_service.gd").wipe_world_saves()
 	active_world_id = ""
 	pending_resume = false
 	return removed

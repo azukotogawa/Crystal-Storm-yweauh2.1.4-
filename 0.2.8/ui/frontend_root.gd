@@ -147,6 +147,15 @@ func _ui(id: String) -> void:
 		audio.play_ui(id)
 
 
+func _add_status(box: Control) -> void:
+	_status = Label.new()
+	_status.name = "Status"
+	_status.add_theme_color_override("font_color", COL_MUTED)
+	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_status)
+
+
 func _set_status(msg: String) -> void:
 	if _status:
 		_status.text = msg
@@ -181,6 +190,7 @@ func _build_main() -> void:
 	box.add_child(how)
 	box.add_child(controls)
 	box.add_child(quit_b)
+	_add_status(box)
 	var credit := Label.new()
 	credit.name = "FontCredit"
 	credit.text = "Pixelify Sans, Copyright 2021 The Pixelify Sans Project Authors (https://github.com/eifetx/Pixelify-Sans), SIL Open Font License 1.1."
@@ -221,10 +231,7 @@ func _build_world_select() -> void:
 	row2.add_child(_btn("Delete", _on_delete_selected, true))
 	row2.add_child(_btn("Back", func(): _show(Screen.MAIN)))
 	box.add_child(row2)
-	_status = Label.new()
-	_status.add_theme_color_override("font_color", COL_MUTED)
-	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_status)
+	_add_status(box)
 	_set_status("Select a world, or create a new one.")
 
 
@@ -292,6 +299,8 @@ func arm_continue_launch() -> bool:
 
 func _on_continue() -> void:
 	if not arm_continue_launch():
+		_show(Screen.MAIN)
+		_set_status("Continue save is missing or damaged. Pick a world with Play.")
 		return
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
@@ -393,9 +402,7 @@ func _build_new_world() -> void:
 	back_n.name = "Back"
 	box.add_child(create_b)
 	box.add_child(back_n)
-	_status = Label.new()
-	_status.add_theme_color_override("font_color", COL_MUTED)
-	box.add_child(_status)
+	_add_status(box)
 
 
 func _on_randomize_seed() -> void:
