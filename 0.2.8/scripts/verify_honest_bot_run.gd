@@ -10,6 +10,7 @@ const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
+const _Worlds = preload("res://systems/world_manager.gd")
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
 const NAV_MSEC := 5000
@@ -62,6 +63,7 @@ func _run() -> void:
 
 
 func _boot() -> bool:
+	_Worlds.start_fresh_run()
 	var packed: PackedScene = load(MAIN_SCENE) as PackedScene
 	if packed == null:
 		_mark("boot", "failed", "main scene missing")

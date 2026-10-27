@@ -19,6 +19,7 @@ const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
 const _Finale = preload("res://scripts/honest_bot/honest_showcase_finale.gd")
 
+const _Worlds = preload("res://systems/world_manager.gd")
 const MAIN_SCENE := "res://scenes/main.tscn"
 const STEP := 1.0 / 60.0
 const LIVE_FRAMES := 180000
@@ -1450,6 +1451,7 @@ func _check_hud() -> bool:
 func _check_live() -> void:
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
 		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
+	_Worlds.start_fresh_run()
 	var packed: PackedScene = load(MAIN_SCENE) as PackedScene
 	if packed == null:
 		_fail("no main scene")

@@ -5,6 +5,7 @@ const _WorldBakeService = preload("res://world/world_bake_service.gd")
 
 const CATALOG_VERSION := 1
 const DEFAULT_CATALOG_PATH := "user://worlds/catalog.json"
+const FRESH_RUN_SEED := 12349
 
 static var catalog_path: String = DEFAULT_CATALOG_PATH
 static var pending_launch: Dictionary = {}
@@ -195,6 +196,39 @@ static func take_pending_launch() -> Dictionary:
 	var out: Dictionary = pending_launch.duplicate(true)
 	pending_launch = {}
 	return out
+
+
+static func wipe_worlds() -> int:
+	var dir_path := catalog_path.get_base_dir()
+	var removed := _wipe_dir(ProjectSettings.globalize_path(dir_path))
+	active_world_id = ""
+	pending_resume = false
+	return removed
+
+
+static func _wipe_dir(abs_dir: String) -> int:
+	var dir := DirAccess.open(abs_dir)
+	if dir == null:
+		return 0
+	var removed := 0
+	for sub in dir.get_directories():
+		removed += _wipe_dir(abs_dir.path_join(sub))
+		if DirAccess.remove_absolute(abs_dir.path_join(sub)) == OK:
+			removed += 1
+	for file in dir.get_files():
+		if DirAccess.remove_absolute(abs_dir.path_join(file)) == OK:
+			removed += 1
+	return removed
+
+
+static func start_fresh_run(seed: int = FRESH_RUN_SEED) -> Dictionary:
+	wipe_worlds()
+	var made: Dictionary = create_world("Fresh Run", seed)
+	if not bool(made.get("ok", false)):
+		return made
+	var loaded: Dictionary = load_world(str(made.get("id", "")))
+	pending_resume = false
+	return loaded
 
 
 static func request_return_to_select() -> void:
