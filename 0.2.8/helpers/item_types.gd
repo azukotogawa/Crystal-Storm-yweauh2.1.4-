@@ -2,6 +2,7 @@ class_name ItemTypes
 extends RefCounted
 
 const _ItemDef = preload("res://config/item_def.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 
 enum Category { WEAPON, TOOL, MATERIAL, CONSUMABLE, MISC, ARMOR }
 enum WeaponKind { MELEE, RANGED, DIG }
@@ -36,10 +37,10 @@ const ITEMS: Dictionary = {
 		"entity_damage": 12.0,
 		"crystal_damage": 0.35,
 		"range": 2.8,
-		"cooldown": 0.45,
+		"cooldown": 0.32,
 		"knockback": 1.0,
 		"anim_kind": 1,
-		"anim_duration": 0.45,
+		"anim_duration": 0.32,
 		"impact_ratio": 0.42,
 		"description": "A quick arc. Reliable, short, and light.",
 		"stackable": false,
@@ -53,12 +54,12 @@ const ITEMS: Dictionary = {
 		"entity_damage": 15.0,
 		"crystal_damage": 0.5,
 		"range": 3.0,
-		"cooldown": 0.78,
+		"cooldown": 0.55,
 		"pierce": 2,
 		"thrust": true,
 		"knockback": 1.6,
 		"anim_kind": 2,
-		"anim_duration": 0.78,
+		"anim_duration": 0.55,
 		"impact_ratio": 0.56,
 		"visual_id": "spear",
 		"description": "Long thrust, about 3 voxels. Pierces two targets. Slower than the sword.",
@@ -99,7 +100,7 @@ const ITEMS: Dictionary = {
 		"anim_kind": 1,
 		"anim_duration": 0.26,
 		"impact_ratio": 0.45,
-		"durability": 48,
+		"durability": 0,
 		"description": "Dig radius 1. [ and ] widen the brush while this pick is held.",
 		"stackable": false,
 		"max_stack": 1,
@@ -112,12 +113,12 @@ const ITEMS: Dictionary = {
 		"entity_damage": 10.0,
 		"crystal_damage": 0.55,
 		"range": 14.0,
-		"cooldown": 0.8,
+		"cooldown": 0.56,
 		"knockback": 0.9,
 		"projectile_speed": 32.0,
 		"projectile_gravity": 12.0,
 		"anim_kind": 4,
-		"anim_duration": 0.8,
+		"anim_duration": 0.56,
 		"impact_ratio": 0.70,
 		"description": "Fires an arrow along your aim. It drops and can miss. Does not dig.",
 		"stackable": false,
@@ -131,14 +132,14 @@ const ITEMS: Dictionary = {
 		"entity_damage": 8.0,
 		"crystal_damage": 0.45,
 		"range": 11.0,
-		"cooldown": 0.5,
+		"cooldown": 0.35,
 		"knockback": 0.7,
 		"projectile_speed": 18.0,
 		"projectile_gravity": 34.0,
 		"ammo_id": "stone",
 		"visual_id": "sling",
 		"anim_kind": 4,
-		"anim_duration": 0.5,
+		"anim_duration": 0.35,
 		"impact_ratio": 0.62,
 		"description": "Lobs one stone in a high arc. Cheap, slow, and easy to miss.",
 		"stackable": false,
@@ -318,8 +319,19 @@ static func get_def(item_id: String) -> Dictionary:
 	ensure_builtins()
 	var def = _defs.get(item_id)
 	if def:
-		return def.to_lookup()
-	return ITEMS.get(item_id, {})
+		return _tuned(def.to_lookup())
+	return _tuned(ITEMS.get(item_id, {}))
+
+
+static func _tuned(def: Dictionary) -> Dictionary:
+	if int(def.get("category", -1)) != Category.WEAPON or int(def.get("weapon_kind", -1)) != WeaponKind.MELEE:
+		return def
+	var floor_range: float = _GameFeelConfig.active().melee_min_range
+	if float(def.get("range", 0.0)) >= floor_range:
+		return def
+	var out := def.duplicate()
+	out["range"] = floor_range
+	return out
 
 
 static func is_valid(item_id: String) -> bool:

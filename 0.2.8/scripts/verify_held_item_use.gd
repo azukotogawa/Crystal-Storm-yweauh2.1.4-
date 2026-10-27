@@ -212,8 +212,17 @@ func _check_bow(weapon: WeaponController, view: Node3D, vs: float) -> void:
 		_fail("bow has no string mesh")
 		return
 	var ready_z: float = string.position.z
-	await _press_attack(weapon, 0.50)
+	await _idle_input()
+	Input.action_press("attack")
+	var t := 0.0
+	while t < 0.45:
+		t += STEP
+		_clock_t = t
+		weapon._process(STEP)
 	var pulled: float = string.position.z - ready_z
+	Input.action_release("attack")
+	await process_frame
+	weapon._process(STEP)
 	if pulled < vs * 0.35:
 		_fail("bow string did not draw on attack (local z %+.2f). Sliding the whole bow still passed the grip check." % pulled)
 	else:

@@ -320,7 +320,7 @@ func _check_aim() -> void:
 	var ring: MeshInstance3D = aim.get_node("MeleeReticle")
 	if not ring.visible:
 		_fail("melee aim hid the reticle")
-	var sword_reach := minf(2.8, _ActionTargeting.reach()) * vs
+	var sword_reach := minf(float(_ItemTypes.get_def("wooden_sword").get("range", 2.8)), _ActionTargeting.reach()) * vs
 	var flat_d := _horiz(ring.global_position, rig.global_position)
 	if flat_d > sword_reach + 0.3 or absf(flat_d - sword_reach) > 0.35:
 		_fail("melee reticle distance %s, reach %s" % [flat_d, sword_reach])

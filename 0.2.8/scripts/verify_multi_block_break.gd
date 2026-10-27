@@ -297,8 +297,8 @@ func _test_drops_fx_wear() -> void:
 	if not is_equal_approx(float(hammer.get("anim_duration", -1.0)), 1.1):
 		_fail("crystal hammer duration must stay 1.1")
 		return
-	if _ItemTypes.tool_max_durability("stone_pick") != 48:
-		_fail("stone pick durability must start at 48")
+	if _ItemTypes.tool_max_durability("stone_pick") != 0:
+		_fail("stone pick must be unbreakable")
 		return
 	if _ItemTypes.tool_max_durability("crystal_hammer") != 0:
 		_fail("crystal hammer must not use dig durability")
@@ -315,18 +315,13 @@ func _test_drops_fx_wear() -> void:
 	var bag = _Inventory.new()
 	bag.set_slot(0, "stone_pick", 1)
 	bag.set_slot(1, "crystal_hammer", 1)
-	if bag.wear_tool(0, _ItemTypes.wear_for_cells(3)) != 45:
-		_fail("a 3-cell swing must wear the pick by 3")
-		return
-	var saved: Dictionary = bag.to_dict()
-	var loaded = _Inventory.new()
-	loaded.load_from_dict(saved)
-	var kept = loaded.get_slot(0)
-	if kept == null or int(kept.get("durability", -1)) != 45:
-		_fail("pick durability must round-trip through the save")
-		return
-	if bag.wear_tool(0, 45) != 0 or bag.get_slot(0) != null:
-		_fail("a spent pick must leave the hotbar")
+	for i in 80:
+		if bag.wear_tool(0, _ItemTypes.wear_for_cells(3)) != -1:
+			_fail("a broken cell must never wear the pick")
+			return
+	var kept = bag.get_slot(0)
+	if kept == null or str(kept.id) != "stone_pick":
+		_fail("pick must still be in its slot after 240 cells")
 		return
 	if bag.wear_tool(1, 9) != -1 or bag.get_slot(1) == null:
 		_fail("the hammer swing must not spend durability")

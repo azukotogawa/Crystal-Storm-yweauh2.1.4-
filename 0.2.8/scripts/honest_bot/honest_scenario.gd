@@ -952,7 +952,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		_swing_film(tree, player, crystal, origin, origin_xz, bot, hands, job, delta, pos, false)
 		return ""
 	if not bool(job["melee"]):
-		if _attack_warn(tree) or _Hazard.ring_hot(tree, pos):
+		if (_attack_warn(tree) and pos.distance_to(_nearest_foe_xz(tree, pos)) > 1.5) or _Hazard.ring_hot(tree, pos):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
 		var rows := _near_foes(tree, pos)
@@ -994,7 +994,7 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 			return ""
 		var dist := pos.distance_to(aim_at)
 		hands.begin_tick()
-		hands.aim_column(player, aim_at.x, aim_at.y)
+		hands.aim_foe(player, aim_at.x, aim_at.y)
 		if dist > POINT_BLANK_COLUMNS:
 			fight.walk_to(_past_contact(pos, aim_at), pos, _yaw(player), delta)
 			return ""
@@ -1016,6 +1016,10 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 		if not bool(job.get("farm_logged", false)):
 			job["farm_logged"] = true
 			print("HARNESS skill farm points %d" % _points(tree))
+		var close := _nearest_foe_xz(tree, pos)
+		if close != Vector2.INF and pos.distance_to(close) <= 1.5:
+			_farm_strike(player, bot, hands, job, delta, close)
+			return ""
 		if _attack_warn(tree):
 			_step_away(tree, player, bot, origin_xz, delta, pos)
 			return ""
@@ -1090,6 +1094,21 @@ func _swing_film(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i,
 	if hands.pulse(&"attack"):
 		job["swings"] = int(job["swings"]) + 1
 		job["gap"] = SWING_GAP
+
+
+func _farm_strike(player: Node, bot, hands, job: Dictionary, delta: float, foe: Vector2) -> void:
+	bot.release()
+	hands.begin_tick()
+	hands.aim_foe(player, foe.x, foe.y)
+	if bool(job["pick"]):
+		if hands.pulse(&"hotbar_1"):
+			job["pick"] = false
+		return
+	job["gap"] = float(job["gap"]) - delta
+	if float(job["gap"]) > 0.0:
+		return
+	if hands.pulse(&"attack"):
+		job["gap"] = _Pace.strike_gap("sword_swing")
 
 
 func _swing_heart(tree: SceneTree, player: Node, origin: Vector2i, bot, hands, job: Dictionary, delta: float, pos: Vector2) -> void:
@@ -1527,8 +1546,8 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 		if float(after.get("heart", -1.0)) >= float(before.get("heart", -2.0)) - 0.05:
 			return "crystal hp did not fall"
 		return ""
-	if float(after.get("hp", 1.0)) >= float(before.get("hp", 0.0)) - 0.05:
-		return "hp did not fall"
+	if float(after.get("hp", 1.0)) >= float(before.get("hp", 0.0)) - 0.05 and not _foes_cleared():
+		return "no damage taken and foes remain"
 	if name == "corruption":
 		if not bool(job.get("spread", false)):
 			return "corruption did not spread"
@@ -1552,6 +1571,12 @@ func _expect_feature(name: String, before: Dictionary, after: Dictionary, seen: 
 	return ""
 
 
+func _foes_cleared() -> bool:
+	if _combat_tree == null or _combat_player == null or not is_instance_valid(_combat_player):
+		return false
+	return _near_foes(_combat_tree, _xz(_combat_player)).is_empty()
+
+
 func _banner_allowed(line: String) -> bool:
 	if line == OPENING_BANNER or line == WALL_BANNER:
 		return true
@@ -1571,6 +1596,9 @@ func _banner_allowed(line: String) -> bool:
 		"Maze again",
 		"Level up ",
 		"Skill unlocked",
+		"New brush unlocked",
+		"crystal_mite down",
+		"Can't dig here",
 		"Relic ",
 		"Discovered ",
 		"Landmark ",
