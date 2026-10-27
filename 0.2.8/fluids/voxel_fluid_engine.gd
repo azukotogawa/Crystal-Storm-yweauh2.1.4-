@@ -6,6 +6,7 @@ const _CrystalTerrainQuery = preload("res://crystal/crystal_terrain_query.gd")
 const _FluidTypeDef = preload("res://config/fluid_type_def.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _TerrainEdits = preload("res://world/terrain_edits.gd")
 
 const SOURCE_LEVEL := 8
 const FALL_LEVEL := 7
@@ -127,7 +128,7 @@ func tick_flow(_delta: float) -> Array:
 			var floor_y: float = terrain.get_terrain_height(n)
 			if floor_y <= bed - layer * FALL_STEP:
 				falls.append(n)
-			elif floor_y < surface - 0.001:
+			elif floor_y < surface - 0.001 or (floor_y <= surface + 0.001 and _TerrainEdits.get_height_delta(n.x, n.y) < 0.0):
 				spreads.append(n)
 		if not falls.is_empty():
 			for n in falls:

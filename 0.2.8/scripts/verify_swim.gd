@@ -147,13 +147,21 @@ func _test_sample(world, layer: float, waterline: float) -> void:
 		print("OK lake tile deep=%s submerged=%s speed=%.2f" % [str(lake.deep), str(lake.submerged), float(lake.speed_mult)])
 
 	var shallow_bed := _feet(world, 62.5, 61.5)
-	_ChannelRegistry.register_channel(62, 61, Vector2i.ZERO, 1.0)
-	_ChannelRegistry.set_runtime_surface_y(62, 61, shallow_bed + layer)
+	_ChannelRegistry.register_channel(62, 61, Vector2i.ZERO, 0.875)
+	_ChannelRegistry.set_runtime_surface_y(62, 61, shallow_bed + layer * 0.875)
+	var flowed: Dictionary = _Water.sample(world, 62, 61, shallow_bed, shallow_bed)
+	if not bool(flowed.get("submerged", false)):
+		_fail("flowed level 7 water in a one-layer hole must swim: %s" % str(flowed))
+	else:
+		print("OK flowed level 7 water swims speed=%.2f" % float(flowed.speed_mult))
+
+	_ChannelRegistry.set_fluid_level(62, 61, _ChannelRegistry.FLUID_WATER, 0.25)
+	_ChannelRegistry.set_runtime_surface_y(62, 61, shallow_bed + layer * 0.25)
 	var wade: Dictionary = _Water.sample(world, 62, 61, shallow_bed, shallow_bed)
 	if bool(wade.get("submerged", false)) or not bool(wade.get("wading", false)):
-		_fail("1-layer water should wade, not swim: %s" % str(wade))
+		_fail("quarter-layer water should wade, not swim: %s" % str(wade))
 	else:
-		print("OK 1-layer water wades speed=%.2f" % float(wade.speed_mult))
+		print("OK quarter-layer water wades speed=%.2f" % float(wade.speed_mult))
 
 	var ocean: Dictionary = _Water.sample(world, 70, 70, _feet(world, 70.5, 70.5), _feet(world, 70.5, 70.5))
 	if bool(ocean.get("in_water", false)):

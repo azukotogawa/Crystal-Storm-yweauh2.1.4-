@@ -45,7 +45,7 @@ The block highlight keeps the single box at radius 1. At radius 2 or 3 it shows 
 
 ### 3. Water into a dug column
 
-`LivingForce.water_inflow_enabled` (default true). Radius above 1 may dig land beside a river (the river column itself is skipped). If a dug column's visual top is below an orthogonal natural waterline, one `VoxelFluidService.recompute_region_now` runs for the stroke (radius 2, one step). No second water mesh. Radius 1 beside water still stamps a water tile and does not call that reflow. That branch is locked by `verify_dig_flood_water_block.gd`.
+`LivingForce.water_inflow_enabled` (default true). Every dug column calls `VoxelFluidService.request_flow`, the only flow entry point. Water spreads into a dug column when its floor is below the neighbouring water top, or level with it when the column was dug. Flowed cells keep a level from 1 to 7 and render a water lid from the hole floor up to `floor + level/8 layer`. That lid is swimmable from half a layer deep and targeting treats it as water. Locked by `verify_water_same_layer_break.gd` and `verify_water_body.gd`.
 
 ### 4. Crystal pressure and pushback
 
@@ -64,7 +64,7 @@ About three ticks (about 1.5 s) break a wall beside deep crystal. That may be fa
 | `settle_enabled` | true | Rim slump |
 | `settle_trigger_layers` | 2 | Delta gap that slumps |
 | `settle_max_cells` | 4 | Cap per stroke |
-| `water_inflow_enabled` | true | One fluid recompute |
+| `water_inflow_enabled` | true | Dug columns call `request_flow` |
 | `crystal_react_enabled` | true | Pressure on existing depth |
 | `crystal_react_radius` | 2 | Chebyshev |
 | `crystal_dig_pressure` | 0.06 | Per dug stroke |

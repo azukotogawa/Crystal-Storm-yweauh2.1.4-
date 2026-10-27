@@ -10,6 +10,7 @@ const _WorldSettings = preload("res://config/world_settings.gd")
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _FacePick = preload("res://player/face_pick.gd")
 const _GameFeelConfig = preload("res://config/game_feel_config.gd")
+const _ChannelRegistry = preload("res://world/channel_registry.gd")
 
 static var last_pick_cell := Vector3i.ZERO
 static var last_pick_normal := Vector3i.ZERO
@@ -124,7 +125,7 @@ static func _is_solid_column(
 	if world == null:
 		return true
 	var tile: int = world.get_tile_type(float(wx), float(wz))
-	if _is_fluid_tile(tile):
+	if _is_fluid_tile(tile) or _ChannelRegistry.has_fluid(wx, wz, _ChannelRegistry.FLUID_WATER):
 		return false
 	var surf: float = world.get_surface_height(float(wx), float(wz))
 	return world.get_solid(float(wx), surf, float(wz))
