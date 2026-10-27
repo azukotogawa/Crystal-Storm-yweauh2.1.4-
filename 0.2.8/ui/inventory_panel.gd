@@ -10,6 +10,7 @@ const _TooltipPanel = preload("res://ui/tooltip_panel.gd")
 const _SlotDrag = preload("res://ui/slot_drag.gd")
 const _Hotbar = preload("res://ui/hotbar.gd")
 const _Blueprints = preload("res://helpers/structure_blueprints.gd")
+const _ModalPanel = preload("res://ui/modal_panel.gd")
 const _Crafting = preload("res://helpers/structure_crafting.gd")
 
 
@@ -18,6 +19,7 @@ var _grid: GridContainer
 var _armor_button: Button
 var _craft_buttons: Dictionary = {}
 var _visible_panel := false
+var _modal: Control
 var _registry: _GameVisualRegistry
 var _raised_hotbar: Control
 var _hotbar_index := -1
@@ -75,43 +77,26 @@ func _unhandled_input(event: InputEvent) -> void:
 			_restore_hotbar()
 
 
+func _close_panel() -> void:
+	if not _visible_panel:
+		return
+	_SlotDrag.cancel()
+	_visible_panel = false
+	visible = false
+	_SlotDrag.set_modal_open(false, self)
+	_ui("ui_close")
+	_restore_hotbar()
+
+
 func _build_ui() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
-	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.0, 0.0, 0.0, 0.45)
-	backdrop.z_index = -1
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(backdrop)
-	_SlotDrag.bind_click_shield(backdrop)
-
-	var panel := PanelContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -220
-	panel.offset_right = 220
-	panel.offset_top = -220
-	panel.offset_bottom = 220
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.1, 0.1, 0.14, 0.95)
-	style.border_color = Color(0.45, 0.45, 0.55)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	_SlotDrag.bind_click_shield(panel)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	panel.add_child(vbox)
-
-	var title := Label.new()
-	title.text = "Inventory"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 18)
-	vbox.add_child(title)
+	_modal = _ModalPanel.new("Inventory", 520.0)
+	_SlotDrag.bind_click_shield(_modal.backdrop)
+	_SlotDrag.bind_click_shield(_modal.panel)
+	_modal.close_requested.connect(_close_panel)
+	var vbox: VBoxContainer = _modal.content
 
 	if _Blueprints.LARGE_STRUCTURES:
 		var craft_row := HBoxContainer.new()
@@ -164,7 +149,7 @@ func _build_ui() -> void:
 		btn.size = Vector2(48, 40)
 		_grid.add_child(btn)
 
-	add_child(panel)
+	add_child(_modal)
 	_SlotDrag.register_passthrough(_armor_button)
 	for i in _grid.get_child_count():
 		_SlotDrag.register_slot(get_tree(), _grid.get_child(i), i, _on_slot_pressed.bind(i))

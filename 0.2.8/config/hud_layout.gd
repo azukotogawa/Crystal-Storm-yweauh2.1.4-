@@ -3,8 +3,8 @@ extends Resource
 
 const RESOURCE_PATH := "res://config/default_hud_layout.tres"
 
-@export var objective_origin := Vector2(12, 12)
-@export var objective_size := Vector2(328, 164)
+@export var objective_origin := Vector2(24, 24)
+@export var objective_size := Vector2(328, 176)
 @export var clearance := 18.0
 
 @export var chapter_margin_right := 16.0
@@ -25,6 +25,19 @@ const RESOURCE_PATH := "res://config/default_hud_layout.tres"
 @export var vitals_right := 146.0
 @export var vitals_top := -176.0
 @export var vitals_bottom := -70.0
+
+@export var safe_margin := 24.0
+@export var region_gap := 12.0
+@export var minimap_px := 160.0
+@export var leave_size := Vector2(128, 28)
+@export var boss_size := Vector2(340, 44)
+@export var toast_size := Vector2(440, 36)
+@export var toast_top_ratio := 0.3
+@export var hotbar_size := Vector2(574, 52)
+@export var vitals_size := Vector2(292, 106)
+@export var skill_size := Vector2(328, 40)
+@export var chat_height := 280.0
+@export var chip_size := Vector2(268, 20)
 
 
 static func load_active() -> HudLayout:
@@ -65,3 +78,68 @@ func chapter_rect(viewport_size: Vector2) -> Rect2:
 
 func misses_objective(rect: Rect2) -> bool:
 	return not objective_rect().intersects(rect)
+
+
+func margin_for(view: Vector2) -> float:
+	return safe_margin * view.y / 720.0
+
+
+func safe_area(view: Vector2) -> Rect2:
+	var m := margin_for(view)
+	return Rect2(Vector2(m, m), view - Vector2(m, m) * 2.0)
+
+
+func regions(view: Vector2, minimap_override: float = -1.0) -> Dictionary:
+	var m := margin_for(view)
+	var mini := minimap_px if minimap_override < 0.0 else minimap_override
+	var out := {}
+	out["objective"] = Rect2(Vector2(m, m), objective_size)
+	out["boss"] = Rect2(Vector2((view.x - boss_size.x) * 0.5, m), boss_size)
+	out["minimap"] = Rect2(Vector2(view.x - m - mini, m), Vector2(mini, mini))
+	out["leave_world"] = Rect2(Vector2(view.x - m - leave_size.x, m + mini + region_gap), leave_size)
+	out["toast"] = Rect2(Vector2((view.x - toast_size.x) * 0.5, view.y * toast_top_ratio), toast_size)
+	var pad := backing_pad
+	var hot := Rect2(
+		Vector2((view.x - hotbar_size.x) * 0.5 - pad, view.y - m - hotbar_size.y - pad * 2.0),
+		hotbar_size + Vector2(pad, pad) * 2.0
+	)
+	out["hotbar"] = hot
+	var vit := Rect2(
+		Vector2((view.x - vitals_size.x) * 0.5, hot.position.y - region_gap - vitals_size.y),
+		vitals_size
+	)
+	out["vitals"] = vit
+	out["skill_bar"] = Rect2(
+		Vector2(vit.end.x + region_gap, vit.end.y - skill_size.y),
+		skill_size
+	)
+	out["chat"] = Rect2(
+		Vector2(m, view.y - m - chat_height),
+		Vector2(maxf(hot.position.x - region_gap - m, 120.0), chat_height)
+	)
+	out["chip"] = Rect2(view - Vector2(m, m) - chip_size, chip_size)
+	return out
+
+
+func region(view: Vector2, id: String, minimap_override: float = -1.0) -> Rect2:
+	return regions(view, minimap_override).get(id, Rect2())
+
+
+static func place(control: Control, rect: Rect2) -> void:
+	control.anchor_left = 0.0
+	control.anchor_top = 0.0
+	control.anchor_right = 0.0
+	control.anchor_bottom = 0.0
+	control.grow_horizontal = Control.GROW_DIRECTION_END
+	control.grow_vertical = Control.GROW_DIRECTION_END
+	control.offset_left = rect.position.x
+	control.offset_top = rect.position.y
+	control.offset_right = rect.end.x
+	control.offset_bottom = rect.end.y
+
+
+static func view_of(node: Node) -> Vector2:
+	var vp := node.get_viewport() if node.is_inside_tree() else null
+	if vp == null:
+		return Vector2(1280, 720)
+	return vp.get_visible_rect().size

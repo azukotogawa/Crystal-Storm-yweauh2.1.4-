@@ -46,17 +46,19 @@ func _bind_registry() -> void:
 	_refresh()
 
 
+func _place_in_layout() -> void:
+	var layout := _HudLayout.load_active()
+	var rect := layout.region(_HudLayout.view_of(self), "hotbar")
+	var pad := layout.backing_pad
+	_HudLayout.place(self, Rect2(rect.position + Vector2(pad, pad), rect.size - Vector2(pad, pad) * 2.0))
+
+
 func _build_slots() -> void:
 	var total_w := _Inventory.HOTBAR_SIZE * SLOT_SIZE + (_Inventory.HOTBAR_SIZE - 1) * SLOT_GAP
 	custom_minimum_size = Vector2(total_w, SLOT_SIZE + 8)
-	anchor_left = 0.5
-	anchor_right = 0.5
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	offset_left = -total_w * 0.5
-	offset_right = total_w * 0.5
-	offset_top = -SLOT_SIZE - 24
-	offset_bottom = -16
+	_place_in_layout()
+	if not get_viewport().size_changed.is_connected(_place_in_layout):
+		get_viewport().size_changed.connect(_place_in_layout)
 
 	# Drawn above the inventory dimmer. Picking ignores z_index, so the bag
 	# also moves this bar to the front of the canvas while it is open.

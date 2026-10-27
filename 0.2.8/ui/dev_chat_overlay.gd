@@ -2,6 +2,7 @@ extends Control
 class_name DevChatOverlay
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 
 const MIN_PANEL_HEIGHT := 72.0
 const MAX_PANEL_HEIGHT := 280.0
@@ -37,14 +38,23 @@ func _bind_assistant() -> void:
 		_assistant.response_ready.connect(_on_assistant_response)
 
 
-func _build_ui() -> void:
+func _place_in_layout() -> void:
+	var rect := _HudLayout.load_active().region(_HudLayout.view_of(self), "chat")
 	anchor_left = 0.0
-	anchor_top = 1.0
-	anchor_right = 1.0
-	anchor_bottom = 1.0
+	anchor_top = 0.0
+	anchor_right = 0.0
+	anchor_bottom = 0.0
 	grow_vertical = Control.GROW_DIRECTION_BEGIN
-	offset_top = -MIN_PANEL_HEIGHT
-	offset_bottom = 0.0
+	offset_left = rect.position.x
+	offset_right = rect.end.x
+	offset_top = rect.end.y - MIN_PANEL_HEIGHT
+	offset_bottom = rect.end.y
+
+
+func _build_ui() -> void:
+	_place_in_layout()
+	if not get_viewport().size_changed.is_connected(_place_in_layout):
+		get_viewport().size_changed.connect(_place_in_layout)
 
 	_panel = PanelContainer.new()
 	_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -91,10 +101,11 @@ func _build_ui() -> void:
 	vbox.add_child(_line_edit)
 
 
-## Esc must close the chat even while the LineEdit has focus: LineEdit consumes
-## ui_cancel in gui input, so _unhandled_input never saw it.
 func _input(event: InputEvent) -> void:
-	if _open and event.is_action_pressed("ui_cancel"):
+	if not _open or not event is InputEventKey:
+		return
+	var key := event as InputEventKey
+	if key.pressed and not key.echo and (key.keycode == KEY_ESCAPE or key.physical_keycode == KEY_ESCAPE):
 		_close_chat()
 		get_viewport().set_input_as_handled()
 
@@ -171,4 +182,4 @@ func _sync_panel_height() -> void:
 		return
 	var content_h := _panel.get_combined_minimum_size().y + 12.0
 	content_h = clampf(content_h, MIN_PANEL_HEIGHT, MAX_PANEL_HEIGHT)
-	offset_top = -content_h
+	offset_top = offset_bottom - content_h

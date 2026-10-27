@@ -984,22 +984,22 @@ func _check_skill_tree() -> void:
 	var panel = load("res://ui/skill_tree_panel.gd").new()
 	root.add_child(panel)
 	for branch in ["fighter", "miner", "builder"]:
-		var col: Node = panel.get_node_or_null("Root/Panel/Body/Branches/" + branch)
+		var col: Node = panel.get_node_or_null("Modal/Frame/Box/Scroll/Content/Branches/" + branch)
 		if col == null:
 			_fail("branch %s is missing" % branch)
 			panel.free()
 			_drop(pair)
 			return
-	var miner_btn: Button = panel.get_node("Root/Panel/Body/Branches/miner/miner_passive")
-	var dash_btn: Button = panel.get_node("Root/Panel/Body/Branches/fighter/dash")
-	var builder_btn: Button = panel.get_node("Root/Panel/Body/Branches/builder/builder_passive")
+	var miner_btn: Button = panel.get_node("Modal/Frame/Box/Scroll/Content/Branches/miner/miner_passive")
+	var dash_btn: Button = panel.get_node("Modal/Frame/Box/Scroll/Content/Branches/fighter/dash")
+	var builder_btn: Button = panel.get_node("Modal/Frame/Box/Scroll/Content/Branches/builder/builder_passive")
 	panel.open()
 	if not panel.visible or not _GameplayInput.skill_tree_open or not _GameplayInput.blocks_actions():
 		_fail("skill tree did not open")
 		panel.free()
 		_drop(pair)
 		return
-	var points: Label = panel.get_node("Root/Panel/Body/Points")
+	var points: Label = panel.get_node("Modal/Frame/Box/Scroll/Content/Points")
 	if points.text != "Points 2":
 		_fail("skill tree points read %s" % points.text)
 		panel.free()

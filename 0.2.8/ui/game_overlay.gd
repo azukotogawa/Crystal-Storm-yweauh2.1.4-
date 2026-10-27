@@ -132,6 +132,9 @@ func _ready() -> void:
 	_ensure_player_health_bar()
 	_ensure_xp_bar()
 	_bind_xp_hud()
+	_relayout_hud()
+	if not get_viewport().size_changed.is_connected(_relayout_hud):
+		get_viewport().size_changed.connect(_relayout_hud)
 	_ThemeBuilder.apply(self)
 	apply_hud_palette(_PlayerSettings.colorblind_palette)
 	_update_player_health()
@@ -183,6 +186,30 @@ func _update_bake_chip() -> void:
 	_bake_total = total
 
 
+func _relayout_hud() -> void:
+	var layout := _HudLayout.load_active()
+	var view := _HudLayout.view_of(self)
+	var rects := layout.regions(view)
+	var plate: Rect2 = rects["vitals"]
+	if _objective_panel != null:
+		_HudLayout.place(_objective_panel, rects["objective"])
+	if _vitals_plate != null:
+		_HudLayout.place(_vitals_plate, plate)
+	if _xp_panel != null:
+		_HudLayout.place(_xp_panel, Rect2(plate.position + Vector2(16, 12), Vector2(plate.size.x - 32, 36)))
+	if _hp_panel != null:
+		_HudLayout.place(_hp_panel, Rect2(plate.position + Vector2(16, 58), Vector2(plate.size.x - 32, 36)))
+	if _bake_chip != null:
+		_HudLayout.place(_bake_chip, rects["chip"])
+	if _boss_panel != null:
+		_HudLayout.place(_boss_panel, rects["boss"])
+	if _toast != null:
+		_HudLayout.place(_toast, rects["toast"])
+	var leave := get_node_or_null("LeaveWorld") as Control
+	if leave != null:
+		_HudLayout.place(leave, rects["leave_world"])
+
+
 func _ensure_leave_world_button() -> void:
 	var wm = load("res://systems/world_manager.gd")
 	if wm == null or not bool(wm.launched_from_catalog):
@@ -199,6 +226,7 @@ func _ensure_leave_world_button() -> void:
 	b.offset_bottom = 40
 	b.pressed.connect(_on_leave_world)
 	add_child(b)
+	_relayout_hud()
 
 
 func _on_leave_world() -> void:
@@ -895,6 +923,7 @@ func _ensure_boss_bar() -> void:
 	_boss_bar.show_percentage = false
 	box.add_child(_boss_bar)
 	add_child(_boss_panel)
+	_relayout_hud()
 	apply_hud_palette(_PlayerSettings.colorblind_palette)
 
 

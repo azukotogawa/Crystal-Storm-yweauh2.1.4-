@@ -5,6 +5,7 @@ const _InputBindings = preload("res://systems/input_bindings.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _SettingsMenu = preload("res://ui/settings_menu.gd")
 const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
+const _ModalPanel = preload("res://ui/modal_panel.gd")
 
 var _root: Control
 var _settings_box: VBoxContainer
@@ -22,6 +23,8 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _GameplayInput.modal_takes_escape(event):
 		get_viewport().set_input_as_handled()
+		return
+	if _ModalPanel.consumed(event):
 		return
 	if not _is_pause_event(event):
 		return
@@ -63,6 +66,8 @@ func toggle() -> void:
 
 func open() -> void:
 	visible = true
+	if _root != null and _root.has_method("open"):
+		_root.open()
 	_GameplayInput.pause_open = true
 	var skills = get_tree().get_first_node_in_group("skill_tree") if get_tree() else null
 	if skills and skills.has_method("close"):
@@ -97,26 +102,11 @@ func _refresh_debug_overlay() -> void:
 
 
 func _build() -> void:
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.03, 0.06, 0.62)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(dim)
-	_root = CenterContainer.new()
-	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(_root)
-	_ThemeBuilder.apply(_root)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(420, 480)
-	_root.add_child(panel)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 8)
-	panel.add_child(v)
-	var title := Label.new()
-	title.text = "Paused"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 22)
-	v.add_child(title)
+	var modal := _ModalPanel.new("Paused", 420.0)
+	add_child(modal)
+	_root = modal
+	modal.close_requested.connect(close)
+	var v: VBoxContainer = modal.content
 	_btn(v, "Resume", close)
 	_btn(v, "Settings", _toggle_settings)
 	_settings_box = VBoxContainer.new()

@@ -4,8 +4,8 @@
 
 [resource]
 script = ExtResource("1_look")
-objective_origin = Vector2(12, 12)
-objective_size = Vector2(328, 164)
+objective_origin = Vector2(24, 24)
+objective_size = Vector2(328, 176)
 clearance = 18.0
 chapter_margin_right = 16.0
 chapter_top = 56.0
@@ -21,3 +21,15 @@ vitals_left = -146.0
 vitals_right = 146.0
 vitals_top = -176.0
 vitals_bottom = -70.0
+safe_margin = 24.0
+region_gap = 12.0
+minimap_px = 160.0
+leave_size = Vector2(128, 28)
+boss_size = Vector2(340, 44)
+toast_size = Vector2(440, 36)
+toast_top_ratio = 0.3
+hotbar_size = Vector2(574, 52)
+vitals_size = Vector2(292, 106)
+skill_size = Vector2(328, 40)
+chat_height = 280.0
+chip_size = Vector2(268, 20)

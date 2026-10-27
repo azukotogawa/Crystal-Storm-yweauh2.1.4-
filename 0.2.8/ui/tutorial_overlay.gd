@@ -4,6 +4,7 @@ extends CanvasLayer
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
+const _ModalPanel = preload("res://ui/modal_panel.gd")
 
 static var _inst: TutorialOverlay
 
@@ -14,6 +15,8 @@ var _steps: PackedStringArray = []
 var _index: int = 0
 var _controls: bool = false
 var _next: Button
+var _modal: Control
+var _grid: GridContainer
 
 
 static func wants_tutorial() -> bool:
@@ -62,25 +65,11 @@ static func _ensure(tree: SceneTree) -> TutorialOverlay:
 func _ready() -> void:
 	_inst = self
 	layer = 70
-	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.03, 0.06, 0.55)
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(center)
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(460, 280)
-	_ThemeBuilder.apply(panel)
-	center.add_child(panel)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	panel.add_child(box)
-	_title = Label.new()
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title.add_theme_font_size_override("font_size", 22)
-	box.add_child(_title)
+	_modal = _ModalPanel.new("How to play", 560.0)
+	add_child(_modal)
+	_modal.close_requested.connect(_on_modal_close)
+	var box: VBoxContainer = _modal.content
+	_title = _modal.title_label
 	_step_label = Label.new()
 	_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_step_label)
@@ -88,7 +77,15 @@ func _ready() -> void:
 	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body.custom_minimum_size = Vector2(420, 120)
 	box.add_child(_body)
+	_grid = GridContainer.new()
+	_grid.name = "ControlsGrid"
+	_grid.columns = 2
+	_grid.visible = false
+	_grid.add_theme_constant_override("h_separation", 24)
+	_grid.add_theme_constant_override("v_separation", 4)
+	box.add_child(_grid)
 	var row := HBoxContainer.new()
+	row.name = "Buttons"
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 8)
 	box.add_child(row)
@@ -124,6 +121,8 @@ func show_steps() -> void:
 	_index = 0
 	_steps = _build_steps()
 	visible = true
+	_set_grid(false)
+	_modal.open()
 	_render()
 
 
@@ -134,10 +133,48 @@ func show_controls() -> void:
 		_title.text = "Controls"
 	if _step_label:
 		_step_label.text = "Current bindings"
-	if _body:
-		_body.text = _controls_text()
+	_fill_grid()
+	_set_grid(true)
+	_modal.open()
 	if _next:
 		_next.text = "Done"
+
+
+func _set_grid(on: bool) -> void:
+	_grid.visible = on
+	_body.visible = not on
+
+
+func _fill_grid() -> void:
+	for child in _grid.get_children():
+		_grid.remove_child(child)
+		child.queue_free()
+	for group in _InputBindings.GROUPS:
+		var heading := Label.new()
+		heading.text = str(group[0])
+		heading.add_theme_font_size_override("font_size", 18)
+		heading.modulate = Color(0.82, 0.62, 1.0)
+		_grid.add_child(heading)
+		_grid.add_child(Control.new())
+		for action in group[1]:
+			_add_row(_InputBindings.label_of(action), _InputBindings.binding_text(action))
+		for note in _InputBindings.NOTES.get(group[0], []):
+			_add_row(str(note[0]), str(note[1]))
+
+
+func _add_row(action_text: String, key_text: String) -> void:
+	var left := Label.new()
+	left.text = action_text
+	left.custom_minimum_size = Vector2(240, 0)
+	_grid.add_child(left)
+	var right := Label.new()
+	right.text = key_text
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_grid.add_child(right)
+
+
+func _on_modal_close() -> void:
+	close_overlay()
 
 
 func close_overlay() -> void:

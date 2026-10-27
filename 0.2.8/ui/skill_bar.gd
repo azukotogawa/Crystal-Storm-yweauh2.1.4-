@@ -2,6 +2,7 @@ extends Control
 
 const _Skills = preload("res://systems/skill_service.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
+const _HudLayout = preload("res://config/hud_layout.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 
 const SLOT_W := 104
@@ -19,17 +20,17 @@ var _cooldowns: Array[Label] = []
 func _ready() -> void:
 	_ThemeBuilder.apply(self)
 	var total_w := _Skills.ACTIVE_SLOTS * SLOT_W + (_Skills.ACTIVE_SLOTS - 1) * SLOT_GAP
-	anchor_left = 0.5
-	anchor_right = 0.5
-	anchor_top = 1.0
-	anchor_bottom = 1.0
-	offset_left = -total_w * 0.5
-	offset_right = total_w * 0.5
-	offset_top = -ABOVE_HOTBAR - SLOT_H
-	offset_bottom = -ABOVE_HOTBAR
+	_place_in_layout()
+	if not get_viewport().size_changed.is_connected(_place_in_layout):
+		get_viewport().size_changed.connect(_place_in_layout)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for i in _Skills.ACTIVE_SLOTS:
 		_add_slot(i)
+
+
+func _place_in_layout() -> void:
+	var layout := _HudLayout.load_active()
+	_HudLayout.place(self, layout.region(_HudLayout.view_of(self), "skill_bar"))
 
 
 func _add_slot(i: int) -> void:

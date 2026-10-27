@@ -19,6 +19,19 @@ const ACTIONS: PackedStringArray = [
 	"texture_blueprint_toggle",
 ]
 
+const GROUPS := [
+	["Movement", ["move_forward", "move_back", "move_left", "move_right", "jump", "sprint"]],
+	["Camera", ["rotate_left", "rotate_right", "camera_pitch_up", "camera_pitch_down", "camera_zoom_in", "camera_zoom_out", "camera_reset", "camera_free_look", "unstuck"]],
+	["Items", ["attack", "build_place", "interact", "plant", "inventory_toggle", "hotbar_next", "hotbar_prev", "hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9", "hotbar_10"]],
+	["Build", ["place_cycle", "place_variant", "rotate_piece", "rotate_piece_back", "brush_shrink", "brush_grow", "texture_blueprint_toggle"]],
+	["Skills", ["skill_1", "skill_2", "skill_3", "skill_tree"]],
+	["System", ["toggle_map", "quick_save", "quick_load", "pause", "dev_chat_toggle", "debug_overlay_toggle", "bug_report"]],
+]
+
+const NOTES := {
+	"Items": [["Place on a laptop", "Two-finger tap (right click)"]],
+}
+
 const LABELS := {
 	"move_forward": "Move forward",
 	"move_back": "Move back",

@@ -4,11 +4,13 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _Skills = preload("res://systems/skill_service.gd")
 const _Passives = preload("res://player/skill_passives.gd")
+const _ModalPanel = preload("res://ui/modal_panel.gd")
 
 const TOGGLE_ACTION := "skill_tree"
 const TOGGLE_KEY := 75
 
 var _points: Label
+var _modal: Control
 var _buttons: Dictionary = {}
 var _focus_col := 0
 var _focus_row := 0
@@ -56,6 +58,7 @@ func open() -> void:
 	if _GameplayInput.blocks_menus() or _GameplayInput.map_open:
 		return
 	visible = true
+	_modal.open()
 	_GameplayInput.skill_tree_open = true
 	if get_tree():
 		get_tree().paused = true
@@ -96,30 +99,11 @@ func _is_toggle(key: InputEventKey) -> bool:
 
 
 func _build() -> void:
-	var dim := ColorRect.new()
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.02, 0.03, 0.06, 0.62)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(dim)
-	var root := CenterContainer.new()
-	root.name = "Root"
-	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(root)
-	_ThemeBuilder.apply(root)
-	var panel := PanelContainer.new()
-	panel.name = "Panel"
-	panel.custom_minimum_size = Vector2(640, 360)
-	root.add_child(panel)
-	var body := VBoxContainer.new()
-	body.name = "Body"
-	body.add_theme_constant_override("separation", 8)
-	panel.add_child(body)
-	var title := Label.new()
-	title.name = "Title"
-	title.text = "Skills"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 22)
-	body.add_child(title)
+	_modal = _ModalPanel.new("Skills", 640.0)
+	_modal.name = "Modal"
+	add_child(_modal)
+	_modal.close_requested.connect(close)
+	var body: VBoxContainer = _modal.content
 	_points = Label.new()
 	_points.name = "Points"
 	_points.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
