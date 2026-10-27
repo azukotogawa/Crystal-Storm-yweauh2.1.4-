@@ -44,7 +44,9 @@ var _discovery_xp_bound: bool = false
 var fallen_towns: int = 0
 var last_town_penalty: String = ""
 var coverage_warning: String = ""
+var crystal_touch_note: String = ""
 var _coverage_warned: bool = false
+var _crystal_touch_noted: bool = false
 var _town_penalty_bound: bool = false
 
 var _player: Node3D
@@ -350,7 +352,24 @@ func notify_boss_defeated() -> void:
 
 
 func _on_crystal_touched_player() -> void:
+	if run_state != RunState.PLAYING:
+		return
+	if DEATH_ONLY_LOSS:
+		_note_crystal_touch()
+		return
 	_set_lost("The crystal overwhelmed you.")
+
+
+func _note_crystal_touch() -> void:
+	if _crystal_touch_noted:
+		return
+	_crystal_touch_noted = true
+	crystal_touch_note = "The crystal is on you. Step out."
+	if not is_inside_tree():
+		return
+	var overlay = get_tree().get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("_show_toast"):
+		overlay.call("_show_toast", crystal_touch_note)
 
 
 func _on_player_died() -> void:

@@ -21,6 +21,7 @@ func _run() -> void:
 		_fail("DEATH_ONLY_LOSS must default true")
 	_test_coverage_does_not_lose()
 	_test_town_does_not_lose()
+	_test_crystal_touch_does_not_lose()
 	_test_death_loses()
 	if _failed == 0:
 		print("All death only loss tests OK")
@@ -69,6 +70,22 @@ func _test_town_does_not_lose() -> void:
 	else:
 		print("OK town fallen stays playing: %s" % gm.last_town_penalty)
 	crystal.free()
+	gm.free()
+
+
+func _test_crystal_touch_does_not_lose() -> void:
+	var gm := _GameManager.new()
+	root.add_child(gm)
+	gm._on_crystal_touched_player()
+	gm._on_crystal_touched_player()
+	if gm.run_state != _GameManager.RunState.PLAYING:
+		_fail("crystal touch must stay PLAYING, state=%s reason=%s" % [gm.run_state, gm.last_loss_reason])
+	elif gm.crystal_touch_note == "":
+		_fail("crystal touch must set a warning")
+	elif gm.deaths != 0:
+		_fail("crystal touch must not count a death")
+	else:
+		print("OK crystal touch stays playing: %s" % gm.crystal_touch_note)
 	gm.free()
 
 

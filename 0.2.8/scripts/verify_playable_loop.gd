@@ -99,7 +99,12 @@ func _test_lose_paths() -> void:
 
 	var gm3 := _GameManager.new()
 	gm3._on_crystal_touched_player()
-	if gm3.run_state != _GameManager.RunState.LOST:
+	if _GameManager.DEATH_ONLY_LOSS:
+		if gm3.run_state != _GameManager.RunState.PLAYING or gm3.crystal_touch_note == "":
+			_fail("lose: crystal touch must stay PLAYING")
+		else:
+			print("OK crystal touch stays playing")
+	elif gm3.run_state != _GameManager.RunState.LOST:
 		_fail("lose: crystal touch must set LOST")
 	else:
 		print("OK lose crystal touch")
