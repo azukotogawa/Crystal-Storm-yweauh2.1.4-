@@ -14,7 +14,10 @@ func _run() -> void:
 	var name := OS.get_environment("CRYSTALSTORM_SCENARIO").strip_edges()
 	if name == "":
 		name = "dig"
-	GameFeelConfig.pace_override = 1.0
+	var pace_env := OS.get_environment("CRYSTALSTORM_CONTENT_PACE").strip_edges()
+	if pace_env.is_valid_float():
+		GameFeelConfig.pace_override = pace_env.to_float()
+		print("HARNESS content_pace override %.2f" % GameFeelConfig.pace_override)
 	var run = _Run.new()
 	var code: int = await run.play(self, name)
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():

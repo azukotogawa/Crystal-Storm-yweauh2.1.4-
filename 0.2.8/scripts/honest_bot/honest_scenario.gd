@@ -1813,6 +1813,13 @@ func _mite_seeds() -> Array:
 	return [12349, 12350, 12351, 12352, 12353]
 
 
+func _mite_limit(tree: SceneTree) -> float:
+	var spawner = tree.get_first_node_in_group("crystal_enemy_spawner")
+	if spawner == null or not spawner.has_method("paced_grace"):
+		return MITE_LIMIT
+	return MITE_LIMIT + maxf(0.0, float(spawner.paced_grace()) - float(spawner.spawn_grace_sec))
+
+
 func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	print("HARNESS seed %d" % seed_value)
 	print("HARNESS setup pending_launch harness-mite_fight seed %d resume off" % seed_value)
@@ -1851,7 +1858,9 @@ func _mite_attempt(tree: SceneTree, seed_value: int) -> Dictionary:
 	var why := ""
 	var last_pos := Vector2.ZERO
 	var trace_key := ""
-	while elapsed < MITE_LIMIT:
+	var limit := _mite_limit(tree)
+	print("HARNESS mite limit %.1f pace %.2f" % [limit, GameFeelConfig.pace()])
+	while elapsed < limit:
 		var delta := _delta(tree)
 		elapsed += delta
 		fight.bot.input.advance_pace(delta)
