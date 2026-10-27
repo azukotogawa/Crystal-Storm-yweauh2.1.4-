@@ -73,6 +73,8 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(2.0, 30.0, 0.5) var draw_min_speed: float = 10.0
 @export_range(10.0, 80.0, 0.5) var draw_max_speed: float = 36.0
 @export_range(0.5, 3.0, 0.05) var draw_curve: float = 1.0
+@export_range(1.0, 32.0, 0.5) var map_open_budget_scale: float = 8.0
+@export_range(0.05, 1.0, 0.05) var map_preview_sec: float = 0.25
 
 
 static func create_default():
