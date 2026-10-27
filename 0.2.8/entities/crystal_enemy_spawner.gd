@@ -12,8 +12,8 @@ const _GameConfig = preload("res://config/game_config.gd")
 signal enemy_spawned(enemy_id: StringName, world_pos: Vector2i)
 signal enemy_killed(enemy_id: StringName, world_pos: Vector2i, player_killed: bool)
 
-@export var spawn_interval: float = 8.0
-@export var max_active: int = 14
+@export var spawn_interval: float = 12.0
+@export var max_active: int = 8
 @export var spawn_near_player_min: float = 3.0
 @export var spawn_near_player_max: float = 10.0
 @export var require_crystal_depth: float = 0.2

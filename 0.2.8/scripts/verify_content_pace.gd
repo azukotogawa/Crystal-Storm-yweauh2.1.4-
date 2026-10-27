@@ -13,22 +13,22 @@ func _init() -> void:
 		_fail("game_feel_config has no content_pace")
 		_finish()
 		return
-	if absf(float(cfg.content_pace) - 0.3) > 0.0001:
-		_fail("default content_pace %.2f want 0.3" % cfg.content_pace)
+	if absf(float(cfg.content_pace) - 0.45) > 0.0001:
+		_fail("default content_pace %.2f want 0.45" % cfg.content_pace)
 	var sim = _SimConfig.create_default()
 	var want_old := {
-		"interval": 8.0, "cap": 14, "grace": 28.0, "assault": 1.6, "pressure": 1.25,
+		"interval": 12.0, "cap": 8, "grace": 28.0, "assault": 1.6, "pressure": 1.25,
 		"origin": 1.6, "ruin": 1.1, "artifact": 0.7,
 		"grass": 0.14, "bush": 0.09, "tree": 0.05, "farmland": 0.11,
 		"ruin_bonus": 12.0, "burst": 2, "summon": 3,
 	}
 	var want_new := {
-		"interval": 26.67, "cap": 4, "grace": 93.33, "assault": 1.18, "pressure": 0.375,
-		"origin": 0.48, "ruin": 0.33, "artifact": 0.21,
-		"grass": 0.042, "bush": 0.027, "tree": 0.015, "farmland": 0.033,
-		"ruin_bonus": 3.6, "burst": 1, "summon": 1,
+		"interval": 26.67, "cap": 4, "grace": 62.22, "assault": 1.27, "pressure": 0.5625,
+		"origin": 0.72, "ruin": 0.495, "artifact": 0.315,
+		"grass": 0.063, "bush": 0.0405, "tree": 0.0225, "farmland": 0.0495,
+		"ruin_bonus": 5.4, "burst": 1, "summon": 1,
 	}
-	for pair in [[1.0, want_old], [0.3, want_new]]:
+	for pair in [[1.0, want_old], [0.45, want_new]]:
 		var p: float = pair[0]
 		GameFeelConfig.pace_override = p
 		var sp = _Spawner.new()
