@@ -117,31 +117,33 @@ func _run() -> void:
 	data_w.tile_map[2][2] = _VoxelTypes.RIVER
 	var dug_bed: float = 10.0 - layer
 	data_w.surface_map[3][2] = dug_bed
-	data_w._worker_water_lid[Vector2i(3, 2)] = 10.0 + layer
+	var flow_top: float = dug_bed + layer + 0.875 * layer
+	data_w._worker_water_lid[Vector2i(3, 2)] = flow_top
 	var cm_w := _ChunkManager.new()
 	var water_lid := 0
-	var dirt_top_indent := 0
-	var water_flush := 0
+	var water_on_bed := 0
+	var dirt_top := 0
 	for qw in cm_w._build_mesh(data_w).get("quads", []):
 		if int(qw.get("x", -1)) != 3 or int(qw.get("z", -1)) != 2:
 			continue
 		if int(qw.get("face_code", -1)) != 0:
 			continue
 		var qy: float = float(qw.get("y", -1.0))
-		if int(qw.get("type", -1)) == _VoxelTypes.WATER and absf(qy - dug_bed) < 0.05:
+		var is_water: bool = int(qw.get("type", -1)) == _VoxelTypes.WATER
+		if is_water and absf(qy - (dug_bed + layer)) < 0.05 and absf(qy + float(qw.get("dim_y", 0.0)) * layer - flow_top) < 0.05:
 			water_lid += 1
-		if int(qw.get("type", -1)) == _VoxelTypes.WATER and absf(qy - 10.0) < 0.05:
-			water_flush += 1
-		if int(qw.get("type", -1)) != _VoxelTypes.WATER and absf(qy - dug_bed) < 0.05:
-			dirt_top_indent += 1
-	if water_lid < 1:
-		_fail("indent must emit water lid on dug bed, lids=%d" % water_lid)
-	elif water_flush > 0:
-		_fail("indent water must not sit flush with undug ground, flush_lids=%d" % water_flush)
-	elif dirt_top_indent > 0:
-		_fail("indent dirt top must be replaced by water lid, dirt_tops=%d" % dirt_top_indent)
+		if is_water and absf(qy - dug_bed) < 0.05:
+			water_on_bed += 1
+		if not is_water and absf(qy - dug_bed) < 0.05:
+			dirt_top += 1
+	if water_lid != 1:
+		_fail("flowed level 7 cell must emit one water lid from the hole floor to its surface, lids=%d" % water_lid)
+	elif water_on_bed > 0:
+		_fail("flowed water must not replace the floor block, water_on_bed=%d" % water_on_bed)
+	elif dirt_top != 1:
+		_fail("hole floor must keep its ground top under the water, dirt_tops=%d" % dirt_top)
 	else:
-		print("OK water lid on dug bed (below surrounding ground)")
+		print("OK flowed water lid renders at its real height over the hole floor")
 
 	_ChannelRegistry.reset()
 	_TerrainEdits.reset()

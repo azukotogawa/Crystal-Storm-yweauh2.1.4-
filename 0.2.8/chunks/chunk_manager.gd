@@ -979,12 +979,6 @@ func _skips_greedy_surface_cell(data: ChunkData, x: int, z: int, for_top: bool =
 	if data != null and not data._mesh_job_micro_skip.is_empty() \
 			and data._mesh_job_micro_skip.has(Vector2i(x, z)):
 		return true
-	if for_top and data != null and data._worker_water_lid.has(Vector2i(x, z)):
-		var lid_y: float = float(data._worker_water_lid[Vector2i(x, z)])
-		var bed: float = _surface_y_at(data, x, z)
-		var layer: float = _WorldSettings.get_active().layer_height()
-		if lid_y > bed + layer + 0.05:
-			return true
 	if not data.has_ramp(x, z):
 		return false
 	var entry: Dictionary = data.get_ramp_entry(x, z)
@@ -1896,12 +1890,12 @@ func _emit_water_lids_region(
 			var sy: float = float(data._worker_water_lid[Vector2i(x, z)])
 			if sy <= 0.01:
 				continue
-			var bed: float = _surface_y_at(data, x, z)
-			if sy <= bed + layer + 0.05:
+			var top: float = _surface_y_at(data, x, z) + layer
+			if sy <= top + 0.01:
 				continue
 			_append_voxel_face(
-				out_quads, float(x), bed, float(z),
-				1.0, 1.0, 1.0, 1.0, 1.0, VoxelTypes.WATER, FACE_TOP
+				out_quads, float(x), top, float(z),
+				1.0, (sy - top) / layer, 1.0, 1.0, 1.0, VoxelTypes.WATER, FACE_TOP
 			)
 
 
