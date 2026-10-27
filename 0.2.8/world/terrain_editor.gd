@@ -385,12 +385,7 @@ func try_place_blueprint(world_pos: Vector3, inventory, blueprint_id: StringName
 			passages.append(Vector2i(at.x, at.z))
 			continue
 		wall_cells.append(at)
-		var named := str(row.get("build", ""))
-		if named != "":
-			build_id = StringName(named)
-	if build_id == &"":
-		build_id = _build_id_for_tile(tile)
-	var batch: Dictionary = _TerrainEdits.place_cells(wall_cells, tile, self, build_id)
+	var batch: Dictionary = _TerrainEdits.place_cells(wall_cells, tile, self)
 	last_place_batch = batch
 	if int(batch.get("placed_count", 0)) != wall_cells.size() or wall_cells.is_empty():
 		_refund_lines(inventory, spent)
