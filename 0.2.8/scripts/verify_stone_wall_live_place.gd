@@ -272,8 +272,8 @@ func _check_blueprint_live(editor, world, player, feat_layer) -> void:
 			_fail("blueprint column %s does not block: %s" % [str(Vector2i(wx, anchor.y)), blocked.get("reason", "?")])
 			raised = false
 		var node: Node3D = feat_layer._nodes_by_cell.get(Vector2i(wx, anchor.y))
-		if node == null or str(node.get_meta("building_visual_id", "")) != "stone_wall":
-			_fail("blueprint column %s has no stone wall visual" % str(Vector2i(wx, anchor.y)))
+		if node != null:
+			_fail("blueprint column %s must be a plain fill block" % str(Vector2i(wx, anchor.y)))
 	if _layers_at(anchor.x + 3, anchor.y) != beside:
 		raised = false
 	if not raised:
