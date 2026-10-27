@@ -940,7 +940,7 @@ func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: f
 	_ghost.visible = true
 	var box_h: float = layer * 1.0
 	_ghost.scale = Vector3(scale * 1.02, box_h, scale * 1.02)
-	var gpos: Vector3 = pred_info.get("world_pos", Vector3.ZERO)
+	var gpos: Vector3 = pred_info.get("place_pos" if mode == &"build" else "world_pos", Vector3.ZERO)
 	gpos.y -= layer * 0.5
 	_ghost.global_position = gpos
 	var look = _marker_look()

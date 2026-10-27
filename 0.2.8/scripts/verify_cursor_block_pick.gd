@@ -80,7 +80,7 @@ func _run() -> void:
 					var cx := home.x + dx
 					var cz := home.y + dz
 					var cy := _TerrainEdits.surface_block_y(world, cx, cz)
-					var face := Vector3((cx + 0.5) * s, float(cy) * s, (cz + 0.5) * s)
+					var face := Vector3((cx + 0.5) * s, float(cy + 1) * s, (cz + 0.5) * s)
 					var at := cam.unproject_position(face)
 					if not rect.has_point(at):
 						continue

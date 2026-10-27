@@ -968,6 +968,15 @@ static func _weapon_mode_from_player(player: Node3D, force_build: bool = false) 
 	return mode
 
 
+static func _cell_top_center(cell: Vector3i) -> Vector3:
+	var ws = _WorldSettings.get_active()
+	return Vector3(
+		ws.column_to_world(float(cell.x) + 0.5),
+		float(cell.y + 1) * ws.voxel_scale,
+		ws.column_to_world(float(cell.z) + 0.5)
+	)
+
+
 static func resolve_action(
 	player: Node3D,
 	world: InfiniteNoiseWorld,
@@ -1003,7 +1012,6 @@ static func resolve_action(
 	if world:
 		walk_top = _walkable_top(world, chunk_manager, col.x, col.z)
 	var layer_h: float = ws.layer_height()
-	var built_layers: int = maxi(0, int(round(_TerrainEdits.get_height_delta(wx, wz) / layer_h)))
 	var want_build: bool = simulate_interact \
 		or Input.is_action_pressed("interact") \
 		or Input.is_action_pressed("build_place")
@@ -1015,25 +1023,26 @@ static func resolve_action(
 		and _is_action_valid(world, chunk_manager, wx, wz, mode, player, range_v)
 	var blocked := mode != &"none" and not valid
 	var highlight_y: float = walk_top
-	if mode == &"dig":
-		highlight_y = walk_top
-	elif mode == &"build":
-		highlight_y = walk_top + layer_h * float(built_layers + 1)
-	elif mode in [&"attack", &"ranged"] and not _is_solid_column(world, chunk_manager, wx, wz):
+	if mode in [&"attack", &"ranged"] and not _is_solid_column(world, chunk_manager, wx, wz):
 		highlight_y = walk_top + layer_h * 0.35
-	elif mode in [&"attack", &"ranged"]:
-		highlight_y = walk_top
 	var world_pos := Vector3(
 		ws.column_to_world(col.x),
 		highlight_y,
 		ws.column_to_world(col.z)
 	)
+	var place_pos := world_pos + Vector3(0.0, layer_h, 0.0)
+	var place_cell := last_pick_cell + last_pick_normal
+	if last_pick_exact and (Vector2i(last_pick_cell.x, last_pick_cell.z) == Vector2i(wx, wz) \
+			or Vector2i(place_cell.x, place_cell.z) == Vector2i(wx, wz)):
+		world_pos = _cell_top_center(last_pick_cell)
+		place_pos = _cell_top_center(place_cell)
 	return {
 		"column": col,
 		"cell": Vector2i(wx, wz),
 		"surface_y": surf,
 		"walk_top": walk_top,
 		"world_pos": world_pos,
+		"place_pos": place_pos,
 		"mode": mode,
 		"valid": valid,
 		"blocked": blocked,

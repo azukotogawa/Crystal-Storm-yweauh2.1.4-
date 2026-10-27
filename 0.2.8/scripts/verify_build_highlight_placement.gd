@@ -66,8 +66,8 @@ func _run() -> void:
 		floori(float(player.get("voxel_position").z))
 	)
 	var targeting_src := (load("res://player/action_targeting.gd") as GDScript).source_code
-	if "built_layers + 1" not in targeting_src:
-		push_error("action_targeting must anchor build highlight on placement top face")
+	if "place_pos" not in targeting_src:
+		push_error("action_targeting must expose the placement cell as place_pos")
 		failed = true
 	else:
 		print("OK action_targeting build top-face anchor")
@@ -100,7 +100,7 @@ func _run() -> void:
 				var walk: float = _ActionTargeting._walkable_top(
 					world, chunk_manager, float(wx) + 0.5, float(wz) + 0.5
 				)
-				var build_y: float = float(build_info.get("world_pos", Vector3.ZERO).y)
+				var build_y: float = float(build_info.get("place_pos", Vector3.ZERO).y)
 				if build_y < walk + layer * 0.92:
 					continue
 				for _w in 8:

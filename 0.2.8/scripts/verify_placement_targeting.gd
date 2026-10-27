@@ -8,7 +8,7 @@ const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 class FakeWorld:
 	extends RefCounted
 	var heights := {}
-	var flat := 3
+	var flat := 2
 
 	func get_surface_height(x: float, z: float) -> float:
 		var key := Vector2i(int(floor(x)), int(floor(z)))
@@ -27,22 +27,22 @@ func _init() -> void:
 	var eye := Vector3(0.5, 3.0 + _FacePick.EYE_HEIGHT, 0.5)
 	var dir := Vector3(0.5, -0.7, 0.5).normalized()
 
-	world.heights[Vector2i(3, 0)] = 4
+	world.heights[Vector2i(3, 0)] = 3
 	var aim := Vector3(3.5, 4.0, 0.5)
 	var hit: Dictionary = _FacePick.pick(world, (aim - dir * 40.0) * scale, dir, eye, reach)
 	if not bool(hit.hit) or hit.cell != Vector3i(3, 3, 0) or hit.normal != Vector3i(0, 1, 0):
 		_fail("block 3 away not picked on its top face: %s" % str(hit))
-	world.heights[Vector2i(3, 0)] = 3
+	world.heights[Vector2i(3, 0)] = 2
 	var after_aim := Vector3(3.5, 3.0, 0.5)
 	var again: Dictionary = _FacePick.pick(world, (after_aim - dir * 40.0) * scale, dir, eye, reach)
 	if not bool(again.hit) or again.place != Vector3i(3, 3, 0):
 		_fail("after break the face above is not the cell to place into: %s" % str(again))
-	world.heights[Vector2i(3, 0)] = 4
+	world.heights[Vector2i(3, 0)] = 3
 	if not _FacePick.exposed(world, Vector3i(3, 3, 0), Vector3i(0, 1, 0)):
 		_fail("top face should be exposed")
 
 	var far_world := FakeWorld.new()
-	far_world.heights[Vector2i(7, 0)] = 4
+	far_world.heights[Vector2i(7, 0)] = 3
 	var far_aim := Vector3(7.5, 4.0, 0.5)
 	var far: Dictionary = _FacePick.pick(far_world, (far_aim - dir * 40.0) * scale, dir, eye, reach)
 	if bool(far.hit):
@@ -58,7 +58,7 @@ func _init() -> void:
 		_fail("ray starting inside solid selected %s" % str(inside))
 
 	var cliff := FakeWorld.new()
-	cliff.heights[Vector2i(3, 0)] = 6
+	cliff.heights[Vector2i(3, 0)] = 5
 	var side: Dictionary = _FacePick.pick(cliff, Vector3(-30.0, 4.5, 0.5) * scale, Vector3.RIGHT, eye, reach)
 	if not bool(side.hit) or side.normal != Vector3i(-1, 0, 0) or side.place != Vector3i(2, 4, 0):
 		_fail("side face of a cliff: %s" % str(side))

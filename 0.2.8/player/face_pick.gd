@@ -13,7 +13,7 @@ const FLOOR_Y := -16
 
 
 static func solid(world, cell: Vector3i) -> bool:
-	return cell.y >= FLOOR_Y and cell.y < _TerrainEdits.surface_block_y(world, cell.x, cell.z)
+	return cell.y >= FLOOR_Y and cell.y <= _TerrainEdits.surface_block_y(world, cell.x, cell.z)
 
 
 static func exposed(world, cell: Vector3i, normal: Vector3i) -> bool:
