@@ -28,8 +28,12 @@ func _ready() -> void:
 
 
 func _ensure_visual() -> void:
-	if _ready_visual:
+	if _ready_visual and is_instance_valid(_item):
 		return
+	if _ready_visual:
+		_arm.free()
+		_parts.clear()
+		_ready_visual = false
 	_vs = _WorldSettings.get_active().voxel_scale
 	var arm_box := BoxMesh.new()
 	arm_box.size = Vector3(_vs * 0.24, _vs * 0.24, _vs * 0.95)
@@ -69,6 +73,7 @@ func show_item(item_id: String) -> void:
 	_tint_for(item_id, kind)
 	_apply_unit(kind, 0.0, float(spec.get("impact_ratio", 0.42)))
 	visible = kind != _ItemAnim.Kind.NONE and item_id != ""
+	_item.visible = visible
 	if is_inside_tree():
 		pose_rig(-global_transform.basis.z)
 
@@ -85,6 +90,7 @@ func apply_playback(pb) -> void:
 	_pose_unit = pb.unit()
 	_apply_unit(int(pb.kind), pb.unit(), float(pb.impact_ratio))
 	visible = int(pb.kind) != _ItemAnim.Kind.NONE
+	_item.visible = visible
 	if is_inside_tree():
 		pose_rig(-global_transform.basis.z)
 
@@ -105,14 +111,39 @@ func pose_rig(aim: Vector3) -> void:
 	var mesh := host.get("player_mesh") as MeshInstance3D
 	if mesh == null:
 		return
+	var socket := mesh.get_node_or_null("PlayerRig/held_item") as Node3D
+	_grip(socket)
+	var loose := socket == null and _pose_kind != _ItemAnim.Kind.NONE
 	var clip := _use_clip()
 	if clip == "":
-		_arm.visible = _pose_kind != _ItemAnim.Kind.NONE
+		_arm.visible = loose
 		return
 	if _Body.play_use(mesh, clip, _pose_unit, aim):
 		_arm.visible = false
 	else:
-		_arm.visible = _pose_kind != _ItemAnim.Kind.NONE
+		_arm.visible = loose
+
+
+func _grip(socket: Node3D) -> void:
+	_ensure_visual()
+	if socket == null:
+		if _item.get_parent() != self:
+			_item.reparent(self, false)
+		return
+	if _item.get_parent() != socket:
+		_item.reparent(socket, false)
+	_item.position = Vector3.ZERO
+	_item.rotation = _grip_rotation()
+
+
+func _grip_rotation() -> Vector3:
+	if _pose_kind == _ItemAnim.Kind.AIM:
+		return Vector3.ZERO
+	return Vector3(-PI * 0.5, 0.0, 0.0)
+
+
+func is_socketed() -> bool:
+	return is_instance_valid(_item) and _item.get_parent() != self
 
 
 func _use_clip() -> String:
@@ -247,10 +278,11 @@ func _apply_unit(kind: int, u: float, impact: float) -> void:
 	_arm.position = arm_pos
 	_arm.rotation = arm_rot
 	_arm.scale = Vector3.ONE
-	_item.position = item_pos
-	_item.rotation = item_rot
+	if not is_socketed():
+		_item.position = item_pos
+		_item.rotation = item_rot
 	_set_string_draw(string_draw)
-	_arm.visible = kind != _ItemAnim.Kind.NONE
+	_arm.visible = kind != _ItemAnim.Kind.NONE and not is_socketed()
 	_item.visible = kind != _ItemAnim.Kind.NONE
 
 

@@ -598,10 +598,9 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var targets := _query_melee_cursor(origin, forward, range_w)
 	for target in targets:
 		saw_target = true
-		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.0)))
 		if dealt > 0.0:
 			connected = true
-			_shove(target, float(def.get("knockback", 1.0)))
 			entity_hit.emit(target, dealt, item_id)
 
 	if crystal_manager:
@@ -769,10 +768,9 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var saw_target := false
 	for target in targets:
 		saw_target = true
-		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.6)))
 		if dealt > 0.0:
 			connected = true
-			_shove(target, float(def.get("knockback", 1.6)))
 			entity_hit.emit(target, dealt, item_id)
 	if crystal_manager:
 		var mass_cell := _crystal_target_cell(range_v)
@@ -801,17 +799,16 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(cell, _crystal_hit_damage(def), 1.6)
 	var range_w := _range_world(range_v)
-	var targets := _query_melee_facing(origin, forward, range_w)
+	var targets := _query_melee_cursor(origin, forward, range_w)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var shoved := 0
 	var connected := crystal_hits > 0
 	for target in targets:
 		if shoved >= 1:
 			break
-		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id))
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 3.2)))
 		if dealt > 0.0:
 			connected = true
-			_shove(target, float(def.get("knockback", 3.2)))
 			entity_hit.emit(target, dealt, item_id)
 			shoved += 1
 	var ws = _WorldSettings.get_active()
@@ -864,7 +861,7 @@ func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward
 		"gravity": float(def.get("projectile_gravity", 12.0)),
 		"damage": _entity_hit_damage(def, _StatIds.RANGED_DAMAGE if not lob else _StatIds.MELEE_DAMAGE),
 		"crystal_damage": _crystal_mass_damage(def) if item_id != "crystal_bomb" else float(def.get("crystal_damage", 3.2)),
-		"knockback": float(def.get("knockback", 0.8)) * vs,
+		"knockback": float(def.get("knockback", 0.8)),
 		"blast_radius": float(def.get("blast_radius", 0.0)),
 		"source": item_id,
 		"kind": kind,
@@ -876,16 +873,6 @@ func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward
 	if not ok and ammo != "" and inventory:
 		inventory.add_item(ammo, 1)
 	return ok
-
-
-func _shove(target: Node, voxels: float) -> void:
-	if voxels <= 0.0 or target == null or not target.has_method("apply_knockback"):
-		return
-	var origin := _attack_origin(0.5)
-	var center: Vector3 = (target as Node3D).global_position
-	if target.has_method("get_combat_center"):
-		center = target.get_combat_center()
-	target.apply_knockback(center - origin, voxels * _WorldSettings.get_active().voxel_scale)
 
 
 func _toast(text: String) -> void:
@@ -1007,7 +994,7 @@ func _do_dig_attack(item_id: String, def: Dictionary) -> void:
 			melee_arc_degrees * 0.85
 		)
 		for enemy in melee_targets:
-			var dealt := _CombatHitResolver.apply_damage(enemy, entity_damage, StringName(item_id))
+			var dealt := _CombatHitResolver.apply_damage(enemy, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 0.8)))
 			if dealt > 0.0:
 				entity_hit.emit(enemy, dealt, item_id)
 		if crystal_manager:

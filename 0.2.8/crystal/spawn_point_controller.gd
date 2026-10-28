@@ -4,6 +4,7 @@ extends RefCounted
 const _CombatLog = preload("res://systems/combat_log.gd")
 const _GameConfig = preload("res://config/game_config.gd")
 const _CrystalTypes = preload("res://helpers/crystal_types.gd")
+const _GameFeel = preload("res://config/game_feel_config.gd")
 
 signal spawn_destroyed(spawn: CrystalSpawnPoint)
 signal spawn_damaged(spawn: CrystalSpawnPoint, amount: float)
@@ -14,6 +15,7 @@ var emit_weaken_mult: float = 1.0
 var last_destroyed_label: String = ""
 var origin_warden_alive: bool = false
 var boss_spawned: bool = false
+var core_tier: int = 0
 
 var _spawns: Array[CrystalSpawnPoint] = []
 var _active_cells: Dictionary = {}
@@ -216,6 +218,10 @@ func _try_damage_spawn(spawn: CrystalSpawnPoint, amount: float) -> bool:
 			boss_gate_blocked.emit(spawn)
 		return false
 	var hp_before: float = spawn.health
+	if _spawn_is_crystal(spawn) and core_tier < int(_GameFeel.active().crystal_core_lethal_tier):
+		amount = minf(amount, spawn.health - 1.0)
+		if amount <= 0.0:
+			return false
 	if not spawn.apply_damage(amount):
 		if spawn.active and hp_before > spawn.health:
 			spawn_damaged.emit(spawn, hp_before - spawn.health)

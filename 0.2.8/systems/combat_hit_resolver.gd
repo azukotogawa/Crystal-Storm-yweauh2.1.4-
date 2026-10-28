@@ -4,6 +4,7 @@ extends RefCounted
 const _CombatDef = preload("res://config/combat_def.gd")
 const _SpatialQueryLayer = preload("res://systems/spatial_query_layer.gd")
 const _SpatialQueryService = preload("res://systems/spatial_query_service.gd")
+const _WorldSettings = preload("res://config/world_settings.gd")
 
 class HitCandidate:
 	var node: Node
@@ -113,7 +114,9 @@ static func apply_damage(
 	target: Node,
 	base_damage: float,
 	source_id: StringName = &"",
-	log_label: String = ""
+	log_label: String = "",
+	knock_from: Vector3 = Vector3.INF,
+	knock_voxels: float = 0.0
 ) -> float:
 	if base_damage <= 0.0 or not is_instance_valid(target):
 		return 0.0
@@ -123,7 +126,23 @@ static func apply_damage(
 	var final := base_damage * (1.0 - clampf(defense, 0.0, 0.9))
 	if target.has_method("take_damage"):
 		target.take_damage(final, source_id)
+	if knock_from != Vector3.INF and is_instance_valid(target):
+		knock(target, knock_from, knock_voxels)
 	return final
+
+
+static func knock(target: Node, from: Vector3, voxels: float) -> void:
+	if voxels <= 0.0 or not is_instance_valid(target) or not target.has_method("apply_knockback"):
+		return
+	var resist := 0.0
+	if "knock_resist" in target:
+		resist = clampf(float(target.get("knock_resist")), 0.0, 1.0)
+	if resist >= 1.0:
+		return
+	var center: Vector3 = (target as Node3D).global_position
+	if target.has_method("get_combat_center"):
+		center = target.get_combat_center()
+	target.apply_knockback(center - from, voxels * (1.0 - resist) * _WorldSettings.get_active().voxel_scale)
 
 
 static func _combat_nodes(scene_root: Node, origin: Vector3, search_radius: float) -> Array:

@@ -698,46 +698,6 @@ static func pick_hover_column(
 	return _pick_column_from_mouse(player, range_v, world, chunk_manager, false)
 
 
-static func predict_next_column(
-	player: Node3D,
-	from_col: Vector3,
-	world: InfiniteNoiseWorld,
-	chunk_manager: ChunkManager,
-	range_v: float
-) -> Vector3:
-	if player == null or from_col == Vector3.ZERO:
-		return Vector3.ZERO
-	var cam: Camera3D = player.get("camera") as Camera3D
-	var vp: Viewport = player.get_viewport() if player.is_inside_tree() else null
-	if cam == null or vp == null:
-		return Vector3.ZERO
-	var ws = _WorldSettings.get_active()
-	var mouse := vp.get_mouse_position()
-	var origin := cam.project_ray_origin(mouse)
-	var dir := cam.project_ray_normal(mouse)
-	if dir.length_squared() < 0.00001:
-		return Vector3.ZERO
-	dir = dir.normalized()
-	var flat := Vector3(dir.x, 0.0, dir.z)
-	if flat.length_squared() < 0.00001:
-		flat = attack_forward(player)
-	flat = flat.normalized()
-	var step_x: int = 0
-	var step_z: int = 0
-	if absf(flat.x) >= absf(flat.z):
-		step_x = 1 if flat.x >= 0.0 else -1
-	else:
-		step_z = 1 if flat.z >= 0.0 else -1
-	var wx: int = floori(from_col.x) + step_x
-	var wz: int = floori(from_col.z) + step_z
-	if not _column_in_range(player, wx, wz, range_v + 1.0):
-		return Vector3.ZERO
-	if world != null and not _is_solid_column(world, chunk_manager, wx, wz) \
-			and not _entity_column_near(player, wx, wz, range_v + 1.0):
-		return Vector3.ZERO
-	return Vector3(float(wx) + 0.5, from_col.y, float(wz) + 0.5)
-
-
 static func note_event_mouse(at: Vector2, view: Vector2) -> void:
 	if at.x < 0.0 or at.y < 0.0 or at.x > view.x or at.y > view.y:
 		return

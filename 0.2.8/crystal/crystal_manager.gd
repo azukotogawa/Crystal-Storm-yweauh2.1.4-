@@ -2218,10 +2218,12 @@ func _log_spawn_status(reason: String) -> void:
 
 
 func damage_spawn(spawn_id: int, amount: float) -> bool:
+	_spawn_ctrl.core_tier = strength_tier
 	return _spawn_ctrl.damage_spawn(spawn_id, amount)
 
 
 func damage_spawn_at_world(pos: Vector2i, amount: float, radius: float = 2.5) -> bool:
+	_spawn_ctrl.core_tier = strength_tier
 	return _spawn_ctrl.damage_spawn_at_world(pos, amount, radius)
 
 

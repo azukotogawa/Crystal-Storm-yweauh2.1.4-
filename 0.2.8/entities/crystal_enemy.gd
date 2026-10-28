@@ -38,6 +38,7 @@ var _crystal: CrystalManager
 var _spatial: Node = null
 var _profiler: Node = null
 var _profiler_bound: bool = false
+@export_range(0.0, 1.0, 0.05) var knock_resist: float = 0.0
 var health: float = 24.0
 var _age: float = 0.0
 var _mesh: MeshInstance3D

@@ -313,12 +313,7 @@ func _column_of(at: Vector3) -> Vector2i:
 func _damage_entity(node, at: Vector3) -> void:
 	if node == null or not is_instance_valid(node):
 		return
-	_CombatHitResolver.apply_damage(node, damage, source_id)
-	if node.has_method("apply_knockback"):
-		var center: Vector3 = node.global_position
-		if node.has_method("get_combat_center"):
-			center = node.get_combat_center()
-		node.apply_knockback(center - global_position, knockback)
+	_CombatHitResolver.apply_damage(node, damage, source_id, "", global_position, knockback)
 	_ping(at)
 
 
@@ -341,12 +336,7 @@ func _explode(at: Vector3) -> void:
 	var radius_w: float = (blast_radius if blast_radius > 0.0 else 2.5) * _WorldSettings.get_active().voxel_scale
 	var nodes: Array = _nodes_for_frame() if is_inside_tree() else []
 	for node in _WeaponStrike.enemies_in_radius(at, radius_w, nodes):
-		_CombatHitResolver.apply_damage(node, damage, source_id)
-		if node.has_method("apply_knockback"):
-			var center: Vector3 = node.global_position
-			if node.has_method("get_combat_center"):
-				center = node.get_combat_center()
-			node.apply_knockback(center - at, knockback)
+		_CombatHitResolver.apply_damage(node, damage, source_id, "", at, knockback)
 	_ping(at)
 	_recycle()
 

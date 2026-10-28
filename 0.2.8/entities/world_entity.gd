@@ -27,6 +27,7 @@ signal combat_damaged(amount: float, remaining_health: float, source: StringName
 
 var brain: _EntityBrain
 var config: _EntityBrainConfig
+@export_range(0.0, 1.0, 0.05) var knock_resist: float = 0.0
 var health: float = 20.0
 var home_cell: Vector2i = Vector2i.ZERO
 

@@ -27,8 +27,6 @@ var _outline_mat: StandardMaterial3D
 var _face: MeshInstance3D
 var _face_pivot: Node3D
 var _face_mat: StandardMaterial3D
-var _ghost: MeshInstance3D
-var _ghost_mat: StandardMaterial3D
 var _look
 
 var _stable_cell: Vector2i = Vector2i(999999, 999999)
@@ -78,7 +76,6 @@ func _ready() -> void:
 	process_priority = -20
 	_look = _marker_look()
 	_build_mesh()
-	_build_ghost()
 	_build_brush_pool()
 	_build_brush_outline()
 	_build_structure_pool()
@@ -220,31 +217,6 @@ func apply_face_marker(face: int) -> void:
 			_face_pivot.rotation_degrees = Vector3(0.0, 180.0, 0.0)
 
 
-func _build_ghost() -> void:
-	_ghost = MeshInstance3D.new()
-	_ghost.name = "PredictBox"
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE
-	_ghost.mesh = box
-	_ghost_mat = StandardMaterial3D.new()
-	_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ghost_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_ghost_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_ALWAYS
-	_ghost_mat.render_priority = 126
-	_ghost_mat.no_depth_test = true
-	var look = _marker_look()
-	_ghost_mat.emission_enabled = true
-	_ghost_mat.albedo_color = look.predict_albedo(&"dig", 0.0)
-	_ghost_mat.emission = look.predict_emission(&"dig")
-	_ghost_mat.emission_energy_multiplier = look.predict_energy_at(0.0)
-	_ghost.material_override = _ghost_mat
-	_ghost.visible = false
-	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_ghost.sorting_offset = 3.5
-	add_child(_ghost)
-
-
 func _process(delta: float) -> void:
 	var profiler = get_node_or_null("/root/PerfProfiler")
 	if profiler and profiler.has_method("begin"):
@@ -256,8 +228,6 @@ func _process(delta: float) -> void:
 		return
 	if _GameplayInput.blocks_actions():
 		_mesh.visible = false
-		if _ghost:
-			_ghost.visible = false
 		_hide_brush_marks()
 		hide_structure_ghost()
 		if profiler and profiler.has_method("end"):
@@ -310,8 +280,6 @@ func _process(delta: float) -> void:
 	var mode: StringName = info.get("mode", &"none")
 	if mode not in [&"dig", &"build", &"attack", &"ranged"] or stable_col == Vector3.ZERO:
 		_mesh.visible = false
-		if _ghost:
-			_ghost.visible = false
 		_hide_brush_marks()
 		hide_structure_ghost()
 		_display_ready = false
@@ -351,7 +319,6 @@ func _process(delta: float) -> void:
 	var blocked: bool = bool(info.get("blocked", false)) or not bool(info.get("valid", false))
 	_paint_marker(mode, pulse, place_boost, blocked)
 
-	_update_prediction(info, range_v, layer, scale, pulse)
 	_hide_brush_marks()
 	_update_brush_outline(mode, cell, layer, scale, pulse, place_boost, blocked)
 
@@ -906,47 +873,6 @@ func _break_preview_aim() -> Vector3:
 	if player != null:
 		return _ActionTargeting.cursor_aim(player, reach)
 	return Vector3(0, 0, 1)
-
-
-func _update_prediction(info: Dictionary, range_v: float, layer: float, scale: float, pulse: float) -> void:
-	if _ghost == null:
-		return
-	if _aim_from_cache:
-		if not _ghost.visible:
-			return
-		var cached_mode: StringName = info.get("mode", &"none")
-		var look = _marker_look()
-		_ghost_mat.albedo_color = look.predict_albedo(cached_mode, pulse)
-		_ghost_mat.emission = look.predict_emission(cached_mode)
-		_ghost_mat.emission_energy_multiplier = look.predict_energy_at(pulse)
-		return
-	var mode: StringName = info.get("mode", &"none")
-	if mode not in [&"dig", &"build"] or not bool(info.get("valid", false)):
-		_ghost.visible = false
-		return
-	var col: Vector3 = info.get("column", Vector3.ZERO)
-	var pred: Vector3 = _ActionTargeting.predict_next_column(
-		player, col, world, chunk_manager, range_v
-	)
-	if pred == Vector3.ZERO:
-		_ghost.visible = false
-		return
-	var pred_info: Dictionary = _ActionTargeting.resolve_action(
-		player, world, chunk_manager, range_v, false, mode, pred
-	)
-	if not bool(pred_info.get("valid", false)):
-		_ghost.visible = false
-		return
-	_ghost.visible = true
-	var box_h: float = layer * 1.0
-	_ghost.scale = Vector3(scale * 1.02, box_h, scale * 1.02)
-	var gpos: Vector3 = pred_info.get("place_pos" if mode == &"build" else "world_pos", Vector3.ZERO)
-	gpos.y -= layer * 0.5
-	_ghost.global_position = gpos
-	var look = _marker_look()
-	_ghost_mat.albedo_color = look.predict_albedo(mode, pulse)
-	_ghost_mat.emission = look.predict_emission(mode)
-	_ghost_mat.emission_energy_multiplier = look.predict_energy_at(pulse)
 
 
 func _active_range() -> float:

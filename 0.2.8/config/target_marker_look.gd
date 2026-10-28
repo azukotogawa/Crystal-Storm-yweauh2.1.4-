@@ -20,11 +20,6 @@ const RESOURCE_PATH := "res://config/default_target_marker_look.tres"
 @export var dig_face_emission: Color = Color(0.94, 0.97, 1.0, 1.0)
 @export var dig_face_energy: float = 0.55
 
-@export var dig_ghost: Color = Color(0.94, 0.97, 1.0, 1.0)
-@export var dig_ghost_alpha: float = 0.05
-@export var dig_ghost_alpha_pulse: float = 0.03
-@export var dig_ghost_emission: Color = Color(0.9, 0.95, 1.0, 1.0)
-
 @export var build_fill: Color = Color(0.28, 0.55, 1.0, 1.0)
 @export var build_fill_alpha: float = 0.18
 @export var build_fill_alpha_pulse: float = 0.05
@@ -43,17 +38,9 @@ const RESOURCE_PATH := "res://config/default_target_marker_look.tres"
 @export var build_face_emission: Color = Color(0.32, 0.6, 1.0, 1.0)
 @export var build_face_energy: float = 0.6
 
-@export var build_ghost: Color = Color(0.32, 0.6, 1.0, 1.0)
-@export var build_ghost_alpha: float = 0.08
-@export var build_ghost_alpha_pulse: float = 0.03
-@export var build_ghost_emission: Color = Color(0.26, 0.52, 1.0, 1.0)
-
 @export var structure_fill: Color = Color(0.3, 0.58, 1.0, 0.2)
 @export var structure_emission: Color = Color(0.24, 0.5, 1.0, 1.0)
 @export var structure_energy: float = 0.45
-
-@export var predict_energy: float = 0.2
-@export var predict_energy_pulse: float = 0.1
 
 @export var blocked_fill: Color = Color(1.0, 0.15, 0.12, 1.0)
 @export var blocked_fill_alpha: float = 0.32
@@ -189,22 +176,6 @@ func face_energy(mode: StringName, blocked: bool) -> float:
 	if mode == &"build":
 		return build_face_energy
 	return dig_face_energy
-
-
-func predict_albedo(mode: StringName, pulse: float) -> Color:
-	if mode == &"dig":
-		return _with_alpha(dig_ghost, dig_ghost_alpha + dig_ghost_alpha_pulse * pulse)
-	return _with_alpha(build_ghost, build_ghost_alpha + build_ghost_alpha_pulse * pulse)
-
-
-func predict_emission(mode: StringName) -> Color:
-	if mode == &"dig":
-		return dig_ghost_emission
-	return build_ghost_emission
-
-
-func predict_energy_at(pulse: float) -> float:
-	return predict_energy + predict_energy_pulse * pulse
 
 
 func structure_tint(valid: bool) -> Color:

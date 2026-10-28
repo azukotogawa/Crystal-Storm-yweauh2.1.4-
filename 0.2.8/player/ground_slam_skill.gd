@@ -6,6 +6,7 @@ const _Hits = preload("res://systems/combat_hit_resolver.gd")
 
 const SKILL_ID := &"ground_slam"
 const DAMAGE := 18.0
+const KNOCKBACK := 1.5
 const REACH := 1
 
 
@@ -68,6 +69,6 @@ static func strike(nodes: Array, center: Vector2i, ws, caster: Node = null) -> i
 			continue
 		if not inside(column_of(node, ws), center):
 			continue
-		_Hits.apply_damage(node, DAMAGE, SKILL_ID, "Ground Slam")
+		_Hits.apply_damage(node, DAMAGE, SKILL_ID, "Ground Slam", (caster as Node3D).global_position if caster is Node3D else Vector3.INF, KNOCKBACK)
 		hits += 1
 	return hits

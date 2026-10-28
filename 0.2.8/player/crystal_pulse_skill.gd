@@ -6,6 +6,7 @@ const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 const SKILL_ID := &"crystal_pulse"
 const DAMAGE := 16.0
+const KNOCKBACK := 1.2
 const RADIUS := 4.0
 const DURATION := 4.0
 const SLOW := 0.4
@@ -102,6 +103,6 @@ static func strike(nodes: Array, center: Vector2i, ws, caster: Node = null) -> i
 			continue
 		if not covers(column_of(node, ws), center):
 			continue
-		_Hits.apply_damage(node, DAMAGE, SKILL_ID, "Crystal Pulse")
+		_Hits.apply_damage(node, DAMAGE, SKILL_ID, "Crystal Pulse", (caster as Node3D).global_position if caster is Node3D else Vector3.INF, KNOCKBACK)
 		hits += 1
 	return hits
