@@ -66,6 +66,19 @@ const KNOCK_STAGGER := 0.45
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
 var _stagger_left := 0.0
+var hits_taken: int = 0
+var hp_lost: float = 0.0
+var knock_moved: float = 0.0
+var stuck_events: int = 0
+var _stuck_t: float = 0.0
+var _stuck_best: float = INF
+var _stuck_target := Vector2i.ZERO
+var _side_cell := Vector2i.ZERO
+var _side_left: float = 0.0
+var _side_sign: int = 1
+const STUCK_SEC := 1.0
+const SIDESTEP_SEC := 0.7
+const FLOAT_FALL_RATE := 9.0
 var _special: _BossBrain
 var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
@@ -603,6 +616,7 @@ func _physics_process(delta: float) -> void:
 		if shoved.distance_squared_to(global_position) < 0.0004:
 			_knock_left = 0.0
 		else:
+			knock_moved += shoved.distance_to(global_position)
 			global_position = shoved
 			_knock_left = maxf(_knock_left - step, 0.0)
 		_notify_spatial_moved()
@@ -618,6 +632,8 @@ func _physics_process(delta: float) -> void:
 			profiler.end("entity_physics")
 		return
 
+	target_cell = _unstick(delta, self_cell, target_cell)
+	var prev_y := global_position.y
 	var nav_t0 := Time.get_ticks_usec()
 	global_position = _EntityNavigation.step_toward_cell(
 		global_position,
@@ -628,6 +644,8 @@ func _physics_process(delta: float) -> void:
 		_chunk_manager,
 		_crystal
 	)
+	if global_position.y < prev_y:
+		global_position.y = lerpf(prev_y, global_position.y, minf(1.0, FLOAT_FALL_RATE * delta))
 	_notify_spatial_moved()
 	_hold_station()
 	if profiler and profiler.has_method("record_us"):
@@ -643,11 +661,45 @@ func _physics_process(delta: float) -> void:
 		profiler.end("entity_physics")
 
 
+func _unstick(delta: float, self_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
+	if _side_left > 0.0:
+		_side_left -= delta
+		if self_cell != _side_cell:
+			return _side_cell
+		_side_left = 0.0
+	if target_cell == self_cell or target_cell != _stuck_target:
+		_stuck_target = target_cell
+		_stuck_best = INF
+		_stuck_t = 0.0
+		return target_cell
+	var d := Vector2(target_cell - self_cell).length()
+	if d < _stuck_best - 0.5:
+		_stuck_best = d
+		_stuck_t = 0.0
+		return target_cell
+	_stuck_t += delta
+	if _stuck_t < STUCK_SEC:
+		return target_cell
+	stuck_events += 1
+	_stuck_t = 0.0
+	_stuck_best = INF
+	var to := target_cell - self_cell
+	var perp := Vector2i(-signi(to.y), signi(to.x)) * _side_sign
+	if perp == Vector2i.ZERO:
+		perp = Vector2i(1, 0)
+	_side_sign = -_side_sign
+	_side_cell = self_cell + perp * 2
+	_side_left = SIDESTEP_SEC
+	return _side_cell
+
+
 func take_damage(amount: float, source: StringName = &"") -> void:
 	if amount <= 0.0 or _hurt_player > 0.0:
 		return
 	_last_damage_source = source
 	_hurt_player = HURT_LOCK
+	hits_taken += 1
+	hp_lost += minf(amount, health)
 	health = maxf(health - amount, 0.0)
 	if _special and max_health > 0.0:
 		_special.notify_hp_ratio(health / max_health)
