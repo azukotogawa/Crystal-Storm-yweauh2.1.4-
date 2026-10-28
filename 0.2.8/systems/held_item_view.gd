@@ -360,10 +360,10 @@ func _layout(item_id: String, kind: int) -> Array:
 			return [
 				[Vector3.ZERO, Vector3(0.20 * u, 0.48 * u, 0.22 * u), wood_dark],
 				[Vector3(0, 0.85 * u, 0), Vector3(0.16 * u, 0.95 * u, 0.16 * u), wood],
-				[Vector3(0.28 * u, 1.38 * u, 0), Vector3(0.42 * u, 0.16 * u, 0.16 * u), wood],
+				[Vector3(0, 1.38 * u, 0.28 * u), Vector3(0.16 * u, 0.16 * u, 0.42 * u), wood],
 				[Vector3(0, -0.85 * u, 0), Vector3(0.16 * u, 0.95 * u, 0.16 * u), wood],
-				[Vector3(0.28 * u, -1.38 * u, 0), Vector3(0.42 * u, 0.16 * u, 0.16 * u), wood],
-				[Vector3(0.36 * u, 0, 0.10 * u), Vector3(0.10 * u, 2.60 * u, 0.12 * u), Color(0.90, 0.86, 0.72)],
+				[Vector3(0, -1.38 * u, 0.28 * u), Vector3(0.16 * u, 0.16 * u, 0.42 * u), wood],
+				[Vector3(0, 0, 0.46 * u), Vector3(0.12 * u, 2.60 * u, 0.10 * u), Color(0.90, 0.86, 0.72)],
 			]
 		_:
 			if kind == _ItemAnim.Kind.NONE or item_id == "":
