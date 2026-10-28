@@ -136,7 +136,7 @@ func max_step_up_jump() -> float:
 
 @export_group("Player Physics (CharacterBody3D)")
 @export_range(0.5, 3.0, 0.05)
-var player_gravity_scale: float = 1.0
+var player_gravity_scale: float = 0.78
 @export_range(0.5, 2.0, 0.05)
 var player_jump_scale: float = 1.0
 @export_range(20.0, 60.0, 1.0)
