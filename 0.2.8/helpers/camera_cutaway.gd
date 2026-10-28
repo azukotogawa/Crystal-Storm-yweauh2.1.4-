@@ -3,7 +3,7 @@ extends RefCounted
 
 const RADIUS_AT_PLAYER := 6.0
 const RADIUS_AT_CAMERA := 1.25
-const FEET_CLEAR := 2.6
+const FEET_CLEAR := 0.3
 const PAST_DISTANCE := 6.0
 const T_MIN := 0.05
 
