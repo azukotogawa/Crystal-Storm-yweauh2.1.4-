@@ -502,7 +502,13 @@ func _melee_cursor_ok(def: Dictionary) -> bool:
 	var ray := _cursor_ray()
 	if ray.is_empty():
 		return true
-	return _CombatHitbox.cursor_in_reach(ray[0], ray[1], _attack_origin(0.5), _range_world(float(def.get("range", 2.0))))
+	var feet := _attack_origin(0.0)
+	var dir: Vector3 = ray[1]
+	if absf(dir.y) < 0.00001:
+		return false
+	var point: Vector3 = ray[0] + dir * ((feet.y - ray[0].y) / dir.y)
+	var ws = _WorldSettings.get_active()
+	return _ActionTargeting._column_in_range(player, int(floor(ws.world_to_column(point.x))), int(floor(ws.world_to_column(point.z))), float(def.get("range", 2.0)))
 
 
 func _refuse_use(reason: String) -> void:
