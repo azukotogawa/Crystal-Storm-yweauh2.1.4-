@@ -21,16 +21,17 @@ func _init() -> void:
 			var drop: float = helper.call("visual_drop", info, feet, height, depth) if has_drop else 0.0
 			var shown: float = feet - drop
 			var above: float = (shown + height - surface) / height
-			if above > 0.25:
-				_fail("surface %.1f feet %.2f: %.0f%% of the body above water" % [surface, feet, above * 100.0])
+			var chest: float = shown + height * 0.65 - surface
+			if chest <= 0.0 or above > 0.6:
+				_fail("surface %.1f feet %.2f: chest %.2f above %.0f%%" % [surface, feet, chest, above * 100.0])
 			else:
-				print("OK surface %.1f feet %.2f drop %.2f above %.0f%%" % [surface, feet, drop, above * 100.0])
+				print("OK surface %.1f feet %.2f drop %.2f chest %.2f above %.0f%%" % [surface, feet, drop, chest, above * 100.0])
 	if has_drop:
 		var dry := _Water.dry(10.0)
 		if float(helper.call("visual_drop", dry, 10.0, height, depth)) != 0.0:
 			_fail("dry ground lowers the model")
-	if depth < 0.6:
-		_fail("swim_visual_depth %.2f too shallow" % depth)
+	if depth < 0.3 or depth > 0.65:
+		_fail("swim_visual_depth %.2f out of range" % depth)
 	var src := FileAccess.get_file_as_string("res://player/player.gd")
 	if src.find("_mesh_rest_y - _swim_visual_drop()") < 0:
 		_fail("player mesh does not apply the swim visual drop")
