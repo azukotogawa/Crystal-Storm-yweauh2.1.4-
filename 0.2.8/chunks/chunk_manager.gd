@@ -2703,6 +2703,8 @@ func _drain_deferred_mesh_buffers() -> void:
 
 
 func set_stream_paused(paused: bool) -> void:
+	if stream_paused and not paused:
+		_last_chunk_key = Vector2i(-99999, -99999)
 	stream_paused = paused
 
 
