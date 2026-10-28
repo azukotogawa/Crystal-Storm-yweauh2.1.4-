@@ -78,6 +78,7 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0, 5, 1) var crystal_core_lethal_tier: int = 1
 @export_range(1.0, 32.0, 0.5) var map_open_budget_scale: float = 8.0
 @export_range(0.05, 1.0, 0.05) var map_preview_sec: float = 0.25
+@export_range(0.5, 4.0, 0.1) var knockback_scale: float = 2.0
 
 static var pace_override: float = -1.0
 static var _pace_cache: float = -1.0

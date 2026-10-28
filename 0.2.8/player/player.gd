@@ -1078,7 +1078,7 @@ func take_damage(amount: float, source: StringName = &"") -> void:
 
 func _begin_hit_knockback(heavy: bool) -> void:
 	_knock_dir_xz = _knock_away_dir()
-	_knock_left = HIT_KNOCK_HEAVY_COLUMNS if heavy else HIT_KNOCK_COLUMNS
+	_knock_left = (HIT_KNOCK_HEAVY_COLUMNS if heavy else HIT_KNOCK_COLUMNS) * GameFeelConfig.active().knockback_scale
 	_has_damage_origin = false
 
 

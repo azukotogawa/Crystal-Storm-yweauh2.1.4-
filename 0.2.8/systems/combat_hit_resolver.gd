@@ -142,7 +142,7 @@ static func knock(target: Node, from: Vector3, voxels: float) -> void:
 	var center: Vector3 = (target as Node3D).global_position
 	if target.has_method("get_combat_center"):
 		center = target.get_combat_center()
-	target.apply_knockback(center - from, voxels * (1.0 - resist) * _WorldSettings.get_active().voxel_scale)
+	target.apply_knockback(center - from, voxels * GameFeelConfig.active().knockback_scale * (1.0 - resist) * _WorldSettings.get_active().voxel_scale)
 
 
 static func _combat_nodes(scene_root: Node, origin: Vector3, search_radius: float) -> Array:
