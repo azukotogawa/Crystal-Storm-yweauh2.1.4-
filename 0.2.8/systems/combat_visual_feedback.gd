@@ -365,6 +365,7 @@ func show_hit_marker(world_pos: Vector3, tint: Color = Color(1.0, 0.85, 0.4), ra
 	_ensure_markers()
 	if _bursts.size() >= _quality.max_burst_sprites:
 		return
+	radius *= GameFeelConfig.active().hit_effect_scale
 	var lift: float = _WorldSettings.get_active().voxel_scale * 0.04
 	var anchor: Node3D = _markers.show_at(world_pos + Vector3(0.0, lift, 0.0), _HitMarkers.Result.HIT, radius, true)
 	if anchor == null:
@@ -546,9 +547,15 @@ func _on_entity_hit(target: Node, damage: float, _item_id: String) -> void:
 	var radius := _vox(0.225)
 	if target.has_method("get_combat_radius"):
 		radius = maxf(float(target.get_combat_radius()), _vox(0.125))
+	var hit_pos := world_pos
+	var attacker := get_tree().get_first_node_in_group("player") as Node3D
+	if attacker != null:
+		var flat := Vector3(attacker.global_position.x - world_pos.x, 0.0, attacker.global_position.z - world_pos.z)
+		if flat.length_squared() > 0.0001:
+			hit_pos = world_pos + flat.normalized() * radius
 	_show_damage_at(world_pos + Vector3(0.0, _vox(0.3), 0.0), damage, Color(1.0, 0.55, 0.45))
-	show_hit_marker(world_pos, Color(1.0, 0.45, 0.35), radius)
-	_pool_burst(_VfxPool.Kind.CHIP, world_pos, Color(1.0, 0.55, 0.4), 0.65)
+	show_hit_marker(hit_pos, Color(1.0, 0.45, 0.35), radius)
+	_pool_burst(_VfxPool.Kind.CHIP, hit_pos, Color(1.0, 0.55, 0.4), 0.65)
 	if target.has_method("_flash_hit"):
 		target._flash_hit()
 	var weight := _Juice.weight_for_item(_item_id, damage)
@@ -873,7 +880,7 @@ func pulse_corruption(cell: Vector2i, world_y: float) -> void:
 
 func _pool_burst(kind: int, pos: Vector3, tint: Color, scale: float = 1.0) -> bool:
 	_ensure_pool()
-	return _pool.burst(kind, pos, tint, scale)
+	return _pool.burst(kind, pos, tint, scale * GameFeelConfig.active().hit_effect_scale)
 
 
 func _ensure_markers() -> void:

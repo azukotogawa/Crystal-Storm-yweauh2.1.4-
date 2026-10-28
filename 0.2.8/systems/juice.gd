@@ -8,6 +8,7 @@ const _FLASH_SHADER := "res://shaders/entity_hit_flash.gdshader"
 
 static var bob_columns: float = 22.0
 static var _amp: float = 0.0
+static var shake_requests: int = 0
 static var _hit_token: int = 0
 static var _hit_active: bool = false
 static var _saved_scale: float = 1.0
@@ -94,6 +95,7 @@ static func cancel_hit_stop() -> float:
 static func request_shake(amount: float, force: bool = false) -> void:
 	if amount <= 0.0:
 		return
+	shake_requests += 1
 	if _PlayerSettings.reduce_motion or not _PlayerSettings.screen_shake_enabled:
 		return
 	if not force and DisplayServer.get_name() == "headless":
