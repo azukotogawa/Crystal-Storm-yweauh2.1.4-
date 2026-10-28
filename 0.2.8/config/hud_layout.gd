@@ -38,6 +38,9 @@ const RESOURCE_PATH := "res://config/default_hud_layout.tres"
 @export var skill_size := Vector2(328, 40)
 @export var chat_height := 280.0
 @export var chip_size := Vector2(268, 20)
+@export var hotbar_name_h := 24.0
+@export var phase_size := Vector2(420, 28)
+@export var status_height := 170.0
 
 
 static func load_active() -> HudLayout:
@@ -105,7 +108,7 @@ func regions(view: Vector2, minimap_override: float = -1.0) -> Dictionary:
 	)
 	out["hotbar"] = hot
 	var vit := Rect2(
-		Vector2((view.x - vitals_size.x) * 0.5, hot.position.y - region_gap - vitals_size.y),
+		Vector2((view.x - vitals_size.x) * 0.5, hot.position.y - hotbar_name_h - region_gap - vitals_size.y),
 		vitals_size
 	)
 	out["vitals"] = vit
@@ -113,11 +116,15 @@ func regions(view: Vector2, minimap_override: float = -1.0) -> Dictionary:
 		Vector2(vit.end.x + region_gap, vit.end.y - skill_size.y),
 		skill_size
 	)
-	out["chat"] = Rect2(
-		Vector2(m, view.y - m - chat_height),
-		Vector2(maxf(hot.position.x - region_gap - m, 120.0), chat_height)
-	)
-	out["chip"] = Rect2(view - Vector2(m, m) - chip_size, chip_size)
+	var phase_w := minf(phase_size.x, view.x - m - (view.x + toast_size.x) * 0.5 - region_gap * 6.0)
+	out["phase"] = Rect2(Vector2(view.x - m - phase_w, m + mini + region_gap + leave_size.y + region_gap), Vector2(phase_w, phase_size.y))
+	var left_w := maxf(hot.position.x - region_gap - m, 120.0)
+	var status := Rect2(Vector2(m, view.y - m - status_height), Vector2(left_w, status_height))
+	out["status"] = status
+	var chat_top := maxf(status.position.y - region_gap - chat_height, m + objective_size.y + region_gap)
+	out["chat"] = Rect2(Vector2(m, chat_top), Vector2(left_w, status.position.y - region_gap - chat_top))
+	var chip_x := hot.end.x + region_gap
+	out["chip"] = Rect2(Vector2(chip_x, view.y - m - chip_size.y), Vector2(maxf(view.x - m - chip_x, 60.0), chip_size.y))
 	return out
 
 

@@ -114,7 +114,7 @@ func _build_name_label() -> void:
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_name_label.size = Vector2(size.x if size.x > 0.0 else custom_minimum_size.x, 20)
-	_name_label.position = Vector2(0, -34)
+	_name_label.position = Vector2(0, -_HudLayout.load_active().hotbar_name_h - _HudLayout.load_active().backing_pad)
 	_name_label.add_theme_font_size_override("font_size", 14)
 	_name_label.modulate.a = 0.0
 	add_child(_name_label)

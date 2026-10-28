@@ -208,6 +208,12 @@ func _relayout_hud() -> void:
 	var leave := get_node_or_null("LeaveWorld") as Control
 	if leave != null:
 		_HudLayout.place(leave, rects["leave_world"])
+	if _phase_label != null:
+		_HudLayout.place(_phase_label, rects["phase"])
+	if _game_hud != null:
+		_HudLayout.place(_game_hud, rects["status"])
+		_game_hud.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		_game_hud.clip_text = true
 
 
 func _ensure_leave_world_button() -> void:
@@ -828,8 +834,8 @@ func _update_game_hud() -> void:
 	if "strength_tier" in _crystal:
 		tier_line = "  |  T%d" % int(_crystal.strength_tier)
 	_game_hud.text = (
-		"%s  |  %s%s  |  %s%s%s%s%s  |  %s"
-		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]
+		("%s  |  %s%s  |  %s%s%s%s%s  |  %s"
+		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]).replace("  |  ", "\n")
 	)
 
 
