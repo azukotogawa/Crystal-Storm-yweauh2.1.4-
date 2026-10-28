@@ -116,14 +116,13 @@ func _run() -> void:
 	var hl = load("res://player/target_highlight.gd").new()
 	root.add_child(hl)
 	await process_frame
-	var outline := hl.get_node_or_null("TargetBox/TargetFacePivot/TargetOutline") as MeshInstance3D
 	var face_node := hl.get_node_or_null("TargetBox/TargetFacePivot/TargetFace") as MeshInstance3D
-	if outline == null or outline.mesh == null:
-		_fail("highlight outline mesh was not reused")
-	elif outline.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+	if face_node == null or face_node.mesh == null or face_node.mesh.get_surface_count() != 2:
+		_fail("face marker does not carry its edge surface")
+	elif face_node.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 		_fail("outline casts shadows")
 	else:
-		var omat := outline.material_override as StandardMaterial3D
+		var omat := face_node.get_surface_override_material(1) as StandardMaterial3D
 		if omat == null or not omat.no_depth_test:
 			_fail("outline is hidden by terrain depth")
 		elif omat.albedo_color.r < 0.8 or omat.albedo_color.g < 0.8 or omat.albedo_color.b < 0.8:

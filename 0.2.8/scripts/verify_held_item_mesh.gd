@@ -89,7 +89,7 @@ func _run() -> void:
 		weapon._shown_item = ""
 		weapon.set_active_hotbar_index(i)
 		weapon._process(0.016)
-		var held := view.get_node_or_null("HeldItem") as Node3D
+		var held := view._item as Node3D
 		if held == null:
 			_fail("%s has no HeldItem after hotbar select" % item_id)
 			continue

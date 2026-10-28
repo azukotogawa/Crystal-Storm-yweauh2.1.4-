@@ -22,7 +22,7 @@ const HOVER_PULSE_HZ := 2.4
 
 var _mesh: MeshInstance3D
 var _mat: StandardMaterial3D
-var _outline: MeshInstance3D
+var _edge_mesh: ArrayMesh
 var _outline_mat: StandardMaterial3D
 var _face: MeshInstance3D
 var _face_pivot: Node3D
@@ -106,8 +106,6 @@ func _build_mesh() -> void:
 
 
 func _build_outline() -> void:
-	_outline = MeshInstance3D.new()
-	_outline.name = "TargetOutline"
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var h := 0.5
@@ -118,7 +116,7 @@ func _build_outline() -> void:
 	var edges: Array[int] = [0, 1, 1, 2, 2, 3, 3, 0]
 	for i in range(0, edges.size(), 2):
 		_add_edge(st, corners[edges[i]], corners[edges[i + 1]], t)
-	_outline.mesh = st.commit()
+	_edge_mesh = st.commit()
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -131,12 +129,9 @@ func _build_outline() -> void:
 	mat.emission = look.edge_emission(&"dig", false)
 	mat.emission_energy_multiplier = look.edge_energy(&"dig", false)
 	_outline_mat = mat
-	_outline.material_override = mat
-	_outline.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_face_pivot = Node3D.new()
 	_face_pivot.name = "TargetFacePivot"
 	_mesh.add_child(_face_pivot)
-	_face_pivot.add_child(_outline)
 
 
 func _add_edge(st: SurfaceTool, a: Vector3, b: Vector3, thickness: float) -> void:
@@ -173,7 +168,10 @@ func _build_face_marker() -> void:
 	_face.name = "TargetFace"
 	var quad := QuadMesh.new()
 	quad.size = Vector2(1.0, 1.0)
-	_face.mesh = quad
+	var merged := ArrayMesh.new()
+	merged.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, quad.get_mesh_arrays())
+	merged.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, _edge_mesh.surface_get_arrays(0))
+	_face.mesh = merged
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -186,7 +184,8 @@ func _build_face_marker() -> void:
 	mat.emission = look.face_emission(&"dig", false)
 	mat.emission_energy_multiplier = look.face_energy(&"dig", false)
 	_face_mat = mat
-	_face.material_override = mat
+	_face.set_surface_override_material(0, mat)
+	_face.set_surface_override_material(1, _outline_mat)
 	_face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_face_pivot.add_child(_face)
 	apply_face_marker(0)
@@ -511,7 +510,7 @@ func _add_structure_mark() -> void:
 	mark.material_override = mat
 	var edge := MeshInstance3D.new()
 	edge.name = "Edge"
-	edge.mesh = _outline.mesh if _outline != null else box
+	edge.mesh = _edge_mesh if _edge_mesh != null else box
 	var edge_mat := StandardMaterial3D.new()
 	edge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	edge_mat.cull_mode = BaseMaterial3D.CULL_DISABLED

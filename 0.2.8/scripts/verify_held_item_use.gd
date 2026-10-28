@@ -108,7 +108,7 @@ func _angle(a: Basis, b: Basis) -> float:
 
 func _check_sword(weapon: WeaponController, view: Node3D) -> void:
 	await _select(weapon, 0)
-	var held := view.get_node_or_null("HeldItem") as Node3D
+	var held := view._item as Node3D
 	if held == null:
 		_fail("sword has no HeldItem on the attack path")
 		return
@@ -123,7 +123,7 @@ func _check_sword(weapon: WeaponController, view: Node3D) -> void:
 
 func _check_pick(weapon: WeaponController, view: Node3D) -> void:
 	await _select(weapon, 1)
-	var held := view.get_node_or_null("HeldItem") as Node3D
+	var held := view._item as Node3D
 	if held == null:
 		_fail("pick has no HeldItem on the attack path")
 		return
@@ -138,7 +138,7 @@ func _check_pick(weapon: WeaponController, view: Node3D) -> void:
 
 func _check_hammer(weapon: WeaponController, view: Node3D, vs: float) -> void:
 	await _select(weapon, 2)
-	var held := view.get_node_or_null("HeldItem") as Node3D
+	var held := view._item as Node3D
 	if held == null:
 		_fail("hammer has no HeldItem on the attack path")
 		return
@@ -203,7 +203,7 @@ func _bow_string(held: Node3D) -> Node3D:
 
 func _check_bow(weapon: WeaponController, view: Node3D, vs: float) -> void:
 	await _select(weapon, 3)
-	var held := view.get_node_or_null("HeldItem") as Node3D
+	var held := view._item as Node3D
 	if held == null:
 		_fail("bow has no HeldItem on the attack path")
 		return

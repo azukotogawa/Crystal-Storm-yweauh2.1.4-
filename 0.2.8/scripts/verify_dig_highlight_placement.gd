@@ -104,10 +104,10 @@ func _run() -> void:
 				if box != null and box.material_override is StandardMaterial3D:
 					var c: Color = (box.material_override as StandardMaterial3D).albedo_color
 					hl_light = c.r > 0.8 and c.g > 0.8 and c.b > 0.8 and c.a < 0.3
-				var edge := highlight.get_node_or_null("TargetBox/TargetOutline") as MeshInstance3D if highlight else null
+				var edge := highlight.get_node_or_null("TargetBox/TargetFacePivot/TargetFace") as MeshInstance3D if highlight else null
 				var edge_light := false
-				if edge != null and edge.material_override is StandardMaterial3D:
-					var e: Color = (edge.material_override as StandardMaterial3D).albedo_color
+				if edge != null and edge.get_surface_override_material(1) is StandardMaterial3D:
+					var e: Color = (edge.get_surface_override_material(1) as StandardMaterial3D).albedo_color
 					edge_light = e.r > 0.8 and e.g > 0.8 and e.b > 0.8 and e.a < 0.95
 				if not hl_visible or not hl_light or not edge_light:
 					continue

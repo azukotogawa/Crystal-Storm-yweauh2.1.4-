@@ -244,6 +244,14 @@ func _check_damage_victory() -> void:
 		gm.free()
 		cm.free()
 		return
+	cm.damage_spawn_at_world(cell, spawn.health, reach)
+	if not spawn.active or spawn.health > 1.01:
+		_fail("tier 0 killing blow should leave the crystal at 1 hp, got %.1f active=%s" % [spawn.health, spawn.active])
+		gm.free()
+		cm.free()
+		return
+	print("OK tier 0 rush floored crystal hp=%.1f" % spawn.health)
+	cm.strength_tier = int(load("res://config/game_feel_config.gd").active().crystal_core_lethal_tier)
 	if not cm.damage_spawn_at_world(cell, spawn.health, reach):
 		_fail("killing blow missed the crystal")
 		gm.free()
