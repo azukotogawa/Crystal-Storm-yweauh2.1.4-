@@ -101,6 +101,8 @@ var locked_rotation: int:
 	get:
 		return _locked_rotation
 var locked_yaw_degrees: float = 45.0
+var _move_yaw_degrees: float = 45.0
+var _move_input_prev: Vector2 = Vector2.ZERO
 
 var camera: Camera3D
 var world_ready := false
@@ -450,6 +452,9 @@ func _physics_process(delta: float) -> void:
 	elif camera:
 		locked_yaw_degrees = 45.0 + float(camera.orbit_rotation) * 90.0
 	is_input_locked = input_dir != Vector2.ZERO
+	if input_dir != _move_input_prev or input_dir == Vector2.ZERO:
+		_move_yaw_degrees = locked_yaw_degrees
+		_move_input_prev = input_dir
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	var speed := stat_component.get_stat(_StatIds.MOVE_SPEED) if stat_component else move_speed
@@ -474,7 +479,7 @@ func _physics_process(delta: float) -> void:
 	var desired_vel := Vector2.ZERO
 	_wish_xz = Vector2.ZERO
 	if input_dir != Vector2.ZERO:
-		var move_vec := rotate_input_to_world(input_dir, locked_yaw_degrees)
+		var move_vec := rotate_input_to_world(input_dir, _move_yaw_degrees)
 		_wish_xz = move_vec
 		desired_vel = move_vec * speed
 	if _dash_left > 0.0:
