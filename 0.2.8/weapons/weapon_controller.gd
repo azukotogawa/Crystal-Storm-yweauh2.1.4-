@@ -477,6 +477,8 @@ func _try_attack() -> void:
 		return
 
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
+	if player.has_method("face_aim"):
+		player.face_aim(_aim_forward(_held_aim_range()))
 	if kind == ItemTypes.WeaponKind.DIG:
 		_do_dig_attack(item_id, def)
 		return

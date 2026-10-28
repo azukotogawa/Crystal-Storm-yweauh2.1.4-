@@ -69,6 +69,9 @@ var _move_vel_xz: Vector2 = Vector2.ZERO
 
 var sprite_scale_modifier := Vector2.ONE
 var current_skew := 0.0
+var face_yaw := 0.0
+var _face_aim_left := 0.0
+var _face_aim_yaw := 0.0
 
 enum State { IDLE, RUNNING, JUMPING, FALLING }
 var current_state := State.IDLE
@@ -582,7 +585,8 @@ func _physics_process(delta: float) -> void:
 	t0 = Time.get_ticks_usec() if measure else 0
 	_sync_global_from_voxel()
 	_apply_walk_bob(delta)
-	player_mesh.rotation.y = current_skew
+	_tick_face(delta)
+	player_mesh.rotation.y = face_yaw + current_skew
 	_tick_feet_water()
 	if measure:
 		phase_local["sync_visual"] = Time.get_ticks_usec() - t0
@@ -624,6 +628,23 @@ func _slope_speed_multiplier(moving: bool = true) -> float:
 		return 1.0
 	_slope_mul = clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
 	return _slope_mul
+
+
+func face_aim(dir: Vector3) -> void:
+	if Vector2(dir.x, dir.z).length_squared() < 0.0001:
+		return
+	_face_aim_yaw = atan2(-dir.x, -dir.z)
+	_face_aim_left = 0.4
+
+
+func _tick_face(delta: float) -> void:
+	var target := face_yaw
+	if _face_aim_left > 0.0:
+		_face_aim_left -= delta
+		target = _face_aim_yaw
+	elif _wish_xz.length_squared() > 0.01:
+		target = atan2(-_wish_xz.x, -_wish_xz.y)
+	face_yaw = lerp_angle(face_yaw, target, minf(1.0, 18.0 * delta))
 
 
 func rotate_input_to_world(input: Vector2, yaw_degrees: float) -> Vector2:
