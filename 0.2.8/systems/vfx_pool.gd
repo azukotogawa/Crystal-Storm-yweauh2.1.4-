@@ -165,7 +165,7 @@ func show_swing(item_id: String, origin: Vector3, forward: Vector3) -> void:
 			life = 0.10
 		_:
 			mesh_i.mesh = _arc()
-			mesh_i.global_position = origin + Vector3(0.0, vs * 0.55, 0.0)
+			mesh_i.global_position = origin - flat * (vs * 0.76) + Vector3(0.0, vs * 0.55, 0.0)
 			mesh_i.rotation = Vector3(0.0, atan2(flat.x, flat.z), 0.0)
 			mesh_i.scale = Vector3.ONE * (vs * 1.25)
 			life = 0.13
