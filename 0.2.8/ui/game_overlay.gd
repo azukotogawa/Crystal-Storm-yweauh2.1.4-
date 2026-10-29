@@ -1752,6 +1752,9 @@ func _freeze_for_run_end() -> void:
 func _exit_tree() -> void:
 	if _run_end_layer != null and is_instance_valid(_run_end_layer):
 		_run_end_layer.queue_free()
+		var tree := get_tree()
+		if tree != null and tree.paused:
+			tree.paused = false
 
 
 func _maybe_show_tutorial() -> void:
