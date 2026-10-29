@@ -980,7 +980,20 @@ func _pull_level_rewards() -> void:
 	var svc := get_tree().get_first_node_in_group("progression_service")
 	if svc and svc.has_method("apply_level_rewards"):
 		svc.apply_level_rewards(stat_component)
+	if svc and svc.has_signal("level_up") and not svc.level_up.is_connected(_on_level_up):
+		svc.level_up.connect(_on_level_up)
 	_pull_passives()
+
+
+func _on_level_up(_level: int) -> void:
+	_heal_full_after_level.call_deferred()
+
+
+func _heal_full_after_level() -> void:
+	if stat_component:
+		max_health = stat_component.get_stat(_StatIds.MAX_HEALTH)
+	health = max_health
+	_publish_health()
 
 
 func _publish_health() -> void:
