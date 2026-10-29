@@ -526,10 +526,8 @@ func _on_boot_failed(reason: String, _dump: Dictionary) -> void:
 	_bar.value = 0.0
 	_progress = 0.0
 	_display_progress = 0.0
-	var r := reason.to_lower()
-	_rebuild_btn.visible = (
-		r.contains("bake") or r.contains("chunk") or r.contains("world") or r.contains("timeout")
-	)
+	_retry_btn.visible = true
+	_rebuild_btn.visible = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 
