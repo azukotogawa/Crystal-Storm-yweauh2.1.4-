@@ -23,6 +23,9 @@ var _tick_us: PackedInt64Array = PackedInt64Array()
 var _last_usec := 0
 var _peak_static := 0
 var _prof := false
+var _spikes := false
+var _spike_rows: Array = []
+var _snap_prev := ""
 
 
 func _init() -> void:
@@ -33,6 +36,8 @@ func _init() -> void:
 			_play_sec = float(a.substr(6))
 		elif a == "--prof":
 			_prof = true
+		elif a == "--spikes":
+			_spikes = true
 	call_deferred("_run")
 
 
@@ -102,6 +107,8 @@ func _run() -> void:
 		var prof: Dictionary = fluid.get_sim_profile()
 		for ph in prof.get("phases", []):
 			print("PROF phase=%s total_ms=%.1f max_ms=%.2f" % [str(ph.phase), float(ph.total_us) / 1000.0, float(ph.max_us) / 1000.0])
+	if _spikes:
+		_print_spikes()
 	_report(boot_ms + seed_ms)
 
 
@@ -241,6 +248,11 @@ func _play() -> void:
 		if dt > 100000:
 			hitch += 1
 		_crystal_us.append(int(_crystal.get("_last_process_us")))
+		if _spikes:
+			var snap := _snapshot()
+			if dt > 60000:
+				_spike_rows.append([dt, t, int(_crystal.get("_last_process_us")), int(_crystal.get("_last_tick_us")), snap, _snap_prev])
+			_snap_prev = snap
 		_tick_us.append(int(_crystal.get("_last_tick_us")))
 		min_hp = minf(min_hp, float(_player.get("health")))
 		if paused and died_at < 0.0:
@@ -288,3 +300,33 @@ func _report(load_ms: int) -> void:
 	print("RESULT pct=%.1f load_ms=%d cells=%d frame_avg_ms=%.2f frame_p99_ms=%.2f frame_max_ms=%.2f crystal_proc_avg_ms=%.3f crystal_proc_max_ms=%.2f sim_tick_avg_ms=%.3f sim_tick_max_ms=%.2f peak_static_mb=%.1f" % [
 		_pct, load_ms, int(_crystal.covered_cells), fr[0], fr[1], fr[2], cr[0], cr[2], tk[0], tk[2], _peak_static / 1048576.0])
 	_ProbeExit.finish_tree(self, 0, "CRYSTAL LOAD OK")
+
+
+func _snapshot() -> String:
+	var p = root.get_node_or_null("PerfProfiler")
+	if p == null:
+		return ""
+	var parts: Array = []
+	var secs: Dictionary = p.get("_sections")
+	for k in secs:
+		var us := int(secs[k].get("last_us", 0))
+		if us >= 3000:
+			parts.append([us, "S:" + str(k)])
+	var fns: Dictionary = p.get("_funcs")
+	for k in fns:
+		var us2 := int(fns[k].get("last_us", 0))
+		if us2 >= 3000:
+			parts.append([us2, "F:" + str(k)])
+	parts.sort_custom(func(a, b): return a[0] > b[0])
+	var out := PackedStringArray()
+	for i in mini(parts.size(), 10):
+		out.append("%s=%.1f" % [parts[i][1], float(parts[i][0]) / 1000.0])
+	return ",".join(out)
+
+
+func _print_spikes() -> void:
+	_spike_rows.sort_custom(func(a, b): return a[0] > b[0])
+	for i in mini(_spike_rows.size(), 30):
+		var r: Array = _spike_rows[i]
+		print("SPIKE dt_ms=%.1f t=%.1f crystal_ms=%.1f tick_ms=%.1f now[%s] prev[%s]" % [float(r[0]) / 1000.0, r[1], float(r[2]) / 1000.0, float(r[3]) / 1000.0, r[4], r[5]])
+	print("SPIKE_COUNT over60=%d" % _spike_rows.size())
