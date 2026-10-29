@@ -77,6 +77,11 @@ static func _is_water_atlas(color: Color) -> bool:
 
 
 static func _partition(arrays: Array) -> Dictionary:
+	if arrays.size() < Mesh.ARRAY_MAX:
+		return {}
+	for slot in [Mesh.ARRAY_VERTEX, Mesh.ARRAY_NORMAL, Mesh.ARRAY_TEX_UV, Mesh.ARRAY_COLOR, Mesh.ARRAY_INDEX]:
+		if arrays[slot] == null:
+			return {}
 	var src_v: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	var src_n: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 	var src_u: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
