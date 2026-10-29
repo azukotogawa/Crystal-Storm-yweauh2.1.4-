@@ -22,6 +22,7 @@ var _crystal_us: PackedInt64Array = PackedInt64Array()
 var _tick_us: PackedInt64Array = PackedInt64Array()
 var _last_usec := 0
 var _peak_static := 0
+var _prof := false
 
 
 func _init() -> void:
@@ -30,6 +31,8 @@ func _init() -> void:
 			_pct = float(a.substr(6))
 		elif a.begins_with("--sec="):
 			_play_sec = float(a.substr(6))
+		elif a == "--prof":
+			_prof = true
 	call_deferred("_run")
 
 
@@ -90,7 +93,15 @@ func _run() -> void:
 	print("SEED cells=%d coverage=%.4f dirty_left=%d settle_frames=%d seed_total_ms=%d crystal_static_delta_mb=%.1f" % [
 		int(_crystal.covered_cells), float(_crystal.get_coverage_ratio()), last_dirty, settle, seed_ms, (mem_after - mem_before) / 1048576.0])
 	await _dismiss_tutorial()
+	var fluid = _crystal.get("_sim")
+	if _prof and fluid != null and fluid.has_method("set_sim_profile_enabled"):
+		fluid.reset_sim_profile()
+		fluid.set_sim_profile_enabled(true)
 	await _play()
+	if _prof and fluid != null and fluid.has_method("get_sim_profile"):
+		var prof: Dictionary = fluid.get_sim_profile()
+		for ph in prof.get("phases", []):
+			print("PROF phase=%s total_ms=%.1f max_ms=%.2f" % [str(ph.phase), float(ph.total_us) / 1000.0, float(ph.max_us) / 1000.0])
 	_report(boot_ms + seed_ms)
 
 

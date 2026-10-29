@@ -54,6 +54,24 @@ func rebuild_cell_index() -> void:
 		_index_crystal_cell(pos_variant)
 
 
+func _index_chunk(coord: Vector2i) -> void:
+	if fluid == null:
+		return
+	var found: Array = []
+	var x0: int = coord.x * chunk_size
+	var z0: int = coord.y * chunk_size
+	for dz in chunk_size:
+		for dx in chunk_size:
+			var pos := Vector2i(x0 + dx, z0 + dz)
+			if fluid.depth.has(pos):
+				found.append(pos)
+	if found.is_empty():
+		return
+	if fluid.has_method("cell_seq"):
+		found.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return fluid.cell_seq(a) < fluid.cell_seq(b))
+	_cells_by_chunk[coord] = found
+
+
 func mark_all_indexed_dirty() -> void:
 	rebuild_cell_index()
 	for coord_v in _cells_by_chunk.keys():
@@ -129,7 +147,7 @@ func _apply_flow_batch(changed: Array, mesh_dirty: Array) -> void:
 
 func on_chunk_loaded(coord: Vector2i) -> void:
 	if not _cells_by_chunk.has(coord):
-		rebuild_cell_index()
+		_index_chunk(coord)
 	if _cells_by_chunk.has(coord):
 		_dirty_chunks[coord] = true
 		_chunk_needs_full_rebuild[coord] = true

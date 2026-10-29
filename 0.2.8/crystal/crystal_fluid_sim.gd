@@ -59,6 +59,17 @@ var _prof_frontier_classifies: int = 0
 var _prof_empty_neighbor_tests: int = 0
 var _prof_delta_applies: int = 0
 var _CHUNK: int = 16
+var _seq: Dictionary = {}
+var _next_seq: int = 0
+var _order: Array = []
+var _order_valid: bool = true
+var _frontier: Dictionary = {}
+var _frontier_sorted: bool = true
+var _interior: Array = []
+var _interior_seq: PackedInt64Array = PackedInt64Array()
+var _volume: float = 0.0
+const _INDEX_FULL_SCAN_MAX: int = 2048
+const _INTERIOR_WALK_MAX: int = 4096
 
 
 func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void:
@@ -69,6 +80,15 @@ func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void
 func clear() -> void:
 	depth.clear()
 	spawn_id_by_cell.clear()
+	_seq.clear()
+	_next_seq = 0
+	_order.clear()
+	_order_valid = true
+	_frontier.clear()
+	_frontier_sorted = true
+	_interior.clear()
+	_interior_seq = PackedInt64Array()
+	_volume = 0.0
 	last_new_cells = 0
 	last_changed_cells = 0
 	last_mesh_dirty_cells = 0
@@ -318,7 +338,7 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool =
 	new_depth = clampf(new_depth, 0.0, depth_cap(pos))
 	if new_depth < config.min_depth:
 		if depth.has(pos):
-			depth.erase(pos)
+			_erase_cell(pos)
 			spawn_id_by_cell.erase(pos)
 			if emit:
 				depth_cleared.emit(pos)
@@ -326,7 +346,7 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool =
 		return
 
 	var changed: bool = not depth.has(pos) or absf(float(depth[pos]) - new_depth) > 0.02
-	depth[pos] = new_depth
+	_write_cell(pos, new_depth)
 	if spawn_id >= 0:
 		spawn_id_by_cell[pos] = spawn_id
 	if changed and emit:
@@ -420,20 +440,29 @@ func _flow_job_begin(delta: float) -> Array:
 	var allow_lateral: bool = config.lateral_spread_bias > 0.0 and spread_mult >= 0.55
 
 	var t_scan := Time.get_ticks_usec() if _prof_enabled else 0
-	var active_cells: Array = []
-	for pos_variant in depth.keys():
-		var pos: Vector2i = pos_variant
-		if _cell_active(pos):
-			active_cells.append(pos)
-	if _prof_enabled:
-		_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
-
-	var cells: Array = _select_flow_cells(active_cells)
-	last_flow_active_cells = active_cells.size()
+	var cells: Array = []
+	var active_count: int = 0
+	var cap: int = _effective_flow_cap()
+	if cap <= 0 or depth.size() <= _INDEX_FULL_SCAN_MAX:
+		var active_cells: Array = []
+		for pos_variant in depth.keys():
+			var pos: Vector2i = pos_variant
+			if _cell_active(pos):
+				active_cells.append(pos)
+		if _prof_enabled:
+			_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
+		cells = _select_flow_cells(active_cells)
+		active_count = active_cells.size()
+	else:
+		cells = _select_indexed_flow_cells(cap)
+		active_count = depth.size()
+		if _prof_enabled:
+			_prof_add_phase("select_indexed", Time.get_ticks_usec() - t_scan)
+	last_flow_active_cells = active_count
 	last_flow_selected_cells = cells.size()
 	if _prof_enabled:
 		_prof_depth_cells_sum += depth.size()
-		_prof_active_cells_sum += active_cells.size()
+		_prof_active_cells_sum += active_count
 		_prof_selected_cells_sum += cells.size()
 		_prof_ticks += 1
 		_prof_add_phase("flow_job_begin", Time.get_ticks_usec() - t_begin)
@@ -667,7 +696,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 
 		if new_depth < config.min_depth:
 			if depth.has(pos):
-				depth.erase(pos)
+				_erase_cell(pos)
 				spawn_id_by_cell.erase(pos)
 				changed.append(pos)
 				mesh_dirty.append(pos)
@@ -683,7 +712,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 			continue
 
 		if absf(old_depth - new_depth) > depth_write_epsilon:
-			depth[pos] = new_depth
+			_write_cell(pos, new_depth)
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
 			changed.append(pos)
@@ -704,7 +733,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 			var pos: Vector2i = entry.pos
 			if _new_cell_touch_count(pos) < 1:
 				continue
-			depth[pos] = float(entry.depth)
+			_write_cell(pos, float(entry.depth))
 			var spawn_id: int = int(entry.spawn_id)
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
@@ -765,14 +794,14 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 				var paid: float = float(pay_entry.pay) * pay_scale
 				var donor_depth: float = maxf(float(depth[donor]) - paid, config.min_depth)
 				if absf(donor_depth - float(depth[donor])) > depth_write_epsilon:
-					depth[donor] = donor_depth
+					_write_cell(donor, donor_depth)
 					changed.append(donor)
 					if paid >= mesh_depth_epsilon:
 						mesh_dirty.append(donor)
 			var born: float = minf(float(depth.get(pos, 0.0)) + applied, depth_cap(pos))
 			if born < config.min_depth:
 				continue
-			depth[pos] = born
+			_write_cell(pos, born)
 			var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
@@ -835,8 +864,114 @@ func _assign_spawn_on_flow(to: Vector2i, from: Vector2i) -> void:
 
 
 func recalc_volume() -> Dictionary:
-	var total := 0.0
-	var count := depth.size()
-	for pos_variant in depth.keys():
-		total += float(depth[pos_variant])
-	return {"volume": total, "cells": count}
+	return {"volume": _volume, "cells": depth.size()}
+
+
+func ordered_keys() -> Array:
+	if not _order_valid:
+		_order = depth.keys()
+		_order_valid = true
+	return _order
+
+
+func cell_seq(pos: Vector2i) -> int:
+	return int(_seq.get(pos, -1))
+
+
+func _write_cell(pos: Vector2i, value: float) -> void:
+	if depth.has(pos):
+		_volume += value - float(depth[pos])
+		depth[pos] = value
+		return
+	depth[pos] = value
+	_volume += value
+	_seq[pos] = _next_seq
+	_next_seq += 1
+	if _order_valid:
+		_order.append(pos)
+	if _has_empty_neighbor_raw(pos):
+		_frontier[pos] = true
+	else:
+		_interior_add(pos)
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = pos + dir
+		if _frontier.has(n) and not _has_empty_neighbor_raw(n):
+			_frontier.erase(n)
+			_interior_add(n)
+
+
+func _erase_cell(pos: Vector2i) -> void:
+	if not depth.has(pos):
+		return
+	_volume -= float(depth[pos])
+	depth.erase(pos)
+	if _frontier.has(pos):
+		_frontier.erase(pos)
+	else:
+		_interior_remove(pos)
+	_seq.erase(pos)
+	_order_valid = false
+	_order = []
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = pos + dir
+		if depth.has(n) and not _frontier.has(n):
+			_interior_remove(n)
+			_frontier[n] = true
+			_frontier_sorted = false
+
+
+func _has_empty_neighbor_raw(pos: Vector2i) -> bool:
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		if not depth.has(pos + dir):
+			return true
+	return false
+
+
+func _interior_add(pos: Vector2i) -> void:
+	var sq: int = int(_seq[pos])
+	var i: int = _interior_seq.bsearch(sq)
+	_interior.insert(i, pos)
+	_interior_seq.insert(i, sq)
+
+
+func _interior_remove(pos: Vector2i) -> void:
+	if not _seq.has(pos):
+		return
+	var sq: int = int(_seq[pos])
+	var i: int = _interior_seq.bsearch(sq)
+	if i < _interior_seq.size() and _interior_seq[i] == sq:
+		_interior.remove_at(i)
+		_interior_seq.remove_at(i)
+
+
+func _sorted_frontier() -> Array:
+	var keys: Array = _frontier.keys()
+	if _frontier_sorted:
+		return keys
+	keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return int(_seq[a]) < int(_seq[b]))
+	_frontier.clear()
+	for k in keys:
+		_frontier[k] = true
+	_frontier_sorted = true
+	return keys
+
+
+func _select_indexed_flow_cells(cap: int) -> Array:
+	var subset: Array = []
+	for pos_variant in _sorted_frontier():
+		if subset.size() >= cap:
+			break
+		if _cell_active(pos_variant):
+			subset.append(pos_variant)
+	var n: int = _interior.size()
+	if subset.size() < cap and n > 0:
+		var start: int = _interior_flow_offset % n
+		_interior_flow_offset += maxi(cap - subset.size(), 1)
+		var walked: int = 0
+		var limit: int = mini(n, _INTERIOR_WALK_MAX)
+		while subset.size() < cap and walked < limit:
+			var pos: Vector2i = _interior[(start + walked) % n]
+			walked += 1
+			if _cell_active(pos):
+				subset.append(pos)
+	return subset

@@ -30,6 +30,8 @@ var _pending_substep_i: int = 0
 var _pending_substeps: int = 1
 var _pending_all_changed: Array = []
 var _pending_all_mesh: Array = []
+var _pending_changed_seen: Dictionary = {}
+var _pending_mesh_seen: Dictionary = {}
 var _pending_emitters_done: bool = false
 
 
@@ -75,6 +77,8 @@ func _clear_pending_tick() -> void:
 	_pending_substeps = 1
 	_pending_all_changed.clear()
 	_pending_all_mesh.clear()
+	_pending_changed_seen.clear()
+	_pending_mesh_seen.clear()
 	_pending_emitters_done = false
 
 
@@ -132,6 +136,8 @@ func tick(snapshot) -> Array:
 		_pending_substep_i = 0
 		_pending_all_changed.clear()
 		_pending_all_mesh.clear()
+		_pending_changed_seen.clear()
+		_pending_mesh_seen.clear()
 		_pending_emitters_done = false
 
 	var t0 := Time.get_ticks_usec() if measure else 0
@@ -162,10 +168,12 @@ func tick(snapshot) -> Array:
 			return last_events
 		var mesh_dirty: Array = fluid.get_last_mesh_dirty() if fluid.has_method("get_last_mesh_dirty") else changed
 		for p in changed:
-			if p not in _pending_all_changed:
+			if not _pending_changed_seen.has(p):
+				_pending_changed_seen[p] = true
 				_pending_all_changed.append(p)
 		for p in mesh_dirty:
-			if p not in _pending_all_mesh:
+			if not _pending_mesh_seen.has(p):
+				_pending_mesh_seen[p] = true
 				_pending_all_mesh.append(p)
 		_pending_substep_i += 1
 	if measure:
@@ -261,7 +269,7 @@ func _tick_emitters_from_snapshot(snapshot) -> void:
 func _tick_absorption_progress(snapshot) -> void:
 	if fluid == null or fluid.depth.is_empty():
 		return
-	var cells: Array = fluid.depth.keys()
+	var cells: Array = fluid.ordered_keys()
 	if cells.is_empty():
 		return
 	var scanned := 0
@@ -291,7 +299,7 @@ func _tick_absorption_progress(snapshot) -> void:
 func _tick_animal_absorption_progress(snapshot) -> void:
 	if fluid == null or fluid.depth.is_empty():
 		return
-	var cells: Array = fluid.depth.keys()
+	var cells: Array = fluid.ordered_keys()
 	var scanned := 0
 	var start: int = snapshot.absorption_scan_offset % maxi(cells.size(), 1)
 	var budget: int = maxi(snapshot.absorption_scan_cells, 8)
