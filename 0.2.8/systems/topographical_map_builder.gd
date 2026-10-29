@@ -39,12 +39,19 @@ static func begin_job(
 	fullscreen: bool = false,
 	fast_sampling: bool = true,
 	internal_divisor: int = 2,
-	channel_overlay: bool = false
+	channel_overlay: bool = false,
+	half_extent_override: int = 0,
+	internal_override: int = 0,
+	column_cache: Dictionary = {}
 ) -> Dictionary:
 	var display_size: int = cfg.fullscreen_size if fullscreen else cfg.minimap_size
 	var radius: int = cfg.fullscreen_half_extent_cells if fullscreen else cfg.minimap_radius_cells
+	if half_extent_override > 0:
+		radius = half_extent_override
 	var divisor: int = maxi(internal_divisor, 1)
 	var internal_size: int = maxi(32, int(ceil(float(display_size) / float(divisor))))
+	if internal_override > 0:
+		internal_size = maxi(16, internal_override + (internal_override % 2))
 	var stride: int = maxi(
 		cfg.sample_stride,
 		maxi(1, int(ceil(float(radius * 2) / float(internal_size))))
@@ -66,7 +73,7 @@ static func begin_job(
 		"fullscreen": fullscreen,
 		"fast_sampling": fast_sampling,
 		"channel_overlay": channel_overlay,
-		"column_cache": {},
+		"column_cache": column_cache,
 		"marker_cells": {},
 		"crystal_cells": {},
 		"bounds": bounds,
@@ -106,7 +113,6 @@ static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> b
 
 	job.center = new_center
 	job.px = 0
-	job.column_cache = {}
 	job.bounds = _world_bounds(new_center, size, stride)
 	_refresh_crystal_overlay(job)
 	job.dirty_rects = _dirty_rects_after_shift(size, dx_px, dz_px)
