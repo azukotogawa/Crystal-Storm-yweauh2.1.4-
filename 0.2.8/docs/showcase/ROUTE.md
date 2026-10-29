@@ -81,12 +81,6 @@ During segment 2, the medium preset is already on: directional sun, shadow map, 
 
 Pass: player shadow is on screen under that sun. No extra travel.
 
-### 4. `day_night`
-
-Open a `night` chapter, then `torch`, then `day_night`. Each stays up at least 4 seconds. Stand still and yaw once so the sky is in frame. Do not spin the sun or drop its energy. If a day clock exists, keep standing until the sun energy is under 0.35 or 90 seconds pass. There is no sleep action. Print `SHOWCASE night`, `SHOWCASE torch`, and `SHOWCASE day_night` as `pass` or `absent`. A crystal-glow landmark is not a torch.
-
-Pass status: `absent` when no clock is night, otherwise `pass`.
-
 ### 5. `dig_tool`
 
 `hotbar_2`, aim the mouse at a diggable surface cell beside the route, pulse `attack` eleven times on open ground. The highlight is one cell. That is the whole multi-block tool table at tier 0. Eleven blocks are 11 XP. Stop early if a column refuses (border, town, water, dig floor) and make the count up on the next open cell. Do not hold `[` or `]` and do not cut a tunnel.
@@ -177,7 +171,6 @@ The bot rewrites `status` in place. `pending` means not played yet. Order is the
     {"id": "boot_tutorial", "segment": 1, "required": true, "actions": ["pause", "pause"], "pass": "how-to-play hidden", "status": "pending"},
     {"id": "movement", "segment": 2, "required": true, "actions": ["sprint", "move_forward", "jump", "rotate_left", "rotate_right"], "pass": "moved >= 8 columns and left the ground", "status": "pending"},
     {"id": "lighting", "segment": 3, "required": true, "actions": [], "pass": "player shadow under the locked sun during the walk", "status": "pending"},
-    {"id": "day_night", "segment": 4, "required": true, "actions": [], "pass": "no clock exists", "status": "pending"},
     {"id": "dig_tool", "segment": 5, "required": true, "actions": ["hotbar_2", "attack"], "pass": "stone pick removed a single surface cell", "status": "pending"},
     {"id": "structure_place", "segment": 6, "required": true, "actions": ["inventory_toggle", "mouse:Craft_wall_segment", "hotbar_7", "build_place"], "pass": "wall_segment placed", "status": "pending"},
     {"id": "density_poi", "segment": 7, "required": true, "actions": ["sprint", "move_forward", "rotate_left", "rotate_right"], "pass": "stood on the chain's camp, abandoned_dig, crystal_grove, or shrine, or too-far", "status": "pending"},

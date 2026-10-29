@@ -58,6 +58,7 @@ func _run() -> void:
 		return
 	_check_sources()
 	_check_route()
+	_check_click_scale()
 	_check_traversal()
 	_check_chapters()
 	_check_sprint_hold()
@@ -156,7 +157,7 @@ func _check_route() -> void:
 	if names.size() < 4:
 		_fail("route has %d features" % names.size())
 		return
-	if names[0] != "boot_tutorial" or names[1] != "movement" or names[2] != "lighting" or names[3] != "day_night":
+	if names[0] != "boot_tutorial" or names[1] != "movement" or names[2] != "lighting" or names[3] != "dig_tool":
 		_fail("route prefix %s" % [names[0], names[1], names[2], names[3]])
 		return
 	if show.first_blocked() != "":
@@ -168,6 +169,20 @@ func _check_route() -> void:
 			_fail("route missing %s" % id)
 			return
 	_ok("route order plays through the win")
+
+
+func _check_click_scale() -> void:
+	var final := Transform2D(0.0, Vector2(1280.0 / 1152.0, 720.0 / 648.0), 0.0, Vector2.ZERO)
+	var button := Rect2(Vector2(520.0, 300.0), Vector2(110.0, 28.0))
+	var at := button.get_center()
+	var win := _Hands.window_point(final, at)
+	if not button.has_point(final.affine_inverse() * win):
+		_fail("craft click at 1280x720 window misses the 1152x648 button")
+		return
+	if button.has_point(final.affine_inverse() * at):
+		_fail("click scale check has no mismatch to catch")
+		return
+	_ok("craft click lands on the button with a 1280x720 window over a 1152x648 game")
 
 
 func _check_traversal() -> void:
@@ -1561,8 +1576,8 @@ func _check_live() -> void:
 		_fail("chapters sidecar was not written")
 		return
 	var text := FileAccess.get_file_as_string("%s/chapters.txt" % _Capture.run_dir())
-	if not text.contains("movement ") or not text.contains("day_night "):
-		_fail("sidecar missing movement or day_night")
+	if not text.contains("movement ") or not text.contains("lighting "):
+		_fail("sidecar missing movement or lighting")
 		return
 	if not text.contains("density_poi") or not text.contains("density_treasure") or not text.contains("density_landmark"):
 		_fail("sidecar missing a density visit")
@@ -1570,7 +1585,7 @@ func _check_live() -> void:
 	if not text.contains("dig_tool ") or not text.contains("structure_place "):
 		_fail("sidecar missing dig or structure")
 		return
-	for feature in ["night", "torch", "day_night", "glow"]:
+	for feature in ["glow"]:
 		if _named_span(text, feature) + 0.001 < _Pace.MIN_CHAPTER:
 			_fail("chapter %s under 4s" % feature)
 			return

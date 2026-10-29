@@ -38,7 +38,6 @@ const READY: Array[String] = [
 	"boot_tutorial",
 	"movement",
 	"lighting",
-	"day_night",
 	"dig_tool",
 	"structure_place",
 	"density_poi",
@@ -104,7 +103,8 @@ var _treasure_clear := false
 var _treasure_visited := false
 var _chain: Dictionary = {}
 var _chain_ready := false
-var _lights_noted := false
+var _close_inv := false
+var _close_tries := 0
 var _bow_stamped := false
 var _hold_status := ""
 var _pose := ""
@@ -173,6 +173,9 @@ func tick(delta: float) -> bool:
 			_idle_inputs()
 			_paint()
 			return finished
+	if _seg == "" and _closing_inventory():
+		_paint()
+		return finished
 	if _seg == "":
 		if not _pull_next():
 			finished = true
@@ -221,7 +224,7 @@ func _guard_phase() -> void:
 	else:
 		_guard_goal = target
 		_guard_pos = pos
-	if _banner_left > 0.0 or _seg == "day_night" or _seg == "lighting" or _seg == "boot_tutorial":
+	if _banner_left > 0.0 or _seg == "lighting" or _seg == "boot_tutorial":
 		progressed = true
 	if progressed:
 		_guard_frames = 0
@@ -235,7 +238,7 @@ func _guard_phase() -> void:
 		_guard_log = now
 		var held := ",".join(driver.input.held_names())
 		print("SHOWCASE phase %s pos %.1f,%.1f target %.1f,%.1f dist %.1f inputs %s" % [
-			_seg, pos.x, pos.y, target.x, target.y, pos.distance_to(origin), held,
+			_seg, pos.x, pos.y, target.x, target.y, pos.distance_to(target), held,
 		])
 	var wall := float(now - _guard_since) / 1000.0
 	if _guard_frames < int(budget["frames"]) and wall < float(budget["wall_sec"]):
@@ -259,6 +262,24 @@ func _phase_driver() -> RefCounted:
 	if (_seg == "crystal" or _seg == "boss" or _seg == "win_screen") and finale != null and finale.heart != null and finale.heart.fight != null:
 		return finale.heart.fight.bot
 	return bot
+
+
+func _closing_inventory() -> bool:
+	if not _close_inv:
+		return false
+	if not inventory_open() or _close_tries > 40:
+		_close_inv = false
+		return false
+	if hands.pulse("inventory_toggle"):
+		_close_tries += 1
+	return true
+
+
+func inventory_open() -> bool:
+	if tree == null:
+		return false
+	var craft := tree.root.find_child("Craft_wall_segment", true, false) as Control
+	return craft != null and craft.is_visible_in_tree()
 
 
 func _pull_next() -> bool:
@@ -317,8 +338,6 @@ func _open_segment(id: String) -> void:
 		var feature := id
 		if id == "structure_place":
 			feature = "structure_stone_wall"
-		elif id == "day_night":
-			feature = "night"
 		chapters.open(feature)
 	if id == "movement":
 		_arm_movement()
@@ -359,6 +378,8 @@ func _finish_segment() -> void:
 	bot.release()
 	hands.release_all()
 	fight.release()
+	_close_inv = true
+	_close_tries = 0
 	if stop:
 		finale.release()
 		finished = true
@@ -376,8 +397,6 @@ func _run_segment(step: float) -> void:
 			_tick_movement(step)
 		"lighting":
 			_tick_lighting()
-		"day_night":
-			_tick_day_night(step)
 		"dig_tool", "structure_place":
 			_tick_build(step)
 		"density_poi", "density_treasure", "density_landmark":
@@ -525,51 +544,6 @@ func _tick_cast(step: float) -> void:
 	var result := caster.tick(step, tree, player, hands, bot, origin, chapters)
 	if result != "":
 		_seg_status = result
-
-
-func _tick_day_night(step: float) -> void:
-	var order: PackedStringArray = ["night", "torch", "day_night"]
-	if _pose == "" or not order.has(_pose):
-		_pose = "night"
-		_pose_age = 0.0
-	if chapters == null or not chapters.has_method("open") or not chapters.has_method("span"):
-		_note_lights()
-		_seg_status = "absent"
-		return
-	if not bool(chapters.open(_pose)):
-		return
-	var waiting_night := _pose == "night" and _has_day_clock() and not _night_on()
-	if waiting_night and chapters.span() < 90.0:
-		hands.set_held(PackedStringArray())
-		return
-	var held := PackedStringArray()
-	if not waiting_night and _pose_age >= _Pace.PRE_PAUSE and _pose_age < _Pace.PRE_PAUSE + 0.8:
-		held.append("rotate_right")
-	hands.set_held(held)
-	_pose_age += step
-	if chapters.span() < _Pace.PRE_PAUSE + _Pace.RESULT_HOLD + _Pace.SETTLE:
-		return
-	_log_light(_pose)
-	var idx := order.find(_pose)
-	if idx < 0 or idx + 1 >= order.size():
-		_seg_status = "pass" if _has_day_clock() and _night_on() else "absent"
-		return
-	_pose = order[idx + 1]
-	_pose_age = 0.0
-	hands.set_held(PackedStringArray())
-
-
-func _log_light(feature: String) -> void:
-	if feature == "night":
-		print("SHOWCASE night %s" % ("pass" if _night_on() else "absent"))
-		return
-	if feature == "torch":
-		print("SHOWCASE torch %s" % ("pass" if _torch_on() else "absent"))
-		return
-	if _has_day_clock() and _night_on():
-		print("SHOWCASE day_night pass")
-		return
-	print("SHOWCASE day_night absent")
 
 
 func _arm_detour(id: String) -> void:
@@ -1172,37 +1146,8 @@ func _sync_farm() -> void:
 	chapters.open(want)
 
 
-func _note_lights() -> void:
-	if _lights_noted:
-		return
-	_lights_noted = true
-	print("SHOWCASE night %s" % ("pass" if _night_on() else "absent"))
-	print("SHOWCASE torch %s" % ("pass" if _torch_on() else "absent"))
-
-
 func _note_glow() -> void:
 	print("SHOWCASE glow %s" % ("pass" if _glow_near() else "absent"))
-
-
-func _night_on() -> bool:
-	if not _has_day_clock():
-		return false
-	var light := _sun_light()
-	return light != null and light.light_energy < 0.35
-
-
-func _torch_on() -> bool:
-	if tree == null:
-		return false
-	for node in tree.root.find_children("*", "OmniLight3D", true, false):
-		var omni := node as OmniLight3D
-		if omni.visible and omni.light_energy > 0.05:
-			return true
-	for node in tree.root.find_children("*", "SpotLight3D", true, false):
-		var spot := node as SpotLight3D
-		if spot.visible and spot.light_energy > 0.05:
-			return true
-	return false
 
 
 func _glow_near() -> bool:
@@ -1298,14 +1243,6 @@ func _body_casts() -> bool:
 	return false
 
 
-func _has_day_clock() -> bool:
-	if tree == null:
-		return false
-	if not tree.get_nodes_in_group("day_night").is_empty():
-		return true
-	return tree.root.find_child("DayNight", true, false) != null
-
-
 func _tutorial_open() -> bool:
 	if tree == null:
 		return false
@@ -1362,7 +1299,7 @@ func _paint() -> void:
 			chapter = finale.caption
 		if chapters.has_method("feature"):
 			var feat := str(chapters.feature())
-			if feat == "bow_shot" or feat == "night" or feat == "torch" or feat == "day_night" or feat == "glow" or feat.begins_with("treasure_open") or (feat.begins_with("combat_") and feat != _seg):
+			if feat == "bow_shot" or feat == "glow" or feat.begins_with("treasure_open") or (feat.begins_with("combat_") and feat != _seg):
 				chapter = feat
 		hud.set_readout(chapters.format_clock(), chapter)
 
