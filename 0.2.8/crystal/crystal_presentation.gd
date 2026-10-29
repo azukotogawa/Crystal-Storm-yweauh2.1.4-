@@ -19,6 +19,8 @@ var _cells_by_chunk: Dictionary = {}
 
 var max_rebuilds_per_frame: int = 5
 var mesh_budget_us: int = 2500
+var _pending_build: Dictionary = {}
+var _flush_prof = null
 var spread_damping_start: int = 600
 var spread_damping_full: int = 3000
 var mesh_rebuilds_when_large: int = 1
@@ -40,6 +42,7 @@ func clear_visual_state() -> void:
 		if layer and is_instance_valid(layer):
 			layer.queue_free()
 	_chunk_layers.clear()
+	_pending_build.clear()
 	_dirty_chunks.clear()
 	_patch_dirty_by_chunk.clear()
 	_chunk_needs_full_rebuild.clear()
@@ -162,14 +165,15 @@ func on_chunk_unloaded(coord: Vector2i) -> void:
 	_dirty_chunks.erase(coord)
 	_patch_dirty_by_chunk.erase(coord)
 	_chunk_needs_full_rebuild.erase(coord)
+	_pending_build.erase(coord)
 
 
 func dirty_chunk_count() -> int:
-	return _dirty_chunks.size()
+	return _dirty_chunks.size() + _pending_build.size()
 
 
 func flush(profiler = null) -> int:
-	if _dirty_chunks.is_empty():
+	if _dirty_chunks.is_empty() and _pending_build.is_empty():
 		last_flush_rebuilds = 0
 		return 0
 	if profiler and profiler.has_method("begin"):
@@ -178,6 +182,8 @@ func flush(profiler = null) -> int:
 		profiler.begin_func("CrystalPresentation::flush")
 	var t0 := Time.get_ticks_usec()
 	var rebuilt := 0
+	var resumed := _resume_pending_builds(profiler, t0)
+	rebuilt += resumed
 	var keys: Array = []
 	for coord_variant in _dirty_chunks:
 		if _chunk_active(coord_variant):
@@ -196,7 +202,18 @@ func flush(profiler = null) -> int:
 			continue
 		var layer_t0 := Time.get_ticks_usec()
 		if _chunk_needs_full_rebuild.has(coord):
-			_rebuild_chunk_layer(coord)
+			if not _pending_build.is_empty():
+				continue
+			_flush_prof = profiler
+			var finished := _rebuild_chunk_layer(coord, t0 + mesh_budget_us)
+			_flush_prof = null
+			if not finished:
+				_chunk_needs_full_rebuild.erase(coord)
+				_patch_dirty_by_chunk.erase(coord)
+				_dirty_chunks.erase(coord)
+				if profiler and profiler.has_method("record_func"):
+					profiler.record_func("CrystalPresentation::_rebuild_chunk_layer_partial", Time.get_ticks_usec() - layer_t0)
+				break
 			_chunk_needs_full_rebuild.erase(coord)
 			_patch_dirty_by_chunk.erase(coord)
 			rebuild_count += 1
@@ -319,24 +336,52 @@ func _make_render_cell(pos: Vector2i, depth: float, spawn_id: int):
 	return cell
 
 
-func _rebuild_chunk_layer(coord: Vector2i) -> void:
+func _resume_pending_builds(profiler, t0: int) -> int:
+	var done := 0
+	for coord_variant in _pending_build.keys():
+		var coord: Vector2i = coord_variant
+		var layer_t0 := Time.get_ticks_usec()
+		_flush_prof = profiler
+		var finished := _rebuild_chunk_layer(coord, t0 + mesh_budget_us)
+		_flush_prof = null
+		if profiler and profiler.has_method("record_func"):
+			profiler.record_func("CrystalPresentation::_rebuild_chunk_layer_partial", Time.get_ticks_usec() - layer_t0)
+		if not finished:
+			break
+		rebuild_count += 1
+		done += 1
+	return done
+
+
+func _rebuild_chunk_layer(coord: Vector2i, deadline_us: int = 0) -> bool:
 	if not _chunk_active(coord) or layer_root == null:
-		return
-	var cells: Array = []
-	var positions: Array = _cells_by_chunk.get(coord, [])
+		_pending_build.erase(coord)
+		return true
+	var state: Dictionary = _pending_build.get(coord, {})
+	if state.is_empty():
+		state = {"i": 0, "cells": [], "positions": (_cells_by_chunk.get(coord, []) as Array).duplicate()}
+	var cells: Array = state["cells"]
+	var positions: Array = state["positions"]
+	var i: int = state["i"]
 	var min_d: float = sim_config.min_depth if sim_config else 0.04
-	for pos_variant in positions:
-		var pos: Vector2i = pos_variant
-		if not fluid or not fluid.depth.has(pos):
-			continue
-		var depth: float = float(fluid.depth[pos])
-		if depth < min_d:
-			continue
-		cells.append(_make_render_cell(
-			pos,
-			depth,
-			int(fluid.spawn_id_by_cell.get(pos, -1))
-		))
+	var n := positions.size()
+	while i < n:
+		var pos: Vector2i = positions[i]
+		i += 1
+		if fluid and fluid.depth.has(pos):
+			var depth: float = float(fluid.depth[pos])
+			if depth >= min_d:
+				cells.append(_make_render_cell(
+					pos,
+					depth,
+					int(fluid.spawn_id_by_cell.get(pos, -1))
+				))
+		if deadline_us > 0 and (i & 15) == 0 and i < n and Time.get_ticks_usec() >= deadline_us:
+			state["i"] = i
+			_pending_build[coord] = state
+			return false
+	_pending_build.erase(coord)
+	var layer_t0 := Time.get_ticks_usec()
 	var layer
 	if _chunk_layers.has(coord):
 		layer = _chunk_layers[coord]
@@ -350,6 +395,9 @@ func _rebuild_chunk_layer(coord: Vector2i) -> void:
 			layer.setup(coord, crystal_material)
 		_chunk_layers[coord] = layer
 	layer.rebuild(cells, _lod_tier_for_chunk(coord))
+	if _flush_prof and _flush_prof.has_method("record_func"):
+		_flush_prof.record_func("CrystalChunkLayer::rebuild", Time.get_ticks_usec() - layer_t0)
+	return true
 
 
 func _patch_chunk_layer(coord: Vector2i) -> void:

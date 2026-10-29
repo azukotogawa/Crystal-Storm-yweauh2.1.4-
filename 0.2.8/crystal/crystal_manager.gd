@@ -58,8 +58,6 @@ var power: float = 0.0
 var strength_tier: int = 0
 var total_volume: float = 0.0
 var covered_cells: int = 0
-var _active_memo: Dictionary = {}
-var _active_memo_on: bool = false
 
 var _sim: _CrystalFluidSim
 var _terrain_query: _CrystalTerrainQuery
@@ -528,7 +526,8 @@ func _init_sim() -> void:
 	_simulation = _CrystalSimulation.new(sim_config, _terrain_query)
 	_sim = _simulation.fluid
 	_sim.is_cell_active = Callable(self, "_is_cell_sim_active")
-	_sim.active_scope = Callable(self, "_set_active_memo")
+	_sim.chunk_gate = Callable(self, "_is_sim_chunk_gate_open")
+	_sim.chunk_gate_size = ChunkData.SIZE
 	_reapply_stored_flow_caps()
 	_presentation = _CrystalPresentation.new()
 	_presentation.fluid = _sim
@@ -1789,33 +1788,23 @@ func _bind_chunk_stream() -> void:
 		_presentation.mark_all_indexed_dirty()
 
 
-func _set_active_memo(enabled: bool) -> void:
-	_active_memo_on = enabled
-	_active_memo.clear()
-
-
 func _is_cell_sim_active(pos: Vector2i) -> bool:
-	if _sim_loaded_chunks_only and chunk_manager != null:
-		var loaded: bool
-		if _active_memo_on:
-			var ck: Vector2i = _chunk_coord_for(pos)
-			var memo = _active_memo.get(ck)
-			if memo == null:
-				memo = _chunk_loaded_raw(pos)
-				_active_memo[ck] = memo
-			loaded = memo
-		else:
-			loaded = _chunk_loaded_raw(pos)
-		if not loaded:
-			return false
 	# Crystal never expands past the intentional playable map edge.
-	return _WorldBorder.allows_crystal(float(pos.x), float(pos.y))
-
-
-func _chunk_loaded_raw(pos: Vector2i) -> bool:
+	if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
+		return false
+	if not _sim_loaded_chunks_only or chunk_manager == null:
+		return true
 	if chunk_manager.has_method("is_world_cell_loaded"):
 		return chunk_manager.is_world_cell_loaded(pos.x, pos.y)
 	return chunk_manager.chunks.has(_chunk_coord_for(pos))
+
+
+func _is_sim_chunk_gate_open(chunk: Vector2i) -> bool:
+	if not _sim_loaded_chunks_only or chunk_manager == null:
+		return true
+	if chunk_manager.has_method("is_chunk_loaded"):
+		return chunk_manager.is_chunk_loaded(chunk)
+	return chunk_manager.chunks.has(chunk)
 
 
 func _is_chunk_render_active(coord: Vector2i) -> bool:

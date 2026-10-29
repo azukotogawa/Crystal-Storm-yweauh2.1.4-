@@ -80,7 +80,10 @@ static func begin_job(
 		"content_revision": _WorldState.get_active().mesh_input_revision(),
 	}
 	_prepare_marker_cells(job)
-	_refresh_crystal_overlay(job)
+	if crystal != null and is_instance_valid(crystal) and crystal.has_method("collect_depth_chunk"):
+		job.crystal_collect_pending = true
+	else:
+		_refresh_crystal_overlay(job)
 	return job
 
 
@@ -114,7 +117,12 @@ static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> b
 	job.center = new_center
 	job.px = 0
 	job.bounds = _world_bounds(new_center, size, stride)
-	_refresh_crystal_overlay(job)
+	var crystal = job.get("crystal")
+	if crystal != null and is_instance_valid(crystal) and crystal.has_method("collect_depth_chunk"):
+		_reset_crystal_collect(job)
+		job.crystal_collect_pending = true
+	else:
+		_refresh_crystal_overlay(job)
 	job.dirty_rects = _dirty_rects_after_shift(size, dx_px, dz_px)
 	job.erase("dirty_rect")
 	job.incremental = true
@@ -132,6 +140,16 @@ static func process_job(job: Dictionary, pixel_budget: int, time_budget_us: int)
 		return true
 	if job.get("world") == null or job.get("image") == null:
 		return true
+	if job.get("crystal_collect_pending", false):
+		var pending_crystal = job.get("crystal")
+		if pending_crystal == null or not is_instance_valid(pending_crystal):
+			job.erase("crystal_collect_pending")
+			_refresh_crystal_overlay(job)
+		elif not _collect_crystal_overlay_step(job, pending_crystal, time_budget_us, false):
+			return false
+		else:
+			job.erase("crystal_collect_pending")
+			return false
 	var world: InfiniteNoiseWorld = job.world
 	if not is_instance_valid(world):
 		return true
@@ -255,7 +273,15 @@ static func repaint_crystal_overlay(job: Dictionary, pixel_budget: int, time_bud
 	return false
 
 
-static func _collect_crystal_overlay_step(job: Dictionary, crystal, time_budget_us: int) -> bool:
+static func _reset_crystal_collect(job: Dictionary) -> void:
+	job.erase("crystal_collect_chunks")
+	job.erase("crystal_collect_idx")
+	job.erase("crystal_collect_cells")
+	job.erase("crystal_collect_seen")
+	job.erase("crystal_collect_queue")
+
+
+static func _collect_crystal_overlay_step(job: Dictionary, crystal, time_budget_us: int, build_queue: bool = true) -> bool:
 	var bounds: Rect2i = job.get("bounds", Rect2i())
 	if not job.has("crystal_collect_chunks"):
 		job.crystal_collect_chunks = crystal.depth_chunks_in_rect(bounds)
@@ -279,6 +305,8 @@ static func _collect_crystal_overlay_step(job: Dictionary, crystal, time_budget_
 		for pos_variant in part:
 			var pos: Vector2i = pos_variant
 			overlay[pos] = part[pos]
+			if not build_queue:
+				continue
 			var px: int = int(round(float(pos.x - center.x) / float(stride))) + size / 2
 			var py: int = int(round(float(pos.y - center.y) / float(stride))) + size / 2
 			if px < 0 or py < 0 or px >= size or py >= size:
@@ -294,12 +322,8 @@ static func _collect_crystal_overlay_step(job: Dictionary, crystal, time_budget_
 	if idx < chunks.size():
 		return false
 	job.crystal_cells = overlay
-	job.erase("crystal_collect_chunks")
-	job.erase("crystal_collect_idx")
-	job.erase("crystal_collect_cells")
-	job.erase("crystal_collect_seen")
-	job.erase("crystal_collect_queue")
-	if not queue.is_empty():
+	_reset_crystal_collect(job)
+	if build_queue and not queue.is_empty():
 		job.crystal_repaint_queue = queue
 		job.crystal_repaint_idx = 0
 	return true

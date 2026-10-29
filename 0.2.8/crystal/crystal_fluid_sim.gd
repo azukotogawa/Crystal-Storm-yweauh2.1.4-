@@ -35,7 +35,9 @@ var last_flow_selected_cells: int = 0
 var _interior_flow_offset: int = 0
 var _frontier_new_offset: int = 0
 var is_cell_active: Callable = Callable()
-var active_scope: Callable = Callable()
+var chunk_gate: Callable = Callable()
+var chunk_gate_size: int = 16
+var _gate_memo: Dictionary = {}
 var flow_budget_us: int = 0
 var last_flow_complete: bool = true
 var _flow_job: Dictionary = {}
@@ -1080,20 +1082,47 @@ func cells_in_rect(bounds: Rect2i) -> Array:
 
 func _select_indexed_flow_cells(cap: int) -> Array:
 	_ensure_index()
-	if active_scope.is_valid():
-		active_scope.call(true)
+	_gate_memo.clear()
 	var subset: Array = _select_indexed_flow_cells_scoped(cap)
-	if active_scope.is_valid():
-		active_scope.call(false)
+	_gate_memo.clear()
 	return subset
+
+
+func _gated_cell_active(pos: Vector2i) -> bool:
+	if chunk_gate.is_valid():
+		var ck := Vector2i(floori(float(pos.x) / float(chunk_gate_size)), floori(float(pos.y) / float(chunk_gate_size)))
+		var open = _gate_memo.get(ck)
+		if open == null:
+			open = bool(chunk_gate.call(ck))
+			_gate_memo[ck] = open
+		if not open:
+			return false
+	return _cell_active(pos)
 
 
 func _select_indexed_flow_cells_scoped(cap: int) -> Array:
 	var subset: Array = []
+	var gated := chunk_gate.is_valid() and chunk_gate_size == 16
+	var last_ck := Vector2i(2147483647, 2147483647)
+	var last_open := true
 	for pos_variant in _sorted_frontier():
 		if subset.size() >= cap:
 			break
-		if _cell_active(pos_variant):
+		if gated:
+			var p: Vector2i = pos_variant
+			var ck := Vector2i(p.x >> 4, p.y >> 4)
+			if ck != last_ck:
+				last_ck = ck
+				var open = _gate_memo.get(ck)
+				if open == null:
+					open = bool(chunk_gate.call(ck))
+					_gate_memo[ck] = open
+				last_open = open
+			if not last_open:
+				continue
+			if _cell_active(p):
+				subset.append(p)
+		elif _gated_cell_active(pos_variant):
 			subset.append(pos_variant)
 	var n: int = _interior.size()
 	if subset.size() < cap and n > 0:
@@ -1104,6 +1133,6 @@ func _select_indexed_flow_cells_scoped(cap: int) -> Array:
 		while subset.size() < cap and walked < limit:
 			var pos: Vector2i = _interior[(start + walked) % n]
 			walked += 1
-			if _cell_active(pos):
+			if _gated_cell_active(pos):
 				subset.append(pos)
 	return subset
