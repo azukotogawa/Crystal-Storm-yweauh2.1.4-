@@ -129,6 +129,17 @@ func _build_ui() -> void:
 	v.add_child(_label)
 
 
+func set_toggle(key: String, on: bool) -> bool:
+	if not toggles.has(key):
+		return false
+	_on_toggle(on, key)
+	if _toggle_box:
+		for c in _toggle_box.find_children("*", "BaseButton", true, false):
+			if str(c.name) == key or key in str(c.get("text")).to_lower().replace(" ", "_"):
+				c.set_pressed_no_signal(on)
+	return true
+
+
 func _on_toggle(pressed: bool, key: String) -> void:
 	toggles[key] = pressed
 	if key == "collision_shapes":

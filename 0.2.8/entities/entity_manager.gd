@@ -528,6 +528,16 @@ func _brain_for_animal(animal_kind: int):
 			return _EntityBrainRegistry.get_def(&"rabbit")
 
 
+func dev_spawn_animal(kind_name: String, wx: int, wz: int) -> bool:
+	var key := kind_name.to_upper()
+	if not _WorldFeatureTypes.AnimalKind.has(key):
+		return false
+	var kind: int = _WorldFeatureTypes.AnimalKind[key]
+	var before := _entities.size()
+	_spawn_world_entity(wx, wz, _brain_for_animal(kind), Vector2i(wx, wz), _animal_color(kind))
+	return _entities.size() > before
+
+
 func _wildlife_room() -> int:
 	if not _Wildlife.ENABLED:
 		return 4096

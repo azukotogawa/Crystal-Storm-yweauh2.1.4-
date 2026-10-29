@@ -47,6 +47,7 @@ signal health_changed(current: float, maximum: float)
 signal damage_taken(amount: float, source: StringName)
 
 var health := 100.0
+var dev_god := false
 var damage_source_hint: StringName = &"hit"
 var _hit_iframes: float = 0.0
 const HIT_IFRAMES := 0.6
@@ -1068,6 +1069,9 @@ func set_damage_origin(origin: Vector3) -> void:
 
 
 func take_damage(amount: float, source: StringName = &"") -> void:
+	if dev_god:
+		_has_damage_origin = false
+		return
 	if _dash_invuln > 0.0:
 		_has_damage_origin = false
 		return

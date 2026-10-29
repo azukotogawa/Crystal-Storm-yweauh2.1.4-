@@ -122,6 +122,12 @@ func write_external_response(req_id: String, response: String) -> void:
 	_append_json_line(get_assistant_dir().path_join(RESPONSE_LOG), payload)
 
 
+const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
+const _ItemTypes = preload("res://helpers/item_types.gd")
+const _ScenarioPresets = preload("res://helpers/scenario_presets.gd")
+const DEBUG_TOGGLES := ["view", "overlay", "inspector", "collision_shapes", "voxel_boundaries", "chunk_boundaries", "mesh_bounds", "walkable_surface", "terrain_height", "feature_anchors", "water_cells", "crystal_cells", "stream_bake_state"]
+
+
 func _handle_slash_command(text: String) -> String:
 	var parts := text.split(" ", false)
 	var cmd := parts[0].to_lower()
@@ -129,7 +135,9 @@ func _handle_slash_command(text: String) -> String:
 		"/help":
 			return (
 				"Dev chat: type a message + Enter to send to AI. Slash commands:\n"
-				+ "/help /status /preset <low|medium|high> /tp <x> <z>\n"
+				+ "/help /status /seed /heal /god [on|off] /time [scale]\n"
+				+ "/tp <x> <z>  /give <item> [n]  /spawn <entity> [n]  /kill [radius|all]\n"
+				+ "/debug <toggle> [on|off]  /preset <low|medium|high>  /scenarios\n"
 				+ "Logs: %s" % get_assistant_dir()
 			)
 		"/status":
@@ -142,9 +150,167 @@ func _handle_slash_command(text: String) -> String:
 			if parts.size() < 3:
 				return "Usage: /tp <world_x> <world_z>"
 			return _teleport_player(parts[1], parts[2])
+		"/give":
+			if parts.size() < 2:
+				return "Usage: /give <item> [n]"
+			return _give(parts[1].to_lower(), parts[2] if parts.size() > 2 else "1")
+		"/heal":
+			return _heal()
+		"/god":
+			return _god(parts[1].to_lower() if parts.size() > 1 else "")
+		"/time":
+			return _time(parts[1] if parts.size() > 1 else "")
+		"/spawn":
+			if parts.size() < 2:
+				return "Usage: /spawn <entity> [n]"
+			return _spawn(parts[1].to_lower(), parts[2] if parts.size() > 2 else "1")
+		"/kill":
+			return _kill(parts[1].to_lower() if parts.size() > 1 else "32")
+		"/seed":
+			return _seed()
+		"/scenarios":
+			return "Scenarios: %s" % ", ".join(_ScenarioPresets.list_ids())
+		"/debug":
+			if parts.size() < 2:
+				return "Usage: /debug <%s> [on|off]" % "|".join(DEBUG_TOGGLES)
+			return _debug(parts[1].to_lower(), parts[2].to_lower() if parts.size() > 2 else "")
 		_:
 			return "Unknown command '%s'. Try /help" % cmd
 
+
+func _player() -> Player:
+	return get_tree().get_first_node_in_group("player") as Player
+
+
+func _give(item_id: String, sn: String) -> String:
+	var player := _player()
+	if player == null or player.inventory == null:
+		return "Player inventory not found"
+	if not _ItemTypes.is_valid(item_id):
+		return "Unknown item '%s'. Try /help" % item_id
+	if not sn.is_valid_int() or int(sn) <= 0:
+		return "Usage: /give <item> [n]"
+	var n := mini(int(sn), 999)
+	var left: int = player.inventory.add_item(item_id, n)
+	return "Gave %d %s%s" % [n - left, item_id, (" (%d did not fit)" % left) if left > 0 else ""]
+
+
+func _heal() -> String:
+	var player := _player()
+	if player == null:
+		return "Player not found"
+	player.heal(player.max_health)
+	return "Healed to %d/%d" % [int(player.health), int(player.max_health)]
+
+
+func _god(arg: String) -> String:
+	var player := _player()
+	if player == null:
+		return "Player not found"
+	match arg:
+		"on": player.dev_god = true
+		"off": player.dev_god = false
+		"": player.dev_god = not player.dev_god
+		_: return "Usage: /god [on|off]"
+	return "God mode %s" % ("ON" if player.dev_god else "OFF")
+
+
+func _time(arg: String) -> String:
+	if not arg.is_empty():
+		if not arg.is_valid_float():
+			return "Usage: /time [scale 0.1-4]"
+		Engine.time_scale = clampf(float(arg), 0.1, 4.0)
+	return "Time: %.1fs played, scale %.2f" % [Time.get_ticks_msec() / 1000.0, Engine.time_scale]
+
+
+func _spawn(entity: String, sn: String) -> String:
+	var player := _player()
+	if player == null:
+		return "Player not found"
+	if not sn.is_valid_int() or int(sn) <= 0:
+		return "Usage: /spawn <entity> [n]"
+	var n := mini(int(sn), 20)
+	var px := int(floor(player.voxel_position.x))
+	var pz := int(floor(player.voxel_position.z))
+	_EnemySpawnRegistry.ensure_builtins()
+	var made := 0
+	if _EnemySpawnRegistry.get_def(StringName(entity)) != null:
+		var spawner = get_tree().get_first_node_in_group("crystal_enemy_spawner")
+		if spawner == null:
+			return "Enemy spawner not found"
+		for i in n:
+			if spawner.spawn_enemy_at_column(StringName(entity), px + 4 + (i % 5), pz + 4 + int(i / 5), Vector2i.ZERO, true):
+				made += 1
+	else:
+		var em = get_tree().get_first_node_in_group("entity_manager")
+		if em == null or not em.has_method("dev_spawn_animal"):
+			return "Entity manager not found"
+		for i in n:
+			if not em.dev_spawn_animal(entity, px + 4 + (i % 5), pz + 4 + int(i / 5)):
+				if i == 0:
+					return "Unknown entity '%s'. Enemies: crystal_mite, thornling, ...; animals: deer, boar, rabbit, bird, fox, goat, duck" % entity
+				break
+			made += 1
+	return "Spawned %d %s" % [made, entity]
+
+
+func _kill(arg: String) -> String:
+	var player := _player()
+	if player == null:
+		return "Player not found"
+	var all := arg == "all"
+	if not all and not arg.is_valid_float():
+		return "Usage: /kill [radius|all]"
+	var r := float(arg) if not all else 0.0
+	var killed := 0
+	for e in get_tree().get_nodes_in_group("crystal_enemy"):
+		if not (e is Node3D) or not e.has_method("take_damage") or e.is_queued_for_deletion():
+			continue
+		if all or (e as Node3D).global_position.distance_to(player.global_position) <= r:
+			e.take_damage(1.0e6, &"dev")
+			killed += 1
+	return "Killed %d enemies" % killed
+
+
+func _seed() -> String:
+	var world = get_tree().get_first_node_in_group("world")
+	if world == null or not ("world_seed" in world):
+		return "World not found"
+	return "Seed %d" % int(world.world_seed)
+
+
+func _debug(key: String, arg: String) -> String:
+	if not key in DEBUG_TOGGLES:
+		return "Unknown toggle '%s'. Options: %s" % [key, ", ".join(DEBUG_TOGGLES)]
+	if not arg in ["", "on", "off"]:
+		return "Usage: /debug <toggle> [on|off]"
+	var coord = get_tree().get_first_node_in_group("dev_tools_coordinator")
+	var insp = get_tree().get_first_node_in_group("live_world_inspector")
+	var state := false
+	match key:
+		"view":
+			if coord == null:
+				return "Dev tools not found"
+			state = coord.set_debug_view(not coord.is_debug_view_visible() if arg == "" else arg == "on")
+		"overlay":
+			if coord == null:
+				return "Dev tools not found"
+			if arg == "" or (arg == "on") != coord.is_debug_overlay_visible():
+				coord.toggle_debug_overlay()
+			state = coord.is_debug_overlay_visible()
+		"inspector":
+			if insp == null:
+				return "Inspector not found"
+			insp.panel_open = not insp.panel_open if arg == "" else arg == "on"
+			state = insp.panel_open
+		_:
+			if insp == null:
+				return "Inspector not found"
+			state = not bool(insp.toggles.get(key, false)) if arg == "" else arg == "on"
+			insp.set_toggle(key, state)
+			if state and not insp.panel_open:
+				insp.panel_open = true
+	return "Debug %s %s" % [key, "ON" if state else "OFF"]
 
 func _status_line() -> String:
 	var player: Node = get_tree().get_first_node_in_group("player")
