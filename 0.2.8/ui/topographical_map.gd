@@ -219,6 +219,7 @@ func _process(delta: float) -> void:
 				profiler.end("topo_map")
 			return
 
+	_drop_stale_map_job()
 	if not _active_map_job.is_empty():
 		_step_map_job()
 	elif not _crystal_overlay_job.is_empty():
@@ -244,12 +245,23 @@ func _process(delta: float) -> void:
 	var due := _rebuild_timer <= 0.0
 	var terrain_dirty := _content_revision_changed()
 	if due or moved or terrain_dirty:
-		# A job still in flight must not consume the movement. Retry next frame.
-		if _queue_map_rebuild(_fullscreen_open, due or terrain_dirty):
+		if _queue_map_rebuild(_fullscreen_open, terrain_dirty):
 			_rebuild_timer = cfg.rebuild_interval_sec
 			_last_center = center
 	if profiler and profiler.has_method("end"):
 		profiler.end("topo_map")
+
+
+func _drop_stale_map_job() -> void:
+	if _active_map_job.is_empty() or bool(_active_map_job.get("fullscreen", false)):
+		return
+	var jc: Vector2i = _active_map_job.get("center", Vector2i.ZERO)
+	var limit: float = float(_map_cfg().minimap_radius_cells) * 0.5
+	if jc.distance_to(_player_center_cell()) <= limit:
+		return
+	_map_job_queue.clear()
+	_active_map_job = {}
+	_rebuild_timer = 0.0
 
 
 func is_fullscreen_open() -> bool:
@@ -326,6 +338,10 @@ func _queue_map_rebuild(include_full: bool, force_full: bool) -> bool:
 	if not _active_map_job.is_empty():
 		return false
 	if _world == null or not is_instance_valid(_world):
+		return false
+	if _player == null or not is_instance_valid(_player):
+		_player = get_tree().get_first_node_in_group("player") if is_inside_tree() else null
+	if _player == null:
 		return false
 	var center := _player_center_cell()
 	var cfg = _map_cfg()

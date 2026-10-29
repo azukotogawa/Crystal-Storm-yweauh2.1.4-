@@ -10,7 +10,7 @@ extends Resource
 
 @export_group("Update")
 @export var rebuild_interval_sec: float = 1.5
-@export var rebuild_move_threshold_cells: int = 24
+@export var rebuild_move_threshold_cells: int = 8
 
 @export_group("Colors")
 @export var color_plains: Color = Color(0.55, 0.78, 0.38)

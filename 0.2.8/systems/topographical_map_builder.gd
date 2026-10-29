@@ -100,13 +100,8 @@ static func try_incremental_recenter(job: Dictionary, new_center: Vector2i) -> b
 	if dx_px != 0 or dz_px != 0:
 		var shifted := Image.create(size, size, false, Image.FORMAT_RGBA8)
 		shifted.fill(Color(0.05, 0.06, 0.08, 1.0))
-		for py in size:
-			for px in size:
-				var src_x: int = px + dx_px
-				var src_y: int = py + dz_px
-				if src_x < 0 or src_y < 0 or src_x >= size or src_y >= size:
-					continue
-				shifted.set_pixel(px, py, image.get_pixel(src_x, src_y))
+		var src := Rect2i(maxi(dx_px, 0), maxi(dz_px, 0), size - absi(dx_px), size - absi(dz_px))
+		shifted.blit_rect(image, src, Vector2i(maxi(-dx_px, 0), maxi(-dz_px, 0)))
 		job.image = shifted
 
 	job.center = new_center
