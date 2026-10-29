@@ -637,11 +637,23 @@ func face_aim(dir: Vector3) -> void:
 	_face_aim_left = 0.4
 
 
+func _cursor_face_dir() -> Vector3:
+	var cfg = GameFeelConfig.active()
+	var weapon := get_node_or_null("WeaponController")
+	var drawing := weapon != null and bool(weapon.get("_drawing"))
+	if not drawing and ActionTargeting.cursor_idle_sec() > cfg.cursor_face_sec:
+		return Vector3.ZERO
+	return ActionTargeting.cursor_face_dir(self, cfg.cursor_face_range)
+
+
 func _tick_face(delta: float) -> void:
 	var target := face_yaw
+	var cursor_dir := _cursor_face_dir()
 	if _face_aim_left > 0.0:
 		_face_aim_left -= delta
 		target = _face_aim_yaw
+	elif cursor_dir != Vector3.ZERO:
+		target = atan2(-cursor_dir.x, -cursor_dir.z)
 	elif _wish_xz.length_squared() > 0.01:
 		target = atan2(-_wish_xz.x, -_wish_xz.y)
 	face_yaw = lerp_angle(face_yaw, target, minf(1.0, 18.0 * delta))

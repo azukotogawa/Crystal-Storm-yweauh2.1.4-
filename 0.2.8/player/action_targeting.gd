@@ -25,6 +25,7 @@ static var last_pick_face: int = 0
 static var last_pick_exact: bool = false
 static var _event_pos := Vector2.ZERO
 static var _event_ok := false
+static var _event_moved_msec := -1000000
 static var _aabb_t: float = 0.0
 static var _aabb_face: int = 0
 static var _box_min: Vector3 = Vector3.ZERO
@@ -701,8 +702,26 @@ static func pick_hover_column(
 static func note_event_mouse(at: Vector2, view: Vector2) -> void:
 	if at.x < 0.0 or at.y < 0.0 or at.x > view.x or at.y > view.y:
 		return
+	if not _event_ok or at.distance_squared_to(_event_pos) > 1.0:
+		_event_moved_msec = Time.get_ticks_msec()
 	_event_pos = at
 	_event_ok = true
+
+
+static func cursor_idle_sec() -> float:
+	return float(Time.get_ticks_msec() - _event_moved_msec) / 1000.0
+
+
+static func cursor_face_dir(player: Node3D, range_v: float) -> Vector3:
+	if player == null or not ("voxel_position" in player):
+		return Vector3.ZERO
+	var col := _cursor_column(player, range_v)
+	if col == Vector3.ZERO:
+		return Vector3.ZERO
+	var offset := Vector3(col.x - float(player.voxel_position.x), 0.0, col.z - float(player.voxel_position.z))
+	if offset.length_squared() < 0.25:
+		return Vector3.ZERO
+	return offset.normalized()
 
 
 static func pointer_in(vp: Viewport) -> Vector2:
