@@ -570,7 +570,7 @@ func _surface_point(col_x: float, col_z: float, fallback_y: float, source: Objec
 	var y := fallback_y
 	var terrain: Object = source if source != null else world
 	if terrain != null and terrain.has_method("get_surface_height"):
-		y = float(terrain.get_surface_height(col_x, col_z))
+		y = float(terrain.get_surface_height(col_x, col_z)) + ws.layer_height()
 	return Vector3(ws.column_to_world(col_x), y, ws.column_to_world(col_z))
 
 
@@ -602,8 +602,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var connected := false
 	var saw_target := false
 
-	var range_w := _range_world(range_v)
-	var targets := _query_melee_cursor(origin, forward, range_w)
+	var targets := _cursor_capsule_targets(origin, range_v, 2)
 	for target in targets:
 		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.0)))
@@ -630,15 +629,20 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	attacked.emit(item_id, hit_pos)
 
 
-func _query_melee_cursor(origin: Vector3, forward: Vector3, range_w: float) -> Array[Node]:
-	var ray := _cursor_ray()
-	if ray.is_empty():
-		return _query_melee_facing(origin, forward, range_w)
-	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 3.0)
-	var found: Array[Node] = []
-	var picked := _CombatHitbox.pick_under_ray(nodes, ray[0], ray[1], origin, range_w, MELEE_CURSOR_SLACK)
-	if picked != null:
-		found.append(picked)
+func _cursor_capsule_targets(origin: Vector3, range_v: float, limit: int) -> Array[Node]:
+	var range_w := _range_world(range_v)
+	var dir := _aim_forward(range_v)
+	var reach_w := range_w
+	var col := _ActionTargeting.column_toward_cursor(player, range_v)
+	if col != Vector3.ZERO and player != null and "voxel_position" in player:
+		var flat := Vector2(col.x - float(player.voxel_position.x), col.z - float(player.voxel_position.z))
+		if flat.length() > 0.2:
+			dir = Vector3(flat.x, 0.0, flat.y).normalized()
+			reach_w = minf(range_w, _range_world(flat.length()))
+	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
+	var found := _WeaponStrike.thrust_targets(origin, dir, reach_w, nodes, limit)
+	if found.is_empty():
+		found = _point_blank_melee(origin, dir)
 	return found
 
 
@@ -741,17 +745,49 @@ func _cursor_ray() -> Array:
 	return [cam.project_ray_origin(mouse), cam.project_ray_normal(mouse)]
 
 
-func _launch_direction(muzzle: Vector3, fallback: Vector3) -> Vector3:
+func _launch_direction(muzzle: Vector3, fallback: Vector3, def: Dictionary) -> Vector3:
 	var ray := _cursor_ray()
 	if ray.is_empty():
 		return fallback
+	var range_w := _range_world(float(def.get("range", 12.0)))
+	var nodes: Array = _CombatHitResolver._combat_nodes(self, muzzle, range_w + 3.0)
+	var picked := _CombatHitbox.pick_under_ray(nodes, ray[0], ray[1], muzzle, range_w, MELEE_CURSOR_SLACK)
+	if picked != null:
+		var to: Vector3 = _gravity_aim(muzzle, _CombatHitbox.sphere_of(picked).center, def) - muzzle
+		if to.length_squared() > 0.0001:
+			return to.normalized()
+	var ground_y := muzzle.y
+	var lift := 0.0
+	if player != null:
+		ground_y = player.global_position.y
+		lift = _range_world(0.32)
+	var point := _RangedAim.cursor_point(ray[0], ray[1], ground_y) + Vector3(0.0, lift, 0.0)
+	var to_point := _gravity_aim(muzzle, point, def) - muzzle
+	if Vector2(to_point.x, to_point.z).length() > _range_world(0.75):
+		return to_point.normalized()
 	return _RangedAim.launch_direction(muzzle, ray[0], ray[1])
+
+
+func _gravity_aim(muzzle: Vector3, point: Vector3, def: Dictionary) -> Vector3:
+	var speed := _RangedAim.speed_for(_draw_charge, float(def.get("projectile_speed", 28.0)))
+	var g := float(def.get("projectile_gravity", 12.0))
+	var flat := Vector2(point.x - muzzle.x, point.z - muzzle.z)
+	var d := flat.length()
+	if speed <= 0.01 or d < 0.01 or g <= 0.0:
+		return point
+	var dy := point.y - muzzle.y
+	var v2 := speed * speed
+	var disc := v2 * v2 - g * (g * d * d + 2.0 * dy * v2)
+	var tan_a := 1.0
+	if disc >= 0.0:
+		tan_a = (v2 - sqrt(disc)) / (g * d)
+	return muzzle + Vector3(flat.x, d * tan_a, flat.y)
 
 
 func _do_ranged_attack(item_id: String, def: Dictionary) -> void:
 	var origin := _attack_origin(0.6)
 	var range_v: float = float(def.get("range", 12.0))
-	var forward := _launch_direction(origin, _attack_forward())
+	var forward := _launch_direction(origin, _attack_forward(), def)
 	var hit_pos := origin + forward * _range_world(range_v)
 	if not _fire_projectile(item_id, def, origin, forward, false):
 		_cooldown_timer = 0.25
@@ -806,8 +842,7 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var crystal_hits := _WeaponStrike.apply_crystal_cells(crystal_manager, cells, mass)
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(cell, _crystal_hit_damage(def), 1.6)
-	var range_w := _range_world(range_v)
-	var targets := _query_melee_cursor(origin, forward, range_w)
+	var targets := _cursor_capsule_targets(origin, range_v, 1)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var shoved := 0
 	var connected := crystal_hits > 0
@@ -831,7 +866,9 @@ func _throw_bomb(item_id: String, def: Dictionary) -> bool:
 		return false
 	var origin := _attack_origin(0.7)
 	var forward := _aim_forward(float(def.get("range", 6.0)))
-	if not _fire_projectile(item_id, def, origin, forward, true):
+	var lob_def := def.duplicate()
+	lob_def["projectile_speed"] = _lob_speed(def, origin, forward)
+	if not _fire_projectile(item_id, lob_def, origin, forward, true):
 		inventory.add_item(item_id, 1)
 		return false
 	_sfx("bomb_throw", origin)
@@ -840,6 +877,23 @@ func _throw_bomb(item_id: String, def: Dictionary) -> bool:
 	var hit_pos := origin + forward * _range_world(float(def.get("blast_radius", 2.5)))
 	attacked.emit(item_id, hit_pos)
 	return true
+
+
+func _lob_speed(def: Dictionary, origin: Vector3, forward: Vector3) -> float:
+	var base := float(def.get("projectile_speed", 12.0))
+	var col := _ActionTargeting.column_toward_cursor(player, float(def.get("range", 6.0)))
+	if col == Vector3.ZERO or player == null:
+		return base
+	var ws = _WorldSettings.get_active()
+	var target: Vector3 = _surface_point(col.x, col.z, player.global_position.y)
+	var muzzle: Vector3 = origin + forward * (ws.voxel_scale * 0.65)
+	var d: float = Vector2(target.x - muzzle.x, target.z - muzzle.z).length()
+	var dy: float = target.y - muzzle.y
+	var g := float(def.get("projectile_gravity", 12.0))
+	var denom: float = 2.0 * (0.55 * d - dy)
+	if d < 0.01 or denom <= 0.05:
+		return base
+	return clampf(sqrt(g * d * d / denom), base * 0.3, base * 1.4)
 
 
 func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward: Vector3, lob: bool) -> bool:

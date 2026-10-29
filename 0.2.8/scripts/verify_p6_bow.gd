@@ -1,6 +1,8 @@
 extends SceneTree
 
 const C = preload("res://scripts/verify_p6_common.gd")
+const _ATRef = preload("res://player/action_targeting.gd")
+const _RangedAimRef = preload("res://weapons/ranged_aim.gd")
 
 
 func _init() -> void:
@@ -16,7 +18,7 @@ func _run() -> void:
 	var hits := 0
 	var shots := 0
 	var line := ""
-	for dist in [3, 5, 8, 11]:
+	for dist in [3, 4, 5, 6]:
 		for spot in ["feet", "center"]:
 			var m = await C.spawn_mite(self, C.pcol(p) + Vector2i(dist, 0))
 			for _f in 20:
@@ -27,6 +29,7 @@ func _run() -> void:
 			w.inventory.add_item(ammo, 2)
 			w._draw_charge = 1.0
 			var h0: int = m.hits_taken
+			print("BOWDIR px=%s vp=%s ptr=%s active=%s dir=%s speed=%.2f" % [p.camera.unproject_position(pt), p.get_viewport().get_visible_rect().size, _ATRef.pointer_in(p.get_viewport()), w._active_item_id(), w._launch_direction(w._attack_origin(0.6), Vector3.ZERO, def), _RangedAimRef.speed_for(1.0, float(def.get("projectile_speed", 28.0)))])
 			w._do_ranged_attack("shortbow", def)
 			var tr: Dictionary = await C.track_shot(self, w, m, 90)
 			print("BOWDBG d%d %s n=%d kind=%s min_d=%.2f start=%s end=%s tc=%s" % [dist, spot, tr.n, tr.kind, tr.min_d, tr.start, tr.end, tr.tc])

@@ -301,7 +301,7 @@ func _terrain_entry(a: Vector3, b: Vector3) -> float:
 func _ground_y(at: Vector3) -> float:
 	if _world != null and _world.has_method("get_surface_height"):
 		var ws = _WorldSettings.get_active()
-		return float(_world.get_surface_height(ws.world_to_column(at.x), ws.world_to_column(at.z)))
+		return float(_world.get_surface_height(ws.world_to_column(at.x), ws.world_to_column(at.z))) + ws.layer_height()
 	return 10000.0
 
 

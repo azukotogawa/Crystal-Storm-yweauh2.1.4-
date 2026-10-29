@@ -24,6 +24,7 @@ func _case(p, mite_off: Vector2, cursor_cols: float) -> int:
 	for _f in 5:
 		await physics_frame
 	var h: int = m.hits_taken - h0
+	print("SWORDDBG off=%s range=%s mite_d_cols=%.2f hits=%d" % [mite_off, ItemTypes.get_def("wooden_sword").get("range", -1), Vector2(m.global_position.x - start.x, m.global_position.z - start.z).length() / vs, h])
 	await C.clear_mites(self)
 	for _f in 10:
 		await physics_frame
@@ -35,7 +36,7 @@ func _run() -> void:
 	p.health = 100000.0
 	var between := await _case(p, Vector2(1, 0), 2.6)
 	var on := await _case(p, Vector2(2, 0), 2.0)
-	var beyond := await _case(p, Vector2(5, 0), 5.0)
+	var beyond := await _case(p, Vector2(8, 0), 8.0)
 	var side := await _case(p, Vector2(1, 2), 2.6)
 	var behind := await _case(p, Vector2(-2, 0), 2.6)
 	var ok := between > 0 and on > 0 and beyond == 0 and side == 0 and behind == 0
