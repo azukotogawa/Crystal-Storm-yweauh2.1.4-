@@ -93,6 +93,7 @@ var _guardian_aggro: bool = false
 var _heart_locked: bool = false
 var _locked_heart: Vector2i = Vector2i.ZERO
 var _station: Vector2i = Vector2i.ZERO
+var _station_shoved := false
 var _station_reach: float = 0.0
 
 
@@ -388,7 +389,7 @@ func _bind_scene() -> void:
 
 
 func get_combat_center() -> Vector3:
-	return global_position
+	return global_position + Vector3(0.0, get_combat_radius(), 0.0)
 
 
 func get_combat_radius() -> float:
@@ -508,6 +509,12 @@ func _hold_station() -> void:
 		return
 	var here := _EntityNavigation.column_pos(global_position)
 	if here == _station:
+		_station_shoved = false
+		return
+	if _knock_left > 0.0 or _stagger_left > 0.0:
+		_station_shoved = true
+		return
+	if _station_shoved:
 		return
 	var ws = WorldSettings.get_active()
 	global_position.x = ws.column_to_world(float(_station.x) + 0.5)
