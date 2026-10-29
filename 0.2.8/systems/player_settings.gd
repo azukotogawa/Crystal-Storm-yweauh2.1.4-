@@ -25,6 +25,9 @@ static var colorblind_palette: bool = false
 static var tutorial_completed: bool = false
 static var fullscreen: bool = false
 static var vsync_enabled: bool = true
+const FPS_CAP_DEFAULT := 60
+const FPS_CAPS: PackedInt32Array = [30, 60, 90, 120, 144, 0]
+static var max_fps: int = FPS_CAP_DEFAULT
 static var resolution: String = "1280x720"
 static var camera_cutaway_enabled: bool = true
 const CAMERA_PITCH_DEFAULT := -35.264
@@ -70,6 +73,7 @@ static func defaults() -> Dictionary:
 		"tutorial_completed": false,
 		"fullscreen": false,
 		"vsync": true,
+		"max_fps": FPS_CAP_DEFAULT,
 		"resolution": "1280x720",
 		"camera_cutaway_enabled": true,
 		"camera_pitch_degrees": CAMERA_PITCH_DEFAULT,
@@ -129,6 +133,8 @@ static func load_settings() -> Dictionary:
 		out["fullscreen"] = bool(data.fullscreen)
 	if data.has("vsync"):
 		out["vsync"] = bool(data.vsync)
+	if data.has("max_fps") and int(data.max_fps) in FPS_CAPS:
+		out["max_fps"] = int(data.max_fps)
 	if data.has("resolution"):
 		out["resolution"] = str(data.resolution)
 	if data.has("camera_cutaway_enabled"):
@@ -175,6 +181,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	tutorial_completed = bool(data.get("tutorial_completed", false))
 	fullscreen = bool(data.get("fullscreen", false))
 	vsync_enabled = bool(data.get("vsync", true))
+	max_fps = int(data.get("max_fps", FPS_CAP_DEFAULT))
 	resolution = str(data.get("resolution", "1280x720"))
 	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
 	camera_pitch_degrees = float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
@@ -404,6 +411,7 @@ static func _apply_ui_scale_now(tree: SceneTree = null) -> void:
 
 static func _apply_display_now() -> void:
 	display_apply_count += 1
+	Engine.max_fps = max_fps
 	if DisplayServer.get_name() == "headless":
 		return
 	var want_vsync := DisplayServer.VSYNC_ENABLED if vsync_enabled else DisplayServer.VSYNC_DISABLED

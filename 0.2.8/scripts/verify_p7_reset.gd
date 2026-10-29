@@ -61,6 +61,8 @@ func _run() -> void:
 	changed["vegetation_scatter_multiplier"] = 0.4
 	changed["texture_set"] = "batch1"
 	changed["tutorial_completed"] = true
+	changed["max_fps"] = 144
+	changed["vsync"] = false
 	_PlayerSettings.save_settings(changed)
 	_PlayerSettings.bind_action("jump", _key(KEY_J))
 	_PlayerSettings.load_settings()
@@ -101,7 +103,7 @@ func _run() -> void:
 		"screen_shake_enabled": _PlayerSettings.screen_shake_enabled, "hit_stop_enabled": _PlayerSettings.hit_stop_enabled,
 		"flash_effects_enabled": _PlayerSettings.flash_effects_enabled, "hit_markers_enabled": _PlayerSettings.hit_markers_enabled,
 		"crack_overlay_enabled": _PlayerSettings.crack_overlay_enabled, "colorblind_palette": _PlayerSettings.colorblind_palette,
-		"fullscreen": _PlayerSettings.fullscreen, "vsync": _PlayerSettings.vsync_enabled, "resolution": _PlayerSettings.resolution,
+		"fullscreen": _PlayerSettings.fullscreen, "vsync": _PlayerSettings.vsync_enabled, "max_fps": _PlayerSettings.max_fps, "resolution": _PlayerSettings.resolution,
 		"camera_cutaway_enabled": _PlayerSettings.camera_cutaway_enabled, "camera_pitch_degrees": _PlayerSettings.camera_pitch_degrees,
 		"texture_blueprint": _PlayerSettings.texture_blueprint, "texture_set": _PlayerSettings.texture_set,
 		"keybinds": _PlayerSettings.keybinds, "control_profile": _PlayerSettings.control_profile,

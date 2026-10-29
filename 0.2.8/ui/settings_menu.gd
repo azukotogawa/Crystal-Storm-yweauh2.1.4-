@@ -31,6 +31,7 @@ var _vol_sfx: HSlider
 var _vol_ui: HSlider
 var _fullscreen: CheckBox
 var _vsync: CheckBox
+var _fps_cap: OptionButton
 var _cutaway: CheckBox
 var _blueprint: CheckBox
 var _texture_set: OptionButton
@@ -96,6 +97,15 @@ func _ready() -> void:
 	var display := _tab(tabs, "Display")
 	_fullscreen = _check(display, "Fullscreen", "Fullscreen")
 	_vsync = _check(display, "VSync", "Vsync")
+	var fps_l := Label.new()
+	fps_l.text = "Frame-rate cap"
+	display.add_child(fps_l)
+	_fps_cap = OptionButton.new()
+	_fps_cap.name = "FrameCap"
+	for cap in _PlayerSettings.FPS_CAPS:
+		_fps_cap.add_item("Unlimited" if cap == 0 else "%d FPS" % cap)
+	_fps_cap.item_selected.connect(func(_i): _persist())
+	display.add_child(_fps_cap)
 	var res_l := Label.new()
 	res_l.text = "Resolution (windowed)"
 	display.add_child(res_l)
@@ -327,6 +337,8 @@ func sync_from_settings() -> void:
 	_set_slider(_vol_ui, float(data.get("volume_ui", 1.0)))
 	_set_check(_fullscreen, bool(data.get("fullscreen", false)))
 	_set_check(_vsync, bool(data.get("vsync", true)))
+	if _fps_cap:
+		_fps_cap.select(maxi(0, _PlayerSettings.FPS_CAPS.find(int(data.get("max_fps", _PlayerSettings.FPS_CAP_DEFAULT)))))
 	_set_resolution(str(data.get("resolution", "1280x720")))
 	_set_slider(_ui_scale, float(data.get("ui_scale", 1.0)))
 	_set_check(_reduce, bool(data.get("reduce_motion", false)))
@@ -495,6 +507,8 @@ func _persist() -> void:
 		data["fullscreen"] = bool(_fullscreen.button_pressed)
 	if _vsync:
 		data["vsync"] = bool(_vsync.button_pressed)
+	if _fps_cap and _fps_cap.selected >= 0:
+		data["max_fps"] = int(_PlayerSettings.FPS_CAPS[_fps_cap.selected])
 	if _resolution and _resolution.selected >= 0:
 		data["resolution"] = _resolution.get_item_text(_resolution.selected)
 	if _ui_scale:
@@ -532,6 +546,7 @@ func _persist() -> void:
 	var display_changed := (
 		bool(data.get("fullscreen", false)) != _PlayerSettings.fullscreen
 		or bool(data.get("vsync", true)) != _PlayerSettings.vsync_enabled
+		or int(data.get("max_fps", _PlayerSettings.FPS_CAP_DEFAULT)) != _PlayerSettings.max_fps
 		or str(data.get("resolution", "")) != _PlayerSettings.resolution
 	)
 	var scale_changed := absf(float(data.get("ui_scale", 1.0)) - _PlayerSettings.ui_scale) > 0.001
