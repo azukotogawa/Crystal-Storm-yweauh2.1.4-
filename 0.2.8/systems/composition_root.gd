@@ -68,6 +68,8 @@ var _failed_reason: String = ""
 var _debug_overrides: Dictionary = {}
 var _platform_overrides: Dictionary = {}
 var _default_stage_timeout_frames: int = 1800
+var _start_region_stall_ms: int = 30000
+var _start_region_max_ms: int = 300000
 var _boot_trace_enabled: bool = true
 var _boot_trace_stages: Array = []
 var _boot_trace_current_name: String = ""
@@ -295,20 +297,43 @@ func boot_async() -> bool:
 	var _GameplayInput = load("res://helpers/gameplay_input.gd")
 	if _GameplayInput and _GameplayInput.has_method("set_world_loading"):
 		_GameplayInput.set_world_loading(true)
-	while sframes < _default_stage_timeout_frames:
+	var stream_started_ms := Time.get_ticks_msec()
+	var last_progress_ms := stream_started_ms
+	var last_progress_key := -1
+	var stall_reason := ""
+	while true:
 		var start_ready := false
-		if cm.has_method("is_start_region_ready"):
+		if cm.has_method("start_region_status"):
+			var st: Dictionary = cm.start_region_status()
+			start_ready = bool(st.get("ready", false))
+			var key: int = int(st.get("packages", 0)) * 4096 + int(st.get("resident", 0))
+			if key != last_progress_key:
+				last_progress_key = key
+				last_progress_ms = Time.get_ticks_msec()
+		elif cm.has_method("is_start_region_ready"):
 			start_ready = bool(cm.is_start_region_ready())
 		elif cm.chunks != null and cm.chunks.size() >= 1:
 			start_ready = true
 		if start_ready:
+			break
+		var now_ms := Time.get_ticks_msec()
+		if now_ms - last_progress_ms > _start_region_stall_ms:
+			stall_reason = "no progress for %d s" % int(_start_region_stall_ms / 1000)
+			break
+		if now_ms - stream_started_ms > _start_region_max_ms:
+			stall_reason = "over %d s total" % int(_start_region_max_ms / 1000)
 			break
 		var tw := Time.get_ticks_usec()
 		await get_tree().process_frame
 		wait_us_acc += Time.get_ticks_usec() - tw
 		sframes += 1
 	if cm.has_method("is_start_region_ready") and not bool(cm.is_start_region_ready()):
-		return _fail("start region not ready after %d frames" % sframes)
+		var fst: Dictionary = cm.start_region_status() if cm.has_method("start_region_status") else {}
+		return _fail("Start region timeout: %s (packages %d/%d, built %d/%d)" % [
+			stall_reason,
+			int(fst.get("packages", 0)), int(fst.get("needed", 0)),
+			int(fst.get("resident", 0)), int(fst.get("needed", 0)),
+		])
 	if SPP and SPP.is_enabled():
 		SPP.record("process_frame_wait", wait_us_acc)
 	if _StartupTotal.is_enabled():
