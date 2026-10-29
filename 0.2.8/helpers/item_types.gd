@@ -324,13 +324,17 @@ static func get_def(item_id: String) -> Dictionary:
 
 
 static func _tuned(def: Dictionary) -> Dictionary:
-	if int(def.get("category", -1)) != Category.WEAPON or int(def.get("weapon_kind", -1)) != WeaponKind.MELEE:
+	var feel = _GameFeelConfig.active()
+	var kind := int(def.get("weapon_kind", -1))
+	var is_weapon := int(def.get("category", -1)) == Category.WEAPON and (kind == WeaponKind.MELEE or kind == WeaponKind.RANGED)
+	var is_throw := bool(def.get("throwable", false))
+	if not is_weapon and not is_throw:
 		return def
-	var floor_range: float = _GameFeelConfig.active().melee_min_range
-	if float(def.get("range", 0.0)) >= floor_range:
-		return def
+	var r := float(def.get("range", 6.0 if is_throw else 0.0))
+	if is_weapon and kind == WeaponKind.MELEE:
+		r = maxf(r, feel.melee_min_range)
 	var out := def.duplicate()
-	out["range"] = floor_range
+	out["range"] = r + feel.range_bonus_voxels
 	return out
 
 

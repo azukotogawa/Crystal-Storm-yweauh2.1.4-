@@ -554,6 +554,8 @@ func _held_aim_range() -> float:
 	var kind := int(def.get("weapon_kind", ItemTypes.WeaponKind.MELEE))
 	if category == ItemTypes.Category.WEAPON and (kind == ItemTypes.WeaponKind.MELEE or kind == ItemTypes.WeaponKind.RANGED):
 		return float(def.get("range", 2.0))
+	if bool(def.get("throwable", false)):
+		return float(def.get("range", 6.0))
 	return _ActionTargeting.reach()
 
 

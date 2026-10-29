@@ -889,6 +889,8 @@ func _active_range() -> float:
 	if category == _ItemTypes.Category.WEAPON \
 			and (kind == _ItemTypes.WeaponKind.MELEE or kind == _ItemTypes.WeaponKind.RANGED):
 		return float(def.get("range", 2.0))
+	if bool(def.get("throwable", false)):
+		return float(def.get("range", 6.0))
 	if weapon.has_method("action_reach"):
 		return float(weapon.action_reach())
 	return _ActionTargeting.reach()
