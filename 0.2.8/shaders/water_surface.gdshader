@@ -42,12 +42,12 @@ void fragment() {
 	if (cutaway_enabled > 0.5) {
 		vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		if (world_pos.y > cutaway_player.y + cutaway_feet_clear) {
-			vec3 ab = cutaway_player - cutaway_camera;
+			vec3 ab = cutaway_player + vec3(0.0, 1.4, 0.0) - cutaway_camera;
 			float ab_len2 = dot(ab, ab);
 			if (ab_len2 > 0.01) {
 				float t = dot(ab, world_pos - cutaway_camera) / ab_len2;
-				float past = max(t - 1.0, 0.0) * sqrt(ab_len2);
-				if (t > 0.05 && past < cutaway_past) {
+				float ahead = (1.0 - t) * sqrt(ab_len2);
+				if (t > 0.05 && ahead > cutaway_past) {
 					float tc = clamp(t, 0.0, 1.0);
 					vec3 closest = cutaway_camera + ab * tc;
 					float dist = distance(world_pos, closest);

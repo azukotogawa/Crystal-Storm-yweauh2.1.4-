@@ -1,11 +1,12 @@
 class_name CameraCutaway
 extends RefCounted
 
-const RADIUS_AT_PLAYER := 6.0
+const RADIUS_AT_PLAYER := 1.3
 const RADIUS_AT_CAMERA := 1.25
 const FEET_CLEAR := 0.3
-const PAST_DISTANCE := 6.0
+const PAST_DISTANCE := 1.0
 const T_MIN := 0.05
+const BODY_LIFT := 1.4
 
 static var submitted_enabled: float = 1.0
 static var submitted_player: Vector3 = Vector3.ZERO
@@ -27,7 +28,7 @@ static func contains(
 ) -> bool:
 	if world_pos.y <= player_pos.y + feet_clear:
 		return false
-	var ab: Vector3 = player_pos - camera_pos
+	var ab: Vector3 = player_pos + Vector3(0.0, BODY_LIFT, 0.0) - camera_pos
 	var ab_len2: float = ab.length_squared()
 	if ab_len2 <= 0.01:
 		return false
@@ -35,8 +36,8 @@ static func contains(
 	if t <= T_MIN:
 		return false
 	var ab_len: float = sqrt(ab_len2)
-	var past: float = maxf(t - 1.0, 0.0) * ab_len
-	if past >= past_distance:
+	var ahead: float = (1.0 - t) * ab_len
+	if ahead <= past_distance:
 		return false
 	var tc: float = clampf(t, 0.0, 1.0)
 	var closest: Vector3 = camera_pos + ab * tc

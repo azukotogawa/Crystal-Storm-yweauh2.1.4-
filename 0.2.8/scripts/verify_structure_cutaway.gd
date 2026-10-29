@@ -71,7 +71,7 @@ func _run() -> void:
 	var feet := Vector3(0.0, 0.0, 0.0)
 	var cam_pos := Vector3(0.0, 18.0, 28.0)
 	var front_local := front.get_aabb().get_center()
-	var front_want := Vector3(0.0, 6.0, 12.0)
+	var front_want := cam_pos.lerp(feet + Vector3(0.0, _Cutaway.BODY_LIFT, 0.0), 0.5)
 	front.position = front_want - front.scale * front_local
 	var front_pt := front.to_global(front_local)
 	if front_pt.y <= feet.y + _Cutaway.FEET_CLEAR:
