@@ -509,10 +509,10 @@ func _poll_start_region() -> void:
 	var frac: float = clampf(float(have) / float(need), 0.0, 1.0)
 	var p: float = 0.58 + frac * 0.30
 	if have < need:
-		_set_progress(p, "Nearby chunks %d / %d — cannot play yet" % [have, need])
+		_set_progress(p, "Packages %d/%d · Built %d/%d — cannot play yet" % [pkgs, need, have, need])
 	else:
-		_set_progress(p, "Nearby chunks %d / %d — ready" % [have, need])
-	_bake_label.text = "Start region streamed %d / %d  ·  packages %d / %d" % [have, need, pkgs, need]
+		_set_progress(p, "Packages %d/%d · Built %d/%d — ready" % [pkgs, need, have, need])
+	_bake_label.text = "Packages %d/%d · Built %d/%d" % [pkgs, need, have, need]
 
 
 func _on_boot_failed(reason: String, _dump: Dictionary) -> void:
