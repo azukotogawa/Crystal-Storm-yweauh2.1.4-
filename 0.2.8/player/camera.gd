@@ -111,7 +111,7 @@ func _process(delta: float):
 				profiler.end("camera_update")
 			return
 
-	if not _GameplayInput.blocks_actions():
+	if not _GameplayInput.blocks_world():
 		_apply_hold_rotate(delta)
 		_apply_pitch_keys(delta)
 		_apply_edge_scroll(delta)
@@ -372,7 +372,7 @@ func _add_cutaway_global(have: PackedStringArray, param: StringName, type: int, 
 
 
 func _input(event):
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return
 	if event.is_action("camera_free_look", true) and not event is InputEventMouseMotion:
 		_pitch_dragging = event.is_pressed()

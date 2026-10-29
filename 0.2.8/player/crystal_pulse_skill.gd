@@ -27,7 +27,7 @@ static func arm(center: Vector2i) -> void:
 static func advance(delta: float) -> void:
 	if delta <= 0.0 or _zones.is_empty():
 		return
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return
 	var kept: Array = []
 	for zone_v in _zones:

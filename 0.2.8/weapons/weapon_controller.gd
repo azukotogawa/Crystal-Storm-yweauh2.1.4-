@@ -44,6 +44,7 @@ var _cooldown_timer: float = 0.0
 var _last_break_cells: Array[Vector3i] = []
 var _listed_break: bool = false
 var _active_hotbar_index: int = 0
+var world_clicks: int = 0
 var _terrain_editor: TerrainEditor
 var _terrain_bind_attempts: int = 0
 var _combat_def: _CombatDef
@@ -123,13 +124,15 @@ func _process(delta: float) -> void:
 	if _fail_toast_cd > 0.0:
 		_fail_toast_cd = maxf(_fail_toast_cd - delta, 0.0)
 
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		if _aim:
 			_aim.suppress(true)
 		_hide_structure_ghost()
 		if profiler and profiler.has_method("end"):
 			profiler.end("weapon_controller")
 		return
+	if Input.is_action_just_pressed("attack", true) or Input.is_action_just_pressed("build_place"):
+		world_clicks += 1
 	_poll_brush_actions()
 	_poll_blueprint_keys()
 

@@ -56,7 +56,7 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if not SKILLS_ENABLED:
 		return
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		_latch_hotkeys()
 		return
 	_tick_cooldowns(delta)

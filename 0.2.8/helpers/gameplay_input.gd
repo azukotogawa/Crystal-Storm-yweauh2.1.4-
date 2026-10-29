@@ -9,6 +9,8 @@ static var map_open := false
 static var free_look := false
 static var skill_tree_open := false
 static var modal_open := false
+static var _panels := {}
+static var _click_guard := false
 
 
 static func blocks_menus() -> bool:
@@ -17,6 +19,35 @@ static func blocks_menus() -> bool:
 
 static func blocks_actions() -> bool:
 	return blocks_menus() or map_open or skill_tree_open
+
+
+static func panel_open() -> bool:
+	return not _panels.is_empty()
+
+
+static func set_panel_open(key: StringName, open: bool) -> void:
+	if open:
+		_panels[key] = true
+		_release_world_actions()
+	elif _panels.has(key):
+		_panels.erase(key)
+		_click_guard = true
+
+
+static func blocks_world() -> bool:
+	if blocks_actions() or panel_open():
+		return true
+	if _click_guard:
+		if Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+			return true
+		_click_guard = false
+	return false
+
+
+static func _release_world_actions() -> void:
+	for action in ["attack", "build_place", "interact", "jump", "move_forward", "move_back", "move_left", "move_right", "sprint"]:
+		if InputMap.has_action(action) and Input.is_action_pressed(action):
+			Input.action_release(action)
 
 
 static func modal_takes_escape(event: InputEvent) -> bool:

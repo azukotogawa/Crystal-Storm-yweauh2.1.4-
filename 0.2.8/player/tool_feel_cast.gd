@@ -81,7 +81,7 @@ func advance(host: Node, delta: float) -> void:
 	if step < 0.0:
 		step = 0.0
 	if state == STATE_WIND:
-		if _GameplayInput.blocks_actions():
+		if _GameplayInput.blocks_world():
 			_abort(host)
 			return
 		wind_left = maxf(wind_left - step, 0.0)

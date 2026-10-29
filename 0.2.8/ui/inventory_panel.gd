@@ -67,6 +67,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_visible_panel = opening
 		visible = opening
 		_SlotDrag.set_modal_open(opening, self)
+		_GameplayInput.set_panel_open(&"inventory", opening)
 		_ui("ui_open" if opening else "ui_close")
 		if opening:
 			# Godot picks the later sibling, and z_index does not change that.
@@ -84,6 +85,7 @@ func _close_panel() -> void:
 	_visible_panel = false
 	visible = false
 	_SlotDrag.set_modal_open(false, self)
+	_GameplayInput.set_panel_open(&"inventory", false)
 	_ui("ui_close")
 	_restore_hotbar()
 

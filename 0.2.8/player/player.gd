@@ -365,7 +365,7 @@ func _setup_body_collision() -> void:
 func _process(_delta: float) -> void:
 	if not world_ready:
 		return
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		_jump_edge = false
 		return
 	if Input.is_action_pressed("jump") and not _jump_latched:
@@ -402,7 +402,7 @@ func _physics_process(delta: float) -> void:
 
 	t0 = Time.get_ticks_usec() if measure else 0
 	var input_dir := Vector2.ZERO
-	if not _GameplayInput.blocks_actions():
+	if not _GameplayInput.blocks_world():
 		if Input.is_action_pressed("move_right") or Input.is_action_pressed("ui_right"):
 			input_dir.x += 1
 		if Input.is_action_pressed("move_left") or Input.is_action_pressed("ui_left"):
@@ -420,7 +420,7 @@ func _physics_process(delta: float) -> void:
 	var submerged := bool(swim.get("submerged", false))
 	var wading := bool(swim.get("wading", false))
 	t0 = Time.get_ticks_usec() if measure else 0
-	var jump_blocked := _GameplayInput.blocks_actions()
+	var jump_blocked := _GameplayInput.blocks_world()
 	var jump_held := false
 	if not jump_blocked:
 		jump_held = Input.is_action_pressed("jump")
@@ -810,7 +810,7 @@ func _tick_unstuck(delta: float) -> void:
 	if _floor_probe == null:
 		return
 	var manual := false
-	if not _GameplayInput.blocks_actions() and InputMap.has_action("unstuck"):
+	if not _GameplayInput.blocks_world() and InputMap.has_action("unstuck"):
 		manual = Input.is_action_pressed("unstuck") and _unstuck_cooldown <= 0.0
 	if manual:
 		_apply_safe_stand()
@@ -868,7 +868,7 @@ func _start_jump() -> void:
 
 
 func _try_buffered_jump() -> bool:
-	if _jump_buffer <= 0.0 or _GameplayInput.blocks_actions():
+	if _jump_buffer <= 0.0 or _GameplayInput.blocks_world():
 		return false
 	_start_jump()
 	return true
@@ -1168,7 +1168,7 @@ func release_skill_slot(slot: int) -> void:
 
 
 func resolve_skill_feel(id: String, wish_xz: Vector2, face: Vector2) -> bool:
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return false
 	if id == String(_Wall.SKILL_ID):
 		var placed := bool(cast_quick_wall().get("placed", false))
@@ -1190,7 +1190,7 @@ func _on_skill_activated(slot: int, skill_id: StringName) -> void:
 	var id := String(skill_id)
 	if not _skill_feel.known(id):
 		return
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		if skill_id == _Wall.SKILL_ID:
 			release_skill_slot(slot)
 		return
@@ -1204,7 +1204,7 @@ func _on_skill_activated(slot: int, skill_id: StringName) -> void:
 
 
 func cast_ground_slam(extra: Array = []) -> Dictionary:
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return {}
 	var center := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
 	var editor = null
@@ -1221,7 +1221,7 @@ func cast_ground_slam(extra: Array = []) -> Dictionary:
 
 
 func cast_quick_wall() -> Dictionary:
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return {}
 	var feet := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
 	var facing := rotate_input_to_world(Vector2(0.0, -1.0), locked_yaw_degrees)
@@ -1233,7 +1233,7 @@ func cast_quick_wall() -> Dictionary:
 
 
 func cast_crystal_pulse(extra: Array = []) -> Dictionary:
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		return {}
 	var center := Vector2i(floori(voxel_position.x), floori(voxel_position.z))
 	_Pulse.arm(center)

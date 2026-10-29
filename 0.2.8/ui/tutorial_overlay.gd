@@ -5,6 +5,7 @@ const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _InputBindings = preload("res://systems/input_bindings.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _ModalPanel = preload("res://ui/modal_panel.gd")
+const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 
 static var _inst: TutorialOverlay
 
@@ -112,11 +113,13 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	_GameplayInput.set_panel_open(&"how_to_play", false)
 	if _inst == self:
 		_inst = null
 
 
 func show_steps() -> void:
+	_GameplayInput.set_panel_open(&"how_to_play", true)
 	_controls = false
 	_index = 0
 	_steps = _build_steps()
@@ -127,6 +130,7 @@ func show_steps() -> void:
 
 
 func show_controls() -> void:
+	_GameplayInput.set_panel_open(&"how_to_play", true)
 	_controls = true
 	visible = true
 	if _title:
@@ -178,6 +182,7 @@ func _on_modal_close() -> void:
 
 
 func close_overlay() -> void:
+	_GameplayInput.set_panel_open(&"how_to_play", false)
 	visible = false
 	var vp := get_viewport()
 	if vp:

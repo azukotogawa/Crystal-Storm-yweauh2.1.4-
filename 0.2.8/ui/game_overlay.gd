@@ -686,7 +686,7 @@ func _process(delta: float) -> void:
 	_update_xp_bar()
 	_update_boss_bar()
 	_update_bake_chip()
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		if profiler and profiler.has_method("end_func"):
 			profiler.end_func("GameOverlay::_process")
 		if profiler and profiler.has_method("end"):

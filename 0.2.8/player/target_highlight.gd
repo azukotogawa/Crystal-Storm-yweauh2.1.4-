@@ -225,7 +225,7 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("target_highlight")
 		return
-	if _GameplayInput.blocks_actions():
+	if _GameplayInput.blocks_world():
 		_mesh.visible = false
 		_hide_brush_marks()
 		hide_structure_ghost()
