@@ -220,7 +220,8 @@ static func _bake_try_place(
 	elif biome_name == "steppe":
 		forest_bias = 0.55
 
-	if float(bucket) / 1000.0 < tree_d * forest_bias:
+	var clump: float = _cluster(wx, wz, seed)
+	if float(bucket) / 1000.0 < tree_d * forest_bias * lerpf(0.2, 1.9, clump * clump * 1.5):
 		return {
 			"tile": VoxelTypes.TREE_TRUNK,
 			"kind": _WorldFeatureTypes.FeatureKind.TREE,
@@ -230,7 +231,7 @@ static func _bake_try_place(
 			"growth_progress": 1.0,
 		}
 
-	if float(bucket % 997) / 997.0 < bush_d * moist:
+	if float(_hash_seed(wz, wx, seed + 31) % 997) / 997.0 < bush_d * moist * lerpf(0.5, 1.5, clump):
 		return {
 			"tile": VoxelTypes.BUSH,
 			"kind": _WorldFeatureTypes.FeatureKind.BUSH,
@@ -240,7 +241,7 @@ static func _bake_try_place(
 			"biome": biome_name,
 		}
 
-	var grass_roll: float = float(bucket % 983) / 983.0
+	var grass_roll: float = float(_hash_seed(wx, wz, seed + 97) % 983) / 983.0
 	if grass_roll < flower_d and moist > 0.42 and biome_name in ["plains", "forest", "marsh"]:
 		return {
 			"tile": VoxelTypes.GRASSLAND2,
@@ -288,4 +289,22 @@ func _hash(wx: int, wz: int) -> int:
 
 
 static func _hash_seed(wx: int, wz: int, seed: int) -> int:
-	return absi(wx * 92837111 ^ wz * 689287499 ^ seed)
+	var h: int = (wx * 374761393 + wz * 668265263 + seed * 2246822519) & 0xFFFFFFFF
+	h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
+	return h ^ (h >> 16)
+
+
+static func _cluster(wx: int, wz: int, seed: int) -> float:
+	var cell := 9.0
+	var fx := float(wx) / cell
+	var fz := float(wz) / cell
+	var x0 := int(floor(fx))
+	var z0 := int(floor(fz))
+	var tx := smoothstep(0.0, 1.0, fx - float(x0))
+	var tz := smoothstep(0.0, 1.0, fz - float(z0))
+	var s2 := seed + 7919
+	var a := float(_hash_seed(x0, z0, s2) % 1000) / 999.0
+	var b := float(_hash_seed(x0 + 1, z0, s2) % 1000) / 999.0
+	var c := float(_hash_seed(x0, z0 + 1, s2) % 1000) / 999.0
+	var d := float(_hash_seed(x0 + 1, z0 + 1, s2) % 1000) / 999.0
+	return lerpf(lerpf(a, b, tx), lerpf(c, d, tx), tz)

@@ -289,14 +289,16 @@ func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: 
 	var anchor: Node3D = _nodes_by_cell.get(world_pos)
 	if anchor == null or not is_instance_valid(anchor):
 		return
-	var col_x := float(world_pos.x) + 0.5
-	var col_z := float(world_pos.y) + 0.5
+	var jit := _veg_jitter(world_pos.x, world_pos.y)
+	var col_x := float(world_pos.x) + 0.5 + jit.x
+	var col_z := float(world_pos.y) + 0.5 + jit.y
 	if anchor.get_node_or_null("VoxelProp"):
 		for child in anchor.get_children():
 			child.queue_free()
 		var biome_name := _biome_name_at(world_pos.x, world_pos.y)
 		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage, Color.WHITE, biome_name)
 		prop.name = "VoxelProp"
+		prop.rotation.y = jit.z
 		anchor.add_child(prop)
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
 		return
@@ -577,12 +579,16 @@ func _make_vegetation_anchor(
 ) -> Node3D:
 	var anchor := Node3D.new()
 	anchor.name = "Veg_%d_%d" % [wx, wz]
+	var jit := _veg_jitter(wx, wz)
+	col_x += jit.x
+	col_z += jit.y
 	var corrupt_tex := _corrupted_texture(wx, wz, plant_id, stage)
 	if corrupt_tex == null and _use_voxel_vegetation(wx, wz, plant_id):
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
 		var biome_name := _biome_name_at(wx, wz)
 		var prop := _VoxelPropBuilder.build_plant(str(plant_id), stage, Color.WHITE, biome_name)
 		prop.name = "VoxelProp"
+		prop.rotation.y = jit.z
 		anchor.add_child(prop)
 		return anchor
 	var tex := corrupt_tex if corrupt_tex != null else _billboard_texture(str(plant_id), stage)
@@ -595,6 +601,16 @@ func _make_vegetation_anchor(
 	anchor.add_child(sprite)
 	_apply_plant_texture(sprite, plant_id, stage, wx, wz, true)
 	return anchor
+
+
+static func _veg_jitter(wx: int, wz: int) -> Vector3:
+	var h: int = (wx * 374761393 + wz * 668265263 + 40503) & 0xFFFFFFFF
+	h = ((h ^ (h >> 13)) * 1274126177) & 0xFFFFFFFF
+	h = h ^ (h >> 16)
+	var jx := float(h & 1023) / 1023.0 - 0.5
+	var jz := float((h >> 10) & 1023) / 1023.0 - 0.5
+	var yaw := float((h >> 20) & 1023) / 1023.0 * TAU
+	return Vector3(jx * 0.56, jz * 0.56, yaw)
 
 
 func _make_building_anchor(
