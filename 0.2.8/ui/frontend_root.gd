@@ -35,6 +35,7 @@ func _ready() -> void:
 	_ThemeBuilder.apply(self)
 	_PlayerSettings.apply_to_tree(get_tree())
 	_build_chrome()
+	_prefetch_main.call_deferred()
 	if _WorldManager.consume_return_to_select():
 		_show(Screen.WORLD_SELECT)
 	else:
@@ -302,7 +303,7 @@ func _on_continue() -> void:
 		_show(Screen.MAIN)
 		_set_status("Continue save is missing or damaged. Pick a world with Play.")
 		return
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_launch_main()
 
 
 func _on_play_selected() -> void:
@@ -313,7 +314,32 @@ func _on_play_selected() -> void:
 	if not bool(loaded.get("ok", false)):
 		_set_status("Could not load world.")
 		return
-	get_tree().change_scene_to_file("res://scenes/main.tscn")
+	_launch_main()
+
+
+const MAIN_SCENE := "res://scenes/main.tscn"
+var _launching := false
+
+
+func _prefetch_main() -> void:
+	if ResourceLoader.load_threaded_get_status(MAIN_SCENE) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+		ResourceLoader.load_threaded_request(MAIN_SCENE, "PackedScene", true)
+
+
+func _launch_main() -> void:
+	if _launching:
+		return
+	_launching = true
+	_set_status("Loading World...")
+	_prefetch_main()
+	var tree := get_tree()
+	while ResourceLoader.load_threaded_get_status(MAIN_SCENE) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		await tree.process_frame
+	var packed := ResourceLoader.load_threaded_get(MAIN_SCENE) as PackedScene
+	if packed == null:
+		tree.change_scene_to_file(MAIN_SCENE)
+		return
+	tree.change_scene_to_packed(packed)
 
 
 func _on_rename_selected() -> void:

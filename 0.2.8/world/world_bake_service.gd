@@ -858,6 +858,43 @@ func _wait_job(coord: Vector2i) -> bool:
 	return package_ready(coord)
 
 
+func prime_region_async(coords: Array, world, host, tree: SceneTree) -> Dictionary:
+	if tree == null:
+		return prime_region(coords, world, host)
+	var mesh_host = _resolve_mesh_host(host, world)
+	if mesh_host == null or not mesh_host.has_method("_build_mesh"):
+		return {"ok": false, "baked": 0, "skipped": 0, "error": "no mesh host"}
+	var baked := 0
+	var skipped := 0
+	var bytes_written := 0
+	var plan_qn := 0
+	var t0 := Time.get_ticks_usec()
+	for c_v in coords:
+		var coord: Vector2i = c_v
+		if not coord_in_package(coord):
+			continue
+		if package_ready(coord):
+			skipped += 1
+			continue
+		if Time.get_ticks_usec() - t0 > 25000:
+			await tree.process_frame
+			t0 = Time.get_ticks_usec()
+		var veg: Array = _veg_by_chunk.get(coord, [])
+		var one: Dictionary = _bake_one_chunk(coord, world, mesh_host, veg)
+		if bool(one.get("ok", false)):
+			baked += 1
+			bytes_written += int(one.get("bytes", 0))
+			plan_qn += int(one.get("plan_qn", 0))
+	_prime_count = baked + skipped
+	return {
+		"ok": true,
+		"baked": baked,
+		"skipped": skipped,
+		"bytes": bytes_written,
+		"plan_qn": plan_qn,
+	}
+
+
 func prime_region(coords: Array, world, host) -> Dictionary:
 	var mesh_host = _resolve_mesh_host(host, world)
 	if mesh_host == null or not mesh_host.has_method("_build_mesh"):
@@ -1088,13 +1125,14 @@ func _bootstrap_deferred_async(world, host, seed: int, want_full: bool) -> Dicti
 	_chunks.clear()
 	_inventory_existing_packages()
 	var veg_t0 := Time.get_ticks_msec()
-	_veg_by_chunk = _bake_vegetation_by_chunk(world)
+	var yield_tree: SceneTree = host.get_tree() if host != null and host is Node and (host as Node).is_inside_tree() else null
+	_veg_by_chunk = await _bake_vegetation_by_chunk_async(world, yield_tree)
 	last_vegetation_bake_ms = Time.get_ticks_msec() - veg_t0
 	last_vegetation_entries = 0
 	for ck in _veg_by_chunk.keys():
 		last_vegetation_entries += (_veg_by_chunk[ck] as Array).size()
 	var prime_coords: Array = startup_prime_coords(host)
-	var primed: Dictionary = prime_region(prime_coords, world, host)
+	var primed: Dictionary = await prime_region_async(prime_coords, world, host, yield_tree)
 	start_background_fill(world, host)
 	var mode := "partial"
 	if valid:
@@ -1510,7 +1548,7 @@ func bootstrap_for_world_async(world, force_bake: bool = false, host = null) -> 
 			if _STP and _STP.is_enabled():
 				_STP.set_gauge("mode", "partial")
 				_STP.event("bake.deferred_prime.enter", {"want_full": want_full, "seed": seed}, "world_generation")
-			var partial: Dictionary = _bootstrap_deferred_async(world, host, seed, want_full)
+			var partial: Dictionary = await _bootstrap_deferred_async(world, host, seed, want_full)
 			if _STP and _STP.is_enabled():
 				_STP.event("bake.deferred_prime.exit", {
 					"mode": str(partial.get("mode", "")),
@@ -2136,6 +2174,40 @@ func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 		"static_meta": _capture_static_meta(world),
 		"error": last_error,
 	}
+
+
+func _veg_scatter_args(world) -> Array:
+	var attempts: int = 12000
+	var densities := {}
+	if world != null and "world_config" in world and world.world_config != null:
+		var wg = world.world_config
+		if "vegetation_scatter_attempts" in wg:
+			attempts = int(wg.vegetation_scatter_attempts)
+		if "grass_density" in wg:
+			densities["grass_density"] = float(wg.grass_density)
+		if "tree_density" in wg:
+			densities["tree_density"] = float(wg.tree_density)
+		if "bush_density" in wg:
+			densities["bush_density"] = float(wg.bush_density)
+	var env_att := OS.get_environment("CRYSTALSTORM_VEG_BAKE_ATTEMPTS").strip_edges()
+	if not env_att.is_empty():
+		attempts = maxi(env_att.to_int(), 0)
+	var bounds := {
+		"min_wx": min_cx * CELLS,
+		"max_wx": (max_cx + 1) * CELLS - 1,
+		"min_wz": min_cz * CELLS,
+		"max_wz": (max_cz + 1) * CELLS - 1,
+	}
+	return [attempts, densities, bounds]
+
+
+func _bake_vegetation_by_chunk_async(world, tree: SceneTree) -> Dictionary:
+	var Veg = load("res://world/vegetation_manager.gd")
+	if Veg == null or not Veg.has_method("bake_scatter_map_async") or tree == null:
+		return _bake_vegetation_by_chunk(world)
+	var a: Array = _veg_scatter_args(world)
+	var world_map: Dictionary = await Veg.bake_scatter_map_async(world, int(a[0]), a[1], a[2], tree)
+	return Veg.bucket_by_chunk(world_map, CELLS)
 
 
 func _bake_vegetation_by_chunk(world) -> Dictionary:

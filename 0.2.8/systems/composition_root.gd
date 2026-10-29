@@ -222,6 +222,7 @@ func boot_async() -> bool:
 	_StartupProfiler.end("shader_material_and_textures")
 	_trace_op_end("GameVisualRegistry.ensure_textures_ready")
 
+	await get_tree().process_frame
 	_trace_op_begin("WorldFeatures.bootstrap_with_services")
 	_StartupProfiler.begin("feature_seeding")
 	if _StartupTotal.is_enabled():
@@ -254,6 +255,7 @@ func boot_async() -> bool:
 		return _fail("missing voxel_world")
 	var cm = null
 	if voxel.has_method("create_chunk_manager_with_services"):
+		await get_tree().process_frame
 		cm = await voxel.create_chunk_manager_with_services(registry)
 	else:
 		var cframes := 0
@@ -648,7 +650,7 @@ func _print_boot_stage_trace_report() -> void:
 	print("--- Stage detail (boot order) ---")
 	for e in _boot_trace_stages:
 		print("")
-		print("### %s  dwell=%dms  [%d → %d ms from boot]" % [
+		print("### %s  dwell=%dms  [%d â†’ %d ms from boot]" % [
 			str(e.get("stage", "")),
 			int(e.get("duration_ms", 0)),
 			int(e.get("start_ms", 0)),
@@ -668,7 +670,7 @@ func _print_boot_stage_trace_report() -> void:
 				int(op.get("start_ms", 0)),
 			])
 	print("")
-	print("--- QUALITY_APPLIED → FEATURES_SEEDED gap analysis ---")
+	print("--- QUALITY_APPLIED â†’ FEATURES_SEEDED gap analysis ---")
 	var qa: Dictionary = {}
 	for e in _boot_trace_stages:
 		if str(e.get("stage", "")) == "QUALITY_APPLIED":
