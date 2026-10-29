@@ -3986,3 +3986,35 @@ func spawn_area_ready(center_x:int, center_z:int) -> bool:
 			if not chunks.has(key):
 				return false
 	return true
+
+var _boost_saved_chunks: int = -1
+var _boost_saved_budget: int = -1
+
+
+func begin_start_region_boost() -> void:
+	if _boost_saved_chunks < 0:
+		_boost_saved_chunks = MAX_CHUNKS_PER_FRAME
+		_boost_saved_budget = chunk_upload_budget_us
+	MAX_CHUNKS_PER_FRAME = maxi(_boost_saved_chunks, 3)
+	chunk_upload_budget_us = maxi(_boost_saved_budget, 8000)
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake != null and "hold_fill" in bake:
+		bake.hold_fill = true
+
+
+func prioritize_start_region_packages() -> int:
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake == null or not bake.has_method("prioritize_stream_coords"):
+		return 0
+	return int(bake.prioritize_stream_coords(start_stream_coords()))
+
+
+func end_start_region_boost() -> void:
+	if _boost_saved_chunks >= 0:
+		MAX_CHUNKS_PER_FRAME = _boost_saved_chunks
+		chunk_upload_budget_us = _boost_saved_budget
+		_boost_saved_chunks = -1
+		_boost_saved_budget = -1
+	var bake = load("res://world/world_bake_service.gd").get_active()
+	if bake != null and "hold_fill" in bake:
+		bake.hold_fill = false

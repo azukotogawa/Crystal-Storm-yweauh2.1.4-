@@ -540,6 +540,22 @@ func should_block_procedural_generate(coord: Vector2i) -> bool:
 	return false
 
 
+var hold_fill: bool = false
+
+
+func prioritize_stream_coords(coords: Array) -> int:
+	var queued := 0
+	if not bake_in_progress or valid:
+		return 0
+	for c in coords:
+		if package_ready(c):
+			continue
+		var r: Dictionary = enqueue_package_job(c, PRI_STREAM)
+		if bool(r.get("queued", false)) and not bool(r.get("duplicate", false)):
+			queued += 1
+	return queued
+
+
 func package_ready(coord: Vector2i) -> bool:
 	if _resident.has(coord) or _chunks.has(coord):
 		return true
@@ -966,7 +982,7 @@ func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 		last_tick_ops += _tick_sync_fill_one()
 		last_tick_us = Time.get_ticks_usec() - t_tick
 		return last_tick_ops
-	var allow_fill: bool = mesh_queue_depth <= 8
+	var allow_fill: bool = mesh_queue_depth <= 8 and not hold_fill
 	if allow_fill:
 		while (_job_pending.size() + _job_inflight.size()) < MAX_PENDING \
 				and _fill_queue_i < _fill_queue.size():

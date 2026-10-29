@@ -301,8 +301,12 @@ func boot_async() -> bool:
 	var last_progress_ms := stream_started_ms
 	var last_progress_key := -1
 	var stall_reason := ""
+	if cm.has_method("begin_start_region_boost"):
+		cm.begin_start_region_boost()
 	while true:
 		var start_ready := false
+		if cm.has_method("prioritize_start_region_packages"):
+			cm.prioritize_start_region_packages()
 		if cm.has_method("start_region_status"):
 			var st: Dictionary = cm.start_region_status()
 			start_ready = bool(st.get("ready", false))
@@ -327,6 +331,8 @@ func boot_async() -> bool:
 		await get_tree().process_frame
 		wait_us_acc += Time.get_ticks_usec() - tw
 		sframes += 1
+	if cm.has_method("end_start_region_boost"):
+		cm.end_start_region_boost()
 	if cm.has_method("is_start_region_ready") and not bool(cm.is_start_region_ready()):
 		var fst: Dictionary = cm.start_region_status() if cm.has_method("start_region_status") else {}
 		return _fail("Start region timeout: %s (packages %d/%d, built %d/%d)" % [
