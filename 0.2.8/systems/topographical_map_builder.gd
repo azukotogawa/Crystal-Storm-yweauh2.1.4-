@@ -200,20 +200,26 @@ static func repaint_crystal_overlay(job: Dictionary, pixel_budget: int, time_bud
 	var world = job.get("world")
 	if world == null or not is_instance_valid(world):
 		return true
-	_refresh_crystal_overlay(job)
+	var queue: Array = job.get("crystal_repaint_queue", [])
+	if queue.is_empty():
+		_refresh_crystal_overlay(job)
 	var image: Image = job.image
 	var size: int = int(job.size)
 	var center: Vector2i = job.center
 	var stride: int = int(job.stride)
-	var queue: Array = job.get("crystal_repaint_queue", [])
 	if queue.is_empty():
+		var seen: Dictionary = {}
 		for pos_variant in job.get("crystal_cells", {}).keys():
 			var pos: Vector2i = pos_variant
 			var px: int = int(round(float(pos.x - center.x) / float(stride))) + size / 2
 			var py: int = int(round(float(pos.y - center.y) / float(stride))) + size / 2
 			if px < 0 or py < 0 or px >= size or py >= size:
 				continue
-			queue.append(px + py * size)
+			var linear_key: int = px + py * size
+			if seen.has(linear_key):
+				continue
+			seen[linear_key] = true
+			queue.append(linear_key)
 		job.crystal_repaint_queue = queue
 		job.crystal_repaint_idx = 0
 	if queue.is_empty():

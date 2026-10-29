@@ -21,6 +21,7 @@ var _frame_us: PackedInt64Array = PackedInt64Array()
 var _crystal_us: PackedInt64Array = PackedInt64Array()
 var _tick_us: PackedInt64Array = PackedInt64Array()
 var _last_usec := 0
+var _harness_us: Array = []
 var _peak_static := 0
 var _prof := false
 var _spikes := false
@@ -259,7 +260,12 @@ func _play() -> void:
 			died_at = t
 		moved_max = maxf(moved_max, _col().distance_to(start))
 		if f % 300 == 0:
+			var hb := Time.get_ticks_usec()
 			print("PLAY paused=%s blocked=%s fwd=%s t=%.0f pos=%.1f,%.1f stone=%d dirt=%d hp=%.0f cells=%d static_mb=%.1f" % [str(paused), str(_GI.blocks_actions()), str(Input.is_action_pressed("move_forward")), t, _col().x, _col().y, _stone(), _count("dirt"), float(_player.get("health")), int(_crystal.covered_cells), _mem() / 1048576.0])
+			var hcost := Time.get_ticks_usec() - hb
+			_harness_us.append(hcost)
+			print("PLAYCOST us=%d" % hcost)
+			_last_usec = Time.get_ticks_usec()
 	_hands.release_all()
 	print("PLAYER dir=%s min_hp=%.1f died_at=%.1f moved_max=%.1f dig_windows=%d stone_from_dig=%d stone_spent_placing=%d hitches_over_100ms=%d" % [toward, min_hp, died_at, moved_max, digs, dig_gain, placed, hitch])
 

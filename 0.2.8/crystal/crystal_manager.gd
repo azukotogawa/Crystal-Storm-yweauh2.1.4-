@@ -2131,7 +2131,8 @@ func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:
 	var y0: int = bounds.position.y
 	var x1: int = bounds.position.x + bounds.size.x
 	var y1: int = bounds.position.y + bounds.size.y
-	for pos_variant in _sim.depth.keys():
+	var candidates: Array = _sim.cells_in_rect(bounds) if _sim.has_method("cells_in_rect") else _sim.depth.keys()
+	for pos_variant in candidates:
 		var pos: Vector2i = pos_variant
 		if pos.x < x0 or pos.y < y0 or pos.x >= x1 or pos.y >= y1:
 			continue

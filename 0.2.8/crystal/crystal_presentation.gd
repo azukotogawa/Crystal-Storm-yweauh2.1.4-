@@ -178,7 +178,10 @@ func flush(profiler = null) -> int:
 		profiler.begin_func("CrystalPresentation::flush")
 	var t0 := Time.get_ticks_usec()
 	var rebuilt := 0
-	var keys: Array = _dirty_chunks.keys()
+	var keys: Array = []
+	for coord_variant in _dirty_chunks:
+		if _chunk_active(coord_variant):
+			keys.append(coord_variant)
 	var player_chunk: Vector2i = Vector2i.ZERO
 	if player_chunk_coord.is_valid():
 		player_chunk = player_chunk_coord.call()

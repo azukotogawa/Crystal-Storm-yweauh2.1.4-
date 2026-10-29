@@ -64,7 +64,10 @@ var _next_seq: int = 0
 var _order: Array = []
 var _order_valid: bool = true
 var _frontier: Dictionary = {}
-var _frontier_sorted: bool = true
+var _frontier_list: Array = []
+var _frontier_seq: PackedInt64Array = PackedInt64Array()
+var _chunk_cells: Dictionary = {}
+var _chunk_cells_total: int = 0
 var _interior: Array = []
 var _interior_seq: PackedInt64Array = PackedInt64Array()
 var _volume: float = 0.0
@@ -86,9 +89,12 @@ func clear() -> void:
 	_order.clear()
 	_order_valid = true
 	_frontier.clear()
-	_frontier_sorted = true
+	_frontier_list.clear()
+	_frontier_seq = PackedInt64Array()
 	_interior.clear()
 	_interior_seq = PackedInt64Array()
+	_chunk_cells.clear()
+	_chunk_cells_total = 0
 	_volume = 0.0
 	_index_valid = false
 	last_new_cells = 0
@@ -886,6 +892,8 @@ func _ensure_index() -> void:
 		return
 	_seq.clear()
 	_frontier.clear()
+	_frontier_list.clear()
+	_frontier_seq = PackedInt64Array()
 	_interior.clear()
 	_interior_seq = PackedInt64Array()
 	_next_seq = 0
@@ -893,11 +901,12 @@ func _ensure_index() -> void:
 		_seq[pos_variant] = _next_seq
 		if _has_empty_neighbor_raw(pos_variant):
 			_frontier[pos_variant] = true
+			_frontier_list.append(pos_variant)
+			_frontier_seq.append(_next_seq)
 		else:
 			_interior.append(pos_variant)
 			_interior_seq.append(_next_seq)
 		_next_seq += 1
-	_frontier_sorted = true
 	_index_valid = true
 
 
@@ -908,6 +917,7 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 		return
 	depth[pos] = value
 	_volume += value
+	_chunk_cells_add(pos)
 	if _order_valid:
 		_order.append(pos)
 	if not _index_valid:
@@ -915,13 +925,13 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 	_seq[pos] = _next_seq
 	_next_seq += 1
 	if _has_empty_neighbor_raw(pos):
-		_frontier[pos] = true
+		_frontier_add(pos)
 	else:
 		_interior_add(pos)
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
 		var n: Vector2i = pos + dir
 		if _frontier.has(n) and not _has_empty_neighbor_raw(n):
-			_frontier.erase(n)
+			_frontier_remove(n)
 			_interior_add(n)
 
 
@@ -930,12 +940,13 @@ func _erase_cell(pos: Vector2i) -> void:
 		return
 	_volume -= float(depth[pos])
 	depth.erase(pos)
+	_chunk_cells_remove(pos)
 	_order_valid = false
 	_order = []
 	if not _index_valid:
 		return
 	if _frontier.has(pos):
-		_frontier.erase(pos)
+		_frontier_remove(pos)
 	else:
 		_interior_remove(pos)
 	_seq.erase(pos)
@@ -943,8 +954,7 @@ func _erase_cell(pos: Vector2i) -> void:
 		var n: Vector2i = pos + dir
 		if depth.has(n) and not _frontier.has(n):
 			_interior_remove(n)
-			_frontier[n] = true
-			_frontier_sorted = false
+			_frontier_add(n)
 
 
 func _has_empty_neighbor_raw(pos: Vector2i) -> bool:
@@ -972,15 +982,74 @@ func _interior_remove(pos: Vector2i) -> void:
 
 
 func _sorted_frontier() -> Array:
-	var keys: Array = _frontier.keys()
-	if _frontier_sorted:
-		return keys
-	keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return int(_seq[a]) < int(_seq[b]))
-	_frontier.clear()
-	for k in keys:
-		_frontier[k] = true
-	_frontier_sorted = true
-	return keys
+	return _frontier_list
+
+
+func _frontier_add(pos: Vector2i) -> void:
+	_frontier[pos] = true
+	var sq: int = int(_seq[pos])
+	var i: int = _frontier_seq.bsearch(sq)
+	_frontier_list.insert(i, pos)
+	_frontier_seq.insert(i, sq)
+
+
+func _frontier_remove(pos: Vector2i) -> void:
+	_frontier.erase(pos)
+	var sq: int = int(_seq[pos])
+	var i: int = _frontier_seq.bsearch(sq)
+	if i < _frontier_seq.size() and _frontier_seq[i] == sq:
+		_frontier_list.remove_at(i)
+		_frontier_seq.remove_at(i)
+
+
+func _chunk_cells_add(pos: Vector2i) -> void:
+	var c := Vector2i(floori(float(pos.x) / float(_CHUNK)), floori(float(pos.y) / float(_CHUNK)))
+	var bucket: Dictionary = _chunk_cells.get(c, {})
+	if bucket.is_empty():
+		_chunk_cells[c] = bucket
+	bucket[pos] = true
+	_chunk_cells_total += 1
+
+
+func _chunk_cells_remove(pos: Vector2i) -> void:
+	var c := Vector2i(floori(float(pos.x) / float(_CHUNK)), floori(float(pos.y) / float(_CHUNK)))
+	var bucket: Dictionary = _chunk_cells.get(c, {})
+	if bucket.erase(pos):
+		_chunk_cells_total -= 1
+		if bucket.is_empty():
+			_chunk_cells.erase(c)
+
+
+func cells_in_rect(bounds: Rect2i) -> Array:
+	if _chunk_cells_total != depth.size():
+		_chunk_cells.clear()
+		_chunk_cells_total = 0
+		for pos_variant in depth.keys():
+			_chunk_cells_add(pos_variant)
+	var out: Array = []
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = x0 + bounds.size.x
+	var y1: int = y0 + bounds.size.y
+	if x1 <= x0 or y1 <= y0:
+		return out
+	var cx0: int = floori(float(x0) / float(_CHUNK))
+	var cy0: int = floori(float(y0) / float(_CHUNK))
+	var cx1: int = floori(float(x1 - 1) / float(_CHUNK))
+	var cy1: int = floori(float(y1 - 1) / float(_CHUNK))
+	for cy in range(cy0, cy1 + 1):
+		for cx in range(cx0, cx1 + 1):
+			var bucket = _chunk_cells.get(Vector2i(cx, cy))
+			if bucket == null:
+				continue
+			var edge: bool = cx * _CHUNK < x0 or cy * _CHUNK < y0 or (cx + 1) * _CHUNK > x1 or (cy + 1) * _CHUNK > y1
+			for pos_variant in bucket:
+				if edge:
+					var p: Vector2i = pos_variant
+					if p.x < x0 or p.y < y0 or p.x >= x1 or p.y >= y1:
+						continue
+				out.append(pos_variant)
+	return out
 
 
 func _select_indexed_flow_cells(cap: int) -> Array:
