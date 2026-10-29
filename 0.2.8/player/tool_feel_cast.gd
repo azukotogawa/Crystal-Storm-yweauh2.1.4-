@@ -65,7 +65,12 @@ func try_begin(host: Node, id: String) -> bool:
 	action_id = id
 	buffer_id = ""
 	landed = false
-	wind_sec = _Gate.wind_for(id, float(row["telegraph_sec"]))
+	var telegraph := float(row["telegraph_sec"])
+	if host != null and host.has_method("tool_feel_impact_sec"):
+		var impact := float(host.tool_feel_impact_sec(id))
+		if impact >= 0.0:
+			telegraph = impact
+	wind_sec = _Gate.wind_for(id, telegraph)
 	linger_sec = float(row["linger_sec"])
 	recover_sec = float(row["recovery_sec"])
 	wind_left = wind_sec

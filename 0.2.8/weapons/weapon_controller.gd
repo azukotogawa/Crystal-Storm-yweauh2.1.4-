@@ -1674,6 +1674,12 @@ func _offer_tool_action(action_id: String, item_id: String, def: Dictionary) -> 
 	_arm_accepted_tool(action_id)
 
 
+func tool_feel_impact_sec(action_id: String) -> float:
+	if action_id != "sword_swing" or _feel_item == "":
+		return -1.0
+	return float(_ItemAnim.spec_for(_feel_item).get("impact_time", -1.0))
+
+
 func _arm_accepted_tool(action_id: String) -> void:
 	if action_id == "sword_swing" or action_id == "bow_shot":
 		_cooldown_timer = float(_feel_def.get("cooldown", 0.5))

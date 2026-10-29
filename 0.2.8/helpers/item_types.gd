@@ -41,7 +41,7 @@ const ITEMS: Dictionary = {
 		"knockback": 1.0,
 		"anim_kind": 1,
 		"anim_duration": 0.32,
-		"impact_ratio": 0.42,
+		"impact_ratio": 0.5,
 		"description": "A quick arc. Reliable, short, and light.",
 		"stackable": false,
 		"max_stack": 1,

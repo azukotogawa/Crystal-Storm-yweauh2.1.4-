@@ -132,7 +132,11 @@ func _check_reads_config(feel, player: Player) -> void:
 			var marker := player.get_node_or_null("ToolTelegraph")
 			if marker == null or not marker.visible:
 				_fail("%s telegraph is not visible" % id)
-		if absf(wind - float(row["telegraph_sec"])) > 0.001 or absf(linger - float(row["linger_sec"])) > 0.001:
+		var want_wind := float(row["telegraph_sec"])
+		var impact_sec := float(_weapon(player).tool_feel_impact_sec(id))
+		if impact_sec >= 0.0:
+			want_wind = impact_sec
+		if absf(wind - want_wind) > 0.001 or absf(linger - float(row["linger_sec"])) > 0.001:
 			_fail("%s wind %.3f linger %.3f, config %.3f %.3f" % [id, wind, linger, float(row["telegraph_sec"]), float(row["linger_sec"])])
 		if not _until_idle(player):
 			_fail("%s did not finish" % id)
