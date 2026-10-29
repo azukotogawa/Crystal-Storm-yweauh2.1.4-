@@ -13,12 +13,14 @@ const HERD_RADIUS := 2
 const SEED_SALT := 66003
 const NEAR_HALF := 128
 
+const KIND_KEYS: Array[String] = ["deer", "boar", "goat", "rabbit", "bird", "fox", "duck"]
+
 const BIOME_BUDGET := {
-	"plains": {"deer": 2, "boar": 0, "rabbit": 12, "bird": 10},
-	"steppe": {"deer": 0, "boar": 2, "rabbit": 10, "bird": 8},
-	"forest": {"deer": 4, "boar": 3, "rabbit": 6, "bird": 6},
-	"marsh": {"deer": 0, "boar": 1, "rabbit": 6, "bird": 8},
-	"highland": {"deer": 1, "boar": 0, "rabbit": 3, "bird": 8},
+	"plains": {"deer": 2, "boar": 0, "goat": 0, "rabbit": 10, "bird": 8, "fox": 2, "duck": 2},
+	"steppe": {"deer": 0, "boar": 2, "goat": 1, "rabbit": 9, "bird": 7, "fox": 0, "duck": 0},
+	"forest": {"deer": 4, "boar": 3, "goat": 0, "rabbit": 5, "bird": 5, "fox": 3, "duck": 0},
+	"marsh": {"deer": 0, "boar": 1, "goat": 0, "rabbit": 4, "bird": 5, "fox": 0, "duck": 6},
+	"highland": {"deer": 1, "boar": 0, "goat": 2, "rabbit": 3, "bird": 6, "fox": 0, "duck": 0},
 }
 
 const _OFFSETS: Array[Vector2i] = [
@@ -130,7 +132,7 @@ static func _budgets_met(counts: Dictionary) -> bool:
 	for biome in BIOME_BUDGET.keys():
 		var row: Dictionary = BIOME_BUDGET[biome]
 		var got: Dictionary = counts.get(biome, {})
-		for key in ["deer", "boar", "rabbit", "bird"]:
+		for key in KIND_KEYS:
 			if int(got.get(key, 0)) < int(row.get(key, 0)):
 				return false
 	return true
@@ -139,7 +141,7 @@ static func _budgets_met(counts: Dictionary) -> bool:
 static func _bump(counts: Dictionary, biome: String, key: String) -> void:
 	if key.is_empty():
 		return
-	var row: Dictionary = counts.get(biome, {"deer": 0, "boar": 0, "rabbit": 0, "bird": 0})
+	var row: Dictionary = counts.get(biome, {})
 	row[key] = int(row.get(key, 0)) + 1
 	counts[biome] = row
 
@@ -154,6 +156,12 @@ static func _kind_key(animal_kind: int) -> String:
 			return "bird"
 		_WorldFeatureTypes.AnimalKind.RABBIT:
 			return "rabbit"
+		_WorldFeatureTypes.AnimalKind.FOX:
+			return "fox"
+		_WorldFeatureTypes.AnimalKind.GOAT:
+			return "goat"
+		_WorldFeatureTypes.AnimalKind.DUCK:
+			return "duck"
 		_:
 			return ""
 
@@ -169,11 +177,17 @@ static func _next_kind(biome: String, counts: Dictionary, rng: RandomNumberGener
 			options.append(_WorldFeatureTypes.AnimalKind.DEER)
 		if int(got.get("boar", 0)) < int(row.get("boar", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.BOAR)
+		if int(got.get("goat", 0)) < int(row.get("goat", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.GOAT)
 	else:
 		if int(got.get("rabbit", 0)) < int(row.get("rabbit", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.RABBIT)
 		if int(got.get("bird", 0)) < int(row.get("bird", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.BIRD)
+		if int(got.get("fox", 0)) < int(row.get("fox", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.FOX)
+		if int(got.get("duck", 0)) < int(row.get("duck", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.DUCK)
 	if options.is_empty():
 		return -1
 	return options[rng.randi() % options.size()]

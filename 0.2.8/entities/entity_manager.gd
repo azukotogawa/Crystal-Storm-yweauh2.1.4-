@@ -313,9 +313,15 @@ func _pick_animal_kind(wx: int, wz: int, rng: RandomNumberGenerator) -> int:
 	var biome: Dictionary = world.get_biome(float(wx), 0.0, float(wz))
 	var name: String = biome.get("name", "plains")
 	if name == "forest" or name == "dense forest" or name == "pine forest" or name == "jungle":
-		return _WorldFeatureTypes.AnimalKind.DEER if rng.randf() < 0.55 else _WorldFeatureTypes.AnimalKind.BOAR
+		var r := rng.randf()
+		return _WorldFeatureTypes.AnimalKind.DEER if r < 0.45 else (_WorldFeatureTypes.AnimalKind.BOAR if r < 0.8 else _WorldFeatureTypes.AnimalKind.FOX)
 	if name == "steppe":
-		return _WorldFeatureTypes.AnimalKind.RABBIT if rng.randf() < 0.7 else _WorldFeatureTypes.AnimalKind.BIRD
+		var r := rng.randf()
+		return _WorldFeatureTypes.AnimalKind.RABBIT if r < 0.55 else (_WorldFeatureTypes.AnimalKind.BIRD if r < 0.8 else _WorldFeatureTypes.AnimalKind.GOAT)
+	if name == "marsh":
+		return _WorldFeatureTypes.AnimalKind.DUCK if rng.randf() < 0.5 else _WorldFeatureTypes.AnimalKind.BIRD
+	if name == "mountain" or name == "highland":
+		return _WorldFeatureTypes.AnimalKind.GOAT if rng.randf() < 0.5 else _WorldFeatureTypes.AnimalKind.BIRD
 	if name == "plains":
 		return _WorldFeatureTypes.AnimalKind.RABBIT if rng.randf() < 0.5 else _WorldFeatureTypes.AnimalKind.BIRD
 	return _WorldFeatureTypes.AnimalKind.BIRD if rng.randf() < 0.4 else _WorldFeatureTypes.AnimalKind.RABBIT
@@ -512,6 +518,12 @@ func _brain_for_animal(animal_kind: int):
 			return _EntityBrainRegistry.get_def(&"boar")
 		_WorldFeatureTypes.AnimalKind.BIRD:
 			return _EntityBrainRegistry.get_def(&"bird")
+		_WorldFeatureTypes.AnimalKind.FOX:
+			return _EntityBrainRegistry.get_def(&"fox")
+		_WorldFeatureTypes.AnimalKind.GOAT:
+			return _EntityBrainRegistry.get_def(&"goat")
+		_WorldFeatureTypes.AnimalKind.DUCK:
+			return _EntityBrainRegistry.get_def(&"duck")
 		_:
 			return _EntityBrainRegistry.get_def(&"rabbit")
 
@@ -529,7 +541,7 @@ func _wildlife_order(spawns: Array) -> Array:
 	var rest: Array = []
 	for spawn in spawns:
 		var kind := int(spawn.get("animal_kind", 0))
-		if kind == _WorldFeatureTypes.AnimalKind.DEER or kind == _WorldFeatureTypes.AnimalKind.BOAR:
+		if kind == _WorldFeatureTypes.AnimalKind.DEER or kind == _WorldFeatureTypes.AnimalKind.BOAR or kind == _WorldFeatureTypes.AnimalKind.GOAT:
 			herds.append(spawn)
 		else:
 			rest.append(spawn)
@@ -654,5 +666,11 @@ func _animal_color(kind: int) -> Color:
 			return Color(0.35, 0.28, 0.22)
 		_WorldFeatureTypes.AnimalKind.BIRD:
 			return Color(0.55, 0.62, 0.78)
+		_WorldFeatureTypes.AnimalKind.FOX:
+			return Color(0.86, 0.46, 0.20)
+		_WorldFeatureTypes.AnimalKind.GOAT:
+			return Color(0.82, 0.80, 0.74)
+		_WorldFeatureTypes.AnimalKind.DUCK:
+			return Color(0.40, 0.58, 0.36)
 		_:
 			return Color(0.72, 0.72, 0.68)

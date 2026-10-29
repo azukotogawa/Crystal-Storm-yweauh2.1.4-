@@ -105,6 +105,17 @@ static func snap_to_ground(
 	return Vector3(world_pos.x, y, world_pos.z)
 
 
+static func _diagonal_toward(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
+	var dx := target_cell.x - from_cell.x
+	var dz := target_cell.y - from_cell.y
+	if dx == 0 or dz == 0:
+		return Vector2i.ZERO
+	var ratio := float(mini(absi(dx), absi(dz))) / float(maxi(absi(dx), absi(dz)))
+	if ratio < 0.4:
+		return Vector2i.ZERO
+	return Vector2i(signi(dx), signi(dz))
+
+
 static func _cardinal_toward(from_cell: Vector2i, target_cell: Vector2i) -> Vector2i:
 	var dx := target_cell.x - from_cell.x
 	var dz := target_cell.y - from_cell.y
@@ -165,7 +176,8 @@ static func step_toward_cell(
 	world: InfiniteNoiseWorld,
 	chunk_manager: ChunkManager,
 	crystal_manager,
-	max_step_up: float = -1.0
+	max_step_up: float = -1.0,
+	smooth: bool = false
 ) -> Vector3:
 	if max_step_up < 0.0:
 		max_step_up = _WorldSettings.get_active().max_step_up_walk()
@@ -178,7 +190,10 @@ static func step_toward_cell(
 	var best_cell := from_cell
 	var current_y := current.y
 	var direct := _cardinal_toward(from_cell, target_cell)
-	if direct != Vector2i.ZERO and _neighbor_step_ok(
+	var diag := _diagonal_toward(from_cell, target_cell) if smooth else Vector2i.ZERO
+	if diag != Vector2i.ZERO and _neighbor_step_ok(from_cell + diag, current_y, max_step_up, world, chunk_manager, crystal_manager) and _neighbor_step_ok(from_cell + Vector2i(diag.x, 0), current_y, max_step_up, world, chunk_manager, crystal_manager) and _neighbor_step_ok(from_cell + Vector2i(0, diag.y), current_y, max_step_up, world, chunk_manager, crystal_manager):
+		best_cell = from_cell + diag
+	elif direct != Vector2i.ZERO and _neighbor_step_ok(
 		from_cell + direct, current_y, max_step_up, world, chunk_manager, crystal_manager
 	):
 		best_cell = from_cell + direct

@@ -100,7 +100,10 @@ func _check_plan(seed_value: int) -> void:
 		elif kind == _Types.AnimalKind.BIRD:
 			birds += 1
 			row["bird"] = int(row.get("bird", 0)) + 1
-		elif kind == _Types.AnimalKind.DEER or kind == _Types.AnimalKind.BOAR:
+		elif kind == _Types.AnimalKind.FOX or kind == _Types.AnimalKind.DUCK:
+			var akey := "fox" if kind == _Types.AnimalKind.FOX else "duck"
+			row[akey] = int(row.get(akey, 0)) + 1
+		elif kind == _Types.AnimalKind.DEER or kind == _Types.AnimalKind.BOAR or kind == _Types.AnimalKind.GOAT:
 			if not spot.has("herd_home"):
 				_fail("herd animal missing home")
 				return
@@ -116,7 +119,7 @@ func _check_plan(seed_value: int) -> void:
 			bucket["n"] = int(bucket.get("n", 0)) + 1
 			bucket["kind"] = kind
 			herds[home] = bucket
-			var key := "deer" if kind == _Types.AnimalKind.DEER else "boar"
+			var key := "deer" if kind == _Types.AnimalKind.DEER else ("goat" if kind == _Types.AnimalKind.GOAT else "boar")
 			var homes: Dictionary = row.get(key, {})
 			homes[home] = true
 			row[key] = homes
@@ -132,7 +135,7 @@ func _check_plan(seed_value: int) -> void:
 			return
 		if int(bucket.get("kind", -1)) == _Types.AnimalKind.DEER:
 			deer_herds += 1
-		else:
+		elif int(bucket.get("kind", -1)) == _Types.AnimalKind.BOAR:
 			boar_herds += 1
 	if deer_herds < 1 or boar_herds < 1 or rabbits < 1 or birds < 1:
 		_fail("seed %d deer_herds=%d boar_herds=%d rabbits=%d birds=%d" % [seed_value, deer_herds, boar_herds, rabbits, birds])

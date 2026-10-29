@@ -59,6 +59,7 @@ var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
+var _stall_time := 0.0
 var _base_tint: Color = Color(0.72, 0.72, 0.68)
 var _convert_elapsed: float = 0.0
 var _convert_from_tint: Color = Color(0.72, 0.72, 0.68)
@@ -407,6 +408,8 @@ func _physics_process(delta: float) -> void:
 	if _chunk_manager and _chunk_manager.has_method("is_world_cell_loaded"):
 		if not _chunk_manager.is_world_cell_loaded(target_cell.x, target_cell.y):
 			target_cell = self_cell
+			if config.behavior_profile == _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE and brain.has_method("unstick"):
+				brain.unstick()
 
 	if _knock_left > 0.0:
 		var step := minf(_knock_left, maxf(config.move_speed, 6.0) * delta * 2.4)
@@ -424,6 +427,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var nav_t0 := Time.get_ticks_usec()
+	var passive := config.behavior_profile == _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE
+	var before := global_position
 	global_position = _EntityNavigation.step_toward_cell(
 		global_position,
 		target_cell,
@@ -431,8 +436,12 @@ func _physics_process(delta: float) -> void:
 		delta,
 		_world,
 		_chunk_manager,
-		_crystal
+		_crystal,
+		-1.0,
+		passive
 	)
+	if passive:
+		_note_stall(delta, before, target_cell != self_cell)
 	_notify_spatial_moved()
 	if profiler and profiler.has_method("record_us"):
 		profiler.record_us("entity_navigation", Time.get_ticks_usec() - nav_t0)
@@ -452,6 +461,17 @@ func _physics_process(delta: float) -> void:
 	_apply_walk_bob(delta, target_cell != self_cell, did_attack)
 	if profiler and profiler.has_method("end"):
 		profiler.end("entity_physics")
+
+
+func _note_stall(delta: float, before: Vector3, wants_move: bool) -> void:
+	if not wants_move or Vector2(global_position.x - before.x, global_position.z - before.z).length_squared() > 0.00000025:
+		_stall_time = 0.0
+		return
+	_stall_time += delta
+	if _stall_time < 0.35 or not brain.has_method("unstick"):
+		return
+	_stall_time = 0.0
+	brain.unstick()
 
 
 func advance_crystal_conversion(delta: float, in_crystal: bool) -> void:

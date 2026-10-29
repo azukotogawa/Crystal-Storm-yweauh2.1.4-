@@ -112,7 +112,7 @@ func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = fal
 			print("OK %s body %s faces %d" % [kind, box.size, _Model.face_count(body)])
 			_check_crystal_body(kind, rig, body_mi, crystal)
 	_Builder.play(rig, "idle", 1.2)
-	var head_y := skel.get_bone_pose_position(skel.find_bone("Head")).y
+	var head_y := skel.get_bone_pose_position(skel.find_bone("Head")).y - skel.get_bone_rest(skel.find_bone("Head")).origin.y
 	var idle_lift := sin(1.2) * _Pose.IDLE_LIFT
 	if absf(head_y - idle_lift) > 0.04:
 		_fail("%s idle head y %.3f want %.3f" % [kind, head_y, idle_lift])
@@ -120,8 +120,8 @@ func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = fal
 		print("OK %s idle head %.3f" % [kind, head_y])
 	_Builder.play(rig, "walk", 1.2)
 	var leg_q := skel.get_bone_pose_rotation(skel.find_bone("Leg_L"))
-	var leg_z := skel.get_bone_pose_position(skel.find_bone("Leg_L")).z
-	var walk_z := sin(1.2) * -1.0 * _Pose.WALK_STEP
+	var leg_z := skel.get_bone_pose_position(skel.find_bone("Leg_L")).z - skel.get_bone_rest(skel.find_bone("Leg_L")).origin.z
+	var walk_z := sin(1.2) * -1.0 * _Pose.WALK_STEP * 0.35
 	if leg_q.is_equal_approx(Quaternion.IDENTITY):
 		_fail("%s walk left the leg at rest" % kind)
 	elif absf(leg_z - walk_z) > 0.05:
@@ -129,7 +129,7 @@ func _check_kind(kind: StringName, want_tail: bool = true, want_wing: bool = fal
 	else:
 		print("OK %s walk leg %s" % [kind, leg_q])
 	_Builder.play(rig, "attack", 0.4)
-	var lunge := skel.get_bone_pose_position(skel.find_bone("Body")).z
+	var lunge := skel.get_bone_pose_position(skel.find_bone("Body")).z - skel.get_bone_rest(skel.find_bone("Body")).origin.z
 	var leg_attack := skel.get_bone_pose_rotation(skel.find_bone("Leg_R"))
 	if absf(lunge - (-_Pose.ATTACK_LUNGE)) > 0.04:
 		_fail("%s attack lunge %.3f" % [kind, lunge])

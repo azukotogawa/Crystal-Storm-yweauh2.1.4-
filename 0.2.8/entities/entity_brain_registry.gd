@@ -17,6 +17,9 @@ static func ensure_builtins() -> void:
 	_register(_make(&"deer", "Deer", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 9.0, 18.0))
 	_register(_make(&"boar", "Boar", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 8.0, 10.0, 28.0, 4.0))
 	_register(_make(&"bird", "Bird", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 11.0, 8.0))
+	_register(_make(&"fox", "Fox", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 9.5, 16.0, 16.0, 7.0))
+	_register(_make(&"goat", "Goat", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 8.0, 12.0, 24.0, 5.0))
+	_register(_make(&"duck", "Duck", _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE, 6.5, 8.0, 10.0, 6.0))
 
 	var militia := _make(&"town_militia", "Militia", _EntityBrainConfig.BehaviorProfile.TOWN_MILITIA, 9.0, 6.0)
 	militia.max_health = 45.0

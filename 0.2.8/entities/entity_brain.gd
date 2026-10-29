@@ -266,6 +266,15 @@ func _start_return_home() -> void:
 	state_timer = 0.0
 
 
+func unstick() -> void:
+	if state == State.WANDER:
+		_pick_wander_target()
+		state_timer = 0.0
+	elif state == State.RETURN_HOME:
+		state = State.IDLE
+		state_timer = 0.0
+
+
 func _pick_wander_target() -> void:
 	_wander_n += 1
 	var rng := RandomNumberGenerator.new()

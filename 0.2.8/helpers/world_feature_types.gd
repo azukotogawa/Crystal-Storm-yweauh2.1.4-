@@ -20,6 +20,9 @@ enum AnimalKind {
 	BOAR,
 	RABBIT,
 	BIRD,
+	FOX,
+	GOAT,
+	DUCK,
 }
 
 const ANIMAL_DISPLAY := {
@@ -27,4 +30,7 @@ const ANIMAL_DISPLAY := {
 	AnimalKind.BOAR: "Boar",
 	AnimalKind.RABBIT: "Rabbit",
 	AnimalKind.BIRD: "Bird",
+	AnimalKind.FOX: "Fox",
+	AnimalKind.GOAT: "Goat",
+	AnimalKind.DUCK: "Duck",
 }

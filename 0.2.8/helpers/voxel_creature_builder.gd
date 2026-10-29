@@ -26,8 +26,12 @@ static func parts_for(kind: StringName) -> Array:
 		return _deer_parts()
 	if kind == &"rabbit":
 		return _rabbit_parts()
-	if kind == &"bird":
+	if kind == &"bird" or kind == &"duck":
 		return _bird_parts()
+	if kind == &"goat":
+		return _deer_parts()
+	if kind == &"fox":
+		return _fox_parts()
 	if kind == &"town_militia" or kind == &"wandering_trader":
 		return _militia_parts()
 	if kind == &"crystal_mite":
@@ -94,6 +98,30 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.22, 0.14, 0.12),
 			Color(0.08, 0.08, 0.08),
 			_crystal_albedo(),
+		])
+	if kind == &"fox":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.86, 0.44, 0.18),
+			Color(0.94, 0.90, 0.84),
+			Color(0.18, 0.12, 0.10),
+			Color(0.06, 0.06, 0.06),
+		])
+	if kind == &"goat":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.84, 0.82, 0.76),
+			Color(0.94, 0.92, 0.88),
+			Color(0.40, 0.36, 0.32),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"duck":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.22, 0.46, 0.26),
+			Color(0.70, 0.62, 0.48),
+			Color(0.95, 0.68, 0.18),
+			Color(0.08, 0.08, 0.08),
 		])
 	if kind == &"rabbit":
 		return PackedColorArray([
@@ -170,6 +198,7 @@ static func build_parts(parts: Array, palette: PackedColorArray, cube: float) ->
 	rig.name = "CreatureRig"
 	rig.set_meta("model_height", _span_height(parts, cube))
 	_attach_anims(rig)
+	_rebase_all(rig)
 	return rig
 
 
@@ -458,6 +487,39 @@ static func _rabbit_parts() -> Array:
 	]
 
 
+static func _fox_parts() -> Array:
+	var hide := 1
+	var belly := 2
+	var ear := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 3, 2, 3, 7, 5, 9, hide)
+	_fill(body, 3, 2, 4, 7, 3, 8, belly)
+	var head: Array = []
+	_fill(head, 3, 4, 0, 7, 7, 3, hide)
+	_fill(head, 4, 4, 0, 6, 6, 1, belly)
+	_fill(head, 3, 7, 1, 4, 9, 2, ear)
+	_fill(head, 6, 7, 1, 7, 9, 2, ear)
+	_fill(head, 3, 5, 0, 4, 6, 1, eye)
+	_fill(head, 6, 5, 0, 7, 6, 1, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 0, 3, 4, 2, 4, ear)
+	_fill(leg_l, 3, 0, 7, 4, 2, 8, ear)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 3, 7, 2, 4, ear)
+	_fill(leg_r, 6, 0, 7, 7, 2, 8, ear)
+	var tail: Array = []
+	_fill(tail, 4, 3, 9, 6, 5, 12, hide)
+	_fill(tail, 4, 3, 12, 6, 5, 13, belly)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
 static func _bird_parts() -> Array:
 	var body_c := 1
 	var wing := 2
@@ -693,10 +755,36 @@ static func _attach_boss_anims(rig: Node3D) -> void:
 	for clip_name in [&"idle", &"walk", &"attack"]:
 		if lib.has_animation(clip_name):
 			lib.remove_animation(clip_name)
+	var skel := rig.get_node_or_null("Skeleton") as Skeleton3D
+	for clip in [idle, walk, slam]:
+		_rebase_positions(clip, skel)
 	lib.add_animation(&"idle", idle)
 	lib.add_animation(&"walk", walk)
 	lib.add_animation(&"attack", slam)
 	rig.set_meta("boss_rig", true)
+
+
+static func _rebase_all(rig: Node3D) -> void:
+	var skel := rig.get_node_or_null("Skeleton") as Skeleton3D
+	var player := rig.get_node_or_null("CreatureAnim") as AnimationPlayer
+	if skel == null or player == null:
+		return
+	for clip_name in player.get_animation_list():
+		_rebase_positions(player.get_animation(clip_name), skel)
+
+
+static func _rebase_positions(anim: Animation, skel: Skeleton3D) -> void:
+	if anim == null or skel == null:
+		return
+	for track in anim.get_track_count():
+		if anim.track_get_type(track) != Animation.TYPE_POSITION_3D:
+			continue
+		var bone := skel.find_bone(str(anim.track_get_path(track).get_concatenated_subnames()))
+		if bone < 0:
+			continue
+		var rest := skel.get_bone_rest(bone).origin
+		for key in anim.track_get_key_count(track):
+			anim.track_set_key_value(track, key, (anim.track_get_key_value(track, key) as Vector3) + rest)
 
 
 static func _rot_sin(anim: Animation, bone_name: String, axis: Vector3, amp: float, freq: float) -> void:
@@ -880,7 +968,7 @@ static func _leg_gait(anim: Animation, bone_name: String, side: float) -> void:
 		var swing := sin(t)
 		var kick := swing * side
 		anim.rotation_track_insert_key(rot, t, Quaternion(Vector3.RIGHT, kick * _Pose.WALK_LEG))
-		anim.position_track_insert_key(pos, t, Vector3(0.0, absf(swing) * _Pose.WALK_LIFT, kick * _Pose.WALK_STEP))
+		anim.position_track_insert_key(pos, t, Vector3(0.0, absf(swing) * _Pose.WALK_LIFT, kick * _Pose.WALK_STEP * 0.35))
 
 
 static func _clip() -> Animation:
