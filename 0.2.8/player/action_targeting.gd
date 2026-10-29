@@ -822,10 +822,12 @@ static func cursor_cell_under_mouse(player: Node3D, range_v: float) -> Vector3:
 	return Vector3(float(seed_x) + 0.5, py, float(seed_z) + 0.5)
 
 
-static func cursor_aim(player: Node3D, range_v: float = reach()) -> Vector3:
+static func cursor_aim(player: Node3D, range_v: float = reach(), unbounded: bool = false) -> Vector3:
 	if player == null:
 		return Vector3.FORWARD
 	var col := _cursor_column(player, maxf(range_v, reach()))
+	if col == Vector3.ZERO and unbounded:
+		col = _cursor_column_unbounded(player)
 	if col != Vector3.ZERO and "voxel_position" in player:
 		var origin_x := float(player.voxel_position.x)
 		var origin_z := float(player.voxel_position.z)
@@ -855,14 +857,28 @@ static func _cursor_column(player: Node3D, range_v: float) -> Vector3:
 	return Vector3.ZERO
 
 
+static func _cursor_column_unbounded(player: Node3D) -> Vector3:
+	if not player.is_inside_tree():
+		return Vector3.ZERO
+	var hl = player.get_node_or_null("TargetHighlight")
+	if hl != null and hl.has_method("get_action_column"):
+		var shared: Vector3 = hl.get_action_column()
+		if shared != Vector3.ZERO:
+			return Vector3(float(floori(shared.x)) + 0.5, shared.y, float(floori(shared.z)) + 0.5)
+	var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") as ChunkManager
+	return _pick_column_from_mouse(player, INF, _player_world(player), chunk_manager, false)
+
+
 static func attack_toward_column(player: Node3D, range_v: float = 2.0) -> Vector3:
 	return cursor_aim(player, range_v)
 
 
-static func column_toward_cursor(player: Node3D, hit_range: float) -> Vector3:
+static func column_toward_cursor(player: Node3D, hit_range: float, unbounded: bool = false) -> Vector3:
 	if player == null:
 		return Vector3.ZERO
 	var col := _cursor_column(player, maxf(hit_range, reach()))
+	if col == Vector3.ZERO and unbounded:
+		col = _cursor_column_unbounded(player)
 	if col == Vector3.ZERO or not ("voxel_position" in player):
 		var world := _player_world(player)
 		var chunk_manager: ChunkManager = player.get_tree().get_first_node_in_group("chunk_manager") if player.is_inside_tree() else null

@@ -501,23 +501,12 @@ func _try_attack() -> void:
 			_arm_clock(item_id, def, 1)
 
 
-func _melee_cursor_ok(def: Dictionary) -> bool:
+func _melee_cursor_ok(_def: Dictionary) -> bool:
+	_melee_nearest = false
 	var ray := _cursor_ray()
 	if ray.is_empty():
 		return true
-	var feet := _attack_origin(0.0)
-	var dir: Vector3 = ray[1]
-	if absf(dir.y) < 0.00001:
-		return false
-	var point: Vector3 = ray[0] + dir * ((feet.y - ray[0].y) / dir.y)
-	var ws = _WorldSettings.get_active()
-	_melee_nearest = false
-	if _ActionTargeting._column_in_range(player, int(floor(ws.world_to_column(point.x))), int(floor(ws.world_to_column(point.z))), float(def.get("range", 2.0))):
-		return true
-	if not _near_melee_targets(feet, float(def.get("range", 2.0))).is_empty():
-		_melee_nearest = true
-		return true
-	return false
+	return absf((ray[1] as Vector3).y) >= 0.00001
 
 
 var _melee_nearest := false
@@ -655,9 +644,9 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 
 func _cursor_capsule_targets(origin: Vector3, range_v: float, limit: int) -> Array[Node]:
 	var range_w := _range_world(range_v)
-	var dir := _aim_forward(range_v)
+	var dir := _ActionTargeting.cursor_aim(player, range_v, true)
 	var reach_w := range_w
-	var col := _ActionTargeting.column_toward_cursor(player, range_v)
+	var col := _ActionTargeting.column_toward_cursor(player, range_v, true)
 	if col != Vector3.ZERO and player != null and "voxel_position" in player:
 		var flat := Vector2(col.x - float(player.voxel_position.x), col.z - float(player.voxel_position.z))
 		if flat.length() > 0.2:
@@ -829,7 +818,7 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 3.0))
 	var origin := _attack_origin(0.5)
 	_sfx("swing_spear", origin)
-	var forward := _aim_forward(range_v)
+	var forward := _ActionTargeting.cursor_aim(player, range_v, true)
 	var range_w := _range_world(range_v)
 	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
 	var targets := _WeaponStrike.thrust_targets(
@@ -866,8 +855,8 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	var range_v: float = float(def.get("range", 2.2))
 	var origin := _attack_origin(0.45)
 	_sfx("swing_hammer", origin)
-	var forward := _aim_forward(range_v)
-	var cell := _ActionTargeting.cell_column(_ActionTargeting.column_toward_cursor(player, range_v))
+	var forward := _ActionTargeting.cursor_aim(player, range_v, true)
+	var cell := _ActionTargeting.cell_column(_ActionTargeting.column_toward_cursor(player, range_v, true))
 	var splash := int(def.get("splash", 1))
 	var cells := _WeaponStrike.splash_cells(cell, splash)
 	var mass := _crystal_mass_damage(def)
