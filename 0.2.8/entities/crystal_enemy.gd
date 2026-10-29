@@ -87,6 +87,12 @@ var _ring: MeshInstance3D
 var _ring_anchor := Vector3.ZERO
 var _warn: MeshInstance3D
 var _warn_anchor := Vector3.ZERO
+var boss_anim: String = ""
+var _boss_anim_left: float = 0.0
+var _charge_left: float = 0.0
+var _charge_dir := Vector3.ZERO
+var charge_moved_frames: int = 0
+const CHARGE_SPEED_VOXELS := 30.0
 var _contact_left: float = 0.0
 var _contact_kind: String = ""
 var boss_phase: int = 1
@@ -618,6 +624,17 @@ func _physics_process(delta: float) -> void:
 	if _station_reach > 0.0:
 		target_cell = _station
 
+	if _boss_anim_left > 0.0:
+		_boss_anim_left = maxf(_boss_anim_left - delta, 0.0)
+		if _boss_anim_left <= 0.0:
+			boss_anim = ""
+	if _charge_left > 0.0:
+		_tick_charge(delta)
+		_apply_walk_bob(delta, true, true)
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
+
 	if _knock_left > 0.0:
 		var step := minf(_knock_left, KNOCK_SPEED * delta)
 		var shoved := _EntityNavigation.knockback_step(
@@ -804,12 +821,14 @@ func _tick_special(delta: float) -> void:
 	if bool(intent.get("telegraph", false)):
 		_show_ring(act)
 		_pose_windup()
+		_set_boss_anim(String(act) + "_windup", 0.2)
 	if bool(intent.get("impact", false)):
 		_hide_ring()
 		_clear_windup_flash()
 		_sfx("boss_slam", global_position)
 		_Juice.request_hit_stop(0.08, get_tree())
 		_Juice.request_shake(0.85)
+		_set_boss_anim(String(act), 0.5)
 		_resolve_special(act, int(intent.get("summon", 0)))
 	elif int(intent.get("summon", 0)) > 0 and not bool(intent.get("impact", false)):
 		_summon_mites(int(intent.get("summon", 0)))
@@ -917,9 +936,16 @@ func _drop_contact_wind() -> void:
 	_clear_windup_flash()
 
 
+func _set_boss_anim(anim_name: String, hold: float) -> void:
+	boss_anim = anim_name
+	_boss_anim_left = maxf(_boss_anim_left, hold)
+
+
 func _pose_windup() -> void:
 	locomotion_pose = "attack"
 	_attack_hold = maxf(_attack_hold, 0.16)
+	if _special != null:
+		return
 	var vis := _active_visual()
 	if vis and _PlayerSettings.flash_effects_enabled:
 		_flash_tree(vis, 0.7)
@@ -986,11 +1012,36 @@ func _resolve_special(act: StringName, summon: int) -> void:
 	var vs: float = WorldSettings.get_active().voxel_scale
 	if act == &"charge":
 		var dir := _ring_anchor - global_position
-		var lunged := _EntityNavigation.knockback_step(
-			global_position, dir, minf(dir.length(), 6.0 * vs), _world, _chunk_manager, _crystal
-		)
-		global_position = lunged
-		_notify_spatial_moved()
+		dir.y = 0.0
+		_charge_dir = dir.normalized() if dir.length() > 0.001 else Vector3.FORWARD
+		_charge_left = minf(dir.length(), 6.0 * vs)
+		charge_moved_frames = 0
+		_set_boss_anim("charge", _charge_left / maxf(CHARGE_SPEED_VOXELS * vs, 0.001) + 0.1)
+		if summon > 0:
+			_summon_mites(summon)
+		return
+	_strike_player(act)
+	if summon > 0:
+		_summon_mites(summon)
+
+
+func _tick_charge(delta: float) -> void:
+	var vs: float = WorldSettings.get_active().voxel_scale
+	var step := minf(_charge_left, CHARGE_SPEED_VOXELS * vs * delta)
+	var moved := _EntityNavigation.knockback_step(global_position, _charge_dir, step, _world, _chunk_manager, _crystal)
+	if moved.distance_squared_to(global_position) < 0.0004:
+		_charge_left = 0.0
+	else:
+		global_position = moved
+		charge_moved_frames += 1
+		_charge_left = maxf(_charge_left - step, 0.0)
+	_notify_spatial_moved()
+	if _charge_left <= 0.0:
+		_strike_player(&"charge")
+
+
+func _strike_player(act: StringName) -> void:
+	var vs: float = WorldSettings.get_active().voxel_scale
 	if _target and _target.has_method("take_damage"):
 		var there := _player_world_pos()
 		var reach: float = 2.4 * vs
@@ -1005,8 +1056,6 @@ func _resolve_special(act: StringName, summon: int) -> void:
 			var mult := 1.35 if act == &"burst" else 1.0
 			var src := _ring_anchor if act == &"burst" else global_position
 			_damage_player(contact_damage * mult, _player_damage_source(true), src)
-	if summon > 0:
-		_summon_mites(summon)
 
 
 func _summon_mites(count: int) -> void:
@@ -1085,7 +1134,7 @@ func _apply_walk_bob(delta: float, moving: bool, attacking: bool = false) -> voi
 		vis.position.y = _bob_base_y
 		vis.scale = _bob_base_scale
 		_bob_ready = false
-	_creature_pose.apply(vis, locomotion_pose, _bob_phase)
+	_creature_pose.apply(vis, boss_anim if boss_anim != "" else locomotion_pose, _bob_phase)
 
 
 func _release_death_visual() -> void:

@@ -28,7 +28,22 @@ func apply(root: Node3D, pose: String, phase: float) -> void:
 		var kind := str(part.kind)
 		var reach := float(part.reach)
 		var side := float(part.side)
-		if pose == "attack":
+		if pose.begins_with("slam"):
+			if kind == "body" or kind == "top":
+				pos.y += reach * (1.0 if pose.ends_with("_windup") else -0.5)
+			elif kind == "leg":
+				rot.x = side * ATTACK_LEG
+		elif pose.begins_with("charge"):
+			if kind == "body" or kind == "top":
+				pos.z -= reach * 1.6
+			elif kind == "leg":
+				rot.x = swing * side * WALK_LEG * 1.5
+		elif pose.begins_with("burst"):
+			if kind == "body" or kind == "top":
+				pos.y += absf(sin(phase * 2.0)) * reach * 0.5
+			elif kind == "leg":
+				rot.x = side * ATTACK_LEG * 1.5
+		elif pose == "attack":
 			if kind == "body" or kind == "top":
 				pos.z -= reach
 			elif kind == "leg":
