@@ -60,6 +60,7 @@ var _boss_label: Label = null
 var _boss_bar: ProgressBar = null
 var _boss_shown_hp: int = -1
 var _hud_player: Node = null
+var _run_end_layer: CanvasLayer = null
 var _arrow_play_color: Color = Color(0.95, 0.75, 1.0)
 var _vitals_plate: Panel = null
 var _hp_panel: PanelContainer = null
@@ -692,8 +693,11 @@ func _process(delta: float) -> void:
 		if profiler and profiler.has_method("end"):
 			profiler.end("ui_overlay")
 		return
+	if _run_end_layer != null and not _GameplayInput.pause_open and get_tree() and not get_tree().paused:
+		get_tree().paused = true
 	if Input.is_action_just_pressed("interact") and _panel.visible:
 		if _game_manager and _game_manager.has_method("restart_run"):
+			get_tree().paused = false
 			_game_manager.restart_run()
 	if profiler and profiler.has_method("end_func"):
 		profiler.end_func("GameOverlay::_process")
@@ -1728,7 +1732,26 @@ func _on_run_state_changed(new_state: int) -> void:
 		_subtitle.text = lines[1]
 	if new_state == _GameManager.RunState.WON or new_state == _GameManager.RunState.LOST:
 		_show_run_summary()
+		_freeze_for_run_end()
 	_update_map_temp_label()
+
+
+func _freeze_for_run_end() -> void:
+	if _run_end_layer == null:
+		_run_end_layer = CanvasLayer.new()
+		_run_end_layer.name = "RunEndLayer"
+		_run_end_layer.layer = 128
+		_run_end_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+		get_tree().root.add_child(_run_end_layer)
+		_panel.reparent(_run_end_layer, false)
+		_panel.set_anchors_preset(Control.PRESET_CENTER, true)
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	get_tree().paused = true
+
+
+func _exit_tree() -> void:
+	if _run_end_layer != null and is_instance_valid(_run_end_layer):
+		_run_end_layer.queue_free()
 
 
 func _maybe_show_tutorial() -> void:
@@ -1759,7 +1782,7 @@ func _show_run_summary() -> void:
 	if _run_summary == null:
 		_run_summary = _RunSummaryPanel.new()
 		_run_summary.name = "RunSummary"
-		var box := get_node_or_null("Panel/VBox")
+		var box := _panel.get_node_or_null("VBox")
 		if box:
 			box.add_child(_run_summary)
 		else:
