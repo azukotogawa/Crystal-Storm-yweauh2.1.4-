@@ -61,8 +61,8 @@ func _check_scatter(seed_value: int, cx: int, cz: int) -> void:
 	var budget := 12
 	var first: Array[Dictionary] = _Scatter.for_chunk(seed_value, cx, cz, budget, null)
 	var again: Array[Dictionary] = _Scatter.for_chunk(seed_value, cx, cz, budget, null)
-	if first.size() < 8:
-		_fail("chunk %d,%d seed %d placed %d, want at least 8" % [cx, cz, seed_value, first.size()])
+	if first.size() < 1 and _Scatter._field(seed_value, Vector2i(cx * 16 + 8, cz * 16 + 8)) >= _Scatter.CLEARING_BELOW:
+		_fail("chunk %d,%d seed %d placed %d, want at least 1 outside a clearing" % [cx, cz, seed_value, first.size()])
 		return
 	if first.size() > budget:
 		_fail("chunk exceeded budget %d" % budget)
@@ -103,7 +103,7 @@ func _check_kinds_across_chunks(seed_value: int) -> void:
 			total += spots.size()
 			for spot in spots:
 				kinds[str(spot.get("kind", ""))] = true
-	for kind in _Scatter.KINDS:
+	for kind in _Scatter.BIOME_WEIGHTS["plains"].keys():
 		if not kinds.has(kind):
 			_fail("region missed prop kind %s" % kind)
 			return

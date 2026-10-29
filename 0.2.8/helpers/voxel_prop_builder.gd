@@ -52,6 +52,28 @@ static func build_scatter_prop(kind: String) -> Node3D:
 			return flower
 		"log":
 			return _assemble_prop(_log_boxes(unit()))
+		"flower_red":
+			return _assemble_prop(_flower_boxes(unit(), Color(0.86, 0.22, 0.2)))
+		"flower_yellow":
+			return _assemble_prop(_flower_boxes(unit(), Color(0.95, 0.82, 0.24)))
+		"flower_blue":
+			return _assemble_prop(_flower_boxes(unit(), Color(0.36, 0.5, 0.92)))
+		"flower_white":
+			return _assemble_prop(_flower_boxes(unit(), Color(0.94, 0.93, 0.88)))
+		"grass_tuft":
+			return _assemble_prop(_tuft_boxes(unit(), Color(0.42, 0.66, 0.3)))
+		"fern":
+			return _assemble_prop(_fern_boxes(unit()))
+		"boulder":
+			return _assemble_prop(_boulder_boxes(unit()))
+		"stump":
+			return _assemble_prop(_stump_boxes(unit()))
+		"reeds":
+			return _assemble_prop(_reed_boxes(unit()))
+		"sapling":
+			return _assemble_prop(_sapling_boxes(unit()))
+		"dead_bush":
+			return _assemble_prop(_dead_bush_boxes(unit()))
 		"mushroom":
 			return _assemble_prop(_mushroom_boxes(unit()))
 		"fence":
@@ -85,6 +107,86 @@ static func _log_boxes(u: float) -> Array:
 		{"center": Vector3(0, u * 0.38, 0), "size": Vector3(length, u * 0.7, u * 0.7), "color": bark},
 		{"center": Vector3(-length * 0.48, u * 0.38, 0), "size": Vector3(u * 0.12, u * 0.62, u * 0.62), "color": cut},
 		{"center": Vector3(length * 0.48, u * 0.38, 0), "size": Vector3(u * 0.12, u * 0.62, u * 0.62), "color": cut},
+	]
+
+
+static func _flower_boxes(u: float, petal: Color) -> Array:
+	var stem := Color(0.36, 0.6, 0.26)
+	return [
+		{"center": Vector3(0, u * 0.32, 0), "size": Vector3(u * 0.1, u * 0.64, u * 0.1), "color": stem},
+		{"center": Vector3(u * 0.16, u * 0.18, 0), "size": Vector3(u * 0.26, u * 0.08, u * 0.14), "color": stem.lightened(0.1)},
+		{"center": Vector3(0, u * 0.7, 0), "size": Vector3(u * 0.34, u * 0.16, u * 0.34), "color": petal},
+		{"center": Vector3(0, u * 0.74, 0), "size": Vector3(u * 0.12, u * 0.12, u * 0.12), "color": Color(0.96, 0.84, 0.3) if petal.b > 0.5 or petal.r > 0.9 and petal.g > 0.9 else Color(0.4, 0.26, 0.12)},
+	]
+
+
+static func _tuft_boxes(u: float, green: Color) -> Array:
+	return [
+		{"center": Vector3(0, u * 0.25, 0), "size": Vector3(u * 0.12, u * 0.5, u * 0.12), "color": green},
+		{"center": Vector3(u * 0.16, u * 0.18, u * 0.06), "size": Vector3(u * 0.1, u * 0.36, u * 0.1), "color": green.lightened(0.12)},
+		{"center": Vector3(-u * 0.14, u * 0.2, -u * 0.08), "size": Vector3(u * 0.1, u * 0.4, u * 0.1), "color": green.darkened(0.1)},
+		{"center": Vector3(u * 0.04, u * 0.14, -u * 0.16), "size": Vector3(u * 0.1, u * 0.28, u * 0.1), "color": green.lightened(0.05)},
+	]
+
+
+static func _fern_boxes(u: float) -> Array:
+	var g := Color(0.3, 0.58, 0.28)
+	return [
+		{"center": Vector3(0, u * 0.12, 0), "size": Vector3(u * 0.16, u * 0.24, u * 0.16), "color": g.darkened(0.15)},
+		{"center": Vector3(u * 0.34, u * 0.3, 0), "size": Vector3(u * 0.7, u * 0.06, u * 0.22), "color": g},
+		{"center": Vector3(-u * 0.34, u * 0.32, 0), "size": Vector3(u * 0.7, u * 0.06, u * 0.22), "color": g.lightened(0.08)},
+		{"center": Vector3(0, u * 0.34, u * 0.34), "size": Vector3(u * 0.22, u * 0.06, u * 0.7), "color": g.lightened(0.04)},
+		{"center": Vector3(0, u * 0.28, -u * 0.34), "size": Vector3(u * 0.22, u * 0.06, u * 0.7), "color": g},
+	]
+
+
+static func _boulder_boxes(u: float) -> Array:
+	var stone := Color(0.5, 0.5, 0.48)
+	return [
+		{"center": Vector3(0, u * 0.7, 0), "size": Vector3(u * 2.2, u * 1.4, u * 1.9), "color": stone},
+		{"center": Vector3(u * 0.4, u * 1.45, -u * 0.1), "size": Vector3(u * 1.3, u * 0.6, u * 1.2), "color": stone.lightened(0.07)},
+		{"center": Vector3(-u * 0.9, u * 0.35, u * 0.6), "size": Vector3(u * 0.8, u * 0.7, u * 0.7), "color": stone.darkened(0.1)},
+		{"center": Vector3(u * 0.2, u * 1.4, u * 0.6), "size": Vector3(u * 0.5, u * 0.2, u * 0.5), "color": Color(0.38, 0.55, 0.3)},
+	]
+
+
+static func _stump_boxes(u: float) -> Array:
+	var bark := Color(0.42, 0.29, 0.17)
+	return [
+		{"center": Vector3(0, u * 0.3, 0), "size": Vector3(u * 0.8, u * 0.6, u * 0.8), "color": bark},
+		{"center": Vector3(0, u * 0.61, 0), "size": Vector3(u * 0.66, u * 0.04, u * 0.66), "color": Color(0.66, 0.52, 0.32)},
+		{"center": Vector3(u * 0.45, u * 0.08, 0), "size": Vector3(u * 0.3, u * 0.16, u * 0.2), "color": bark.darkened(0.1)},
+	]
+
+
+static func _reed_boxes(u: float) -> Array:
+	var g := Color(0.52, 0.62, 0.3)
+	var top := Color(0.5, 0.36, 0.2)
+	return [
+		{"center": Vector3(0, u * 0.6, 0), "size": Vector3(u * 0.08, u * 1.2, u * 0.08), "color": g},
+		{"center": Vector3(u * 0.2, u * 0.5, u * 0.1), "size": Vector3(u * 0.08, u * 1.0, u * 0.08), "color": g.darkened(0.08)},
+		{"center": Vector3(-u * 0.18, u * 0.55, -u * 0.12), "size": Vector3(u * 0.08, u * 1.1, u * 0.08), "color": g.lightened(0.08)},
+		{"center": Vector3(0, u * 1.24, 0), "size": Vector3(u * 0.12, u * 0.24, u * 0.12), "color": top},
+		{"center": Vector3(u * 0.2, u * 1.04, u * 0.1), "size": Vector3(u * 0.12, u * 0.2, u * 0.12), "color": top},
+	]
+
+
+static func _sapling_boxes(u: float) -> Array:
+	var leaf := Color(0.38, 0.66, 0.32)
+	return [
+		{"center": Vector3(0, u * 0.55, 0), "size": Vector3(u * 0.14, u * 1.1, u * 0.14), "color": Color(0.46, 0.32, 0.18)},
+		{"center": Vector3(0, u * 1.2, 0), "size": Vector3(u * 0.7, u * 0.5, u * 0.7), "color": leaf},
+		{"center": Vector3(u * 0.12, u * 1.55, -u * 0.06), "size": Vector3(u * 0.4, u * 0.3, u * 0.4), "color": leaf.lightened(0.1)},
+	]
+
+
+static func _dead_bush_boxes(u: float) -> Array:
+	var twig := Color(0.56, 0.44, 0.3)
+	return [
+		{"center": Vector3(0, u * 0.25, 0), "size": Vector3(u * 0.12, u * 0.5, u * 0.12), "color": twig},
+		{"center": Vector3(u * 0.22, u * 0.42, 0), "size": Vector3(u * 0.44, u * 0.08, u * 0.08), "color": twig.lightened(0.06)},
+		{"center": Vector3(-u * 0.18, u * 0.5, u * 0.1), "size": Vector3(u * 0.36, u * 0.08, u * 0.08), "color": twig.darkened(0.06)},
+		{"center": Vector3(0, u * 0.36, -u * 0.2), "size": Vector3(u * 0.08, u * 0.08, u * 0.4), "color": twig},
 	]
 
 
