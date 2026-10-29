@@ -351,6 +351,15 @@ static func bind_action(action: String, event: InputEvent) -> String:
 	return ""
 
 
+static func reset_all_to_defaults() -> Dictionary:
+	var data: Dictionary = defaults()
+	data["tutorial_completed"] = tutorial_completed
+	if not save_settings(data):
+		return {}
+	_apply_keybinds_now()
+	return data
+
+
 static func reset_bindings() -> void:
 	var data := load_settings()
 	data["keybinds"] = _InputBindings.profile_binds(str(data.get("control_profile", "standard")))

@@ -8,10 +8,12 @@ const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _Tutorial = preload("res://ui/tutorial_overlay.gd")
 const _TextureManifest = preload("res://tools/texture_manifest.gd")
 const _TextureSet = preload("res://helpers/texture_set.gd")
+const _GameplayInputRef = preload("res://helpers/gameplay_input.gd")
 
 const RESOLUTIONS: PackedStringArray = ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"]
 
 var _preset: OptionButton
+var _reset_confirm: ConfirmationDialog
 var _profile: OptionButton
 var _rd: HSlider
 var _veg: HSlider
@@ -154,6 +156,21 @@ func _ready() -> void:
 	_status = Label.new()
 	_status.name = "SettingsStatus"
 	controls.add_child(_status)
+	var reset_all := Button.new()
+	reset_all.name = "ResetAllDefaults"
+	reset_all.text = "Reset to defaults"
+	reset_all.pressed.connect(request_reset_all)
+	body.add_child(reset_all)
+	_reset_confirm = ConfirmationDialog.new()
+	_reset_confirm.name = "ResetAllConfirm"
+	_reset_confirm.title = "Reset settings"
+	_reset_confirm.dialog_text = "Reset all settings to defaults?"
+	_reset_confirm.ok_button_text = "Yes"
+	_reset_confirm.cancel_button_text = "No"
+	_reset_confirm.confirmed.connect(confirm_reset_all)
+	add_child(_reset_confirm)
+	visibility_changed.connect(_on_visibility_changed)
+	_on_visibility_changed.call_deferred()
 	var close := Button.new()
 	close.name = "SettingsClose"
 	close.text = "Close"
@@ -162,6 +179,37 @@ func _ready() -> void:
 	sync_from_settings()
 	if not _PlayerSettings.runtime_applied:
 		_PlayerSettings.apply_runtime(get_tree())
+
+
+func request_reset_all() -> void:
+	cancel_rebind()
+	if _reset_confirm:
+		_reset_confirm.popup_centered()
+
+
+func confirm_reset_all() -> void:
+	cancel_rebind()
+	var data := _PlayerSettings.reset_all_to_defaults()
+	if data.is_empty():
+		if _status:
+			_status.text = "Could not save settings."
+		return
+	_PlayerSettings.apply_ui_scale(get_tree())
+	_PlayerSettings.apply_display()
+	sync_from_settings()
+	_persist()
+	if _conflict:
+		_conflict.text = ""
+	if _status:
+		_status.text = "All settings reset to defaults."
+
+
+func _on_visibility_changed() -> void:
+	_GameplayInputRef.set_panel_open(&"settings", is_visible_in_tree())
+
+
+func _exit_tree() -> void:
+	_GameplayInputRef.set_panel_open(&"settings", false)
 
 
 func _tab(tabs: TabContainer, title: String) -> VBoxContainer:
