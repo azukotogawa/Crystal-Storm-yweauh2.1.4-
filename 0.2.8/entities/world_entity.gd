@@ -63,6 +63,7 @@ var _base_tint: Color = Color(0.72, 0.72, 0.68)
 var _convert_elapsed: float = 0.0
 var _convert_from_tint: Color = Color(0.72, 0.72, 0.68)
 var _convert_started: bool = false
+var _placed: bool = false
 
 
 func _ready() -> void:
@@ -103,6 +104,7 @@ func _finish_spawn_placement(spawn_cell: Vector2i, tint: Color) -> void:
 	if not is_inside_tree():
 		return
 	global_position = _column_world_position(spawn_cell)
+	_placed = true
 	_ensure_visual(tint)
 
 
@@ -121,8 +123,9 @@ func refresh_visual() -> void:
 	if _dead:
 		return
 	_bind_scene()
-	if brain != null:
+	if brain != null and not _placed:
 		global_position = _column_world_position(home_cell)
+		_placed = true
 	_ensure_visual(_base_tint)
 
 
