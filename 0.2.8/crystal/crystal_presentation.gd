@@ -376,7 +376,7 @@ func _rebuild_chunk_layer(coord: Vector2i, deadline_us: int = 0) -> bool:
 					depth,
 					int(fluid.spawn_id_by_cell.get(pos, -1))
 				))
-		if deadline_us > 0 and (i & 15) == 0 and i < n and Time.get_ticks_usec() >= deadline_us:
+		if deadline_us > 0 and (i & 3) == 0 and i < n and Time.get_ticks_usec() >= deadline_us:
 			state["i"] = i
 			_pending_build[coord] = state
 			return false
