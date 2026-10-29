@@ -15,7 +15,7 @@ const ACTIONS: PackedStringArray = [
 	"camera_zoom_in", "camera_zoom_out", "camera_reset", "camera_free_look",
 	"toggle_map", "quick_save", "quick_load",
 	"pause",
-	"dev_chat_toggle", "debug_overlay_toggle", "bug_report",
+	"dev_chat_toggle", "debug_overlay_toggle", "debug_panel_toggle", "bug_report",
 	"texture_blueprint_toggle",
 ]
 
@@ -25,7 +25,7 @@ const GROUPS := [
 	["Items", ["attack", "build_place", "interact", "plant", "inventory_toggle", "hotbar_next", "hotbar_prev", "hotbar_1", "hotbar_2", "hotbar_3", "hotbar_4", "hotbar_5", "hotbar_6", "hotbar_7", "hotbar_8", "hotbar_9", "hotbar_10"]],
 	["Build", ["place_cycle", "place_variant", "rotate_piece", "rotate_piece_back", "brush_shrink", "brush_grow", "texture_blueprint_toggle"]],
 	["Skills", ["skill_1", "skill_2", "skill_3", "skill_tree"]],
-	["System", ["toggle_map", "quick_save", "quick_load", "pause", "dev_chat_toggle", "debug_overlay_toggle", "bug_report"]],
+	["System", ["toggle_map", "quick_save", "quick_load", "pause", "dev_chat_toggle", "debug_overlay_toggle", "debug_panel_toggle", "bug_report"]],
 ]
 
 const NOTES := {
@@ -81,6 +81,7 @@ const LABELS := {
 	"pause": "Pause",
 	"dev_chat_toggle": "Dev chat",
 	"debug_overlay_toggle": "Debug overlay",
+	"debug_panel_toggle": "Full debug view",
 	"bug_report": "Bug report",
 	"texture_blueprint_toggle": "Texture blueprint",
 }

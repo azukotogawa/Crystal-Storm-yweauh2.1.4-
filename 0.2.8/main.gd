@@ -82,6 +82,11 @@ func _ensure_dev_input_actions() -> void:
 		var f11 := InputEventKey.new()
 		f11.physical_keycode = KEY_F11
 		InputMap.action_add_event("bug_report", f11)
+	if not InputMap.has_action("debug_panel_toggle"):
+		InputMap.add_action("debug_panel_toggle")
+		var f7 := InputEventKey.new()
+		f7.physical_keycode = KEY_F7
+		InputMap.action_add_event("debug_panel_toggle", f7)
 
 
 func _apply_catalog_launch() -> void:

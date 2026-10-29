@@ -118,6 +118,7 @@ func _build() -> void:
 	_settings_box.add_child(_settings)
 	_btn(v, "How to play", func(): _TutorialOverlay.open(get_tree(), true))
 	_btn(v, "Controls", func(): _TutorialOverlay.open_controls(get_tree()))
+	_btn(v, "Debug view (F7)", _toggle_debug_view)
 	_btn(v, "Return to World Select", _leave)
 	_btn(v, "Quit", _quit)
 
@@ -154,6 +155,13 @@ func _toggle_settings() -> void:
 func _sync_settings_widgets() -> void:
 	if _settings and _settings.has_method("sync_from_settings"):
 		_settings.sync_from_settings()
+
+
+func _toggle_debug_view() -> void:
+	var coord = get_tree().get_first_node_in_group("dev_tools_coordinator")
+	if coord and coord.has_method("toggle_debug_view"):
+		coord.toggle_debug_view()
+	close()
 
 
 func _leave() -> void:

@@ -17,6 +17,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not _GameplayInput.world_loading and not _GameplayInput.dev_chat_open:
 			_toggle_debug_overlay()
 		get_viewport().set_input_as_handled()
+	elif InputMap.has_action("debug_panel_toggle") and event.is_action_pressed("debug_panel_toggle"):
+		if not _GameplayInput.world_loading and not _GameplayInput.dev_chat_open:
+			print("[DevTools] debug view %s" % ("ON" if toggle_debug_view() else "OFF"))
+		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("bug_report"):
 		if not _GameplayInput.world_loading and not _GameplayInput.dev_chat_open:
 			_write_bug_report()
@@ -43,6 +47,27 @@ func is_debug_overlay_visible() -> bool:
 	if panel and panel.has_method("is_overlay_visible"):
 		return bool(panel.is_overlay_visible())
 	return false
+
+
+func toggle_debug_view() -> bool:
+	return set_debug_view(not is_debug_view_visible())
+
+
+func is_debug_view_visible() -> bool:
+	var panel := _debug_panel()
+	return panel != null and panel.has_method("is_overlay_visible") and bool(panel.is_overlay_visible())
+
+
+func set_debug_view(on: bool) -> bool:
+	var panel := _debug_panel()
+	if panel and panel.has_method("set_overlay_visible"):
+		panel.set_overlay_visible(on)
+		if on and panel.has_method("refresh_now"):
+			panel.refresh_now()
+	var insp := get_tree().get_first_node_in_group("live_world_inspector") if get_tree() else null
+	if insp != null and "panel_open" in insp:
+		insp.panel_open = on
+	return is_debug_view_visible()
 
 
 func _compact_overlay() -> Node:
