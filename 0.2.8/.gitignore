@@ -29,3 +29,4 @@ conversation with supergrok
 Thumbs.db
 *.swp
 *~
+/override.cfg
