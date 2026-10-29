@@ -81,7 +81,7 @@ static func open_replace(tree: SceneTree, relic_mgr, relic_id: StringName, title
 func _ready() -> void:
 	_RelicRegistry.ensure_builtins()
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	z_index = 40
 	_ThemeBuilder.apply(self)
 	Engine.time_scale = SLOW_SCALE
@@ -111,7 +111,7 @@ func _exit_tree() -> void:
 func _build() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0.02, 0.0, 0.05, 0.62)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
