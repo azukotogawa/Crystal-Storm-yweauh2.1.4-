@@ -23,6 +23,8 @@ func _make(legacy: bool):
 	sim.mesh_depth_epsilon = med.crystal_mesh_depth_epsilon
 	sim.flow_budget_us = 0
 	sim.index_full_scan_max = 1 << 30 if legacy else 64
+	if not legacy:
+		sim.clear()
 	for z in 70:
 		for x in 70:
 			if (x * 7 + z * 13) % 29 == 0:

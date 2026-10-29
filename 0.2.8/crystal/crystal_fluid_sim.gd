@@ -68,6 +68,7 @@ var _frontier_sorted: bool = true
 var _interior: Array = []
 var _interior_seq: PackedInt64Array = PackedInt64Array()
 var _volume: float = 0.0
+var _index_valid: bool = true
 var index_full_scan_max: int = 2048
 const _INTERIOR_WALK_MAX: int = 4096
 
@@ -89,6 +90,7 @@ func clear() -> void:
 	_interior.clear()
 	_interior_seq = PackedInt64Array()
 	_volume = 0.0
+	_index_valid = false
 	last_new_cells = 0
 	last_changed_cells = 0
 	last_mesh_dirty_cells = 0
@@ -875,7 +877,28 @@ func ordered_keys() -> Array:
 
 
 func cell_seq(pos: Vector2i) -> int:
+	_ensure_index()
 	return int(_seq.get(pos, -1))
+
+
+func _ensure_index() -> void:
+	if _index_valid:
+		return
+	_seq.clear()
+	_frontier.clear()
+	_interior.clear()
+	_interior_seq = PackedInt64Array()
+	_next_seq = 0
+	for pos_variant in depth.keys():
+		_seq[pos_variant] = _next_seq
+		if _has_empty_neighbor_raw(pos_variant):
+			_frontier[pos_variant] = true
+		else:
+			_interior.append(pos_variant)
+			_interior_seq.append(_next_seq)
+		_next_seq += 1
+	_frontier_sorted = true
+	_index_valid = true
 
 
 func _write_cell(pos: Vector2i, value: float) -> void:
@@ -885,10 +908,12 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 		return
 	depth[pos] = value
 	_volume += value
-	_seq[pos] = _next_seq
-	_next_seq += 1
 	if _order_valid:
 		_order.append(pos)
+	if not _index_valid:
+		return
+	_seq[pos] = _next_seq
+	_next_seq += 1
 	if _has_empty_neighbor_raw(pos):
 		_frontier[pos] = true
 	else:
@@ -905,13 +930,15 @@ func _erase_cell(pos: Vector2i) -> void:
 		return
 	_volume -= float(depth[pos])
 	depth.erase(pos)
+	_order_valid = false
+	_order = []
+	if not _index_valid:
+		return
 	if _frontier.has(pos):
 		_frontier.erase(pos)
 	else:
 		_interior_remove(pos)
 	_seq.erase(pos)
-	_order_valid = false
-	_order = []
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
 		var n: Vector2i = pos + dir
 		if depth.has(n) and not _frontier.has(n):
@@ -957,6 +984,7 @@ func _sorted_frontier() -> Array:
 
 
 func _select_indexed_flow_cells(cap: int) -> Array:
+	_ensure_index()
 	var subset: Array = []
 	for pos_variant in _sorted_frontier():
 		if subset.size() >= cap:
