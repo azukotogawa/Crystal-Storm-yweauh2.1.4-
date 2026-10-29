@@ -28,7 +28,7 @@ static func ensure_builtins() -> void:
 	warden.mesh_height = 1.65
 	warden.hit_radius = 0.72
 	warden.defense = 0.08
-	warden.visual_id = &"crystal_mite"
+	warden.visual_id = &"origin_warden"
 	_register(warden)
 	var elite := _make(&"spawn_elite", &"spawn_elite", 7.5, 16.0, Color(1.0, 0.42, 0.12), 0.0, 0)
 	elite.display_name = "Shard Tyrant"

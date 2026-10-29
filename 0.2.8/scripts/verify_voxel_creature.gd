@@ -33,8 +33,8 @@ func _run() -> void:
 		_fail("world entity must keep the sprite and voxel-prop fallback")
 	if not _Builder.USE_PART_RIG:
 		_fail("USE_PART_RIG is off, so boar and deer stay on the old visual")
-	if _Builder.uses_rig(&"town_villager") or _Builder.uses_rig(&"origin_warden"):
-		_fail("villager and warden have no authored voxel creature")
+	if _Builder.uses_rig(&"town_villager") or not _Builder.uses_rig(&"origin_warden"):
+		_fail("villager has no authored voxel creature and warden has one")
 	for kind in [&"boar", &"deer", &"rabbit", &"bird", &"town_militia", &"crystal_mite", &"crystal_stag", &"crystal_wisp", &"corrupted_beast", &"farm_bomber", &"thornling", &"shard_guard"]:
 		if not _Builder.uses_rig(kind):
 			_fail("%s must use the part rig" % kind)
@@ -418,7 +418,7 @@ func _check_mite_readability() -> void:
 	var warden_r: float = float(warden_def.hit_radius) * float(_Settings.get_active().voxel_scale)
 	if warden_rig == null or not warden.scale.is_equal_approx(Vector3.ONE):
 		_fail("warden body scale changed")
-	elif not is_equal_approx(warden_rig.scale.x, 1.65):
+	elif not is_equal_approx(warden_rig.scale.x, 1.3) or not bool(warden_rig.get_meta("boss_rig", false)):
 		_fail("warden visual scale %.2f" % warden_rig.scale.x)
 	elif not is_equal_approx(warden.get_combat_radius(), warden_r):
 		_fail("warden combat radius changed")

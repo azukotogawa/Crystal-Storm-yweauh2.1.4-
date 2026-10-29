@@ -44,6 +44,8 @@ static func parts_for(kind: StringName) -> Array:
 		return _thornling_parts()
 	if kind == &"shard_guard":
 		return _guard_parts()
+	if kind == &"origin_warden":
+		return _warden_parts()
 	return []
 
 
@@ -124,6 +126,14 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.08, 0.08, 0.08),
 			Color(0.95, 0.45, 0.15),
 		])
+	if kind == &"origin_warden":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			_crystal_albedo(),
+			Color(0.10, 0.06, 0.12),
+			Color(1.0, 0.22, 0.48),
+			Color(0.42, 0.30, 0.46),
+		])
 	if kind == &"thornling" or kind == &"ambush":
 		return PackedColorArray([
 			Color(0, 0, 0),
@@ -146,6 +156,8 @@ static func build(kind: StringName) -> Node3D:
 	var rig := build_parts(parts_for(kind), palette_for(kind), cube_edge())
 	if rig != null and kind == &"crystal_mite":
 		_fit_mite(rig)
+	if rig != null and kind == &"origin_warden":
+		_attach_boss_anims(rig)
 	return rig
 
 
@@ -598,6 +610,100 @@ static func _guard_parts() -> Array:
 		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit),
 		_part("tail", "tail", "Tail", "Body", "center", tail, emit),
 	]
+
+
+static func _warden_parts() -> Array:
+	var crystal := 1
+	var dark := 2
+	var eye := 3
+	var stone := 4
+	var body: Array = []
+	_fill(body, 2, 5, 3, 10, 11, 8, stone)
+	_fill(body, 3, 6, 2, 9, 10, 3, crystal)
+	_fill(body, 5, 7, 1, 7, 9, 2, eye)
+	_fill(body, 1, 9, 3, 3, 13, 6, crystal)
+	_fill(body, 9, 9, 3, 11, 13, 6, crystal)
+	_fill(body, 0, 11, 4, 1, 15, 5, crystal)
+	_fill(body, 11, 11, 4, 12, 15, 5, crystal)
+	var head: Array = []
+	_fill(head, 4, 11, 2, 8, 14, 6, stone)
+	_fill(head, 4, 12, 1, 8, 13, 2, dark)
+	_fill(head, 4, 12, 1, 5, 13, 2, eye)
+	_fill(head, 7, 12, 1, 8, 13, 2, eye)
+	_fill(head, 5, 14, 3, 7, 17, 5, crystal)
+	_fill(head, 4, 14, 4, 5, 16, 5, crystal)
+	_fill(head, 7, 14, 4, 8, 16, 5, crystal)
+	var leg_l: Array = []
+	_fill(leg_l, 2, 0, 3, 5, 5, 7, stone)
+	_fill(leg_l, 2, 0, 2, 5, 1, 7, dark)
+	_fill(leg_l, 0, 4, 3, 2, 10, 6, stone)
+	_fill(leg_l, 0, 3, 2, 2, 5, 6, crystal)
+	var leg_r: Array = []
+	_fill(leg_r, 7, 0, 3, 10, 5, 7, stone)
+	_fill(leg_r, 7, 0, 2, 10, 1, 7, dark)
+	_fill(leg_r, 10, 4, 3, 12, 10, 6, stone)
+	_fill(leg_r, 10, 3, 2, 12, 5, 6, crystal)
+	var tail: Array = []
+	_fill(tail, 4, 8, 8, 8, 12, 9, crystal)
+	_fill(tail, 5, 10, 9, 7, 16, 10, crystal)
+	_fill(tail, 3, 11, 9, 4, 14, 10, crystal)
+	_fill(tail, 8, 11, 9, 9, 14, 10, crystal)
+	var emit: Array = [crystal, eye]
+	var glow := Color(1.0, 0.28, 0.55)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body, emit, glow),
+		_part("head", "head", "Head", "Body", "bottom", head, emit, glow),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit, glow),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit, glow),
+		_part("tail", "tail", "Tail", "Body", "center", tail, emit, glow),
+	]
+
+
+static func _attach_boss_anims(rig: Node3D) -> void:
+	var player := rig.get_node_or_null("CreatureAnim") as AnimationPlayer
+	if player == null:
+		return
+	var lib := player.get_animation_library(&"")
+	if lib == null:
+		return
+	var idle := _clip()
+	_pos_sin(idle, "Body", Vector3.ZERO, _Pose.IDLE_LIFT * 0.35, 1.0)
+	_pos_sin(idle, "Head", Vector3.ZERO, _Pose.IDLE_LIFT * 0.5, 1.0)
+	_rot_sin(idle, "Tail", Vector3.FORWARD, 0.12, 1.0)
+	var walk := _clip()
+	_leg_gait(walk, "Leg_L", -1.0)
+	_leg_gait(walk, "Leg_R", 1.0)
+	_rot_sin(walk, "Body", Vector3.FORWARD, 0.10, 1.0)
+	_pos_abs_sin(walk, "Body", _Pose.WALK_BOB * 2.0, 1.0)
+	_pos_abs_sin(walk, "Head", _Pose.WALK_BOB * 1.5, 1.0)
+	var slam := _clip()
+	var body_rot := _track(slam, Animation.TYPE_ROTATION_3D, "Body")
+	var body_pos := _track(slam, Animation.TYPE_POSITION_3D, "Body")
+	var head_rot := _track(slam, Animation.TYPE_ROTATION_3D, "Head")
+	for i in _ANIM_STEPS:
+		var t := _ANIM_LEN * float(i) / float(_ANIM_STEPS)
+		var w := sin(t)
+		var rear := maxf(w, 0.0)
+		var drop := maxf(-w, 0.0)
+		slam.rotation_track_insert_key(body_rot, t, Quaternion(Vector3.RIGHT, 0.45 * rear - 0.55 * drop))
+		slam.position_track_insert_key(body_pos, t, Vector3(0.0, 0.25 * rear - 0.2 * drop, -0.35 * drop))
+		slam.rotation_track_insert_key(head_rot, t, Quaternion(Vector3.RIGHT, 0.3 * rear - 0.4 * drop))
+	_rot_hold(slam, "Leg_L", -_Pose.ATTACK_LEG * 0.5)
+	_rot_hold(slam, "Leg_R", _Pose.ATTACK_LEG * 0.5)
+	for clip_name in [&"idle", &"walk", &"attack"]:
+		if lib.has_animation(clip_name):
+			lib.remove_animation(clip_name)
+	lib.add_animation(&"idle", idle)
+	lib.add_animation(&"walk", walk)
+	lib.add_animation(&"attack", slam)
+	rig.set_meta("boss_rig", true)
+
+
+static func _rot_sin(anim: Animation, bone_name: String, axis: Vector3, amp: float, freq: float) -> void:
+	var track := _track(anim, Animation.TYPE_ROTATION_3D, bone_name)
+	for i in _ANIM_STEPS:
+		var t := _ANIM_LEN * float(i) / float(_ANIM_STEPS)
+		anim.rotation_track_insert_key(track, t, Quaternion(axis, sin(t * freq) * amp))
 
 
 static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = [], glow_color: Color = Color(-1, -1, -1)) -> Dictionary:
