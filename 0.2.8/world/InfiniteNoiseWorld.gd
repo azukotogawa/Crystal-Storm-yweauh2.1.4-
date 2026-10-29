@@ -779,7 +779,7 @@ func get_tile_type(wx: float, wz: float) -> int:
 		return _tile_cache[k]
 
 	var t0 := Time.get_ticks_usec() if _query_measure_enabled else 0
-	var id: int = _compute_surface_tile(wx, wz, true)
+	var id: int = _compute_surface_tile(float(k.x), float(k.y), true)
 	_tile_cache[k] = id
 	if _tile_cache.size() > 12288:
 		_tile_cache.clear()
