@@ -63,6 +63,9 @@ var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
 const KNOCK_SPEED := 9.0
 const KNOCK_STAGGER := 0.45
+const HIT_STUN_MIN_SEC := 0.25
+const HIT_STUN_MAX_SEC := 0.4
+const HIT_STUN_FULL_KNOCK_VOXELS := 3.0
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
 var _stagger_left := 0.0
@@ -767,7 +770,10 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 		return
 	_knock_dir = flat.normalized()
 	_knock_left = distance
-	_stagger_left = KNOCK_STAGGER
+	var full: float = HIT_STUN_FULL_KNOCK_VOXELS * WorldSettings.get_active().voxel_scale
+	_stagger_left = lerpf(HIT_STUN_MIN_SEC, HIT_STUN_MAX_SEC, clampf(distance / maxf(full, 0.001), 0.0, 1.0))
+	if _contact_left > 0.0:
+		_drop_contact_wind()
 
 
 func _tick_hurt_lock(delta: float) -> void:
