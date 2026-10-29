@@ -68,7 +68,7 @@ var _frontier_sorted: bool = true
 var _interior: Array = []
 var _interior_seq: PackedInt64Array = PackedInt64Array()
 var _volume: float = 0.0
-const _INDEX_FULL_SCAN_MAX: int = 2048
+var index_full_scan_max: int = 2048
 const _INTERIOR_WALK_MAX: int = 4096
 
 
@@ -443,7 +443,7 @@ func _flow_job_begin(delta: float) -> Array:
 	var cells: Array = []
 	var active_count: int = 0
 	var cap: int = _effective_flow_cap()
-	if cap <= 0 or depth.size() <= _INDEX_FULL_SCAN_MAX:
+	if cap <= 0 or depth.size() <= index_full_scan_max:
 		var active_cells: Array = []
 		for pos_variant in depth.keys():
 			var pos: Vector2i = pos_variant
