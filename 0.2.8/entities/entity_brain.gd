@@ -4,6 +4,7 @@ extends RefCounted
 const _EntityBrainConfig = preload("res://config/entity_brain_config.gd")
 const _CrystalFluidSim = preload("res://crystal/crystal_fluid_sim.gd")
 const _EntityNavigation = preload("res://entities/entity_navigation.gd")
+const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 
 enum State {
 	IDLE,
@@ -28,6 +29,7 @@ var attack_timer: float = 0.0
 var entity_id: StringName = &""
 var world_seed: int = 1
 var _wander_n: int = 0
+var _returning_home := false
 const STALKER_CRYSTAL_COLUMNS := 6.0
 static var _crystal_near_bucket: int = -999999
 static var _crystal_near_cache: Dictionary = {}
@@ -221,30 +223,47 @@ func _tick_crystal_stalker(
 	player_pos: Vector2i,
 	crystal_sim: _CrystalFluidSim
 ) -> void:
-	var on_crystal := _crystal_near(self_pos, crystal_sim, STALKER_CRYSTAL_COLUMNS)
-	if on_crystal and _near(player_pos, self_pos, config.chase_distance):
-		state = State.CHASE
-		target_cell = player_pos
-	elif state == State.CHASE:
-		if not on_crystal or not _near(player_pos, self_pos, config.chase_distance * 1.1):
-			state = State.PATROL
-			target_cell = _patrol_point(home_pos, config.patrol_radius)
-			state_timer = 0.0
+	var feel = _GameFeelConfig.active()
+	var aggro: float = minf(config.chase_distance, feel.mite_aggro_range)
+	var leash: float = feel.mite_chase_radius
+	var player_in_leash := _near(player_pos, home_pos, leash)
+	if state == State.CHASE:
+		if not player_in_leash or not _near(player_pos, self_pos, aggro * 1.1):
+			_start_return_home()
 		else:
 			target_cell = player_pos
-	else:
-		match state:
-			State.IDLE:
-				if state_timer > 1.5:
-					state = State.PATROL
-					target_cell = _patrol_point(home_pos, config.patrol_radius)
-					state_timer = 0.0
-			State.PATROL:
-				if self_pos == target_cell or state_timer > 3.5:
+		return
+	var home_live := _crystal_near(home_pos, crystal_sim, STALKER_CRYSTAL_COLUMNS) or _crystal_near(self_pos, crystal_sim, STALKER_CRYSTAL_COLUMNS)
+	if home_live and player_in_leash and _near(player_pos, self_pos, aggro):
+		_returning_home = false
+		state = State.CHASE
+		target_cell = player_pos
+		return
+	match state:
+		State.IDLE:
+			if state_timer > 1.5:
+				state = State.PATROL
+				target_cell = _patrol_point(home_pos, minf(config.patrol_radius, 3.0))
+				state_timer = 0.0
+		State.PATROL:
+			if _returning_home:
+				target_cell = home_pos
+				if _near(self_pos, home_pos, 1.5) or state_timer > 20.0:
+					_returning_home = false
 					state = State.IDLE
 					state_timer = 0.0
-			_:
+			elif self_pos == target_cell or state_timer > 3.5:
 				state = State.IDLE
+				state_timer = 0.0
+		_:
+			state = State.IDLE
+
+
+func _start_return_home() -> void:
+	state = State.PATROL
+	_returning_home = true
+	target_cell = home_pos
+	state_timer = 0.0
 
 
 func _pick_wander_target() -> void:

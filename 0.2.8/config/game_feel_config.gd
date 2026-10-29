@@ -82,6 +82,8 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0.5, 4.0, 0.1) var hit_effect_scale: float = 2.0
 @export_range(0.0, 5.0, 0.1) var cursor_face_sec: float = 1.5
 @export_range(4.0, 40.0, 1.0) var cursor_face_range: float = 14.0
+@export_range(4.0, 48.0, 1.0) var mite_chase_radius: float = 24.0
+@export_range(2.0, 32.0, 1.0) var mite_aggro_range: float = 18.0
 
 static var pace_override: float = -1.0
 static var _pace_cache: float = -1.0
