@@ -39,7 +39,7 @@ const RESOURCE_PATH := "res://config/default_hud_layout.tres"
 @export var chat_height := 280.0
 @export var chip_size := Vector2(268, 20)
 @export var hotbar_name_h := 24.0
-@export var phase_size := Vector2(420, 28)
+@export var phase_size := Vector2(420, 72)
 @export var status_height := 170.0
 
 
@@ -113,10 +113,10 @@ func regions(view: Vector2, minimap_override: float = -1.0) -> Dictionary:
 	)
 	out["vitals"] = vit
 	out["skill_bar"] = Rect2(
-		Vector2(vit.end.x + region_gap, vit.end.y - skill_size.y),
+		Vector2(minf(vit.end.x + region_gap, view.x - m - skill_size.x), vit.end.y - skill_size.y),
 		skill_size
 	)
-	var phase_w := minf(phase_size.x, view.x - m - (view.x + toast_size.x) * 0.5 - region_gap * 6.0)
+	var phase_w := clampf(view.x - m - (view.x + toast_size.x) * 0.5 - region_gap * 6.0, minf(260.0, phase_size.x), phase_size.x)
 	out["phase"] = Rect2(Vector2(view.x - m - phase_w, m + mini + region_gap + leave_size.y + region_gap), Vector2(phase_w, phase_size.y))
 	var left_w := maxf(hot.position.x - region_gap - m, 120.0)
 	var status := Rect2(Vector2(m, view.y - m - status_height), Vector2(left_w, status_height))
@@ -124,7 +124,11 @@ func regions(view: Vector2, minimap_override: float = -1.0) -> Dictionary:
 	var chat_top := maxf(status.position.y - region_gap - chat_height, m + objective_size.y + region_gap)
 	out["chat"] = Rect2(Vector2(m, chat_top), Vector2(left_w, status.position.y - region_gap - chat_top))
 	var chip_x := hot.end.x + region_gap
-	out["chip"] = Rect2(Vector2(chip_x, view.y - m - chip_size.y), Vector2(maxf(view.x - m - chip_x, 60.0), chip_size.y))
+	if view.x - m - chip_x >= chip_size.x:
+		out["chip"] = Rect2(Vector2(chip_x, view.y - m - chip_size.y), Vector2(view.x - m - chip_x, chip_size.y))
+	else:
+		var sk: Rect2 = out["skill_bar"]
+		out["chip"] = Rect2(Vector2(view.x - m - chip_size.x, sk.position.y - region_gap - chip_size.y), chip_size)
 	return out
 
 

@@ -85,9 +85,15 @@ func _run() -> void:
 					x1 = maxf(x1, r.get_center().x + tw * 0.5)
 				else:
 					x1 = maxf(x1, r.position.x + tw)
-				if (ctl as Label).clip_text or (ctl as Label).autowrap_mode != TextServer.AUTOWRAP_OFF:
+				if (ctl as Label).clip_text or (ctl as Label).autowrap_mode != TextServer.AUTOWRAP_OFF or (ctl as Label).text_overrun_behavior != TextServer.OVERRUN_NO_TRIMMING:
 					x0 = r.position.x
 					x1 = r.end.x
+				if (ctl as Label).autowrap_mode != TextServer.AUTOWRAP_OFF and float((ctl as Label).get_line_count()) * float((ctl as Label).get_line_height()) > r.size.y + 2.0:
+					bad += 1
+					print("CLIP %s %s wrapped lines=%d rect_h=%.0f" % [s, ctl.get_path(), (ctl as Label).get_line_count(), r.size.y])
+				if (ctl as Label).autowrap_mode == TextServer.AUTOWRAP_OFF and tw > r.size.x + 1.0 and ((ctl as Label).clip_text or (ctl as Label).text_overrun_behavior != TextServer.OVERRUN_NO_TRIMMING):
+					bad += 1
+					print("CLIP %s %s text_w=%.0f rect_w=%.0f text=%s" % [s, ctl.get_path(), tw, r.size.x, t.left(60).replace("\n", " | ")])
 			var out := x0 < -1.0 or x1 > view.x + 1.0 or r.position.y < -1.0 or r.end.y > view.y + 1.0
 			if out:
 				bad += 1

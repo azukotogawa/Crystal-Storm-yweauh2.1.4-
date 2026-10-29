@@ -125,7 +125,8 @@ func _ready() -> void:
 	_update_map_temp_label()
 	if _phase_label:
 		_phase_label_base_mod = _phase_label.modulate
-		_phase_label.clip_text = true
+		_phase_label.clip_text = false
+		_phase_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	call_deferred("_ensure_leave_world_button")
 	_ensure_bake_chip()
 	_ensure_objective_hud()
@@ -635,7 +636,9 @@ func _update_map_temp_label() -> void:
 			if _current_biome != "":
 				biome_label = " | Biome: %s" % _current_biome.capitalize()
 	var goal := _spawn_goal_line()
-	var suffix := "%s%s" % [temp_label, biome_label]
+	var suffix := ""
+	if temp_label != "" or biome_label != "":
+		suffix = "\n" + ("%s%s" % [temp_label, biome_label]).trim_prefix(" | ")
 	if _game_manager and _game_manager.run_state == _GameManager.RunState.WON:
 		_phase_label.text = _victory_phase_text(suffix)
 	elif _game_manager and _game_manager.run_state == _GameManager.RunState.LOST:
@@ -837,6 +840,14 @@ func _update_game_hud() -> void:
 		("%s  |  %s%s  |  %s%s%s%s%s  |  %s"
 		% [phase_tag, crystal_bit, tier_line, spawns_line, relic_line, biome_line, town_line, ruins_line, tool_line]).replace("  |  ", "\n")
 	)
+	_fit_game_hud()
+
+
+func _fit_game_hud() -> void:
+	var need := float(_game_hud.get_line_count()) * float(_game_hud.get_line_height()) + 4.0
+	var room := _game_hud.offset_bottom - 8.0
+	if need > _game_hud.size.y:
+		_game_hud.offset_top = _game_hud.offset_bottom - minf(need, room)
 
 
 func _crystal_hud_bit(prog: Dictionary) -> String:
