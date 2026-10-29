@@ -58,6 +58,8 @@ var power: float = 0.0
 var strength_tier: int = 0
 var total_volume: float = 0.0
 var covered_cells: int = 0
+var _active_memo: Dictionary = {}
+var _active_memo_on: bool = false
 
 var _sim: _CrystalFluidSim
 var _terrain_query: _CrystalTerrainQuery
@@ -526,6 +528,7 @@ func _init_sim() -> void:
 	_simulation = _CrystalSimulation.new(sim_config, _terrain_query)
 	_sim = _simulation.fluid
 	_sim.is_cell_active = Callable(self, "_is_cell_sim_active")
+	_sim.active_scope = Callable(self, "_set_active_memo")
 	_reapply_stored_flow_caps()
 	_presentation = _CrystalPresentation.new()
 	_presentation.fluid = _sim
@@ -1786,12 +1789,30 @@ func _bind_chunk_stream() -> void:
 		_presentation.mark_all_indexed_dirty()
 
 
+func _set_active_memo(enabled: bool) -> void:
+	_active_memo_on = enabled
+	_active_memo.clear()
+
+
 func _is_cell_sim_active(pos: Vector2i) -> bool:
+	if _sim_loaded_chunks_only and chunk_manager != null:
+		var loaded: bool
+		if _active_memo_on:
+			var ck: Vector2i = _chunk_coord_for(pos)
+			var memo = _active_memo.get(ck)
+			if memo == null:
+				memo = _chunk_loaded_raw(pos)
+				_active_memo[ck] = memo
+			loaded = memo
+		else:
+			loaded = _chunk_loaded_raw(pos)
+		if not loaded:
+			return false
 	# Crystal never expands past the intentional playable map edge.
-	if not _WorldBorder.allows_crystal(float(pos.x), float(pos.y)):
-		return false
-	if not _sim_loaded_chunks_only or chunk_manager == null:
-		return true
+	return _WorldBorder.allows_crystal(float(pos.x), float(pos.y))
+
+
+func _chunk_loaded_raw(pos: Vector2i) -> bool:
 	if chunk_manager.has_method("is_world_cell_loaded"):
 		return chunk_manager.is_world_cell_loaded(pos.x, pos.y)
 	return chunk_manager.chunks.has(_chunk_coord_for(pos))
@@ -2140,6 +2161,29 @@ func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:
 		if depth >= min_depth:
 			overlay[pos] = depth
 	return overlay
+
+
+func depth_chunks_in_rect(bounds: Rect2i) -> Array:
+	if _sim == null:
+		return []
+	return _sim.chunks_in_rect(bounds)
+
+
+func collect_depth_chunk(chunk: Vector2i, bounds: Rect2i, out: Dictionary) -> void:
+	if _sim == null:
+		return
+	var min_depth: float = sim_config.min_depth if sim_config else 0.04
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = bounds.position.x + bounds.size.x
+	var y1: int = bounds.position.y + bounds.size.y
+	for pos_variant in _sim.chunk_cells(chunk):
+		var pos: Vector2i = pos_variant
+		if pos.x < x0 or pos.y < y0 or pos.x >= x1 or pos.y >= y1:
+			continue
+		var depth: float = float(_sim.depth[pos])
+		if depth >= min_depth:
+			out[pos] = depth
 
 
 func has_crystal_at(wx: int, wz: int) -> bool:

@@ -35,6 +35,7 @@ var last_flow_selected_cells: int = 0
 var _interior_flow_offset: int = 0
 var _frontier_new_offset: int = 0
 var is_cell_active: Callable = Callable()
+var active_scope: Callable = Callable()
 var flow_budget_us: int = 0
 var last_flow_complete: bool = true
 var _flow_job: Dictionary = {}
@@ -1020,12 +1021,37 @@ func _chunk_cells_remove(pos: Vector2i) -> void:
 			_chunk_cells.erase(c)
 
 
-func cells_in_rect(bounds: Rect2i) -> Array:
+func _ensure_chunk_cells() -> void:
 	if _chunk_cells_total != depth.size():
 		_chunk_cells.clear()
 		_chunk_cells_total = 0
 		for pos_variant in depth.keys():
 			_chunk_cells_add(pos_variant)
+
+
+func chunks_in_rect(bounds: Rect2i) -> Array:
+	_ensure_chunk_cells()
+	var out: Array = []
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = x0 + bounds.size.x
+	var y1: int = y0 + bounds.size.y
+	if x1 <= x0 or y1 <= y0:
+		return out
+	for cy in range(floori(float(y0) / float(_CHUNK)), floori(float(y1 - 1) / float(_CHUNK)) + 1):
+		for cx in range(floori(float(x0) / float(_CHUNK)), floori(float(x1 - 1) / float(_CHUNK)) + 1):
+			var c := Vector2i(cx, cy)
+			if _chunk_cells.has(c):
+				out.append(c)
+	return out
+
+
+func chunk_cells(chunk: Vector2i) -> Dictionary:
+	return _chunk_cells.get(chunk, {})
+
+
+func cells_in_rect(bounds: Rect2i) -> Array:
+	_ensure_chunk_cells()
 	var out: Array = []
 	var x0: int = bounds.position.x
 	var y0: int = bounds.position.y
@@ -1054,6 +1080,15 @@ func cells_in_rect(bounds: Rect2i) -> Array:
 
 func _select_indexed_flow_cells(cap: int) -> Array:
 	_ensure_index()
+	if active_scope.is_valid():
+		active_scope.call(true)
+	var subset: Array = _select_indexed_flow_cells_scoped(cap)
+	if active_scope.is_valid():
+		active_scope.call(false)
+	return subset
+
+
+func _select_indexed_flow_cells_scoped(cap: int) -> Array:
 	var subset: Array = []
 	for pos_variant in _sorted_frontier():
 		if subset.size() >= cap:
