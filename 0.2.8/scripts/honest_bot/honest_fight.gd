@@ -41,6 +41,7 @@ var _approach_limit := -1.0
 var _alive: Dictionary = {}
 var bow_phase := "off"
 var trace_branch := ""
+var _spawn_pull := 0.0
 var trace_strike := ""
 var trace_heal := ""
 var trace_foe := ""
@@ -100,6 +101,7 @@ func release() -> void:
 
 
 func reset() -> void:
+	_spawn_pull = 0.0
 	release()
 	killed = {}
 	seen = {}
@@ -321,6 +323,8 @@ func _hunt(dt: float, tree: SceneTree, player: Node, origin: Vector2) -> String:
 				trace_hunt = "h11__step_clear"
 				return ""
 			var ring := _anchor(tree, pos, origin)
+			if close.is_empty():
+				ring = _spawn_ring(tree, pos, ring, origin)
 			var gap := pos.distance_to(origin) - ring.distance_to(origin)
 			if absf(gap) > 1.2:
 				bot.chapter = "combat_crystal_mite"
@@ -1001,6 +1005,27 @@ func _mite_hit_ready(tree: SceneTree, pos: Vector2, choice: Dictionary) -> bool:
 func _off_rim(tree: SceneTree, pos: Vector2, origin: Vector2) -> bool:
 	var anchor := _anchor(tree, pos, origin)
 	return pos.distance_to(origin) > anchor.distance_to(origin) + 3.0
+
+
+func _spawn_ring(tree: SceneTree, pos: Vector2, ring: Vector2, origin: Vector2) -> Vector2:
+	var sp = tree.get_first_node_in_group("crystal_enemy_spawner") if tree != null else null
+	if sp == null or not sp.has_method("_nearest_crystal_column_distance") or not sp.has_method("_player_column_pos"):
+		return ring
+	var near := float(sp._nearest_crystal_column_distance(sp._player_column_pos()))
+	var reach := float(sp.get("spawn_near_player_max")) - 1.5
+	var room := maxf(ring.distance_to(origin) - _Farm.HEART_STAND, 0.0)
+	if ring.distance_to(origin) < 0.2:
+		return ring
+	var dir := (origin - ring).normalized()
+	if near > reach and pos.distance_to(ring + dir * minf(_spawn_pull, room)) <= 1.2:
+		_spawn_pull = minf(_spawn_pull + near - reach, room)
+	var inward := minf(_spawn_pull, room)
+	if inward <= 0.0:
+		return ring
+	var goal := ring + dir * inward
+	if _Hazard.burning(tree, goal):
+		return ring
+	return goal
 
 
 func _anchor(tree: SceneTree, pos: Vector2, origin: Vector2) -> Vector2:
