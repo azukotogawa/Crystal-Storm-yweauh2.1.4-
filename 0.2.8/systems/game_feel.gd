@@ -72,14 +72,15 @@ func enemy_telegraph(id: String) -> float:
 	return float(row["telegraph_sec"])
 
 
-func play_action(id: String, flash_target: Node = null) -> void:
+func play_action(id: String, flash_target: Node = null, with_shake: bool = true) -> void:
 	if config == null:
 		return
 	var row: Dictionary = config.action(id)
 	if row.is_empty():
 		return
 	play_hit_stop(float(row["hit_stop_sec"]))
-	play_shake(float(row["shake"]))
+	if with_shake:
+		play_shake(float(row["shake"]))
 	if flash_target != null:
 		_Juice.set_flash(flash_target, float(row["flash"]))
 	play_screen_flash(float(row["flash"]))

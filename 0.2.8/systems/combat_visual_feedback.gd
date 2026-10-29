@@ -572,10 +572,10 @@ func _on_crystal_mass_hit(world_pos: Vector3, amount: float, broken: bool) -> vo
 	if heavy:
 		_pool_burst(_VfxPool.Kind.SHATTER, world_hit, Color(0.9, 0.45, 1.0), 1.15 if broken else 0.85)
 		_sfx("crystal_shatter" if broken else "crystal_crackle", world_hit)
-		if broken:
-			_Juice.request_shake(0.22)
+		_Juice.request_shake(0.22 if broken else 0.12)
 	else:
 		_sfx("crystal_crackle", world_hit)
+		_Juice.request_shake(0.08)
 	if not enabled:
 		return
 	var tint := Color(0.78, 0.35, 1.0)

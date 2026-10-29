@@ -175,7 +175,7 @@ func _impact(host: Node) -> void:
 		return
 	var body := _body(host)
 	var target = body.get("player_mesh") if body != null else null
-	feel.play_action(action_id, target)
+	feel.play_action(action_id, target, false)
 
 
 func _body(host: Node) -> Node3D:
