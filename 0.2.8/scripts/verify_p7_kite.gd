@@ -62,6 +62,7 @@ func _run() -> void:
 	var w = C.weapon(p)
 	var vs := C.vs()
 	var pspeed := float(p.move_speed) * vs
+	var start_pos: Vector3 = p.global_position
 	for id in ["wooden_sword", "spear", "crystal_hammer"]:
 		var slot := _slot(w, id)
 		if slot < 0:
@@ -120,25 +121,41 @@ func _run() -> void:
 		print("P7_ATKSLOW tag=%s id=%s idle_speed=%.2f attack_speed=%.2f mult=%.2f" % [tag, id, _flat(a1, a0) * 2.0 / vs, _flat(a2, a1) * 2.0 / vs, _flat(a2, a1) / maxf(_flat(a1, a0), 0.001)])
 	var slot2 := _slot(w, "wooden_sword")
 	w.set_active_hotbar_index(slot2)
-	var home2: Vector3 = p.global_position
-	var m2 = await C.spawn_mite(self, C.pcol(p) + Vector2i(4, 0), false)
+	_release()
+	p.global_position = start_pos
+	p.velocity = Vector3.ZERO
+	for _i in 30:
+		await physics_frame
+	var m2 = await C.spawn_mite(self, C.pcol(p) + Vector2i(3, 0), false)
 	m2.max_health = 100000.0
 	m2.health = 100000.0
 	var hp_start: float = p.health
 	var hits0: int = m2.hits_taken
 	var reach := 2.4 * vs
 	var dmin := 1.0e9
+	var dmg := 0.0
+	p.health = p.max_health
+	await physics_frame
+	var hp_prev: float = p.health
 	for _i in 1200:
+		dmg += maxf(hp_prev - p.health, 0.0)
+		p.health = p.max_health
+		hp_prev = p.health
+		if _i % 120 == 0:
+			print("DBG kite i=%d d=%.2f tgt=%s ms=%.1f mpos=%s ppos=%s st=%.2f kn=%.2f" % [_i, _flat(m2.global_position, p.global_position) / vs, m2._target, m2.move_speed, m2.global_position, p.global_position, m2._stagger_left, m2._knock_left])
 		var d := _flat(m2.global_position, p.global_position)
 		dmin = minf(dmin, d)
 		if d <= reach and w._cooldown_timer <= 0.0:
 			C.point_at(p, m2.get_combat_center())
 			w._try_attack()
-		elif d < reach * 1.4 and (m2._stagger_left > 0.0 or m2._knock_left > 0.0) == false:
+		elif d < reach * 0.7 and (m2._stagger_left > 0.0 or m2._knock_left > 0.0) == false:
 			var away2 := Vector3(p.global_position.x - m2.global_position.x, 0.0, p.global_position.z - m2.global_position.z).normalized()
 			_press_toward(p, away2)
+		elif d > reach * 0.9:
+			_press_toward(p, Vector3(m2.global_position.x - p.global_position.x, 0.0, m2.global_position.z - p.global_position.z))
 		else:
 			_release()
 		await physics_frame
-	print("P7_KITESCEN tag=%s weapon=wooden_sword secs=20 hits_landed=%d dmg_taken=%.1f min_gap=%.2f" % [tag, m2.hits_taken - hits0, hp_start - p.health, dmin / vs])
+	_release()
+	print("P7_KITESCEN tag=%s weapon=wooden_sword secs=20 hits_landed=%d dmg_taken=%.1f min_gap=%.2f" % [tag, m2.hits_taken - hits0, dmg, dmin / vs])
 	quit(0)
