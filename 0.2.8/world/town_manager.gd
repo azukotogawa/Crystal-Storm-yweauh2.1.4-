@@ -5,6 +5,8 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 const _FeatureRegistry = preload("res://world/feature_registry.gd")
 const _WorldFeatureTypes = preload("res://helpers/world_feature_types.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
+const _WorldState = preload("res://world/world_state.gd")
+const HOUSE_WALL_LAYERS := 4
 
 @export var small_town_count: int = 3
 @export var large_port_count: int = 1
@@ -81,6 +83,8 @@ func _place_towns() -> void:
 		_FeatureRegistry.register_town(pos, radius, town_name)
 		var t_stamp := Time.get_ticks_usec()
 		var stamp_parts: Dictionary = _stamp_town_ground(pos.x, pos.y, radius, entry.kind == "port")
+		var houses: Array = stamp_houses(pos, radius, entry.kind == "port")
+		_FeatureRegistry.get_towns().back()["houses"] = houses
 		stamp_us += Time.get_ticks_usec() - t_stamp
 		road_us += int(stamp_parts.get("path_us", 0))
 		farmland_us += int(stamp_parts.get("farmland_us", 0))
@@ -171,3 +175,50 @@ func _stamp_town_ground(cx: int, cz: int, radius: int, is_port: bool) -> Diction
 				_FeatureRegistry.set_tile_override(wx, wz, VoxelTypes.FARMLAND, true)
 				farmland_us += Time.get_ticks_usec() - t1
 	return {"path_us": path_us, "farmland_us": farmland_us}
+
+func stamp_houses(center: Vector2i, radius: int, is_port: bool) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(center) ^ 0x51a7
+	var n: int = 5 if is_port else 3
+	var houses: Array = []
+	var ws = _WorldState.get_active()
+	for i in n:
+		var ang: float = TAU * float(i) / float(n) + rng.randf_range(-0.3, 0.3)
+		var dist: float = float(radius) * 0.62
+		var hc := center + Vector2i(roundi(cos(ang) * dist), roundi(sin(ang) * dist))
+		var w: int = rng.randi_range(6, 8)
+		var d: int = rng.randi_range(5, 7)
+		var x0: int = hc.x - w / 2
+		var z0: int = hc.y - d / 2
+		var to_c := Vector2(center - hc)
+		var door := Vector2i.ZERO
+		if absf(to_c.x) > absf(to_c.y):
+			door = Vector2i(x0 if to_c.x < 0.0 else x0 + w - 1, z0 + d / 2)
+		else:
+			door = Vector2i(x0 + w / 2, z0 if to_c.y < 0.0 else z0 + d - 1)
+		var px: int = x0 + w / 2
+		var gap := Vector2i(px, z0 + d / 2)
+		var walls: Array[Vector2i] = []
+		for x in range(x0, x0 + w):
+			for z in range(z0, z0 + d):
+				var edge: bool = x == x0 or x == x0 + w - 1 or z == z0 or z == z0 + d - 1
+				var part: bool = x == px and not edge
+				var c := Vector2i(x, z)
+				if (edge or part) and c != door and c != gap:
+					walls.append(c)
+		var ok := true
+		for c in walls:
+			if not _WorldBorder.is_playable(float(c.x), float(c.y)):
+				ok = false
+		if not ok:
+			continue
+		for c in walls:
+			ws.height_delta[c] = HOUSE_WALL_LAYERS
+			ws.build_tile[c] = VoxelTypes.STONE2
+		for x in range(x0 + 1, x0 + w - 1):
+			for z in range(z0 + 1, z0 + d - 1):
+				_FeatureRegistry.set_tile_override(x, z, VoxelTypes.TOWN_PATH, true)
+		houses.append({"origin": Vector2i(x0, z0), "w": w, "d": d, "h": HOUSE_WALL_LAYERS, "door": door, "rooms": 2, "partition_x": px})
+	if not houses.is_empty():
+		ws.bump(_WorldState.DOMAIN_TERRAIN)
+	return houses
