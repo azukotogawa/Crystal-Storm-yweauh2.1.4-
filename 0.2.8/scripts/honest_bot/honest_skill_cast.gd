@@ -28,6 +28,7 @@ var _heal_wait := 0.0
 var _cast_seen := false
 var _gallery := ""
 var _spend := false
+var _equip_tries := 0
 
 
 func begin(segment: String) -> void:
@@ -50,6 +51,7 @@ func begin(segment: String) -> void:
 	_cast_seen = false
 	_gallery = ""
 	_spend = false
+	_equip_tries = 0
 
 
 func tick(step: float, tree: SceneTree, player: Node, hands: RefCounted, bot: RefCounted, origin: Vector2, chapters = null) -> String:
@@ -157,6 +159,14 @@ func _settle(dt: float, tree: SceneTree) -> String:
 	if not _unlocked(tree, skill_id):
 		print("FAIL skill %s did not unlock" % skill_id)
 		return "fail"
+	if _slot_of(tree, skill_id) < 0 and _equip_tries < 2:
+		_equip_tries += 1
+		print("SKILL %s unslotted, pressing again" % skill_id)
+		steps = presses(skill_id)
+		step_i = 0
+		phase = "press"
+		watch = 0.0
+		return ""
 	print("SKILL %s" % skill_id)
 	phase = "pause"
 	watch = 0.0

@@ -936,6 +936,9 @@ func _tick_combat(tree: SceneTree, player: Node, crystal: Node, origin: Vector2i
 	if float(job.get("mite_far", -1.0)) >= 0.0:
 		return "mite hit %.2f columns" % float(job["mite_far"])
 	if not bool(job["struck"]):
+		if _Hazard.burning(tree, pos):
+			_step_toward(bot, player, _Hazard.leave_goal(tree, pos, origin_xz), delta, pos)
+			return ""
 		if _mite_telegraph_columns(tree, pos, job) < 90.0:
 			bot.release()
 			if float(job["warn_hp"]) < 0.0:
