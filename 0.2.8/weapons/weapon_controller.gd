@@ -511,7 +511,26 @@ func _melee_cursor_ok(def: Dictionary) -> bool:
 		return false
 	var point: Vector3 = ray[0] + dir * ((feet.y - ray[0].y) / dir.y)
 	var ws = _WorldSettings.get_active()
-	return _ActionTargeting._column_in_range(player, int(floor(ws.world_to_column(point.x))), int(floor(ws.world_to_column(point.z))), float(def.get("range", 2.0)))
+	_melee_nearest = false
+	if _ActionTargeting._column_in_range(player, int(floor(ws.world_to_column(point.x))), int(floor(ws.world_to_column(point.z))), float(def.get("range", 2.0))):
+		return true
+	if not _near_melee_targets(feet, float(def.get("range", 2.0))).is_empty():
+		_melee_nearest = true
+		return true
+	return false
+
+
+var _melee_nearest := false
+
+
+func _near_melee_targets(origin: Vector3, range_v: float) -> Array[Node]:
+	var range_w := _range_world(range_v)
+	var nodes: Array = _CombatHitResolver._combat_nodes(self, origin, range_w + 2.0)
+	var found := _WeaponStrike.enemies_in_radius(origin, range_w, nodes)
+	found.sort_custom(func(a: Node, b: Node) -> bool:
+		return _WeaponStrike._center(a).distance_squared_to(origin) < _WeaponStrike._center(b).distance_squared_to(origin)
+	)
+	return found
 
 
 func _refuse_use(reason: String) -> void:
@@ -648,6 +667,10 @@ func _cursor_capsule_targets(origin: Vector3, range_v: float, limit: int) -> Arr
 	var found := _WeaponStrike.thrust_targets(origin, dir, reach_w, nodes, limit)
 	if found.is_empty():
 		found = _point_blank_melee(origin, dir)
+	if found.is_empty() and _melee_nearest:
+		var near := _near_melee_targets(origin, range_v)
+		for i in mini(near.size(), maxi(limit, 1)):
+			found.append(near[i])
 	return found
 
 
@@ -812,6 +835,10 @@ func _do_thrust_attack(item_id: String, def: Dictionary) -> void:
 	var targets := _WeaponStrike.thrust_targets(
 		origin, forward, range_w, nodes, int(def.get("pierce", 2))
 	)
+	if targets.is_empty() and _melee_nearest:
+		var near := _near_melee_targets(origin, range_v)
+		for i in mini(near.size(), maxi(int(def.get("pierce", 2)), 1)):
+			targets.append(near[i])
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var connected := false
 	var saw_target := false
