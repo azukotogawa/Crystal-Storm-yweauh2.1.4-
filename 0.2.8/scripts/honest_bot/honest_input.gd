@@ -274,9 +274,17 @@ func _send_key(code: int, pressed: bool) -> void:
 	Input.flush_buffered_events()
 
 
+static func window_point(final: Transform2D, at: Vector2) -> Vector2:
+	return final * at
+
+
 func _point(ev: InputEventMouse, at: Vector2) -> void:
-	ev.set("position", at)
-	ev.set("global_position", at)
+	var win := at
+	var loop := Engine.get_main_loop() as SceneTree
+	if loop != null and loop.root != null:
+		win = window_point(loop.root.get_final_transform(), at)
+	ev.set("position", win)
+	ev.set("global_position", win)
 
 
 func _on_view(vp: Viewport, at: Vector2) -> bool:
