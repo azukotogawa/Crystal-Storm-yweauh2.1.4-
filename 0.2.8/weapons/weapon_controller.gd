@@ -895,7 +895,7 @@ func _lob_speed(def: Dictionary, origin: Vector3, forward: Vector3) -> float:
 	var denom: float = 2.0 * (0.55 * d - dy)
 	if d < 0.01 or denom <= 0.05:
 		return base
-	return clampf(sqrt(g * d * d / denom), base * 0.3, base * 1.4)
+	return clampf(sqrt(g * d * d / denom), base * 0.3, base * 2.0)
 
 
 func _fire_projectile(item_id: String, def: Dictionary, origin: Vector3, forward: Vector3, lob: bool) -> bool:
