@@ -615,7 +615,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var connected := false
 	var saw_target := false
 
-	var targets := _cursor_capsule_targets(origin, range_v, 2)
+	var targets := _cursor_capsule_targets(origin, range_v, 1)
 	for target in targets:
 		saw_target = true
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.0)))
@@ -864,12 +864,15 @@ func _do_hammer_attack(item_id: String, def: Dictionary) -> void:
 	if crystal_manager:
 		crystal_manager.damage_spawn_at_world(cell, _crystal_hit_damage(def), 1.6)
 	var targets := _cursor_capsule_targets(origin, range_v, 1)
+	var splash_center := _surface_point(float(cell.x) + 0.5, float(cell.y) + 0.5, origin.y)
+	var splash_w := _range_world(float(splash) + 0.5)
+	for node in _WeaponStrike.enemies_in_radius(splash_center, splash_w, _CombatHitResolver._combat_nodes(self, splash_center, splash_w + 2.0)):
+		if not targets.has(node):
+			targets.append(node)
 	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
 	var shoved := 0
 	var connected := crystal_hits > 0
 	for target in targets:
-		if shoved >= 1:
-			break
 		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 3.2)))
 		if dealt > 0.0:
 			connected = true
