@@ -97,6 +97,7 @@ func _ready() -> void:
 	world = get_tree().get_first_node_in_group("world")
 	_combat_def = _resolve_combat_def()
 	process_priority = 10
+	add_to_group("weapon_controller")
 	_bind_terrain_editor()
 	call_deferred("_bind_presentation")
 
@@ -141,8 +142,9 @@ func _process(delta: float) -> void:
 	# LMB breaks blocks only for the pick and other dig tools.
 	# Combat weapons (sword/bow/spear/hammer/sling/bomb): LMB is attack only — never dig or remove.
 	# Stone, wood, herbs, and other non-dig items do not break blocks.
-	var dig_held := _is_active_dig_tool() and Input.is_action_pressed("attack", true)
-	if Input.is_action_just_pressed("attack", true) and _cooldown_timer <= 0.0:
+	var skip_attack := _torch_blocks_attack()
+	var dig_held := not skip_attack and _is_active_dig_tool() and Input.is_action_pressed("attack", true)
+	if not skip_attack and Input.is_action_just_pressed("attack", true) and _cooldown_timer <= 0.0:
 		if not _is_active_combat_weapon():
 			if _is_active_dig_tool():
 				if _try_remove_at_cursor():
@@ -150,7 +152,9 @@ func _process(delta: float) -> void:
 					if profiler and profiler.has_method("end"):
 						profiler.end("weapon_controller")
 					return
-	if dig_held:
+	if skip_attack:
+		_dig_hold_sec = 0.0
+	elif dig_held:
 		var dig_edge := Input.is_action_just_pressed("attack", true)
 		if dig_edge:
 			_dig_hold_sec = 0.0
@@ -170,8 +174,9 @@ func _process(delta: float) -> void:
 
 	var build_held := Input.is_action_pressed("build_place") or Input.is_action_pressed("interact")
 	var build_edge := Input.is_action_just_pressed("build_place") or Input.is_action_just_pressed("interact")
-	# A right-click ability runs instead of placement and never places a block.
-	if build_held and _held_has_right_click_ability():
+	if _torch_blocks_build():
+		_build_hold_sec = 0.0
+	elif build_held and _held_has_right_click_ability():
 		if build_edge and _cooldown_timer <= 0.0:
 			_try_right_click_ability()
 		_build_hold_sec = 0.0
@@ -204,6 +209,26 @@ func _process(delta: float) -> void:
 	_refresh_structure_ghost()
 	if profiler and profiler.has_method("end"):
 		profiler.end("weapon_controller")
+
+
+func _torch_field() -> Node:
+	if not is_inside_tree():
+		return null
+	return get_tree().get_first_node_in_group("torch_field")
+
+
+func _torch_blocks_attack() -> bool:
+	var field := _torch_field()
+	return field != null and field.has_method("blocks_attack") and bool(field.blocks_attack())
+
+
+func _torch_blocks_build() -> bool:
+	var field := _torch_field()
+	if field == null:
+		return false
+	var place := field.has_method("blocks_place") and bool(field.blocks_place())
+	var use := field.has_method("blocks_interact") and bool(field.blocks_interact())
+	return place or use
 
 
 func _active_item_id() -> String:

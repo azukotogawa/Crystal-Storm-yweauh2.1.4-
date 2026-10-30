@@ -273,6 +273,18 @@ const ITEMS: Dictionary = {
 		"impact_ratio": 0.0,
 		"description": "Crafted stairs, three steps rising one layer at a time. Place them from the build menu.",
 	},
+	"torch": {
+		"name": "Torch",
+		"category": Category.MISC,
+		"stackable": true,
+		"max_stack": 16,
+		"visual_id": "torch",
+		"alt_use": "torch",
+		"anim_kind": 3,
+		"anim_duration": 0.2,
+		"impact_ratio": 0.5,
+		"description": "Right click places it. R lights or puts it out. Left click picks it up. It lights a few columns and does not break blocks.",
+	},
 	"small_tower": {
 		"name": "Small Tower",
 		"category": Category.MISC,

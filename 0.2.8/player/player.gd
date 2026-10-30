@@ -915,6 +915,7 @@ func _give_starting_loadout() -> void:
 	inventory.set_slot(3, "wood", 16)
 	inventory.set_slot(4, "stone", 16)
 	inventory.set_slot(5, "herb", 4)
+	inventory.set_slot(7, "torch", 4)
 	inventory.set_slot(8, "spear", 1)
 	inventory.set_slot(9, "crystal_hammer", 1)
 	inventory.set_slot(10, "sling", 1)

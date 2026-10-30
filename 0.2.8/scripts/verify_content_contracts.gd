@@ -124,7 +124,7 @@ func _test_break_and_place_rules() -> void:
 		_fail("stone_pick must break blocks")
 	var no_break: PackedStringArray = [
 		"wooden_sword", "crystal_hammer", "shortbow", "spear", "sling",
-		"stone", "wood", "herb", "crystal_bomb", "leather_armor", "crystal_shard",
+		"stone", "wood", "herb", "crystal_bomb", "leather_armor", "crystal_shard", "torch",
 	]
 	for item_id in no_break:
 		if _ItemTypes.breaks_blocks(item_id):
