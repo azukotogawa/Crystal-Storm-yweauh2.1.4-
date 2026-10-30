@@ -8,7 +8,7 @@ const PLAYABLE := 1024 * 2 * 1024 * 2
 
 
 class CrystalField:
-	extends Node
+	extends CrystalManager
 
 	const _PLAYABLE := 1024 * 2 * 1024 * 2
 	const _CHUNK := 16
@@ -104,9 +104,7 @@ func _run() -> void:
 		quit(1)
 		return
 	var crystal := CrystalField.new()
-	crystal.add_to_group("crystal_manager")
 	root.add_child(world)
-	root.add_child(crystal)
 	var map = _MapScript.new()
 	root.add_child(map)
 	await process_frame
