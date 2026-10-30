@@ -2229,6 +2229,12 @@ func get_spawn_progress() -> Dictionary:
 	return _spawn_ctrl.get_progress()
 
 
+func dev_set_heart_percent(pct: float) -> float:
+	if _spawn_ctrl == null:
+		return -1.0
+	return _spawn_ctrl.set_origin_health_percent(pct)
+
+
 func harness_setup_spawns(spawns: Array) -> void:
 	_spawn_points.clear()
 	for s in spawns:
