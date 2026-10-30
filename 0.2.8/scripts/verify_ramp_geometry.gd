@@ -154,6 +154,33 @@ func _run() -> void:
 			_fail("cardinal slope winding must face +Y, geom.y=%.3f" % ge.y)
 		else:
 			print("OK cardinal slope winding +Y (geom.y=%.3f)" % ge.y)
+	var cnormals: PackedVector3Array = card_built.get("normals", PackedVector3Array())
+	var cuvs: PackedVector2Array = card_built.get("uvs", PackedVector2Array())
+	var seam_bad := 0
+	var uv_bad := 0
+	var ny_high := 0.0
+	var ny_mid := 1.0
+	for i in cv.size():
+		if cv[i].y > cymax - 0.04:
+			ny_high = maxf(ny_high, cnormals[i].y)
+		elif absf(cv[i].y - (cymin + cymax) * 0.5) < layer * 0.15:
+			ny_mid = minf(ny_mid, cnormals[i].y)
+		var expect_uv := Vector2(fposmod(cv[i].x / s, 1.0), fposmod(cv[i].z / s, 1.0))
+		if cuvs[i].distance_squared_to(expect_uv) > 0.0004:
+			uv_bad += 1
+		for j in range(i + 1, cv.size()):
+			if cv[i].distance_squared_to(cv[j]) > 0.0001:
+				continue
+			if cnormals[i].distance_squared_to(cnormals[j]) > 0.01:
+				seam_bad += 1
+	if seam_bad > 0:
+		_fail("cardinal curve still has faceted seams, n=%d" % seam_bad)
+	elif ny_high < 0.97 or ny_mid > 0.75:
+		_fail("cardinal ease normals high=%.3f mid=%.3f" % [ny_high, ny_mid])
+	elif uv_bad > 0:
+		_fail("cardinal uvs are not world-projected, n=%d" % uv_bad)
+	else:
+		print("OK cardinal ease normals high=%.3f mid=%.3f world uv" % [ny_high, ny_mid])
 	var cn_q := {
 		"x": 1, "y": 10.0, "z": 1,
 		"dim_x": 1.0, "dim_y": 1.0, "dim_z": 1.0,

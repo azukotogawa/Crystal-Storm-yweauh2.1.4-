@@ -18,6 +18,7 @@ static var _mesh_scale_key: float = -1.0
 const CONCAVE_MESH_REV := 3
 const WEDGE_MESH_REV := 9
 const CURVE_STRIPS := 8
+const EASE_SHOULDER := 0.22
 const CORNER_STEP_MESH_REV := 3
 static var _concave_mesh_rev: int = -1
 static var _wedge_mesh_rev: int = -1
@@ -97,8 +98,6 @@ static func _ensure_mesh_scale() -> void:
 	_corner_step_mesh_rev = CORNER_STEP_MESH_REV
 
 
-## Step wedge: one landing column only. Local +X is the high edge (away from the low neighbor).
-## Collision uses the same column: voxel_top at t=0, voxel_top-layer at t=1 toward the low neighbor.
 static func get_wedge_mesh() -> ArrayMesh:
 	_ensure_mesh_scale()
 	if _wedge_mesh != null:
@@ -108,9 +107,10 @@ static func get_wedge_mesh() -> ArrayMesh:
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var z0 := -0.5 * s
 	var z1 := 0.5 * s
+	var descent := Vector2i(-1, 0)
 	for i in CURVE_STRIPS:
-		var t0 := float(i) / float(CURVE_STRIPS)
-		var t1 := float(i + 1) / float(CURVE_STRIPS)
+		var t0 := curve_t(i, CURVE_STRIPS)
+		var t1 := curve_t(i + 1, CURVE_STRIPS)
 		var x_hi := lerpf(0.5 * s, -0.5 * s, t0)
 		var x_lo := lerpf(0.5 * s, -0.5 * s, t1)
 		var y_hi := -slope_ease(t0) * s
@@ -119,12 +119,9 @@ static func get_wedge_mesh() -> ArrayMesh:
 		var lo_pz := Vector3(x_lo, y_lo, z1)
 		var hi_pz := Vector3(x_hi, y_hi, z1)
 		var hi_nz := Vector3(x_hi, y_hi, z0)
-		var slope_n := (lo_pz - lo_nz).cross(hi_pz - lo_nz)
-		if slope_n.length_squared() < 0.000001:
-			slope_n = Vector3.UP
-		else:
-			slope_n = slope_n.normalized()
-		_add_quad_uv(st, lo_nz, lo_pz, hi_pz, hi_nz, slope_n,
+		var n_lo := slope_normal(t1, descent)
+		var n_hi := slope_normal(t0, descent)
+		_add_quad_smooth(st, lo_nz, lo_pz, hi_pz, hi_nz, n_lo, n_lo, n_hi, n_hi,
 			Vector2(lo_nz.x, lo_nz.z), Vector2(lo_pz.x, lo_pz.z),
 			Vector2(hi_pz.x, hi_pz.z), Vector2(hi_nz.x, hi_nz.z)
 		)
@@ -201,6 +198,33 @@ static func _add_quad_uv(
 	_add_tri_uv(st, a, c, d, normal, uv_a, uv_c, uv_d)
 
 
+static func _add_quad_smooth(
+	st: SurfaceTool,
+	a: Vector3, b: Vector3, c: Vector3, d: Vector3,
+	na: Vector3, nb: Vector3, nc: Vector3, nd: Vector3,
+	uv_a: Vector2, uv_b: Vector2, uv_c: Vector2, uv_d: Vector2
+) -> void:
+	_add_tri_smooth(st, a, b, c, na, nb, nc, uv_a, uv_b, uv_c)
+	_add_tri_smooth(st, a, c, d, na, nc, nd, uv_a, uv_c, uv_d)
+
+
+static func _add_tri_smooth(
+	st: SurfaceTool,
+	a: Vector3, b: Vector3, c: Vector3,
+	na: Vector3, nb: Vector3, nc: Vector3,
+	uv_a: Vector2, uv_b: Vector2, uv_c: Vector2
+) -> void:
+	st.set_normal(na)
+	st.set_uv(uv_a)
+	st.add_vertex(a)
+	st.set_normal(nb)
+	st.set_uv(uv_b)
+	st.add_vertex(b)
+	st.set_normal(nc)
+	st.set_uv(uv_c)
+	st.add_vertex(c)
+
+
 static func ramp_direction_at(world: InfiniteNoiseWorld, wx: int, wz: int) -> Vector2i:
 	if world == null:
 		return Vector2i.ZERO
@@ -231,9 +255,41 @@ static func voxel_top_y(surface_y: float) -> float:
 	return surface_y + _ws().layer_height()
 
 
+static func curve_t(i: int, strips: int) -> float:
+	var u := clampf(float(i) / float(maxi(strips, 1)), 0.0, 1.0)
+	return 0.5 - 0.5 * cos(PI * u)
+
+
 static func slope_ease(t: float) -> float:
 	var u := clampf(t, 0.0, 1.0)
-	return u * u * (3.0 - 2.0 * u)
+	var w := EASE_SHOULDER
+	var peak := 1.0 / (1.0 - w)
+	var shoulder := peak * w * 0.5
+	if u < w:
+		return shoulder * (u / w - sin(PI * u / w) / PI)
+	if u > 1.0 - w:
+		var v := 1.0 - u
+		return 1.0 - shoulder * (v / w - sin(PI * v / w) / PI)
+	return shoulder + peak * (u - w)
+
+
+static func slope_ease_deriv(t: float) -> float:
+	var u := clampf(t, 0.0, 1.0)
+	var w := EASE_SHOULDER
+	var peak := 1.0 / (1.0 - w)
+	if u < w:
+		return peak * 0.5 * (1.0 - cos(PI * u / w))
+	if u > 1.0 - w:
+		return peak * 0.5 * (1.0 - cos(PI * (1.0 - u) / w))
+	return peak
+
+
+static func slope_normal(t: float, dir: Vector2i) -> Vector3:
+	var d := slope_ease_deriv(t)
+	var n := Vector3(d * float(dir.x), 1.0, d * float(dir.y))
+	if n.length_squared() < 0.000001:
+		return Vector3.UP
+	return n.normalized()
 
 
 static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:

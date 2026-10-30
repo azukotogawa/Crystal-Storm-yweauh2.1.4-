@@ -568,8 +568,8 @@ static func _write_cardinal_ramp(
 	var z1 := oz + sz
 	var yh: float = surface_y + sy
 	for i in strips:
-		var t0 := float(i) / float(strips)
-		var t1 := float(i + 1) / float(strips)
+		var t0 := TerrainRamps.curve_t(i, strips)
+		var t1 := TerrainRamps.curve_t(i + 1, strips)
 		var y0 := yh - TerrainRamps.slope_ease(t0) * sy
 		var y1 := yh - TerrainRamps.slope_ease(t1) * sy
 		var base := vi + i * 4
@@ -604,6 +604,7 @@ static func _write_cardinal_ramp(
 			vertices[base + 3] = Vector3(x0, y1, zb2)
 		var shade_n := _slope_shade_normal(vertices, base)
 		_fill_face_attribs(vertices, normals, uvs, colors, indices, base, ibase, atlas, shade, shade_n, 1.0, 1.0)
+		_write_slope_normals(vertices, normals, base, ox, oz, sx, sz, dir)
 		_project_world_uvs(uvs, vertices, base)
 	return strips
 
@@ -631,6 +632,7 @@ static func _write_cardinal_floor(
 	vertices[vi + 2] = Vector3(ox + sx, yl, oz + sz)
 	vertices[vi + 3] = Vector3(ox, yl, oz + sz)
 	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi, ii, atlas, shade, Vector3.UP, 1.0, 1.0)
+	_project_world_uvs(uvs, vertices, vi)
 
 
 static func _write_vertical_tri(
@@ -694,8 +696,8 @@ static func _write_cardinal_flanks(
 	for side_v in sides:
 		var side: Vector2i = side_v
 		for i in strips:
-			var t0 := float(i) / float(strips)
-			var t1 := float(i + 1) / float(strips)
+			var t0 := TerrainRamps.curve_t(i, strips)
+			var t1 := TerrainRamps.curve_t(i + 1, strips)
 			var y0 := yh - TerrainRamps.slope_ease(t0) * sy
 			var y1 := yh - TerrainRamps.slope_ease(t1) * sy
 			var p0: Vector3
@@ -740,7 +742,32 @@ static func _project_world_uvs(uvs: PackedVector2Array, vertices: PackedVector3A
 		voxel_s = 1.0
 	for k in 4:
 		var p: Vector3 = vertices[vi + k]
-		uvs[vi + k] = Vector2(p.x / voxel_s, p.z / voxel_s)
+		uvs[vi + k] = Vector2(fposmod(p.x / voxel_s, 1.0), fposmod(p.z / voxel_s, 1.0))
+
+
+static func _ramp_axis_t(p: Vector3, ox: float, oz: float, sx: float, sz: float, dir: Vector2i) -> float:
+	if dir.x > 0:
+		return clampf((p.x - ox) / maxf(sx, 0.001), 0.0, 1.0)
+	if dir.x < 0:
+		return clampf((ox + sx - p.x) / maxf(sx, 0.001), 0.0, 1.0)
+	if dir.y > 0:
+		return clampf((p.z - oz) / maxf(sz, 0.001), 0.0, 1.0)
+	return clampf((oz + sz - p.z) / maxf(sz, 0.001), 0.0, 1.0)
+
+
+static func _write_slope_normals(
+	vertices: PackedVector3Array,
+	normals: PackedVector3Array,
+	vi: int,
+	ox: float,
+	oz: float,
+	sx: float,
+	sz: float,
+	dir: Vector2i
+) -> void:
+	for k in 4:
+		var t := _ramp_axis_t(vertices[vi + k], ox, oz, sx, sz, dir)
+		normals[vi + k] = TerrainRamps.slope_normal(t, dir)
 
 
 static func _write_corner_ramp(
@@ -783,6 +810,7 @@ static func _write_corner_ramp(
 	vertices[vi + 3] = high_x
 	var top_n := _slope_shade_normal(vertices, vi)
 	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi, ii, atlas, 0.96, top_n, 1.0, 1.0)
+	_project_world_uvs(uvs, vertices, vi)
 	var hx_low := Vector3(high_x.x, yl, high_x.z)
 	var hz_low := Vector3(high_z.x, yl, high_z.z)
 	var vi2: int = vi + 4
@@ -805,6 +833,7 @@ static func _write_corner_ramp(
 	else:
 		n_try = n_try.normalized()
 	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi2, ii2, atlas, 0.74, n_try, 1.0, 1.0)
+	_project_world_uvs(uvs, vertices, vi2)
 
 
 static func _slope_shade_normal(vertices: PackedVector3Array, vi: int) -> Vector3:
