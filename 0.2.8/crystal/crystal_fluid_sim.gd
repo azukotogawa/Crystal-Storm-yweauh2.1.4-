@@ -35,6 +35,9 @@ var last_flow_selected_cells: int = 0
 var _interior_flow_offset: int = 0
 var _frontier_new_offset: int = 0
 var is_cell_active: Callable = Callable()
+var chunk_gate: Callable = Callable()
+var chunk_gate_size: int = 16
+var _gate_memo: Dictionary = {}
 var flow_budget_us: int = 0
 var last_flow_complete: bool = true
 var _flow_job: Dictionary = {}
@@ -59,6 +62,21 @@ var _prof_frontier_classifies: int = 0
 var _prof_empty_neighbor_tests: int = 0
 var _prof_delta_applies: int = 0
 var _CHUNK: int = 16
+var _seq: Dictionary = {}
+var _next_seq: int = 0
+var _order: Array = []
+var _order_valid: bool = true
+var _frontier: Dictionary = {}
+var _frontier_list: Array = []
+var _frontier_seq: PackedInt64Array = PackedInt64Array()
+var _chunk_cells: Dictionary = {}
+var _chunk_cells_total: int = 0
+var _interior: Array = []
+var _interior_seq: PackedInt64Array = PackedInt64Array()
+var _volume: float = 0.0
+var _index_valid: bool = true
+var index_full_scan_max: int = 2048
+const _INTERIOR_WALK_MAX: int = 4096
 
 
 func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void:
@@ -69,6 +87,19 @@ func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void
 func clear() -> void:
 	depth.clear()
 	spawn_id_by_cell.clear()
+	_seq.clear()
+	_next_seq = 0
+	_order.clear()
+	_order_valid = true
+	_frontier.clear()
+	_frontier_list.clear()
+	_frontier_seq = PackedInt64Array()
+	_interior.clear()
+	_interior_seq = PackedInt64Array()
+	_chunk_cells.clear()
+	_chunk_cells_total = 0
+	_volume = 0.0
+	_index_valid = false
 	last_new_cells = 0
 	last_changed_cells = 0
 	last_mesh_dirty_cells = 0
@@ -318,7 +349,7 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool =
 	new_depth = clampf(new_depth, 0.0, depth_cap(pos))
 	if new_depth < config.min_depth:
 		if depth.has(pos):
-			depth.erase(pos)
+			_erase_cell(pos)
 			spawn_id_by_cell.erase(pos)
 			if emit:
 				depth_cleared.emit(pos)
@@ -326,7 +357,7 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool =
 		return
 
 	var changed: bool = not depth.has(pos) or absf(float(depth[pos]) - new_depth) > 0.02
-	depth[pos] = new_depth
+	_write_cell(pos, new_depth)
 	if spawn_id >= 0:
 		spawn_id_by_cell[pos] = spawn_id
 	if changed and emit:
@@ -420,20 +451,29 @@ func _flow_job_begin(delta: float) -> Array:
 	var allow_lateral: bool = config.lateral_spread_bias > 0.0 and spread_mult >= 0.55
 
 	var t_scan := Time.get_ticks_usec() if _prof_enabled else 0
-	var active_cells: Array = []
-	for pos_variant in depth.keys():
-		var pos: Vector2i = pos_variant
-		if _cell_active(pos):
-			active_cells.append(pos)
-	if _prof_enabled:
-		_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
-
-	var cells: Array = _select_flow_cells(active_cells)
-	last_flow_active_cells = active_cells.size()
+	var cells: Array = []
+	var active_count: int = 0
+	var cap: int = _effective_flow_cap()
+	if cap <= 0 or depth.size() <= index_full_scan_max:
+		var active_cells: Array = []
+		for pos_variant in depth.keys():
+			var pos: Vector2i = pos_variant
+			if _cell_active(pos):
+				active_cells.append(pos)
+		if _prof_enabled:
+			_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
+		cells = _select_flow_cells(active_cells)
+		active_count = active_cells.size()
+	else:
+		cells = _select_indexed_flow_cells(cap)
+		active_count = depth.size()
+		if _prof_enabled:
+			_prof_add_phase("select_indexed", Time.get_ticks_usec() - t_scan)
+	last_flow_active_cells = active_count
 	last_flow_selected_cells = cells.size()
 	if _prof_enabled:
 		_prof_depth_cells_sum += depth.size()
-		_prof_active_cells_sum += active_cells.size()
+		_prof_active_cells_sum += active_count
 		_prof_selected_cells_sum += cells.size()
 		_prof_ticks += 1
 		_prof_add_phase("flow_job_begin", Time.get_ticks_usec() - t_begin)
@@ -667,7 +707,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 
 		if new_depth < config.min_depth:
 			if depth.has(pos):
-				depth.erase(pos)
+				_erase_cell(pos)
 				spawn_id_by_cell.erase(pos)
 				changed.append(pos)
 				mesh_dirty.append(pos)
@@ -683,7 +723,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 			continue
 
 		if absf(old_depth - new_depth) > depth_write_epsilon:
-			depth[pos] = new_depth
+			_write_cell(pos, new_depth)
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
 			changed.append(pos)
@@ -704,7 +744,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 			var pos: Vector2i = entry.pos
 			if _new_cell_touch_count(pos) < 1:
 				continue
-			depth[pos] = float(entry.depth)
+			_write_cell(pos, float(entry.depth))
 			var spawn_id: int = int(entry.spawn_id)
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
@@ -765,14 +805,14 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 				var paid: float = float(pay_entry.pay) * pay_scale
 				var donor_depth: float = maxf(float(depth[donor]) - paid, config.min_depth)
 				if absf(donor_depth - float(depth[donor])) > depth_write_epsilon:
-					depth[donor] = donor_depth
+					_write_cell(donor, donor_depth)
 					changed.append(donor)
 					if paid >= mesh_depth_epsilon:
 						mesh_dirty.append(donor)
 			var born: float = minf(float(depth.get(pos, 0.0)) + applied, depth_cap(pos))
 			if born < config.min_depth:
 				continue
-			depth[pos] = born
+			_write_cell(pos, born)
 			var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
 			if spawn_id >= 0:
 				spawn_id_by_cell[pos] = spawn_id
@@ -835,8 +875,264 @@ func _assign_spawn_on_flow(to: Vector2i, from: Vector2i) -> void:
 
 
 func recalc_volume() -> Dictionary:
-	var total := 0.0
-	var count := depth.size()
+	return {"volume": _volume, "cells": depth.size()}
+
+
+func ordered_keys() -> Array:
+	if not _order_valid:
+		_order = depth.keys()
+		_order_valid = true
+	return _order
+
+
+func cell_seq(pos: Vector2i) -> int:
+	_ensure_index()
+	return int(_seq.get(pos, -1))
+
+
+func _ensure_index() -> void:
+	if _index_valid:
+		return
+	_seq.clear()
+	_frontier.clear()
+	_frontier_list.clear()
+	_frontier_seq = PackedInt64Array()
+	_interior.clear()
+	_interior_seq = PackedInt64Array()
+	_next_seq = 0
 	for pos_variant in depth.keys():
-		total += float(depth[pos_variant])
-	return {"volume": total, "cells": count}
+		_seq[pos_variant] = _next_seq
+		if _has_empty_neighbor_raw(pos_variant):
+			_frontier[pos_variant] = true
+			_frontier_list.append(pos_variant)
+			_frontier_seq.append(_next_seq)
+		else:
+			_interior.append(pos_variant)
+			_interior_seq.append(_next_seq)
+		_next_seq += 1
+	_index_valid = true
+
+
+func _write_cell(pos: Vector2i, value: float) -> void:
+	if depth.has(pos):
+		_volume += value - float(depth[pos])
+		depth[pos] = value
+		return
+	depth[pos] = value
+	_volume += value
+	_chunk_cells_add(pos)
+	if _order_valid:
+		_order.append(pos)
+	if not _index_valid:
+		return
+	_seq[pos] = _next_seq
+	_next_seq += 1
+	if _has_empty_neighbor_raw(pos):
+		_frontier_add(pos)
+	else:
+		_interior_add(pos)
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = pos + dir
+		if _frontier.has(n) and not _has_empty_neighbor_raw(n):
+			_frontier_remove(n)
+			_interior_add(n)
+
+
+func _erase_cell(pos: Vector2i) -> void:
+	if not depth.has(pos):
+		return
+	_volume -= float(depth[pos])
+	depth.erase(pos)
+	_chunk_cells_remove(pos)
+	_order_valid = false
+	_order = []
+	if not _index_valid:
+		return
+	if _frontier.has(pos):
+		_frontier_remove(pos)
+	else:
+		_interior_remove(pos)
+	_seq.erase(pos)
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		var n: Vector2i = pos + dir
+		if depth.has(n) and not _frontier.has(n):
+			_interior_remove(n)
+			_frontier_add(n)
+
+
+func _has_empty_neighbor_raw(pos: Vector2i) -> bool:
+	for dir in _CrystalTypes.NEIGHBOR_DIRS:
+		if not depth.has(pos + dir):
+			return true
+	return false
+
+
+func _interior_add(pos: Vector2i) -> void:
+	var sq: int = int(_seq[pos])
+	var i: int = _interior_seq.bsearch(sq)
+	_interior.insert(i, pos)
+	_interior_seq.insert(i, sq)
+
+
+func _interior_remove(pos: Vector2i) -> void:
+	if not _seq.has(pos):
+		return
+	var sq: int = int(_seq[pos])
+	var i: int = _interior_seq.bsearch(sq)
+	if i < _interior_seq.size() and _interior_seq[i] == sq:
+		_interior.remove_at(i)
+		_interior_seq.remove_at(i)
+
+
+func _sorted_frontier() -> Array:
+	return _frontier_list
+
+
+func _frontier_add(pos: Vector2i) -> void:
+	_frontier[pos] = true
+	var sq: int = int(_seq[pos])
+	var i: int = _frontier_seq.bsearch(sq)
+	_frontier_list.insert(i, pos)
+	_frontier_seq.insert(i, sq)
+
+
+func _frontier_remove(pos: Vector2i) -> void:
+	_frontier.erase(pos)
+	var sq: int = int(_seq[pos])
+	var i: int = _frontier_seq.bsearch(sq)
+	if i < _frontier_seq.size() and _frontier_seq[i] == sq:
+		_frontier_list.remove_at(i)
+		_frontier_seq.remove_at(i)
+
+
+func _chunk_cells_add(pos: Vector2i) -> void:
+	var c := Vector2i(floori(float(pos.x) / float(_CHUNK)), floori(float(pos.y) / float(_CHUNK)))
+	var bucket: Dictionary = _chunk_cells.get(c, {})
+	if bucket.is_empty():
+		_chunk_cells[c] = bucket
+	bucket[pos] = true
+	_chunk_cells_total += 1
+
+
+func _chunk_cells_remove(pos: Vector2i) -> void:
+	var c := Vector2i(floori(float(pos.x) / float(_CHUNK)), floori(float(pos.y) / float(_CHUNK)))
+	var bucket: Dictionary = _chunk_cells.get(c, {})
+	if bucket.erase(pos):
+		_chunk_cells_total -= 1
+		if bucket.is_empty():
+			_chunk_cells.erase(c)
+
+
+func _ensure_chunk_cells() -> void:
+	if _chunk_cells_total != depth.size():
+		_chunk_cells.clear()
+		_chunk_cells_total = 0
+		for pos_variant in depth.keys():
+			_chunk_cells_add(pos_variant)
+
+
+func chunks_in_rect(bounds: Rect2i) -> Array:
+	_ensure_chunk_cells()
+	var out: Array = []
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = x0 + bounds.size.x
+	var y1: int = y0 + bounds.size.y
+	if x1 <= x0 or y1 <= y0:
+		return out
+	for cy in range(floori(float(y0) / float(_CHUNK)), floori(float(y1 - 1) / float(_CHUNK)) + 1):
+		for cx in range(floori(float(x0) / float(_CHUNK)), floori(float(x1 - 1) / float(_CHUNK)) + 1):
+			var c := Vector2i(cx, cy)
+			if _chunk_cells.has(c):
+				out.append(c)
+	return out
+
+
+func chunk_cells(chunk: Vector2i) -> Dictionary:
+	return _chunk_cells.get(chunk, {})
+
+
+func cells_in_rect(bounds: Rect2i) -> Array:
+	_ensure_chunk_cells()
+	var out: Array = []
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = x0 + bounds.size.x
+	var y1: int = y0 + bounds.size.y
+	if x1 <= x0 or y1 <= y0:
+		return out
+	var cx0: int = floori(float(x0) / float(_CHUNK))
+	var cy0: int = floori(float(y0) / float(_CHUNK))
+	var cx1: int = floori(float(x1 - 1) / float(_CHUNK))
+	var cy1: int = floori(float(y1 - 1) / float(_CHUNK))
+	for cy in range(cy0, cy1 + 1):
+		for cx in range(cx0, cx1 + 1):
+			var bucket = _chunk_cells.get(Vector2i(cx, cy))
+			if bucket == null:
+				continue
+			var edge: bool = cx * _CHUNK < x0 or cy * _CHUNK < y0 or (cx + 1) * _CHUNK > x1 or (cy + 1) * _CHUNK > y1
+			for pos_variant in bucket:
+				if edge:
+					var p: Vector2i = pos_variant
+					if p.x < x0 or p.y < y0 or p.x >= x1 or p.y >= y1:
+						continue
+				out.append(pos_variant)
+	return out
+
+
+func _select_indexed_flow_cells(cap: int) -> Array:
+	_ensure_index()
+	_gate_memo.clear()
+	var subset: Array = _select_indexed_flow_cells_scoped(cap)
+	_gate_memo.clear()
+	return subset
+
+
+func _gated_cell_active(pos: Vector2i) -> bool:
+	if chunk_gate.is_valid():
+		var ck := Vector2i(floori(float(pos.x) / float(chunk_gate_size)), floori(float(pos.y) / float(chunk_gate_size)))
+		var open = _gate_memo.get(ck)
+		if open == null:
+			open = bool(chunk_gate.call(ck))
+			_gate_memo[ck] = open
+		if not open:
+			return false
+	return _cell_active(pos)
+
+
+func _select_indexed_flow_cells_scoped(cap: int) -> Array:
+	var subset: Array = []
+	var gated := chunk_gate.is_valid() and chunk_gate_size == 16
+	var last_ck := Vector2i(2147483647, 2147483647)
+	var last_open := true
+	for pos_variant in _sorted_frontier():
+		if subset.size() >= cap:
+			break
+		if gated:
+			var p: Vector2i = pos_variant
+			var ck := Vector2i(p.x >> 4, p.y >> 4)
+			if ck != last_ck:
+				last_ck = ck
+				var open = _gate_memo.get(ck)
+				if open == null:
+					open = bool(chunk_gate.call(ck))
+					_gate_memo[ck] = open
+				last_open = open
+			if not last_open:
+				continue
+			if _cell_active(p):
+				subset.append(p)
+		elif _gated_cell_active(pos_variant):
+			subset.append(pos_variant)
+	var n: int = _interior.size()
+	if subset.size() < cap and n > 0:
+		var start: int = _interior_flow_offset % n
+		_interior_flow_offset += maxi(cap - subset.size(), 1)
+		var walked: int = 0
+		var limit: int = mini(n, _INTERIOR_WALK_MAX)
+		while subset.size() < cap and walked < limit:
+			var pos: Vector2i = _interior[(start + walked) % n]
+			walked += 1
+			if _gated_cell_active(pos):
+				subset.append(pos)
+	return subset

@@ -526,6 +526,8 @@ func _init_sim() -> void:
 	_simulation = _CrystalSimulation.new(sim_config, _terrain_query)
 	_sim = _simulation.fluid
 	_sim.is_cell_active = Callable(self, "_is_cell_sim_active")
+	_sim.chunk_gate = Callable(self, "_is_sim_chunk_gate_open")
+	_sim.chunk_gate_size = ChunkData.SIZE
 	_reapply_stored_flow_caps()
 	_presentation = _CrystalPresentation.new()
 	_presentation.fluid = _sim
@@ -1797,6 +1799,14 @@ func _is_cell_sim_active(pos: Vector2i) -> bool:
 	return chunk_manager.chunks.has(_chunk_coord_for(pos))
 
 
+func _is_sim_chunk_gate_open(chunk: Vector2i) -> bool:
+	if not _sim_loaded_chunks_only or chunk_manager == null:
+		return true
+	if chunk_manager.has_method("is_chunk_loaded"):
+		return chunk_manager.is_chunk_loaded(chunk)
+	return chunk_manager.chunks.has(chunk)
+
+
 func _is_chunk_render_active(coord: Vector2i) -> bool:
 	if chunk_manager == null:
 		return true
@@ -2131,7 +2141,8 @@ func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:
 	var y0: int = bounds.position.y
 	var x1: int = bounds.position.x + bounds.size.x
 	var y1: int = bounds.position.y + bounds.size.y
-	for pos_variant in _sim.depth.keys():
+	var candidates: Array = _sim.cells_in_rect(bounds) if _sim.has_method("cells_in_rect") else _sim.depth.keys()
+	for pos_variant in candidates:
 		var pos: Vector2i = pos_variant
 		if pos.x < x0 or pos.y < y0 or pos.x >= x1 or pos.y >= y1:
 			continue
@@ -2139,6 +2150,29 @@ func get_depth_cells_in_rect(bounds: Rect2i) -> Dictionary:
 		if depth >= min_depth:
 			overlay[pos] = depth
 	return overlay
+
+
+func depth_chunks_in_rect(bounds: Rect2i) -> Array:
+	if _sim == null:
+		return []
+	return _sim.chunks_in_rect(bounds)
+
+
+func collect_depth_chunk(chunk: Vector2i, bounds: Rect2i, out: Dictionary) -> void:
+	if _sim == null:
+		return
+	var min_depth: float = sim_config.min_depth if sim_config else 0.04
+	var x0: int = bounds.position.x
+	var y0: int = bounds.position.y
+	var x1: int = bounds.position.x + bounds.size.x
+	var y1: int = bounds.position.y + bounds.size.y
+	for pos_variant in _sim.chunk_cells(chunk):
+		var pos: Vector2i = pos_variant
+		if pos.x < x0 or pos.y < y0 or pos.x >= x1 or pos.y >= y1:
+			continue
+		var depth: float = float(_sim.depth[pos])
+		if depth >= min_depth:
+			out[pos] = depth
 
 
 func has_crystal_at(wx: int, wz: int) -> bool:
