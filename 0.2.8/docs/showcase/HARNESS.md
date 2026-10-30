@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `multi_dig`, `multi_build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `multi_dig`, `multi_build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`. `scenario kite` does not boot the world either.
 
 ## Shared setup
 
@@ -131,6 +131,21 @@ Boots a fresh world on each seed. Default seeds are 12349 through 12353. `CRYSTA
 | Pick | A click on an offer closes the panel, leaves a relic equipped, and clears the modal. |
 | Seeds | One `HARNESS relic seed` line per seed, then `HARNESS relic N/N pause_closed N/N panel_held`. |
 | Shot | `steps/*_relic_esc.png` |
+
+## kite
+
+Does not boot the world. `honest_kite_probe.gd` drives a melee `crystal_mite` column through `HonestFight` and `HonestInput` only. The bow is hotbar 3. Inside 4.2 columns the bot retreats and fires. Between 4.2 and 9.0 it holds and fires. Past 9.0 it walks back toward 6.5 columns and does not step inside 4.2. A position that flips away and toward the foe four times prints `LOOP BREAK kite -> sidestep flips 4` and the next step strafes. The same stuck line three times prints `LOOP BREAK kite -> sidestep stuck 3`.
+
+| Check | Pass |
+| --- | --- |
+| Melee | `HARNESS kite melee crystal_mite` |
+| Retreat | `HARNESS kite retreat` with the goal farther from the foe and a bow shot |
+| Hold | `HARNESS kite hold` and no walk while the foe stays in the band |
+| Re-engage | `HARNESS kite reengage` with the goal closer, still outside 4.2 |
+| Loop | `LOOP BREAK` on the forced flip, then `HARNESS kite loop sidestep` |
+| Stuck | `LOOP BREAK` on the repeated stuck line, then `HARNESS kite stuck sidestep` |
+| See | `HARNESS see kite retreat hold reengage loop` |
+| Shot | `steps/*_kite.png` |
 
 ## Not scripted yet
 
