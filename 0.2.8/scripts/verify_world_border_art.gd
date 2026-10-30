@@ -140,6 +140,10 @@ func _rim_mesh() -> void:
 		_fail("art mountain edge height %.2f" % crest)
 	if crest - foot < 12.0:
 		_fail("art cliff %.2f is shorter than a jump" % (crest - foot))
+	pts.append(Vector3(40.0, crest, z_edge))
+	pts.append(Vector3(40.0, foot, z_edge - 6.0))
+	pts.append(Vector3(half, sea, 40.0))
+	pts.append(Vector3(half - 10.0, shore, 40.0))
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in range(0, pts.size() - 2, 2):
@@ -161,6 +165,6 @@ func _rim_mesh() -> void:
 	)
 	if verts.size() < 12:
 		_fail("rim mesh has too few vertices")
-	if aabb.size.y < 4.0:
+	if aabb.size.y < 12.0:
 		_fail("rim mesh is flat (height span %.2f)" % aabb.size.y)
 	world.queue_free()

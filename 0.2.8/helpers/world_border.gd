@@ -281,20 +281,28 @@ static func rim_kind(wx: float, wz: float) -> String:
 static func finish_rim_height(seed_value: int, wx: float, wz: float, h: float) -> float:
 	if not is_playable(wx, wz):
 		return h
-	var inset := playable_inset(wx, wz)
+	var dx := float(PLAYABLE_HALF_X) - absf(wx)
+	var dz := float(PLAYABLE_HALF_Z) - absf(wz)
+	if dx < 0.0 or dz < 0.0:
+		return h
 	var band := rim_band_at(seed_value, wx, wz)
-	if inset >= band:
+	if minf(dx, dz) >= band:
 		return h
 	var t := rim_unit(seed_value, wx, wz, 9)
-	if rim_kind(wx, wz) == "ocean":
-		var sea := lerpf(4.0, 6.0, t)
-		var u := clampf(inset / band, 0.0, 1.0)
-		return lerpf(sea, h, smoothstep(0.0, 1.0, u))
-	if inset <= CREST_COLS:
-		return lerpf(MOUNTAIN_EDGE_MIN, 40.0, t)
-	var span := maxf(band - CREST_COLS, 1.0)
-	var u2 := clampf((inset - CREST_COLS) / span, 0.0, 1.0)
-	return lerpf(CLIFF_FOOT, h, smoothstep(0.0, 1.0, u2))
+	var sea := lerpf(4.0, 6.0, t)
+	var crest := lerpf(MOUNTAIN_EDGE_MIN, 40.0, t)
+	var ocean_h := lerpf(sea, h, smoothstep(0.0, 1.0, clampf(dx / band, 0.0, 1.0)))
+	var mountain_h := crest
+	if dz > CREST_COLS:
+		var span := maxf(band - CREST_COLS, 1.0)
+		var u2 := clampf((dz - CREST_COLS) / span, 0.0, 1.0)
+		mountain_h = lerpf(CLIFF_FOOT, h, smoothstep(0.0, 1.0, u2))
+	if dx <= dz:
+		return ocean_h
+	if dz <= CREST_COLS or dx >= band:
+		return mountain_h
+	var favor := clampf((dx - dz) / 12.0, 0.0, 1.0)
+	return lerpf(ocean_h, mountain_h, favor)
 
 
 static func rim_surface_tile(seed_value: int, wx: float, wz: float) -> int:
