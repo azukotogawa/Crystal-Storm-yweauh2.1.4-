@@ -82,6 +82,9 @@ const BRUSH_REACH_MAX := 8.0
 @export_range(0.5, 4.0, 0.1) var knockback_scale: float = 2.0
 @export_range(0.0, 4.0, 0.05) var knockback_base_voxels: float = 1.7
 @export_range(0.0, 1.0, 0.01) var knockback_per_unit_voxels: float = 0.1
+@export_range(0.05, 1.0, 0.01) var hit_stun_min_sec: float = 0.25
+@export_range(0.05, 1.5, 0.01) var hit_stun_max_sec: float = 0.40
+@export_range(0.5, 8.0, 0.1) var hit_stun_full_knock_voxels: float = 3.0
 @export_range(0.5, 4.0, 0.1) var hit_effect_scale: float = 2.0
 @export_range(0.0, 5.0, 0.1) var cursor_face_sec: float = 1.5
 @export_range(4.0, 40.0, 1.0) var cursor_face_range: float = 14.0
@@ -130,6 +133,9 @@ static func create_default():
 	cfg.swim_visual_depth = 0.5
 	cfg.content_pace = 0.45
 	cfg.crystal_core_lethal_tier = 1
+	cfg.hit_stun_min_sec = 0.25
+	cfg.hit_stun_max_sec = 0.40
+	cfg.hit_stun_full_knock_voxels = 3.0
 	return cfg
 
 
@@ -216,6 +222,14 @@ func enemy(id: String) -> Dictionary:
 		"id": id,
 		"telegraph_sec": enemy_telegraph_sec[index],
 	}
+
+
+func hit_stun_for_distance(distance: float, voxel_scale: float) -> float:
+	var full := hit_stun_full_knock_voxels * maxf(voxel_scale, 0.001)
+	var t := clampf(distance / maxf(full, 0.001), 0.0, 1.0)
+	var low := minf(hit_stun_min_sec, hit_stun_max_sec)
+	var high := maxf(hit_stun_min_sec, hit_stun_max_sec)
+	return lerpf(low, high, t)
 
 
 func brush_unlock(id: String) -> int:

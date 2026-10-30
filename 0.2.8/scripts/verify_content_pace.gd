@@ -59,7 +59,7 @@ func _init() -> void:
 	GameFeelConfig.pace_override = -1.0
 	var uses := {
 		"res://entities/crystal_enemy_spawner.gd": ["paced_grace()", "paced_cap()", "paced_interval()", "paced_assault_mult()", "pressure_coeff()", "GameFeelConfig.paced_count(int(entry.spawn_burst)"],
-		"res://entities/crystal_enemy.gd": ["GameFeelConfig.paced_summon(mini(count, 3)", "_stagger_left = KNOCK_STAGGER", "KNOCK_SPEED * delta"],
+		"res://entities/crystal_enemy.gd": ["GameFeelConfig.paced_summon(mini(count, 3)", "hit_stun_for_distance", "KNOCK_SPEED * delta"],
 		"res://crystal/crystal_evolution.gd": ["def.bonus_power * GameFeelConfig.pace()", "GameFeelConfig.paced_count(def.spawn_burst"],
 		"res://crystal/crystal_manager.gd": ["sim_config.grass_absorb_rate * pace", "sim_config.farmland_absorb_rate * pace", "snap.content_pace = pace", "GameFeelConfig.paced_interval(sim_config.scar_heal_seconds"],
 		"res://crystal/crystal_simulation.gd": ["emit_rate * snapshot.content_pace"],
