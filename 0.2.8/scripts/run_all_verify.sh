@@ -100,6 +100,7 @@ SUITES=(
 	"res://scripts/verify_sword_no_terrain_subtract.gd"
 	"res://scripts/verify_interaction_range.gd"
 	"res://scripts/verify_combat_entity_hit.gd"
+	"res://scripts/verify_sword_first_hit.gd"
 	"res://scripts/verify_melee_forward_targeting.gd"
 	"res://scripts/verify_cursor_aim.gd"
 	"res://scripts/verify_built_wall_collision_main.gd"
