@@ -61,7 +61,8 @@ func _run() -> void:
 
 func _check_config() -> void:
 	var live = GameFeelConfig.active()
-	var vs := _Settings.get_active().voxel_scale
+	var settings: WorldSettings = _Settings.get_active()
+	var vs: float = settings.voxel_scale
 	if absf(float(live.hit_stun_min_sec) - 0.25) > 0.001 or absf(float(live.hit_stun_max_sec) - 0.40) > 0.001:
 		_fail("shipped hit stun %.3f..%.3f want 0.25..0.40" % [live.hit_stun_min_sec, live.hit_stun_max_sec])
 		return
@@ -92,8 +93,8 @@ func _check_crystal(holder: Node) -> void:
 	var player := _ColumnPlayer.new()
 	player.name = "Player"
 	holder.add_child(player)
-	var ws = _Settings.get_active()
-	var y := ws.layer_height()
+	var ws: WorldSettings = _Settings.get_active()
+	var y: float = ws.layer_height()
 	var home := Vector2i(30, 30)
 	player.voxel_position = Vector3(float(home.x) + 0.5, y, float(home.y) + 0.5)
 	var guard := _CrystalEnemy.new()
@@ -129,8 +130,8 @@ func _check_world(holder: Node) -> void:
 	player.name = "Player"
 	player.add_to_group("player")
 	holder.add_child(player)
-	var ws = _Settings.get_active()
-	var y := ws.layer_height()
+	var ws: WorldSettings = _Settings.get_active()
+	var y: float = ws.layer_height()
 	var cfg = _Brains.get_def(&"ambush")
 	var home := Vector2i(50, 50)
 	var bandit := _WorldEntity.new()
