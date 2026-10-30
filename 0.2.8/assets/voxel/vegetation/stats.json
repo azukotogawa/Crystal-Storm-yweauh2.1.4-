@@ -1,0 +1,1114 @@
+{
+  "budget_tree_lod0": 5000,
+  "budget_plant": 300,
+  "python_quads": true,
+  "before_box_quads": {
+    "tree": 18,
+    "bush": 18,
+    "grass_tuft": 24
+  },
+  "worst_tree_quads": 4501,
+  "worst_plant_quads": 144,
+  "models": [
+    {
+      "file": "lod/tree_oak_v0_s0_lod0.json",
+      "name": "tree_oak_v0_s0_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v1_s0_lod0.json",
+      "name": "tree_oak_v1_s0_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v2_s0_lod0.json",
+      "name": "tree_oak_v2_s0_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v0_s1_lod0.json",
+      "name": "tree_oak_v0_s1_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 19264,
+      "quads": 1818
+    },
+    {
+      "file": "lod/tree_oak_v1_s1_lod0.json",
+      "name": "tree_oak_v1_s1_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 19264,
+      "quads": 1818
+    },
+    {
+      "file": "lod/tree_oak_v2_s1_lod0.json",
+      "name": "tree_oak_v2_s1_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 19264,
+      "quads": 1818
+    },
+    {
+      "file": "lod/tree_oak_v0_s2_lod0.json",
+      "name": "tree_oak_v0_s2_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 47931,
+      "quads": 4501
+    },
+    {
+      "file": "lod/tree_oak_v1_s2_lod0.json",
+      "name": "tree_oak_v1_s2_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 47931,
+      "quads": 4501
+    },
+    {
+      "file": "lod/tree_oak_v2_s2_lod0.json",
+      "name": "tree_oak_v2_s2_lod0",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 47931,
+      "quads": 4501
+    },
+    {
+      "file": "lod/tree_oak_v0_s0_lod1.json",
+      "name": "tree_oak_v0_s0_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v1_s0_lod1.json",
+      "name": "tree_oak_v1_s0_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v2_s0_lod1.json",
+      "name": "tree_oak_v2_s0_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 4356,
+      "quads": 164
+    },
+    {
+      "file": "lod/tree_oak_v0_s1_lod1.json",
+      "name": "tree_oak_v0_s1_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 19232,
+      "quads": 1707
+    },
+    {
+      "file": "lod/tree_oak_v1_s1_lod1.json",
+      "name": "tree_oak_v1_s1_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 19232,
+      "quads": 1707
+    },
+    {
+      "file": "lod/tree_oak_v2_s1_lod1.json",
+      "name": "tree_oak_v2_s1_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 19232,
+      "quads": 1707
+    },
+    {
+      "file": "lod/tree_oak_v0_s2_lod1.json",
+      "name": "tree_oak_v0_s2_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 0,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 47792,
+      "quads": 4105
+    },
+    {
+      "file": "lod/tree_oak_v1_s2_lod1.json",
+      "name": "tree_oak_v1_s2_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 1,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 47792,
+      "quads": 4105
+    },
+    {
+      "file": "lod/tree_oak_v2_s2_lod1.json",
+      "name": "tree_oak_v2_s2_lod1",
+      "kind": "tree",
+      "species": "oak",
+      "variant": 2,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 47792,
+      "quads": 4105
+    },
+    {
+      "file": "lod/tree_birch_v0_s0_lod0.json",
+      "name": "tree_birch_v0_s0_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v1_s0_lod0.json",
+      "name": "tree_birch_v1_s0_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v2_s0_lod0.json",
+      "name": "tree_birch_v2_s0_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v0_s1_lod0.json",
+      "name": "tree_birch_v0_s1_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 12861,
+      "quads": 1933
+    },
+    {
+      "file": "lod/tree_birch_v1_s1_lod0.json",
+      "name": "tree_birch_v1_s1_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 12861,
+      "quads": 1933
+    },
+    {
+      "file": "lod/tree_birch_v2_s1_lod0.json",
+      "name": "tree_birch_v2_s1_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 12861,
+      "quads": 1933
+    },
+    {
+      "file": "lod/tree_birch_v0_s2_lod0.json",
+      "name": "tree_birch_v0_s2_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 24189,
+      "quads": 3680
+    },
+    {
+      "file": "lod/tree_birch_v1_s2_lod0.json",
+      "name": "tree_birch_v1_s2_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 24189,
+      "quads": 3680
+    },
+    {
+      "file": "lod/tree_birch_v2_s2_lod0.json",
+      "name": "tree_birch_v2_s2_lod0",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 24189,
+      "quads": 3680
+    },
+    {
+      "file": "lod/tree_birch_v0_s0_lod1.json",
+      "name": "tree_birch_v0_s0_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v1_s0_lod1.json",
+      "name": "tree_birch_v1_s0_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v2_s0_lod1.json",
+      "name": "tree_birch_v2_s0_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 2412,
+      "quads": 58
+    },
+    {
+      "file": "lod/tree_birch_v0_s1_lod1.json",
+      "name": "tree_birch_v0_s1_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 12588,
+      "quads": 1145
+    },
+    {
+      "file": "lod/tree_birch_v1_s1_lod1.json",
+      "name": "tree_birch_v1_s1_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 12588,
+      "quads": 1145
+    },
+    {
+      "file": "lod/tree_birch_v2_s1_lod1.json",
+      "name": "tree_birch_v2_s1_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 12588,
+      "quads": 1145
+    },
+    {
+      "file": "lod/tree_birch_v0_s2_lod1.json",
+      "name": "tree_birch_v0_s2_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 0,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 23656,
+      "quads": 2131
+    },
+    {
+      "file": "lod/tree_birch_v1_s2_lod1.json",
+      "name": "tree_birch_v1_s2_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 1,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 23656,
+      "quads": 2131
+    },
+    {
+      "file": "lod/tree_birch_v2_s2_lod1.json",
+      "name": "tree_birch_v2_s2_lod1",
+      "kind": "tree",
+      "species": "birch",
+      "variant": 2,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 23656,
+      "quads": 2131
+    },
+    {
+      "file": "lod/tree_pine_v0_s0_lod0.json",
+      "name": "tree_pine_v0_s0_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 23068,
+      "quads": 2651
+    },
+    {
+      "file": "lod/tree_pine_v1_s0_lod0.json",
+      "name": "tree_pine_v1_s0_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 23068,
+      "quads": 2651
+    },
+    {
+      "file": "lod/tree_pine_v2_s0_lod0.json",
+      "name": "tree_pine_v2_s0_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 0,
+      "lod": 0,
+      "voxels": 23068,
+      "quads": 2651
+    },
+    {
+      "file": "lod/tree_pine_v0_s1_lod0.json",
+      "name": "tree_pine_v0_s1_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 33079,
+      "quads": 3641
+    },
+    {
+      "file": "lod/tree_pine_v1_s1_lod0.json",
+      "name": "tree_pine_v1_s1_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 33079,
+      "quads": 3641
+    },
+    {
+      "file": "lod/tree_pine_v2_s1_lod0.json",
+      "name": "tree_pine_v2_s1_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 1,
+      "lod": 0,
+      "voxels": 33079,
+      "quads": 3641
+    },
+    {
+      "file": "lod/tree_pine_v0_s2_lod0.json",
+      "name": "tree_pine_v0_s2_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 35947,
+      "quads": 3918
+    },
+    {
+      "file": "lod/tree_pine_v1_s2_lod0.json",
+      "name": "tree_pine_v1_s2_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 35947,
+      "quads": 3918
+    },
+    {
+      "file": "lod/tree_pine_v2_s2_lod0.json",
+      "name": "tree_pine_v2_s2_lod0",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 2,
+      "lod": 0,
+      "voxels": 35947,
+      "quads": 3918
+    },
+    {
+      "file": "lod/tree_pine_v0_s0_lod1.json",
+      "name": "tree_pine_v0_s0_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 22720,
+      "quads": 1738
+    },
+    {
+      "file": "lod/tree_pine_v1_s0_lod1.json",
+      "name": "tree_pine_v1_s0_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 22720,
+      "quads": 1738
+    },
+    {
+      "file": "lod/tree_pine_v2_s0_lod1.json",
+      "name": "tree_pine_v2_s0_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 0,
+      "lod": 1,
+      "voxels": 22720,
+      "quads": 1738
+    },
+    {
+      "file": "lod/tree_pine_v0_s1_lod1.json",
+      "name": "tree_pine_v0_s1_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 32700,
+      "quads": 2626
+    },
+    {
+      "file": "lod/tree_pine_v1_s1_lod1.json",
+      "name": "tree_pine_v1_s1_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 32700,
+      "quads": 2626
+    },
+    {
+      "file": "lod/tree_pine_v2_s1_lod1.json",
+      "name": "tree_pine_v2_s1_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 1,
+      "lod": 1,
+      "voxels": 32700,
+      "quads": 2626
+    },
+    {
+      "file": "lod/tree_pine_v0_s2_lod1.json",
+      "name": "tree_pine_v0_s2_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 0,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 35568,
+      "quads": 2903
+    },
+    {
+      "file": "lod/tree_pine_v1_s2_lod1.json",
+      "name": "tree_pine_v1_s2_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 1,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 35568,
+      "quads": 2903
+    },
+    {
+      "file": "lod/tree_pine_v2_s2_lod1.json",
+      "name": "tree_pine_v2_s2_lod1",
+      "kind": "tree",
+      "species": "pine",
+      "variant": 2,
+      "stage": 2,
+      "lod": 1,
+      "voxels": 35568,
+      "quads": 2903
+    },
+    {
+      "file": "lod/grass_tuft_v0_s0.json",
+      "name": "grass_tuft_v0_s0",
+      "kind": "plant",
+      "voxels": 72,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v0_s0.json",
+      "name": "tall_grass_v0_s0",
+      "kind": "plant",
+      "voxels": 144,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/grass_tuft_v0_s1.json",
+      "name": "grass_tuft_v0_s1",
+      "kind": "plant",
+      "voxels": 120,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v0_s1.json",
+      "name": "tall_grass_v0_s1",
+      "kind": "plant",
+      "voxels": 192,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/grass_tuft_v1_s0.json",
+      "name": "grass_tuft_v1_s0",
+      "kind": "plant",
+      "voxels": 72,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v1_s0.json",
+      "name": "tall_grass_v1_s0",
+      "kind": "plant",
+      "voxels": 144,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/grass_tuft_v1_s1.json",
+      "name": "grass_tuft_v1_s1",
+      "kind": "plant",
+      "voxels": 120,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v1_s1.json",
+      "name": "tall_grass_v1_s1",
+      "kind": "plant",
+      "voxels": 192,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/grass_tuft_v2_s0.json",
+      "name": "grass_tuft_v2_s0",
+      "kind": "plant",
+      "voxels": 72,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v2_s0.json",
+      "name": "tall_grass_v2_s0",
+      "kind": "plant",
+      "voxels": 144,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/grass_tuft_v2_s1.json",
+      "name": "grass_tuft_v2_s1",
+      "kind": "plant",
+      "voxels": 120,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/tall_grass_v2_s1.json",
+      "name": "tall_grass_v2_s1",
+      "kind": "plant",
+      "voxels": 192,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v0_s0.json",
+      "name": "fern_v0_s0",
+      "kind": "plant",
+      "voxels": 96,
+      "quads": 72,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v0_s1.json",
+      "name": "fern_v0_s1",
+      "kind": "plant",
+      "voxels": 160,
+      "quads": 120,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v1_s0.json",
+      "name": "fern_v1_s0",
+      "kind": "plant",
+      "voxels": 128,
+      "quads": 96,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v1_s1.json",
+      "name": "fern_v1_s1",
+      "kind": "plant",
+      "voxels": 192,
+      "quads": 144,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v2_s0.json",
+      "name": "fern_v2_s0",
+      "kind": "plant",
+      "voxels": 96,
+      "quads": 72,
+      "lod": 0
+    },
+    {
+      "file": "lod/fern_v2_s1.json",
+      "name": "fern_v2_s1",
+      "kind": "plant",
+      "voxels": 128,
+      "quads": 96,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v0_s0.json",
+      "name": "bush_v0_s0",
+      "kind": "plant",
+      "voxels": 172,
+      "quads": 56,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v0_s1.json",
+      "name": "bush_v0_s1",
+      "kind": "plant",
+      "voxels": 362,
+      "quads": 92,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v0_s2.json",
+      "name": "bush_v0_s2",
+      "kind": "plant",
+      "voxels": 588,
+      "quads": 94,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v1_s0.json",
+      "name": "bush_v1_s0",
+      "kind": "plant",
+      "voxels": 362,
+      "quads": 92,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v1_s1.json",
+      "name": "bush_v1_s1",
+      "kind": "plant",
+      "voxels": 588,
+      "quads": 94,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v1_s2.json",
+      "name": "bush_v1_s2",
+      "kind": "plant",
+      "voxels": 516,
+      "quads": 116,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v2_s0.json",
+      "name": "bush_v2_s0",
+      "kind": "plant",
+      "voxels": 146,
+      "quads": 36,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v2_s1.json",
+      "name": "bush_v2_s1",
+      "kind": "plant",
+      "voxels": 172,
+      "quads": 56,
+      "lod": 0
+    },
+    {
+      "file": "lod/bush_v2_s2.json",
+      "name": "bush_v2_s2",
+      "kind": "plant",
+      "voxels": 362,
+      "quads": 92,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v0_s0.json",
+      "name": "flower_red_v0_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v0_s1.json",
+      "name": "flower_red_v0_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 59,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v1_s0.json",
+      "name": "flower_red_v1_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v1_s1.json",
+      "name": "flower_red_v1_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 62,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v2_s0.json",
+      "name": "flower_red_v2_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_red_v2_s1.json",
+      "name": "flower_red_v2_s1",
+      "kind": "plant",
+      "voxels": 60,
+      "quads": 38,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v0_s0.json",
+      "name": "flower_yellow_v0_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v0_s1.json",
+      "name": "flower_yellow_v0_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 59,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v1_s0.json",
+      "name": "flower_yellow_v1_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v1_s1.json",
+      "name": "flower_yellow_v1_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 62,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v2_s0.json",
+      "name": "flower_yellow_v2_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_yellow_v2_s1.json",
+      "name": "flower_yellow_v2_s1",
+      "kind": "plant",
+      "voxels": 60,
+      "quads": 38,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v0_s0.json",
+      "name": "flower_blue_v0_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v0_s1.json",
+      "name": "flower_blue_v0_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 59,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v1_s0.json",
+      "name": "flower_blue_v1_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v1_s1.json",
+      "name": "flower_blue_v1_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 62,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v2_s0.json",
+      "name": "flower_blue_v2_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_blue_v2_s1.json",
+      "name": "flower_blue_v2_s1",
+      "kind": "plant",
+      "voxels": 60,
+      "quads": 38,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v0_s0.json",
+      "name": "flower_white_v0_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v0_s1.json",
+      "name": "flower_white_v0_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 59,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v1_s0.json",
+      "name": "flower_white_v1_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v1_s1.json",
+      "name": "flower_white_v1_s1",
+      "kind": "plant",
+      "voxels": 64,
+      "quads": 62,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v2_s0.json",
+      "name": "flower_white_v2_s0",
+      "kind": "plant",
+      "voxels": 32,
+      "quads": 10,
+      "lod": 0
+    },
+    {
+      "file": "lod/flower_white_v2_s1.json",
+      "name": "flower_white_v2_s1",
+      "kind": "plant",
+      "voxels": 60,
+      "quads": 38,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v0_s0.json",
+      "name": "reeds_v0_s0",
+      "kind": "plant",
+      "voxels": 88,
+      "quads": 12,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v0_s1.json",
+      "name": "reeds_v0_s1",
+      "kind": "plant",
+      "voxels": 224,
+      "quads": 30,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v1_s0.json",
+      "name": "reeds_v1_s0",
+      "kind": "plant",
+      "voxels": 132,
+      "quads": 18,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v1_s1.json",
+      "name": "reeds_v1_s1",
+      "kind": "plant",
+      "voxels": 304,
+      "quads": 40,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v2_s0.json",
+      "name": "reeds_v2_s0",
+      "kind": "plant",
+      "voxels": 88,
+      "quads": 12,
+      "lod": 0
+    },
+    {
+      "file": "lod/reeds_v2_s1.json",
+      "name": "reeds_v2_s1",
+      "kind": "plant",
+      "voxels": 152,
+      "quads": 20,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v0_s0.json",
+      "name": "mushroom_v0_s0",
+      "kind": "plant",
+      "voxels": 77,
+      "quads": 52,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v0_s1.json",
+      "name": "mushroom_v0_s1",
+      "kind": "plant",
+      "voxels": 146,
+      "quads": 94,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v1_s0.json",
+      "name": "mushroom_v1_s0",
+      "kind": "plant",
+      "voxels": 113,
+      "quads": 68,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v1_s1.json",
+      "name": "mushroom_v1_s1",
+      "kind": "plant",
+      "voxels": 215,
+      "quads": 114,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v2_s0.json",
+      "name": "mushroom_v2_s0",
+      "kind": "plant",
+      "voxels": 77,
+      "quads": 54,
+      "lod": 0
+    },
+    {
+      "file": "lod/mushroom_v2_s1.json",
+      "name": "mushroom_v2_s1",
+      "kind": "plant",
+      "voxels": 113,
+      "quads": 64,
+      "lod": 0
+    }
+  ],
+  "model_count": 117,
+  "tree_variants": "v0 v1 v2 on disk; gameplay mirrors v0 in memory"
+}

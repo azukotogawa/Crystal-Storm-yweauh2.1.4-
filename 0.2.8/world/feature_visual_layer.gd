@@ -18,6 +18,9 @@ const _StructureOrientation = preload("res://helpers/structure_orientation.gd")
 const _BuildingRegistry = preload("res://building/building_registry.gd")
 const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
 const _TextureSet = preload("res://helpers/texture_set.gd")
+const _VegCatalog = preload("res://helpers/vegetation_voxel_catalog.gd")
+const _VoxelLoader = preload("res://helpers/crystal_voxel_loader.gd")
+const _VisualProximity = preload("res://helpers/visual_proximity.gd")
 
 var chunk_manager: ChunkManager
 var world: InfiniteNoiseWorld
@@ -35,6 +38,12 @@ var _stream_ready_max_us: int = 0
 var _stream_populate_n: int = 0
 var _stream_populate_us: int = 0
 var _props_per_chunk: int = 12
+var _veg_records: Dictionary = {}
+var _veg_cells: Dictionary = {}
+var _veg_root_by_chunk: Dictionary = {}
+var _veg_batch := false
+var _lod_check := 0.0
+var _lod_anchor := Vector2i(999999, 999999)
 
 
 func _ready() -> void:
@@ -94,6 +103,7 @@ func refresh_cell(wx: int, wz: int) -> void:
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return
 	var key := Vector2i(wx, wz)
+	_remove_veg_cell(wx, wz)
 	_remove_cell_anchor(key)
 	var feat: Dictionary = _FeatureRegistry.get_feature(wx, wz)
 	if feat.is_empty():
@@ -247,6 +257,7 @@ func _on_chunk_unloaded(coord: Vector2i) -> void:
 
 func _process(_delta: float) -> void:
 	if _pending_populate.is_empty():
+		_tick_veg_lod(_delta)
 		return
 	if _registry == null or not _registry.feature_billboards_enabled:
 		_pending_populate.clear()
@@ -281,10 +292,42 @@ func _process(_delta: float) -> void:
 		drain.call(null)
 	if profiler and profiler.has_method("end"):
 		profiler.end("feature_visual_populate")
+	_tick_veg_lod(_delta)
+
+
+func _tick_veg_lod(delta: float) -> void:
+	_lod_check += delta
+	if _lod_check < 0.5 or _veg_records.is_empty():
+		return
+	_lod_check = 0.0
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	var col := _WorldVisualCoords.column_from_node(player)
+	var here := Vector2i(floori(col.x), floori(col.y))
+	if here.distance_to(_lod_anchor) < 4:
+		return
+	_lod_anchor = here
+	for coord_v in _veg_records.keys():
+		var coord: Vector2i = coord_v
+		var center := Vector2(float(coord.x * ChunkData.SIZE + 8), float(coord.y * ChunkData.SIZE + 8))
+		if center.distance_to(Vector2(here)) > 28.0:
+			continue
+		_flush_veg_chunk(coord)
 
 
 func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: int) -> void:
 	if _registry == null or not _registry.feature_billboards_enabled:
+		return
+	if _veg_cells.has(world_pos):
+		var coord: Vector2i = _veg_cells[world_pos]
+		var list: Array = _veg_records.get(coord, [])
+		for rec_v in list:
+			var rec: Dictionary = rec_v
+			if int(rec.get("wx", 0)) == world_pos.x and int(rec.get("wz", 0)) == world_pos.y:
+				rec["stage"] = stage
+				rec["plant_id"] = str(plant_id)
+		_flush_veg_chunk(coord)
 		return
 	var anchor: Node3D = _nodes_by_cell.get(world_pos)
 	if anchor == null or not is_instance_valid(anchor):
@@ -311,6 +354,7 @@ func _on_growth_stage_changed(world_pos: Vector2i, plant_id: StringName, stage: 
 
 
 func _populate_chunk(coord: Vector2i) -> void:
+	_veg_batch = true
 	_clear_chunk(coord)
 	var budget := _registry.max_feature_billboards_per_chunk
 	var placed := 0
@@ -341,6 +385,9 @@ func _populate_chunk(coord: Vector2i) -> void:
 			if feat.is_empty() or _is_player_built_visual(feat) or _is_poi_visual(feat):
 				continue
 			var anchor := _spawn_feature_anchor(wx, wz, feat)
+			if _veg_cells.has(Vector2i(wx, wz)):
+				placed += 1
+				continue
 			if anchor == null:
 				continue
 			chunk_nodes.append(anchor)
@@ -350,7 +397,9 @@ func _populate_chunk(coord: Vector2i) -> void:
 			break
 
 	_append_scatter_props(coord, chunk_nodes)
+	_veg_batch = false
 	_nodes_by_chunk[coord] = chunk_nodes
+	_flush_veg_chunk(coord)
 
 
 func _prop_budget() -> int:
@@ -395,6 +444,15 @@ func _append_scatter_props(coord: Vector2i, chunk_nodes: Array) -> void:
 
 
 func _place_scatter_prop(chunk_nodes: Array, cell: Vector2i, kind: String, yaw: int) -> void:
+	if _VegCatalog.is_authored(kind):
+		var stage := 1
+		if kind == "bush":
+			stage = 2
+		elif kind == "sapling":
+			stage = 0
+		var pos := _anchor_pos(float(cell.x) + 0.5, float(cell.y) + 0.5, 0.0)
+		_queue_veg_record(cell.x, cell.y, kind, stage, _biome_name_at(cell.x, cell.y), deg_to_rad(float(yaw)), pos)
+		return
 	var prop := _VoxelPropBuilder.build_scatter_prop(kind)
 	prop.set_meta("prop_kind", kind)
 	prop.set_meta("prop_cell", cell)
@@ -583,6 +641,11 @@ func _make_vegetation_anchor(
 	col_x += jit.x
 	col_z += jit.y
 	var corrupt_tex := _corrupted_texture(wx, wz, plant_id, stage)
+	if corrupt_tex == null and _use_voxel_vegetation(wx, wz, plant_id) and _VegCatalog.is_authored(str(plant_id)):
+		var pos := _anchor_pos(col_x, col_z, 0.0)
+		_queue_veg_record(wx, wz, str(plant_id), stage, _biome_name_at(wx, wz), jit.z, pos)
+		anchor.free()
+		return null
 	if corrupt_tex == null and _use_voxel_vegetation(wx, wz, plant_id):
 		anchor.position = _anchor_pos(col_x, col_z, 0.0)
 		var biome_name := _biome_name_at(wx, wz)
@@ -787,7 +850,12 @@ func _use_voxel_vegetation(wx: int, wz: int, plant_id: StringName = &"") -> bool
 	_resolve_registry()
 	if _registry == null or not _registry.feature_billboards_enabled:
 		return false
-	return bool(_registry.get("vegetation_voxel_models_enabled"))
+	if not bool(_registry.get("vegetation_voxel_models_enabled")):
+		return false
+	var distance_columns := int(_registry.get("vegetation_billboard_distance_columns"))
+	if not is_inside_tree():
+		return true
+	return _VisualProximity.use_voxel_within_distance(get_tree(), true, distance_columns, wx, wz)
 
 
 func _player_column_distance(wx: int, wz: int) -> float:
@@ -817,7 +885,128 @@ func _sprite_height_offset_for_plant(plant_id: StringName, stage: int, tex: Text
 			return (0.9 + growth * 1.1) * vs
 
 
+func _queue_veg_record(wx: int, wz: int, plant_id: String, stage: int, biome: String, yaw: float, pos: Vector3) -> void:
+	var coord := Vector2i(
+		floori(float(wx) / float(ChunkData.SIZE)),
+		floori(float(wz) / float(ChunkData.SIZE))
+	)
+	if not _veg_records.has(coord):
+		_veg_records[coord] = []
+	var list: Array = _veg_records[coord]
+	for i in range(list.size() - 1, -1, -1):
+		var rec: Dictionary = list[i]
+		if int(rec.get("wx", 0)) == wx and int(rec.get("wz", 0)) == wz:
+			list.remove_at(i)
+	list.append({
+		"wx": wx,
+		"wz": wz,
+		"plant_id": plant_id,
+		"stage": stage,
+		"biome": biome,
+		"yaw": yaw,
+		"pos": pos,
+	})
+	_veg_cells[Vector2i(wx, wz)] = coord
+	if not _veg_batch:
+		_flush_veg_chunk(coord)
+
+
+func _remove_veg_cell(wx: int, wz: int) -> void:
+	var key := Vector2i(wx, wz)
+	if not _veg_cells.has(key):
+		return
+	var coord: Vector2i = _veg_cells[key]
+	_veg_cells.erase(key)
+	if _veg_records.has(coord):
+		var list: Array = _veg_records[coord]
+		for i in range(list.size() - 1, -1, -1):
+			var rec: Dictionary = list[i]
+			if int(rec.get("wx", 0)) == wx and int(rec.get("wz", 0)) == wz:
+				list.remove_at(i)
+	if not _veg_batch:
+		_flush_veg_chunk(coord)
+
+
+func _veg_lod(wx: int, wz: int) -> int:
+	if not is_inside_tree():
+		return 1
+	var player = get_tree().get_first_node_in_group("player")
+	if player == null:
+		return 1
+	var dist := _VisualProximity.player_column_distance(get_tree(), wx, wz)
+	return 0 if dist <= float(_VegCatalog.LOD0_COLUMNS) else 1
+
+
+func _flush_veg_chunk(coord: Vector2i) -> void:
+	_bind_layer_roots()
+	if _vegetation_root == null:
+		return
+	var records: Array = _veg_records.get(coord, [])
+	var root: Node3D = _veg_root_by_chunk.get(coord) as Node3D
+	if root == null or not is_instance_valid(root):
+		root = Node3D.new()
+		root.name = "VegChunk_%d_%d" % [coord.x, coord.y]
+		_vegetation_root.add_child(root)
+		_veg_root_by_chunk[coord] = root
+		if _nodes_by_chunk.has(coord):
+			var bucket: Array = _nodes_by_chunk[coord]
+			if root not in bucket:
+				bucket.append(root)
+	for child in root.get_children():
+		child.queue_free()
+	if records.is_empty():
+		return
+	var groups := {}
+	for rec_v in records:
+		var rec: Dictionary = rec_v
+		var plant_id := str(rec.get("plant_id", ""))
+		var wx := int(rec.get("wx", 0))
+		var wz := int(rec.get("wz", 0))
+		var path := _VegCatalog.model_path(
+			plant_id,
+			int(rec.get("stage", 1)),
+			wx,
+			wz,
+			str(rec.get("biome", "")),
+			_veg_lod(wx, wz)
+		)
+		if path == "" or not FileAccess.file_exists(path):
+			continue
+		var variant := _VegCatalog.mirror_variant(plant_id, wx, wz)
+		var group_key := "%s#%d" % [path, variant]
+		if not groups.has(group_key):
+			groups[group_key] = []
+		(groups[group_key] as Array).append(rec)
+	for path_v in groups.keys():
+		var group_key := str(path_v)
+		var split_at := group_key.rfind("#")
+		var path := group_key.substr(0, split_at)
+		var variant := int(group_key.substr(split_at + 1))
+		var mesh := _VoxelLoader.mesh_variant(path, variant)
+		if mesh == null:
+			continue
+		var list: Array = groups[group_key]
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.mesh = mesh
+		multi.instance_count = list.size()
+		for i in list.size():
+			var rec: Dictionary = list[i]
+			var basis := Basis(Vector3.UP, float(rec.get("yaw", 0.0)))
+			multi.set_instance_transform(i, Transform3D(basis, rec.get("pos", Vector3.ZERO)))
+		var inst := MultiMeshInstance3D.new()
+		inst.multimesh = multi
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(inst)
+
+
 func _clear_chunk(coord: Vector2i) -> void:
+	if _veg_records.has(coord):
+		for rec_v in _veg_records[coord]:
+			var rec: Dictionary = rec_v
+			_veg_cells.erase(Vector2i(int(rec.get("wx", 0)), int(rec.get("wz", 0))))
+		_veg_records.erase(coord)
+	_veg_root_by_chunk.erase(coord)
 	if not _nodes_by_chunk.has(coord):
 		return
 	for node_variant in _nodes_by_chunk[coord]:
@@ -837,3 +1026,10 @@ func _clear_all() -> void:
 		_clear_chunk(coord)
 	_nodes_by_chunk.clear()
 	_nodes_by_cell.clear()
+	_veg_records.clear()
+	_veg_cells.clear()
+	for root_v in _veg_root_by_chunk.values():
+		var root: Node3D = root_v
+		if is_instance_valid(root):
+			root.queue_free()
+	_veg_root_by_chunk.clear()

@@ -39,6 +39,9 @@
     { "name": "pine_leaf_9", "rgb": [86, 132, 74] },
     { "name": "pine_leaf_10", "rgb": [8, 26, 24] },
     { "name": "pine_leaf_11", "rgb": [108, 150, 84] },
-    { "name": "pine_leaf_12", "rgb": [120, 100, 60] }
+    { "name": "pine_leaf_12", "rgb": [120, 100, 60] },
+    { "name": "flower_red", "rgb": [186, 42, 38] },
+    { "name": "flower_yellow", "rgb": [214, 176, 42] },
+    { "name": "flower_blue", "rgb": [58, 92, 186] }
   ]
 }

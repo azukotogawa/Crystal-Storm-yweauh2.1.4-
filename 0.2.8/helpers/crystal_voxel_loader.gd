@@ -162,6 +162,22 @@ static func mesh_for(path: String) -> ArrayMesh:
 	return rig.get("mesh", null) as ArrayMesh
 
 
+static func mesh_variant(path: String, variant: int) -> ArrayMesh:
+	if variant <= 0:
+		return mesh_for(path)
+	var key := "%s#m%d" % [path, variant]
+	if _memory.has(key):
+		var cached: Dictionary = _memory[key]
+		return cached.get("mesh", null) as ArrayMesh
+	var model := load_model(path)
+	if model == null:
+		return null
+	var mirrored := _mirror_model(model, 0 if variant == 1 else 2)
+	var built := build_rig(mirrored)
+	_memory[key] = built
+	return built.get("mesh", null) as ArrayMesh
+
+
 static func part_meshes(path: String) -> Dictionary:
 	var rig := rig_for(path)
 	var parts: Dictionary = rig.get("parts", {})
@@ -582,6 +598,36 @@ static func _size_from_cells(cells: Array) -> Vector3i:
 		max_v.y = maxi(max_v.y, c.y + 1)
 		max_v.z = maxi(max_v.z, c.z + 1)
 	return max_v
+
+
+static func _mirror_model(model: CrystalVoxelModel, axis: int) -> CrystalVoxelModel:
+	var copy := CrystalVoxelModel.new()
+	copy.model_name = model.model_name
+	copy.size = model.size
+	copy.vpb = model.vpb
+	copy.base_cell = model.base_cell
+	copy.scale_mode = model.scale_mode
+	copy.palette = model.palette
+	var span := copy.size.x - 1 if axis == 0 else copy.size.z - 1
+	if axis == 0:
+		copy.pivot = Vector3(float(span) - model.pivot.x, model.pivot.y, model.pivot.z)
+	else:
+		copy.pivot = Vector3(model.pivot.x, model.pivot.y, float(span) - model.pivot.z)
+	copy.part_order = model.part_order.duplicate()
+	var parts := {}
+	for part_name_i in model.part_order:
+		var part_name := str(part_name_i)
+		var src: Array = model.part_cells.get(part_name, [])
+		var dst: Array = []
+		for cell in src:
+			var c: Vector4i = cell
+			if axis == 0:
+				dst.append(Vector4i(span - c.x, c.y, c.z, c.w))
+			else:
+				dst.append(Vector4i(c.x, c.y, span - c.z, c.w))
+		parts[part_name] = dst
+	copy.part_cells = parts
+	return copy
 
 
 static func _ivec3(raw) -> Vector3i:
