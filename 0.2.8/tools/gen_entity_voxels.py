@@ -139,47 +139,27 @@ def build_player():
     leg_r = {}
     fill_base(torso, 2, 14, 0, 14, 24, 8, TUNIC)
     fill_base(torso, 2, 12, 0, 14, 14, 8, BELT)
-    fill_base(torso, 6, 24, 2, 10, 26, 6, SKIN)
-    torso = hollow_base(torso)
-    fill_base(head, 4, 26, 0, 12, 30, 6, SKIN)
+    for z in range(0, 8):
+        torso.pop((2, 22, z), None)
+        torso.pop((2, 23, z), None)
+        torso.pop((13, 22, z), None)
+        torso.pop((13, 23, z), None)
+    fill_base(head, 4, 24, 0, 12, 30, 8, SKIN)
     fill_base(head, 4, 30, 0, 12, 34, 8, HAIR)
-    head = hollow_base(head)
-    for x, y in ((5, 32), (6, 33), (7, 33), (8, 33), (9, 33), (10, 32)):
-        for z in (2, 3, 4, 5):
-            put(head, x, y, z, HAIR)
-    for x in (4, 11):
-        for y in (32, 33):
-            for z in range(0, 8):
-                head.pop((x, y, z), None)
-    for x in (6, 7, 8, 9):
-        put(head, x, 28, 6, SKIN)
-        put(head, x, 27, 7, SKIN)
     put(head, 6, 28, 7, EYE)
     put(head, 9, 28, 7, EYE)
-    put(head, 7, 27, 7, SKIN)
-    put(head, 8, 27, 7, SKIN)
-    put(head, 7, 33, 3, HAIR)
-    put(head, 8, 33, 4, HAIR)
-    fill_base(arm_l, 0, 18, 2, 2, 24, 6, TUNIC)
-    fill_base(fore_l, 0, 14, 2, 2, 18, 6, SKIN)
-    put(fore_l, 0, 14, 3, SKIN)
-    put(fore_l, 1, 15, 5, SKIN)
-    fill_base(arm_r, 14, 18, 2, 16, 24, 6, TUNIC)
-    fill_base(fore_r, 14, 14, 2, 16, 18, 6, SKIN)
-    put(fore_r, 15, 14, 3, SKIN)
-    put(fore_r, 14, 15, 5, SKIN)
-    fill_base(leg_l, 2, 4, 2, 6, 12, 6, TUNIC)
-    fill_base(leg_l, 2, 0, 2, 6, 4, 6, BOOT)
-    put(leg_l, 3, 0, 6, BOOT)
-    put(leg_l, 4, 1, 6, BOOT)
-    fill_base(leg_r, 10, 4, 2, 14, 12, 6, TUNIC)
-    fill_base(leg_r, 10, 0, 2, 14, 4, 6, BOOT)
-    put(leg_r, 11, 0, 6, BOOT)
-    put(leg_r, 12, 1, 6, BOOT)
-    for x in (2, 13):
-        for z in range(0, 8):
-            torso.pop((x, 22, z), None)
-            torso.pop((x, 23, z), None)
+    put(head, 7, 33, 7, HAIR)
+    put(head, 8, 33, 6, HAIR)
+    for x in (4, 11):
+        head.pop((x, 33, 0), None)
+    fill_base(arm_l, 0, 18, 2, 2, 24, 8, TUNIC)
+    fill_base(fore_l, 0, 12, 2, 2, 18, 8, SKIN)
+    fill_base(arm_r, 14, 18, 2, 16, 24, 8, TUNIC)
+    fill_base(fore_r, 14, 12, 2, 16, 18, 8, SKIN)
+    fill_base(leg_l, 4, 4, 2, 8, 12, 8, TUNIC)
+    fill_base(leg_l, 4, 0, 2, 8, 4, 8, BOOT)
+    fill_base(leg_r, 10, 4, 2, 14, 12, 8, TUNIC)
+    fill_base(leg_r, 10, 0, 2, 14, 4, 8, BOOT)
     parts = {
         "torso": torso,
         "head": head,

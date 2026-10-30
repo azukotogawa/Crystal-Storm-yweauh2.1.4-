@@ -9,6 +9,7 @@ const CONTENT_H := 34
 const USE_SLAB_BODY := false
 const _Author = preload("res://assets/player/author_player.gd")
 const _VoxelModel = preload("res://helpers/voxel_model_builder.gd")
+const _Loader = preload("res://helpers/crystal_voxel_loader.gd")
 
 const _TINT_SIDE := 0.62
 const _TINT_BACK := 0.50
@@ -98,13 +99,20 @@ static func apply_to(mesh_instance: MeshInstance3D, height: float, radius: float
 
 
 static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radius: float) -> bool:
+	var model := _Loader.load_model(_VoxelModel.PLAYER_VOXEL)
+	var rig: Dictionary = _Loader.rig_for(_VoxelModel.PLAYER_VOXEL)
 	var parts: Array = _VoxelModel.parts_for(&"player")
-	var grid: Vector3i = _VoxelModel.player_grid_size()
-	if parts.is_empty() or height <= 0.0 or grid.y <= 0:
+	var packs: Dictionary = rig.get("parts", {})
+	if model == null or packs.is_empty() or parts.is_empty() or height <= 0.0 or model.size.y <= 0:
 		return false
-	var cube := height / float(grid.y)
-	var shift := Vector3(-float(grid.x), -float(grid.y), -float(grid.z)) * cube * 0.5
-	var palette := _VoxelModel.palette_for(&"player")
+	var fitted := {}
+	for part_name_i in model.part_order:
+		var part_name := str(part_name_i)
+		var pack: Dictionary = packs.get(part_name, {})
+		var raw: ArrayMesh = pack.get("mesh", null)
+		if raw == null:
+			return false
+		fitted[part_name] = _fit_player_mesh(raw, height, model.size.y, model.vpb)
 	mesh_instance.mesh = null
 	mesh_instance.material_override = make_material()
 	mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -133,11 +141,10 @@ static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radiu
 		if bool(spec.get("socket", false)):
 			pivot = pivot_of.get(parent_name + ":hand", parent_pivot) as Vector3
 		else:
-			mesh = _VoxelModel.build_bricks(spec.get("cells", []), palette, cube)
+			mesh = fitted.get(part_id, null)
 			if mesh == null:
 				skel.free()
 				return false
-			mesh = _shift_mesh(mesh, shift)
 			pivot = _joint_pivot(part_id, mesh.get_aabb())
 			var box: AABB = mesh.get_aabb()
 			var mid := box.position + box.size * 0.5
@@ -171,6 +178,46 @@ static func _apply_grid_rig(mesh_instance: MeshInstance3D, height: float, _radiu
 	mesh_instance.add_child(skel)
 	_attach_anim(mesh_instance, height, pivot_of)
 	return true
+
+
+static func _fit_player_mesh(mesh: ArrayMesh, height: float, size_y: int, vpb: int) -> ArrayMesh:
+	var settings = load("res://config/world_settings.gd").get_active()
+	var cell := float(settings.voxel_scale) / float(maxi(vpb, 1))
+	var span := float(size_y) * cell
+	var s := height / span if span > 0.0 else 1.0
+	var src: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = src[Mesh.ARRAY_VERTEX]
+	var colors: PackedColorArray = src[Mesh.ARRAY_COLOR]
+	var palette := _VoxelModel.palette_for(&"player")
+	var moved := PackedVector3Array()
+	var snapped := PackedColorArray()
+	moved.resize(verts.size())
+	snapped.resize(colors.size())
+	var drop := Vector3(0.0, -height * 0.5, 0.0)
+	for i in verts.size():
+		moved[i] = verts[i] * s + drop
+		snapped[i] = _snap_player_color(colors[i], palette)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = moved
+	arrays[Mesh.ARRAY_NORMAL] = src[Mesh.ARRAY_NORMAL]
+	arrays[Mesh.ARRAY_COLOR] = snapped
+	arrays[Mesh.ARRAY_INDEX] = src[Mesh.ARRAY_INDEX]
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return out
+
+
+static func _snap_player_color(got: Color, palette: PackedColorArray) -> Color:
+	var best := got
+	var best_d := 1000.0
+	for i in range(1, palette.size()):
+		var swatch: Color = palette[i]
+		var d := absf(got.r - swatch.r) + absf(got.g - swatch.g) + absf(got.b - swatch.b)
+		if d < best_d:
+			best_d = d
+			best = Color(swatch.r, swatch.g, swatch.b, 1.0)
+	return best
 
 
 static func _shift_mesh(mesh: ArrayMesh, offset: Vector3) -> ArrayMesh:

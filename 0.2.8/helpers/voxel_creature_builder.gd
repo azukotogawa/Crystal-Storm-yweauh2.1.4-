@@ -9,6 +9,12 @@ const _Settings = preload("res://config/world_settings.gd")
 const _Palette = preload("res://ui/crystal_palette.gd")
 const _MiteLook = preload("res://config/crystal_mite_look.gd")
 
+const _MITE_VOXEL := {
+	&"crystal_mite": "res://assets/voxel/entities/crystal_mite.json",
+	&"crystal_mite_spike": "res://assets/voxel/entities/crystal_mite_spike.json",
+	&"crystal_mite_shard": "res://assets/voxel/entities/crystal_mite_shard.json",
+}
+
 const _ANIM_LEN := TAU
 const _ANIM_STEPS := 16
 
@@ -34,8 +40,8 @@ static func parts_for(kind: StringName) -> Array:
 		return _fox_parts()
 	if kind == &"town_militia" or kind == &"wandering_trader":
 		return _militia_parts()
-	if kind == &"crystal_mite":
-		return _mite_parts()
+	if _MITE_VOXEL.has(kind):
+		return _authored_mite_parts(kind)
 	if kind == &"crystal_stag":
 		return _stag_parts()
 	if kind == &"crystal_wisp":
@@ -70,11 +76,11 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.32, 0.20, 0.12),
 			Color(0.08, 0.08, 0.08),
 		])
-	if kind == &"crystal_mite":
+	if _MITE_VOXEL.has(kind):
 		return PackedColorArray([
 			Color(0, 0, 0),
 			_mite_albedo(),
-			Color(0.05, 0.08, 0.10),
+			Color(0.08, 0.08, 0.10),
 		])
 	if kind == &"crystal_wisp":
 		return PackedColorArray([
@@ -181,8 +187,11 @@ static func cube_edge() -> float:
 
 
 static func build(kind: StringName) -> Node3D:
-	var rig := build_parts(parts_for(kind), palette_for(kind), cube_edge())
-	if rig != null and kind == &"crystal_mite":
+	var cube := cube_edge()
+	if _MITE_VOXEL.has(kind):
+		cube = _Settings.get_active().voxel_scale / 16.0
+	var rig := build_parts(parts_for(kind), palette_for(kind), cube)
+	if rig != null and _MITE_VOXEL.has(kind):
 		_fit_mite(rig)
 	if rig != null and kind == &"origin_warden":
 		_attach_boss_anims(rig)
@@ -272,42 +281,35 @@ static func _boar_parts() -> Array:
 	]
 
 
-static func _mite_parts() -> Array:
-	var crystal := 1
-	var dark := 2
+static func _authored_mite_parts(kind: StringName) -> Array:
+	var path := str(_MITE_VOXEL.get(kind, ""))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(data) != TYPE_DICTIONARY:
+		return []
+	var raw_parts = data.get("parts", {})
+	if typeof(raw_parts) != TYPE_DICTIONARY:
+		return []
 	var glow := _mite_emission()
-	var body: Array = []
-	_fill(body, 1, 1, 2, 5, 3, 7, crystal)
-	_fill(body, 0, 2, 4, 1, 5, 5, crystal)
-	_fill(body, 5, 2, 4, 6, 5, 5, crystal)
-	_fill(body, 2, 3, 3, 3, 7, 4, crystal)
-	_fill(body, 3, 3, 5, 4, 6, 6, crystal)
-	var head: Array = []
-	_fill(head, 2, 3, 0, 4, 5, 3, crystal)
-	_fill(head, 1, 3, 0, 2, 4, 2, crystal)
-	_fill(head, 4, 3, 0, 5, 4, 2, crystal)
-	_fill(head, 2, 5, 1, 3, 8, 2, crystal)
-	_fill(head, 3, 5, 1, 4, 8, 2, crystal)
-	_fill(head, 2, 4, 0, 3, 5, 1, dark)
-	_fill(head, 3, 4, 0, 4, 5, 1, dark)
-	var leg_l: Array = []
-	_fill(leg_l, 1, 0, 3, 2, 1, 4, crystal)
-	_fill(leg_l, 1, 0, 5, 2, 1, 6, crystal)
-	var leg_r: Array = []
-	_fill(leg_r, 4, 0, 3, 5, 1, 4, crystal)
-	_fill(leg_r, 4, 0, 5, 5, 1, 6, crystal)
-	var tail: Array = []
-	_fill(tail, 2, 2, 7, 4, 3, 9, crystal)
-	_fill(tail, 2, 3, 8, 3, 6, 9, crystal)
-	_fill(tail, 3, 2, 9, 4, 4, 12, crystal)
-	var emit: Array = [crystal]
-	return [
-		_part("body", "body", "Body", "Root", "bottom", body, emit, glow),
-		_part("head", "head", "Head", "Body", "bottom", head, emit, glow),
-		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l, emit, glow),
-		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r, emit, glow),
-		_part("tail", "tail", "Tail", "Body", "center", tail, emit, glow),
+	var emit: Array = [1]
+	var order := [
+		["body", "body", "Body", "Root", "bottom"],
+		["head", "head", "Head", "Body", "bottom"],
+		["leg_l", "leg", "Leg_L", "Root", "top"],
+		["leg_r", "leg", "Leg_R", "Root", "top"],
+		["tail", "tail", "Tail", "Body", "center"],
 	]
+	var out: Array = []
+	for row in order:
+		var raw = raw_parts.get(str(row[0]), [])
+		if typeof(raw) != TYPE_ARRAY or raw.is_empty():
+			return []
+		var cells: Array = []
+		for item in raw:
+			if typeof(item) != TYPE_ARRAY or item.size() < 4:
+				return []
+			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
+		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit, glow))
+	return out
 
 
 static func _stag_parts() -> Array:

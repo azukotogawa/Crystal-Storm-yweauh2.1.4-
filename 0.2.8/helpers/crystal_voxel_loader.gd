@@ -243,6 +243,10 @@ static func build_part(model: CrystalVoxelModel, part_name: String) -> Dictionar
 		zs.push_back(c.z)
 		filled += 1
 	var mesh_pack := _mesh_grid(grid, xs, ys, zs, size, model.pivot, _cell_world(model), _mesh_palette(model.palette))
+	if model.model_name == "player" and mesh_pack["mesh"] != null:
+		var sealed := _seal_tjunctions(mesh_pack["mesh"])
+		mesh_pack["mesh"] = sealed
+		mesh_pack["quads"] = quad_count(sealed)
 	var mesh: ArrayMesh = mesh_pack["mesh"]
 	if mesh != null:
 		mesh.resource_name = model.model_name if part_name == "" else part_name
@@ -255,7 +259,7 @@ static func quad_count(mesh: ArrayMesh) -> int:
 
 static func cache_file(path: String, part_name: String = "") -> String:
 	var tag := "full" if part_name == "" else part_name
-	return "%s/%s_%s_%s.res" % [CACHE_ROOT, FileAccess.get_md5(path), _scale_token(), tag]
+	return "%s/%s_%s_%s_r3.res" % [CACHE_ROOT, FileAccess.get_md5(path), _scale_token(), tag]
 
 
 static func drop_memory() -> void:
@@ -491,6 +495,115 @@ static func _ensure_wind() -> void:
 		i2 = int(idx[2])
 	var cr: Vector3 = (vs[i1] - vs[i0]).cross(vs[i2] - vs[i0])
 	_wind_sign = -1.0 if cr.dot(ns[i0]) < 0.0 else 1.0
+
+
+static func _qkey(v: Vector3) -> Vector3i:
+	return Vector3i(int(round(v.x * 10000.0)), int(round(v.y * 10000.0)), int(round(v.z * 10000.0)))
+
+
+static func _edge_split_point(a: Vector3, b: Vector3, unique: Dictionary) -> Vector3:
+	var qa := _qkey(a)
+	var qb := _qkey(b)
+	var ab := qb - qa
+	var ab2 := ab.x * ab.x + ab.y * ab.y + ab.z * ab.z
+	if ab2 <= 0:
+		return Vector3(INF, INF, INF)
+	for key in unique.keys():
+		var qp: Vector3i = key
+		if qp == qa or qp == qb:
+			continue
+		var ap := qp - qa
+		var cross := Vector3i(ab.y * ap.z - ab.z * ap.y, ab.z * ap.x - ab.x * ap.z, ab.x * ap.y - ab.y * ap.x)
+		if cross != Vector3i.ZERO:
+			continue
+		var dot := ab.x * ap.x + ab.y * ap.y + ab.z * ap.z
+		if dot <= 0 or dot >= ab2:
+			continue
+		return unique[key]
+	return Vector3(INF, INF, INF)
+
+
+static func _split_tri(tri: Array, unique: Dictionary, out: Array, depth: int) -> void:
+	if depth > 48:
+		out.append(tri)
+		return
+	var a: Vector3 = tri[0]
+	var b: Vector3 = tri[1]
+	var c: Vector3 = tri[2]
+	var mid := _edge_split_point(a, b, unique)
+	var none := Vector3(INF, INF, INF)
+	if mid == none:
+		mid = _edge_split_point(b, c, unique)
+		if mid != none:
+			a = tri[1]
+			b = tri[2]
+			c = tri[0]
+		else:
+			mid = _edge_split_point(c, a, unique)
+			if mid == none:
+				out.append(tri)
+				return
+			a = tri[2]
+			b = tri[0]
+			c = tri[1]
+	var nxt := [a, mid, c, tri[3], tri[4]]
+	var nxt2 := [mid, b, c, tri[3], tri[4]]
+	_split_tri(nxt, unique, out, depth + 1)
+	_split_tri(nxt2, unique, out, depth + 1)
+
+
+static func _seal_tjunctions(mesh: ArrayMesh) -> ArrayMesh:
+	if mesh == null or mesh.get_surface_count() < 1:
+		return mesh
+	var src: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = src[Mesh.ARRAY_VERTEX]
+	var normals: PackedVector3Array = src[Mesh.ARRAY_NORMAL]
+	var colors: PackedColorArray = src[Mesh.ARRAY_COLOR]
+	var indices: PackedInt32Array = src[Mesh.ARRAY_INDEX]
+	if indices.is_empty():
+		return mesh
+	var unique := {}
+	for v in verts:
+		var key := _qkey(v)
+		if not unique.has(key):
+			unique[key] = v
+	var sealed: Array = []
+	var i := 0
+	while i + 2 < indices.size():
+		var ia := int(indices[i])
+		var ib := int(indices[i + 1])
+		var ic := int(indices[i + 2])
+		_split_tri([verts[ia], verts[ib], verts[ic], normals[ia], colors[ia]], unique, sealed, 0)
+		i += 3
+	var out_v := PackedVector3Array()
+	var out_n := PackedVector3Array()
+	var out_c := PackedColorArray()
+	var out_i := PackedInt32Array()
+	for tri in sealed:
+		var base := out_v.size()
+		out_v.push_back(tri[0])
+		out_v.push_back(tri[1])
+		out_v.push_back(tri[2])
+		out_n.push_back(tri[3])
+		out_n.push_back(tri[3])
+		out_n.push_back(tri[3])
+		out_c.push_back(tri[4])
+		out_c.push_back(tri[4])
+		out_c.push_back(tri[4])
+		out_i.push_back(base)
+		out_i.push_back(base + 1)
+		out_i.push_back(base + 2)
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = out_v
+	arrays[Mesh.ARRAY_NORMAL] = out_n
+	arrays[Mesh.ARRAY_COLOR] = out_c
+	arrays[Mesh.ARRAY_INDEX] = out_i
+	var sealed_mesh := ArrayMesh.new()
+	sealed_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	sealed_mesh.surface_set_material(0, _Builder.make_material())
+	sealed_mesh.resource_name = mesh.resource_name
+	return sealed_mesh
 
 
 static func _save_cache(path: String, rig: Dictionary) -> void:

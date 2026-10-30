@@ -166,6 +166,8 @@ func _setup_visual(tint: Color, radius: float = 0.22, height: float = 0.70) -> v
 		call_deferred("_setup_visual", tint, radius, height)
 		return
 	var look := _visual_lookup_id()
+	if look == &"crystal_mite":
+		look = _mite_model_kind()
 	if _VoxelCreature.uses_rig(look) and _ensure_part_rig(look):
 		_apply_body_scale()
 		return
@@ -213,6 +215,15 @@ func _visual_lookup_id() -> StringName:
 	if spawn_def:
 		return spawn_def.resolved_visual_id()
 	return enemy_id
+
+
+func _mite_model_kind() -> StringName:
+	var cell := _patrol_anchor
+	if cell == Vector2i.ZERO:
+		cell = _EntityNavigation.column_pos(global_position)
+	var names: Array[String] = ["crystal_mite", "crystal_mite_spike", "crystal_mite_shard"]
+	var n := absi(int(cell.x) * 13 + int(cell.y) * 7)
+	return StringName(names[n % names.size()])
 
 
 func _ensure_part_rig(look: StringName) -> bool:

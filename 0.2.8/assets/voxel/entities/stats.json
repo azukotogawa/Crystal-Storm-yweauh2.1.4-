@@ -11,17 +11,17 @@
   },
   "models": {
     "player": {
-      "voxels": 1790,
-      "quads": 611,
+      "voxels": 2622,
+      "quads": 454,
       "parts": {
-        "torso": 226,
-        "head": 144,
-        "upper_arm_l": 25,
-        "lower_arm_l": 24,
+        "torso": 117,
+        "head": 105,
+        "upper_arm_l": 32,
+        "lower_arm_l": 42,
         "upper_arm_r": 32,
-        "lower_arm_r": 25,
-        "leg_l": 66,
-        "leg_r": 69
+        "lower_arm_r": 32,
+        "leg_l": 42,
+        "leg_r": 52
       },
       "blocks_tall": 2.125
     },
