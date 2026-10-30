@@ -1,0 +1,65 @@
+{
+  "before": {
+    "player": {
+      "voxels": 296,
+      "quads": 186
+    },
+    "crystal_mite": {
+      "voxels": 92,
+      "quads": 140
+    }
+  },
+  "models": {
+    "player": {
+      "voxels": 1790,
+      "quads": 611,
+      "parts": {
+        "torso": 226,
+        "head": 144,
+        "upper_arm_l": 25,
+        "lower_arm_l": 24,
+        "upper_arm_r": 32,
+        "lower_arm_r": 25,
+        "leg_l": 66,
+        "leg_r": 69
+      },
+      "blocks_tall": 2.125
+    },
+    "crystal_mite": {
+      "voxels": 503,
+      "quads": 272,
+      "parts": {
+        "body": 138,
+        "head": 63,
+        "leg_l": 24,
+        "leg_r": 19,
+        "tail": 28
+      },
+      "blocks_tall": 0.75
+    },
+    "crystal_mite_spike": {
+      "voxels": 367,
+      "quads": 245,
+      "parts": {
+        "body": 128,
+        "head": 51,
+        "leg_l": 23,
+        "leg_r": 19,
+        "tail": 24
+      },
+      "blocks_tall": 0.75
+    },
+    "crystal_mite_shard": {
+      "voxels": 418,
+      "quads": 281,
+      "parts": {
+        "body": 139,
+        "head": 63,
+        "leg_l": 25,
+        "leg_r": 12,
+        "tail": 42
+      },
+      "blocks_tall": 0.75
+    }
+  }
+}

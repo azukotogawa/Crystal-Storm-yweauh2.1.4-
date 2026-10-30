@@ -42,6 +42,13 @@
     { "name": "pine_leaf_12", "rgb": [120, 100, 60] },
     { "name": "flower_red", "rgb": [186, 42, 38] },
     { "name": "flower_yellow", "rgb": [214, 176, 42] },
-    { "name": "flower_blue", "rgb": [58, 92, 186] }
+    { "name": "flower_blue", "rgb": [58, 92, 186] },
+    { "name": "skin", "rgb": [219, 158, 107] },
+    { "name": "hair", "rgb": [71, 41, 26] },
+    { "name": "tunic", "rgb": [56, 107, 87] },
+    { "name": "belt", "rgb": [107, 71, 36] },
+    { "name": "boot", "rgb": [51, 36, 26] },
+    { "name": "creature_eye", "rgb": [20, 20, 26] },
+    { "name": "crystal_mass", "rgb": [184, 71, 255] }
   ]
 }
