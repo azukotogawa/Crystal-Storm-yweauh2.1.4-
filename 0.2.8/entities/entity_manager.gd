@@ -524,6 +524,12 @@ func _brain_for_animal(animal_kind: int):
 			return _EntityBrainRegistry.get_def(&"goat")
 		_WorldFeatureTypes.AnimalKind.DUCK:
 			return _EntityBrainRegistry.get_def(&"duck")
+		_WorldFeatureTypes.AnimalKind.SHEEP:
+			return _EntityBrainRegistry.get_def(&"sheep")
+		_WorldFeatureTypes.AnimalKind.WOLF:
+			return _EntityBrainRegistry.get_def(&"wolf")
+		_WorldFeatureTypes.AnimalKind.HERON:
+			return _EntityBrainRegistry.get_def(&"heron")
 		_:
 			return _EntityBrainRegistry.get_def(&"rabbit")
 
@@ -551,7 +557,7 @@ func _wildlife_order(spawns: Array) -> Array:
 	var rest: Array = []
 	for spawn in spawns:
 		var kind := int(spawn.get("animal_kind", 0))
-		if kind == _WorldFeatureTypes.AnimalKind.DEER or kind == _WorldFeatureTypes.AnimalKind.BOAR or kind == _WorldFeatureTypes.AnimalKind.GOAT:
+		if kind == _WorldFeatureTypes.AnimalKind.DEER or kind == _WorldFeatureTypes.AnimalKind.BOAR or kind == _WorldFeatureTypes.AnimalKind.GOAT or kind == _WorldFeatureTypes.AnimalKind.SHEEP:
 			herds.append(spawn)
 		else:
 			rest.append(spawn)
@@ -682,5 +688,11 @@ func _animal_color(kind: int) -> Color:
 			return Color(0.82, 0.80, 0.74)
 		_WorldFeatureTypes.AnimalKind.DUCK:
 			return Color(0.40, 0.58, 0.36)
+		_WorldFeatureTypes.AnimalKind.SHEEP:
+			return Color(0.90, 0.90, 0.86)
+		_WorldFeatureTypes.AnimalKind.WOLF:
+			return Color(0.42, 0.40, 0.38)
+		_WorldFeatureTypes.AnimalKind.HERON:
+			return Color(0.35, 0.48, 0.62)
 		_:
 			return Color(0.72, 0.72, 0.68)
