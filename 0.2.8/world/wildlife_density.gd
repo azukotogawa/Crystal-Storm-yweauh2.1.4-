@@ -13,14 +13,14 @@ const HERD_RADIUS := 2
 const SEED_SALT := 66003
 const NEAR_HALF := 128
 
-const KIND_KEYS: Array[String] = ["deer", "boar", "goat", "rabbit", "bird", "fox", "duck"]
+const KIND_KEYS: Array[String] = ["deer", "boar", "goat", "sheep", "rabbit", "bird", "fox", "duck", "wolf", "heron"]
 
 const BIOME_BUDGET := {
-	"plains": {"deer": 2, "boar": 0, "goat": 0, "rabbit": 10, "bird": 8, "fox": 2, "duck": 2},
-	"steppe": {"deer": 0, "boar": 2, "goat": 1, "rabbit": 9, "bird": 7, "fox": 0, "duck": 0},
-	"forest": {"deer": 4, "boar": 3, "goat": 0, "rabbit": 5, "bird": 5, "fox": 3, "duck": 0},
-	"marsh": {"deer": 0, "boar": 1, "goat": 0, "rabbit": 4, "bird": 5, "fox": 0, "duck": 6},
-	"highland": {"deer": 1, "boar": 0, "goat": 2, "rabbit": 3, "bird": 6, "fox": 0, "duck": 0},
+	"plains": {"deer": 2, "boar": 0, "goat": 0, "sheep": 1, "rabbit": 10, "bird": 8, "fox": 2, "duck": 2, "wolf": 0, "heron": 0},
+	"steppe": {"deer": 0, "boar": 2, "goat": 1, "sheep": 0, "rabbit": 9, "bird": 7, "fox": 0, "duck": 0, "wolf": 0, "heron": 0},
+	"forest": {"deer": 4, "boar": 3, "goat": 0, "sheep": 0, "rabbit": 5, "bird": 5, "fox": 3, "duck": 0, "wolf": 1, "heron": 0},
+	"marsh": {"deer": 0, "boar": 1, "goat": 0, "sheep": 0, "rabbit": 4, "bird": 5, "fox": 0, "duck": 6, "wolf": 0, "heron": 1},
+	"highland": {"deer": 1, "boar": 0, "goat": 2, "sheep": 0, "rabbit": 3, "bird": 6, "fox": 0, "duck": 0, "wolf": 0, "heron": 0},
 }
 
 const _OFFSETS: Array[Vector2i] = [
@@ -162,6 +162,12 @@ static func _kind_key(animal_kind: int) -> String:
 			return "goat"
 		_WorldFeatureTypes.AnimalKind.DUCK:
 			return "duck"
+		_WorldFeatureTypes.AnimalKind.SHEEP:
+			return "sheep"
+		_WorldFeatureTypes.AnimalKind.WOLF:
+			return "wolf"
+		_WorldFeatureTypes.AnimalKind.HERON:
+			return "heron"
 		_:
 			return ""
 
@@ -179,6 +185,8 @@ static func _next_kind(biome: String, counts: Dictionary, rng: RandomNumberGener
 			options.append(_WorldFeatureTypes.AnimalKind.BOAR)
 		if int(got.get("goat", 0)) < int(row.get("goat", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.GOAT)
+		if int(got.get("sheep", 0)) < int(row.get("sheep", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.SHEEP)
 	else:
 		if int(got.get("rabbit", 0)) < int(row.get("rabbit", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.RABBIT)
@@ -188,6 +196,10 @@ static func _next_kind(biome: String, counts: Dictionary, rng: RandomNumberGener
 			options.append(_WorldFeatureTypes.AnimalKind.FOX)
 		if int(got.get("duck", 0)) < int(row.get("duck", 0)):
 			options.append(_WorldFeatureTypes.AnimalKind.DUCK)
+		if int(got.get("wolf", 0)) < int(row.get("wolf", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.WOLF)
+		if int(got.get("heron", 0)) < int(row.get("heron", 0)):
+			options.append(_WorldFeatureTypes.AnimalKind.HERON)
 	if options.is_empty():
 		return -1
 	return options[rng.randi() % options.size()]

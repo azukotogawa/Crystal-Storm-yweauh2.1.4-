@@ -63,8 +63,12 @@ static func hostile_for_animal(kind: String) -> String:
 			return "crystal_wisp"
 		"fox":
 			return "crystal_mite"
-		"goat":
+		"goat", "sheep":
 			return "crystal_stag"
+		"wolf":
+			return "crystal_mite"
+		"heron":
+			return "crystal_wisp"
 		_:
 			return ""
 

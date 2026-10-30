@@ -32,6 +32,12 @@ static func parts_for(kind: StringName) -> Array:
 		return _deer_parts()
 	if kind == &"fox":
 		return _fox_parts()
+	if kind == &"sheep":
+		return _sheep_parts()
+	if kind == &"wolf":
+		return _wolf_parts()
+	if kind == &"heron":
+		return _heron_parts()
 	if kind == &"town_militia" or kind == &"wandering_trader":
 		return _militia_parts()
 	if kind == &"crystal_mite":
@@ -137,6 +143,30 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.45, 0.58, 0.78),
 			Color(0.78, 0.86, 0.94),
 			Color(0.90, 0.55, 0.22),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"sheep":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.90, 0.90, 0.86),
+			Color(0.22, 0.16, 0.12),
+			Color(0.48, 0.40, 0.32),
+			Color(0.08, 0.08, 0.08),
+		])
+	if kind == &"wolf":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.42, 0.40, 0.38),
+			Color(0.82, 0.78, 0.70),
+			Color(0.16, 0.14, 0.12),
+			Color(0.06, 0.06, 0.06),
+		])
+	if kind == &"heron":
+		return PackedColorArray([
+			Color(0, 0, 0),
+			Color(0.35, 0.48, 0.62),
+			Color(0.93, 0.94, 0.90),
+			Color(0.90, 0.62, 0.16),
 			Color(0.08, 0.08, 0.08),
 		])
 	if kind == &"town_militia" or kind == &"wandering_trader":
@@ -516,6 +546,105 @@ static func _fox_parts() -> Array:
 		_part("head", "head", "Head", "Body", "bottom", head),
 		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
 		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _sheep_parts() -> Array:
+	var wool := 1
+	var face := 2
+	var hoof := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 3, 2, 3, 7, 6, 9, wool)
+	_fill(body, 3, 2, 4, 7, 3, 8, wool)
+	var head: Array = []
+	_fill(head, 3, 4, 0, 7, 7, 3, face)
+	_fill(head, 3, 6, 1, 4, 7, 2, eye)
+	_fill(head, 6, 6, 1, 7, 7, 2, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 1, 3, 4, 2, 5, wool)
+	_fill(leg_l, 3, 0, 3, 4, 1, 5, hoof)
+	_fill(leg_l, 3, 1, 7, 4, 2, 9, wool)
+	_fill(leg_l, 3, 0, 7, 4, 1, 9, hoof)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 1, 3, 7, 2, 5, wool)
+	_fill(leg_r, 6, 0, 3, 7, 1, 5, hoof)
+	_fill(leg_r, 6, 1, 7, 7, 2, 9, wool)
+	_fill(leg_r, 6, 0, 7, 7, 1, 9, hoof)
+	var tail: Array = []
+	_fill(tail, 4, 4, 9, 6, 6, 11, wool)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _wolf_parts() -> Array:
+	var hide := 1
+	var belly := 2
+	var dark := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 3, 2, 3, 7, 5, 10, hide)
+	_fill(body, 3, 2, 4, 7, 3, 9, belly)
+	var head: Array = []
+	_fill(head, 3, 3, 0, 7, 6, 3, hide)
+	_fill(head, 4, 3, 0, 6, 5, 1, belly)
+	_fill(head, 3, 6, 1, 4, 8, 2, dark)
+	_fill(head, 6, 6, 1, 7, 8, 2, dark)
+	_fill(head, 3, 5, 0, 4, 6, 1, eye)
+	_fill(head, 6, 5, 0, 7, 6, 1, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 3, 0, 3, 4, 2, 5, dark)
+	_fill(leg_l, 3, 0, 8, 4, 2, 10, dark)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 3, 7, 2, 5, dark)
+	_fill(leg_r, 6, 0, 8, 7, 2, 10, dark)
+	var tail: Array = []
+	_fill(tail, 4, 3, 10, 6, 5, 14, hide)
+	_fill(tail, 4, 3, 13, 6, 5, 15, belly)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("tail", "tail", "Tail", "Body", "center", tail),
+	]
+
+
+static func _heron_parts() -> Array:
+	var slate := 1
+	var neck := 2
+	var beak := 3
+	var eye := 4
+	var body: Array = []
+	_fill(body, 4, 6, 4, 7, 9, 8, slate)
+	var head: Array = []
+	_fill(head, 4, 9, 3, 6, 12, 6, neck)
+	_fill(head, 4, 10, 1, 6, 11, 3, beak)
+	_fill(head, 4, 11, 4, 5, 12, 5, eye)
+	_fill(head, 5, 11, 4, 6, 12, 5, eye)
+	var leg_l: Array = []
+	_fill(leg_l, 4, 0, 5, 5, 6, 6, beak)
+	var leg_r: Array = []
+	_fill(leg_r, 6, 0, 6, 7, 6, 7, beak)
+	var wing_l: Array = []
+	_fill(wing_l, 1, 7, 4, 4, 8, 8, slate)
+	var wing_r: Array = []
+	_fill(wing_r, 7, 7, 4, 10, 8, 8, slate)
+	var tail: Array = []
+	_fill(tail, 5, 7, 8, 6, 8, 11, slate)
+	return [
+		_part("body", "body", "Body", "Root", "bottom", body),
+		_part("head", "head", "Head", "Body", "bottom", head),
+		_part("leg_l", "leg", "Leg_L", "Root", "top", leg_l),
+		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
+		_part("wing_l", "wing", "Wing_L", "Body", "center", wing_l),
+		_part("wing_r", "wing", "Wing_R", "Body", "center", wing_r),
 		_part("tail", "tail", "Tail", "Body", "center", tail),
 	]
 

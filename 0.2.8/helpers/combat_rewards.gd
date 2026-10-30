@@ -54,7 +54,7 @@ static func _loot_for_kind(kind: StringName) -> Dictionary:
 			return {"item_id": "crystal_weave", "count": 1}
 		&"boar":
 			return {"item_id": "wood", "count": 1}
-		&"rabbit", &"deer", &"bird", &"fox", &"goat", &"duck":
+		&"rabbit", &"deer", &"bird", &"fox", &"goat", &"duck", &"sheep", &"wolf", &"heron":
 			return {"item_id": "herb", "count": 1}
 		_:
 			return {"item_id": "stone", "count": 1}

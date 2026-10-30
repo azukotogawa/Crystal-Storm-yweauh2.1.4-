@@ -23,6 +23,9 @@ enum AnimalKind {
 	FOX,
 	GOAT,
 	DUCK,
+	SHEEP,
+	WOLF,
+	HERON,
 }
 
 const ANIMAL_DISPLAY := {
@@ -33,4 +36,7 @@ const ANIMAL_DISPLAY := {
 	AnimalKind.FOX: "Fox",
 	AnimalKind.GOAT: "Goat",
 	AnimalKind.DUCK: "Duck",
+	AnimalKind.SHEEP: "Sheep",
+	AnimalKind.WOLF: "Wolf",
+	AnimalKind.HERON: "Heron",
 }

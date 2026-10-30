@@ -100,10 +100,16 @@ func _check_plan(seed_value: int) -> void:
 		elif kind == _Types.AnimalKind.BIRD:
 			birds += 1
 			row["bird"] = int(row.get("bird", 0)) + 1
-		elif kind == _Types.AnimalKind.FOX or kind == _Types.AnimalKind.DUCK:
-			var akey := "fox" if kind == _Types.AnimalKind.FOX else "duck"
+		elif kind == _Types.AnimalKind.FOX or kind == _Types.AnimalKind.DUCK or kind == _Types.AnimalKind.WOLF or kind == _Types.AnimalKind.HERON:
+			var akey := "fox"
+			if kind == _Types.AnimalKind.DUCK:
+				akey = "duck"
+			elif kind == _Types.AnimalKind.WOLF:
+				akey = "wolf"
+			elif kind == _Types.AnimalKind.HERON:
+				akey = "heron"
 			row[akey] = int(row.get(akey, 0)) + 1
-		elif kind == _Types.AnimalKind.DEER or kind == _Types.AnimalKind.BOAR or kind == _Types.AnimalKind.GOAT:
+		elif kind == _Types.AnimalKind.DEER or kind == _Types.AnimalKind.BOAR or kind == _Types.AnimalKind.GOAT or kind == _Types.AnimalKind.SHEEP:
 			if not spot.has("herd_home"):
 				_fail("herd animal missing home")
 				return
@@ -119,7 +125,13 @@ func _check_plan(seed_value: int) -> void:
 			bucket["n"] = int(bucket.get("n", 0)) + 1
 			bucket["kind"] = kind
 			herds[home] = bucket
-			var key := "deer" if kind == _Types.AnimalKind.DEER else ("goat" if kind == _Types.AnimalKind.GOAT else "boar")
+			var key := "deer"
+			if kind == _Types.AnimalKind.BOAR:
+				key = "boar"
+			elif kind == _Types.AnimalKind.GOAT:
+				key = "goat"
+			elif kind == _Types.AnimalKind.SHEEP:
+				key = "sheep"
 			var homes: Dictionary = row.get(key, {})
 			homes[home] = true
 			row[key] = homes
@@ -154,6 +166,14 @@ func _check_plan(seed_value: int) -> void:
 		if int(got.get("rabbit", 0)) > int(cap.get("rabbit", 0)) or int(got.get("bird", 0)) > int(cap.get("bird", 0)):
 			_fail("%s ambient over budget" % biome)
 			return
+		var sheep_n := (got.get("sheep", {}) as Dictionary).size()
+		if sheep_n > int(cap.get("sheep", 0)):
+			_fail("%s sheep herds %d over budget" % [biome, sheep_n])
+			return
+		for akey in ["fox", "duck", "wolf", "heron"]:
+			if int(got.get(akey, 0)) > int(cap.get(akey, 0)):
+				_fail("%s %s over budget" % [biome, akey])
+				return
 	print("OK wildlife plan seed=%d spots=%d deer_herds=%d boar_herds=%d rabbits=%d birds=%d" % [seed_value, first.size(), deer_herds, boar_herds, rabbits, birds])
 
 
