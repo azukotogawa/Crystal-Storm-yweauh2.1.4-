@@ -159,6 +159,17 @@ func crystal_health() -> float:
 	return origin.health
 
 
+func set_origin_health_percent(pct: float) -> float:
+	var origin := _origin_spawn()
+	if origin == null or origin.max_health <= 0.0:
+		return -1.0
+	var clamped := clampf(pct, 0.0, 100.0)
+	origin.health = origin.max_health * clamped / 100.0
+	origin.active = origin.health > 0.0
+	rebuild_active_cache()
+	return clamped
+
+
 func keep_origin_save_rows(rows: Array) -> Array:
 	if not _GameConfig.SINGLE_CRYSTAL:
 		return rows

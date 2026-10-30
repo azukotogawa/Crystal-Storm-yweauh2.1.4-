@@ -40,6 +40,8 @@ func get_assistant_dir() -> String:
 
 
 func send_message(text: String) -> String:
+	if not _DevCommandGate.allowed():
+		return ""
 	var trimmed := text.strip_edges()
 	if trimmed.is_empty():
 		return ""
@@ -125,6 +127,7 @@ func write_external_response(req_id: String, response: String) -> void:
 const _EnemySpawnRegistry = preload("res://entities/enemy_spawn_registry.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _ScenarioPresets = preload("res://helpers/scenario_presets.gd")
+const _DevCommandGate = preload("res://helpers/dev_command_gate.gd")
 const DEBUG_TOGGLES := ["view", "overlay", "inspector", "collision_shapes", "voxel_boundaries", "chunk_boundaries", "mesh_bounds", "walkable_surface", "terrain_height", "feature_anchors", "water_cells", "crystal_cells", "stream_bake_state"]
 
 
@@ -135,8 +138,8 @@ func _handle_slash_command(text: String) -> String:
 		"/help":
 			return (
 				"Dev chat: type a message + Enter to send to AI. Slash commands:\n"
-				+ "/help /status /seed /heal /god [on|off] /time [scale]\n"
-				+ "/tp <x> <z>  /give <item> [n]  /spawn <entity> [n]  /kill [radius|all]\n"
+				+ "/help /status /seed /heal /god [on|off|toggle] /time [scale]\n"
+				+ "/tp <x> <z>  /give <item> [n]  /crystal <pct>  /spawn <entity> [n]  /kill [radius|all]\n"
 				+ "/debug <toggle> [on|off]  /preset <low|medium|high>  /scenarios\n"
 				+ "Logs: %s" % get_assistant_dir()
 			)
@@ -160,6 +163,8 @@ func _handle_slash_command(text: String) -> String:
 			return _god(parts[1].to_lower() if parts.size() > 1 else "")
 		"/time":
 			return _time(parts[1] if parts.size() > 1 else "")
+		"/crystal":
+			return _crystal(parts[1] if parts.size() > 1 else "")
 		"/spawn":
 			if parts.size() < 2:
 				return "Usage: /spawn <entity> [n]"
@@ -210,9 +215,34 @@ func _god(arg: String) -> String:
 	match arg:
 		"on": player.dev_god = true
 		"off": player.dev_god = false
-		"": player.dev_god = not player.dev_god
-		_: return "Usage: /god [on|off]"
+		"", "toggle": player.dev_god = not player.dev_god
+		_: return "Usage: /god [on|off|toggle]"
 	return "God mode %s" % ("ON" if player.dev_god else "OFF")
+
+
+func _crystal(arg: String) -> String:
+	var crystal = get_tree().get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_spawn_progress"):
+		return "Crystal not found"
+	if arg.is_empty():
+		return _crystal_line(crystal)
+	if not arg.is_valid_float():
+		return "Usage: /crystal <pct>"
+	if not crystal.has_method("dev_set_heart_percent"):
+		return "Crystal health cannot be set"
+	var applied: float = float(crystal.dev_set_heart_percent(float(arg)))
+	if applied < 0.0:
+		return "Crystal heart not found"
+	return "Crystal %.1f%%" % applied
+
+
+func _crystal_line(crystal) -> String:
+	var prog: Dictionary = crystal.get_spawn_progress()
+	var hp := float(prog.get("crystal_health", 0.0))
+	var mx := float(prog.get("crystal_max_health", 0.0))
+	if mx <= 0.0:
+		return "Crystal heart not found"
+	return "Crystal %.1f%%" % (hp / mx * 100.0)
 
 
 func _time(arg: String) -> String:

@@ -3,6 +3,7 @@ class_name DevChatOverlay
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
 const _HudLayout = preload("res://config/hud_layout.gd")
+const _DevCommandGate = preload("res://helpers/dev_command_gate.gd")
 
 const MIN_PANEL_HEIGHT := 72.0
 const MAX_PANEL_HEIGHT := 280.0
@@ -20,6 +21,7 @@ func _enter_tree() -> void:
 	add_to_group("dev_chat_overlay")
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_process_unhandled_input(true)
+	_ensure_slash_binding()
 
 
 func _ready() -> void:
@@ -76,7 +78,7 @@ func _build_ui() -> void:
 	_panel.add_child(vbox)
 
 	var hint := Label.new()
-	hint.text = "Dev Assistant — Enter send, Esc close (type freely while open)"
+	hint.text = "Dev commands — / opens, Enter sends, Esc closes"
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.modulate = Color(0.75, 0.82, 0.95)
 	vbox.add_child(hint)
@@ -111,11 +113,17 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not _DevCommandGate.allowed():
+		return
 	if event.is_action_pressed("dev_chat_toggle"):
 		if _open:
 			get_viewport().set_input_as_handled()
 			return
+		var slash := _is_slash_key(event)
 		_open_chat()
+		if slash and _line_edit != null:
+			_line_edit.text = "/"
+			_line_edit.caret_column = 1
 		get_viewport().set_input_as_handled()
 	elif _open and event.is_action_pressed("ui_cancel"):
 		_close_chat()
@@ -130,6 +138,8 @@ func _toggle_chat() -> void:
 
 
 func _open_chat() -> void:
+	if not _DevCommandGate.allowed():
+		return
 	_open = true
 	_GameplayInput.set_dev_chat_open(true)
 	visible = true
@@ -175,6 +185,28 @@ func _append_history(line: String) -> void:
 		_history_lines.remove_at(0)
 	_history.text = "\n".join(_history_lines)
 	call_deferred("_sync_panel_height")
+
+
+func _ensure_slash_binding() -> void:
+	if not _DevCommandGate.allowed():
+		return
+	if not InputMap.has_action("dev_chat_toggle"):
+		InputMap.add_action("dev_chat_toggle")
+	for ev in InputMap.action_get_events("dev_chat_toggle"):
+		if ev is InputEventKey and (ev as InputEventKey).physical_keycode == KEY_SLASH:
+			return
+	var slash := InputEventKey.new()
+	slash.physical_keycode = KEY_SLASH
+	InputMap.action_add_event("dev_chat_toggle", slash)
+
+
+func _is_slash_key(event: InputEvent) -> bool:
+	if not event is InputEventKey:
+		return false
+	var key := event as InputEventKey
+	if key.shift_pressed or key.ctrl_pressed or key.alt_pressed or key.meta_pressed:
+		return false
+	return key.physical_keycode == KEY_SLASH or key.keycode == KEY_SLASH or key.unicode == 47
 
 
 func _sync_panel_height() -> void:
