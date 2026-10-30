@@ -62,10 +62,6 @@ var _mesh_radius: float = 0.22
 var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
 const KNOCK_SPEED := 9.0
-const KNOCK_STAGGER := 0.45
-const HIT_STUN_MIN_SEC := 0.25
-const HIT_STUN_MAX_SEC := 0.4
-const HIT_STUN_FULL_KNOCK_VOXELS := 3.0
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
 var _stagger_left := 0.0
@@ -585,6 +581,16 @@ func _physics_process(delta: float) -> void:
 
 	_age += delta
 	_tick_hurt_lock(delta)
+	if lifetime > 0.0 and _age >= lifetime:
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		queue_free()
+		return
+	if _knock_left > 0.0 or _stagger_left > 0.0:
+		_tick_hit_stun(delta)
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
 	var guardian := _is_guardian()
 	if guardian:
 		_refresh_guardian_aggro()
@@ -595,11 +601,6 @@ func _physics_process(delta: float) -> void:
 		_tick_special(delta)
 	elif guardian:
 		_cancel_guardian_attack()
-	if lifetime > 0.0 and _age >= lifetime:
-		if profiler and profiler.has_method("end"):
-			profiler.end("entity_physics")
-		queue_free()
-		return
 	if _target == null or not is_instance_valid(_target) or brain == null:
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
@@ -631,30 +632,6 @@ func _physics_process(delta: float) -> void:
 	if _charge_left > 0.0:
 		_tick_charge(delta)
 		_apply_walk_bob(delta, true, true)
-		if profiler and profiler.has_method("end"):
-			profiler.end("entity_physics")
-		return
-
-	if _knock_left > 0.0:
-		var step := minf(_knock_left, KNOCK_SPEED * delta)
-		var shoved := _EntityNavigation.knockback_step(
-			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
-		)
-		if shoved.distance_squared_to(global_position) < 0.0004:
-			_knock_left = 0.0
-		else:
-			knock_moved += shoved.distance_to(global_position)
-			global_position = shoved
-			_knock_left = maxf(_knock_left - step, 0.0)
-		_notify_spatial_moved()
-		_hold_station()
-		if profiler and profiler.has_method("end"):
-			profiler.end("entity_physics")
-		return
-
-	if _stagger_left > 0.0:
-		_stagger_left = maxf(_stagger_left - delta, 0.0)
-		_hold_station()
 		if profiler and profiler.has_method("end"):
 			profiler.end("entity_physics")
 		return
@@ -787,10 +764,28 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 		return
 	_knock_dir = flat.normalized()
 	_knock_left = distance
-	var full: float = HIT_STUN_FULL_KNOCK_VOXELS * WorldSettings.get_active().voxel_scale
-	_stagger_left = lerpf(HIT_STUN_MIN_SEC, HIT_STUN_MAX_SEC, clampf(distance / maxf(full, 0.001), 0.0, 1.0))
+	_stagger_left = GameFeelConfig.active().hit_stun_for_distance(distance, WorldSettings.get_active().voxel_scale)
 	if _contact_left > 0.0:
 		_drop_contact_wind()
+
+
+func _tick_hit_stun(delta: float) -> void:
+	if _knock_left > 0.0:
+		var step := minf(_knock_left, KNOCK_SPEED * delta)
+		var shoved := _EntityNavigation.knockback_step(
+			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
+		)
+		if shoved.distance_squared_to(global_position) < 0.0004:
+			_knock_left = 0.0
+		else:
+			knock_moved += shoved.distance_to(global_position)
+			global_position = shoved
+			_knock_left = maxf(_knock_left - step, 0.0)
+		_notify_spatial_moved()
+		_hold_station()
+		return
+	_stagger_left = maxf(_stagger_left - delta, 0.0)
+	_hold_station()
 
 
 func _tick_hurt_lock(delta: float) -> void:

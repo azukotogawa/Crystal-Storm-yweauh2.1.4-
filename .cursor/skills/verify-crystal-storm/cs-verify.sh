@@ -608,9 +608,9 @@ record_trap() {
 }
 
 declare -A SUITE=( [full-map]=verify_full_map_toggle [water]=verify_water_body
-  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow [water-remesh]=verify_water_flow_remesh [highlight]=verify_highlight_block_under_cursor [swim-visual]=verify_swim_visual_depth [content-pace]=verify_content_pace )
+  [save-continue]=verify_world_save_resume [dig]=verify_terrain_dig [frontend]=verify_world_frontend_flow [water-remesh]=verify_water_flow_remesh [highlight]=verify_highlight_block_under_cursor [swim-visual]=verify_swim_visual_depth [content-pace]=verify_content_pace [save-messages]=verify_save_load_messages [dev-error-log]=verify_dev_error_log )
 declare -A MARK=( [full-map]="All full map toggle tests OK" [water]="All water body tests OK"
-  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" [water-remesh]="All water flow remesh tests OK" [highlight]="All highlight block under cursor tests OK" [swim-visual]="All swim visual depth tests OK" [content-pace]="All content pace tests OK" )
+  [save-continue]="All world save resume tests OK" [dig]="All terrain dig tests OK" [frontend]="All world frontend flow tests OK" [water-remesh]="All water flow remesh tests OK" [highlight]="All highlight block under cursor tests OK" [swim-visual]="All swim visual depth tests OK" [content-pace]="All content pace tests OK" [save-messages]="All save load message tests OK" [dev-error-log]="All dev error log tests OK" )
 declare -A ABRUPT=( [frontend]=1 [save-continue]=1 [water]=1 )
 
 bad(){ grep -qE 'SCRIPT ERROR|Parse Error|Failed to load script' "$1"; }
@@ -769,8 +769,8 @@ telemetry-summary)
 scenario)
   name="${1:-}"
   case "$name" in
-    dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc) ;;
-    *) echo "usage: cs-verify.sh scenario <dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc>"; exit 2 ;;
+    dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc|boss_tyrant|boss_warden|boss_heart|level_up|unlock|kite) ;;
+    *) echo "usage: cs-verify.sh scenario <dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc|boss_tyrant|boss_warden|boss_heart|level_up|unlock|kite>"; exit 2 ;;
   esac
   export CRYSTALSTORM_SCENARIO="$name"
   run_godot "scenario-$name" --headless --fixed-fps 60 --path "$ROOT" -s res://scripts/verify_honest_bot_scenario.gd; r=$?
@@ -818,5 +818,5 @@ clip)
     echo "CLIP FAIL rc=$r"; tail -20 "$EVID/movie-pace.log"; exit 1
   fi
   echo "CLIP OK rc=$r" ;;
-*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|scenario <dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc>|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
+*) echo "usage: cs-verify.sh doctor|quick|launch [SEC]|bot|bot-combat|bot-progress|bot-crystal|bot-run|bot-showcase|showcase|scenario <dig|build|multi_dig|multi_build|mouse_build|water_dig|water_trench|dev_keys|swim|camera|hotbar|controls_tour|break|crystals|corruption|combat|mite_fight|relic_esc|boss_tyrant|boss_warden|boss_heart|level_up|unlock|kite>|feature <name>|clip|telemetry-summary <json...>|cleanup|record <mode...>"; exit 2 ;;
 esac

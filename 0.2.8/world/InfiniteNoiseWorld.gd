@@ -490,6 +490,20 @@ func get_biome_uncached(wx: float, wy: float, wz: float) -> Dictionary:
 	return res
 
 func _get_biome_compute(wx: float, wy: float, wz: float, surface_h: float = NAN) -> Dictionary:
+	var rim_name: String = WorldBorder.rim_biome_name(world_seed, wx, wz)
+	if rim_name != "":
+		return {
+			"is_air": false,
+			"name": rim_name,
+			"type": rim_name.capitalize().replace("_", " "),
+			"h_level": int(clamp((surface_h + 12.0) / 9.0, 0, 22)) if not is_nan(surface_h) else 8,
+			"p_level": 8,
+			"temp": 0.45,
+			"moist": 0.55 if rim_name == "ocean" else 0.35,
+			"rugged": 0.7 if rim_name == "border_mountain" else 0.1,
+			"is_border": true,
+		}
+
 	var border_name: String = WorldBorder.border_biome_name(wx, wz)
 	if border_name != "":
 		var border_h: float = _compute_raw_elevation(wx, wz)
@@ -752,10 +766,16 @@ func _compute_surface_height(wx: float, wz: float) -> float:
 		var edge_base: float = _compute_raw_elevation(edge.x, edge.y)
 		var edge_river: Dictionary = _compute_river_carve(edge.x, edge.y, edge_base)
 		var edge_h: float = edge_base - edge_river.carve
+		var rim_h: float = WorldBorder.finish_rim_height(world_seed, edge.x, edge.y, edge_h)
 		h = WorldBorder.apply_border_height(wx, wz, edge_h, border_info)
+		if WorldBorder.rim_kind(edge.x, edge.y) == "ocean":
+			h = minf(h, rim_h)
+		else:
+			h = maxf(h, rim_h)
 
 	h += _RouteDressing.relief_world(world_seed, wx, wz, float(_WorldSettings.get_active().layer_height()))
 	h = clamp(h, -4.0 * _height_gen_scale(), _max_height())
+	h = WorldBorder.finish_rim_height(world_seed, wx, wz, h)
 	return _quantize_to_voxel_layer(h)
 
 
@@ -800,6 +820,9 @@ func get_tile_type_uncached(wx: float, wz: float) -> int:
 	return _compute_surface_tile(wx, wz, false)
 
 func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false) -> int:
+	var rim_tile: int = WorldBorder.rim_surface_tile(world_seed, wx, wz)
+	if rim_tile >= 0:
+		return rim_tile
 	var surf: float
 	var biome: Dictionary
 	if use_session_cache:

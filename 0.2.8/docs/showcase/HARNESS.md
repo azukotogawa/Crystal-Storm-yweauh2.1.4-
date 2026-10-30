@@ -2,7 +2,7 @@
 
 The showcase bot is the player. A scenario is one feature, started from a fixed seed, driven only through `scripts/honest_bot/honest_input.gd`, then checked against what that player would see.
 
-`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `multi_dig`, `multi_build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`.
+`bash .cursor/skills/verify-crystal-storm/cs-verify.sh scenario <name>` runs one scenario. Names that play the world today: `dig`, `build`, `multi_dig`, `multi_build`, `crystals`, `corruption`, `combat`, `mite_fight`, `relic_esc`, `boss_tyrant`, `boss_warden`, `boss_heart`, `level_up`, `unlock`, `kite`. `scenario break` does not boot the world. It forces the dig height assertion to fail and must print `FAIL harness assertion`, `STUCK REPORT`, and `STUCK SHOT`. `scenario kite` does not boot the world either.
 
 ## Shared setup
 
@@ -132,6 +132,86 @@ Boots a fresh world on each seed. Default seeds are 12349 through 12353. `CRYSTA
 | Seeds | One `HARNESS relic seed` line per seed, then `HARNESS relic N/N pause_closed N/N panel_held`. |
 | Shot | `steps/*_relic_esc.png` |
 
+## boss_tyrant
+
+Boots seed 12349. The Shard Tyrant (`spawn_elite`) already stations on the crystal spawn ring. The bot walks there through `HonestPlayBot` and `HonestCombat`. No teleport, granted XP, or direct damage.
+
+| Check | Pass |
+| --- | --- |
+| Near | The player starts the seeded world near the heart, then walks to the tyrant station. |
+| Warning | A `TelegraphRing` or `StrikeTelegraph` on that tyrant is visible (`HARNESS attack warning`) before the kill. |
+| Survive | Health stays above zero and the label matches. |
+| Win | No living `spawn_elite` remains (`HARNESS BOSS KILL spawn_elite`). |
+| Banner | Opening line. A `Shard Tyrant` line (spawn or `Shard Tyrant fell`) is required. |
+| Shot | `steps/*_boss_tyrant.png` |
+
+A tyrant the bot cannot beat is a failed scenario with a stuck report. It is not skipped.
+
+## boss_warden
+
+Same seed. The Origin Warden (`origin_warden`) spawns when crystal health is at 25%. The bot chips the heart from a dry pad until that spawn, reads the warning, and fights through `HonestCombat`.
+
+| Check | Pass |
+| --- | --- |
+| Warning | Warden telegraph visible, or the `Boss warning` toast. |
+| Survive | Health stays above zero and the label matches. |
+| Win | `GameManager.boss_defeated` or no living `origin_warden` (`HARNESS BOSS KILL origin_warden`). |
+| Banner | Opening line plus `Boss warning` or `Origin Warden`. |
+| Shot | `steps/*_boss_warden.png` |
+
+A warden the bot cannot beat is a failed scenario with a stuck report. It is not skipped.
+
+## boss_heart
+
+Same seed. The Origin Heart is the released crystal. The bot walks to it, reads `BurnWarn` or a warden telegraph or a crystal-stage banner, and swords the heart until it is gone. A living warden is fought first.
+
+| Check | Pass |
+| --- | --- |
+| Warning | `BurnWarn`, a warden telegraph, `Boss warning`, or `Crystal cracked`. |
+| Survive | Health stays above zero and the label matches. |
+| Win | Crystal HP at or below zero and `GameManager` is `WON` or `VICTORY`. |
+| Banner | Opening line plus `Boss warning`, `Crystal cracked`, or `Victory —`. |
+| Shot | `steps/*_boss_heart.png` |
+
+A heart the bot cannot finish is a failed scenario with a stuck report. It is not skipped.
+
+## level_up
+
+Same seed. `HonestFight` farms mites and crystal chips until `ProgressionService.level` is at least 2. No XP is granted.
+
+| Check | Pass |
+| --- | --- |
+| Banner | Opening line. `Level up — 2` (any `Level up ` line). |
+| State | Live level is 2 or higher. |
+| Survive | Health stays above zero. |
+| Shot | `steps/*_level_up.png` |
+
+## unlock
+
+Same seed. Farms until a skill point exists, then spends it on Dash through `HonestSkillCast`. No XP is granted.
+
+| Check | Pass |
+| --- | --- |
+| Banner | Opening line. `Skill unlocked — Dash`. |
+| State | `SkillService.is_unlocked("dash")`. |
+| Survive | Health stays above zero. |
+| Shot | `steps/*_unlock.png` |
+
+## kite
+
+Does not boot the world. `honest_kite_probe.gd` drives a melee `crystal_mite` column through `HonestFight` and `HonestInput` only. The bow is hotbar 3. Inside 4.2 columns the bot retreats and fires. Between 4.2 and 9.0 it holds and fires. Past 9.0 it walks back toward 6.5 columns and does not step inside 4.2. A position that flips away and toward the foe four times prints `LOOP BREAK kite -> sidestep flips 4` and the next step strafes. The same stuck line three times prints `LOOP BREAK kite -> sidestep stuck 3`.
+
+| Check | Pass |
+| --- | --- |
+| Melee | `HARNESS kite melee crystal_mite` |
+| Retreat | `HARNESS kite retreat` with the goal farther from the foe and a bow shot |
+| Hold | `HARNESS kite hold` and no walk while the foe stays in the band |
+| Re-engage | `HARNESS kite reengage` with the goal closer, still outside 4.2 |
+| Loop | `LOOP BREAK` on the forced flip, then `HARNESS kite loop sidestep` |
+| Stuck | `LOOP BREAK` on the repeated stuck line, then `HARNESS kite stuck sidestep` |
+| See | `HARNESS see kite retreat hold reengage loop` |
+| Shot | `steps/*_kite.png` |
+
 ## Not scripted yet
 
-One scenario each, same seed and the same input layer, when that feature is next: movement, treasure, landmark, boss, win. The showcase route still plays those. This harness does not replace it.
+One scenario each, same seed and the same input layer, when that feature is next: movement, treasure, landmark. The showcase route still plays those. This harness does not replace it.
