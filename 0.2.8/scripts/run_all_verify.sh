@@ -207,6 +207,7 @@ SUITES=(
 	"res://scripts/verify_smoke_quit_path.gd"
 	"res://scripts/verify_smoke_gameplay.gd"
 	"res://scripts/verify_dev_chat.gd"
+	"res://scripts/verify_dev_chat_commands.gd"
 )
 
 declare -A ABRUPT_OK_MARKER=(
