@@ -98,12 +98,11 @@ func _run() -> void:
 		int(quality.map_pixels_per_frame), int(quality.map_time_budget_us), int(quality.map_sample_stride),
 		float(feel.map_open_budget_scale), int(float(feel.map_preview_sec) * 1000.0), PLAYABLE,
 	])
-	var world_script = load("res://world/InfiniteNoiseWorld.gd")
-	if world_script == null or not world_script.can_instantiate():
-		push_error("FAIL world script")
+	var world = InfiniteNoiseWorld.new(12349)
+	if world == null:
+		push_error("FAIL world")
 		quit(1)
 		return
-	var world = world_script.new(12349)
 	var crystal := CrystalField.new()
 	crystal.add_to_group("crystal_manager")
 	root.add_child(world)
