@@ -174,9 +174,10 @@ func _spawn_new_kinds() -> int:
 				print("FAIL spawn biome kind=%s got=%s want=%s" % [key, str(spot.get("biome", "")), home[key]])
 	var seen := {}
 	var world = world_scr.new(44021)
+	var cells: Dictionary = _biome_cells(world, wildlife, voxels)
 	for key in home.keys():
 		var want: String = home[key]
-		var cell := _biome_cell(world, wildlife, voxels, want)
+		var cell: Vector2i = cells.get(want, Vector2i(9999, 9999))
 		if cell.x > 4000:
 			bad_n += 1
 			print("FAIL no %s cell" % want)
@@ -184,7 +185,7 @@ func _spawn_new_kinds() -> int:
 		features.reset()
 		features.register_entity_spawn(cell.x, cell.y, _Types.FeatureKind.ANIMAL_SPAWN, _Types.AnimalKind[key.to_upper()])
 		var spawns: Array = features.get_entity_spawns()
-		var biome := wildlife.canonical_biome(str(world.get_biome(float(cell.x), 0.0, float(cell.y)).get("name", "")))
+		var biome: String = wildlife.canonical_biome(str(world.get_biome(float(cell.x), 0.0, float(cell.y)).get("name", "")))
 		var cfg = brains.get_def(StringName(key))
 		var loot: Dictionary = rewards._loot_for_kind(StringName(key))
 		var entity = entity_scr.new()
@@ -192,7 +193,7 @@ func _spawn_new_kinds() -> int:
 		root.add_child(entity)
 		if cfg != null:
 			entity.setup(cfg, cell, world, null, null, cell, Color.WHITE)
-		var rig := entity.get_node_or_null("CreatureRig")
+		var rig: Node = entity.get_node_or_null("CreatureRig")
 		var passive: bool = cfg != null and int(cfg.behavior_profile) == 0 and float(cfg.flee_distance) > 0.0 and float(cfg.contact_damage) <= 0.0
 		if spawns.size() != 1 or biome != want or rig == null or not passive or str(loot.get("item_id", "")) != "herb" or int(loot.get("count", 0)) != 1:
 			bad_n += 1
@@ -207,17 +208,31 @@ func _spawn_new_kinds() -> int:
 	return bad_n
 
 
-func _biome_cell(world, wildlife, voxels, biome_name: String) -> Vector2i:
-	for x in range(-180, 181, 2):
-		for z in range(-180, 181, 2):
-			var biome := wildlife.canonical_biome(str(world.get_biome(float(x), 0.0, float(z)).get("name", "")))
-			if biome != biome_name:
+func _biome_cells(world, wildlife, voxels) -> Dictionary:
+	var found := {
+		"plains": Vector2i(9999, 9999),
+		"forest": Vector2i(9999, 9999),
+		"marsh": Vector2i(9999, 9999),
+	}
+	var left := 3
+	for x in range(-512, 513, 8):
+		if left == 0:
+			break
+		for z in range(-512, 513, 8):
+			var biome: String = wildlife.canonical_biome(str(world.get_biome(float(x), 0.0, float(z)).get("name", "")))
+			if not found.has(biome):
+				continue
+			var have: Vector2i = found[biome]
+			if have.x < 4000:
 				continue
 			var tile := int(world.get_tile_type(float(x), float(z)))
 			if tile == int(voxels.RIVER) or tile == int(voxels.WATER):
 				continue
-			return Vector2i(x, z)
-	return Vector2i(9999, 9999)
+			found[biome] = Vector2i(x, z)
+			left -= 1
+			if left == 0:
+				break
+	return found
 
 
 func _node_count(node: Node) -> int:
