@@ -377,7 +377,7 @@ func _kite_scenario() -> int:
 	var fight = _Fight.new()
 	if not _KiteProbe.new().run(fight):
 		return 1
-	var shot := fight.bot.save_view("kite", Vector2(6.5, 0.0))
+	var shot: String = str(fight.bot.save_view("kite", Vector2(6.5, 0.0)))
 	if shot == "":
 		print("FAIL harness kite shot")
 		return 1
