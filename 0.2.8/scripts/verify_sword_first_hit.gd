@@ -5,6 +5,7 @@ const _Items = preload("res://helpers/item_types.gd")
 const _Aim = preload("res://player/action_targeting.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _Input = preload("res://helpers/gameplay_input.gd")
+const _Player = preload("res://player/player.gd")
 
 const STEP := 1.0 / 60.0
 
@@ -66,11 +67,11 @@ func _run() -> void:
 	_Input.skill_tree_open = false
 	_Input.dev_chat_open = false
 	_Gate.reset()
-	var player := _host()
+	var player = _host()
 	if player == null:
 		_finish(feel)
 		return
-	var weapon := player.get_node("WeaponController") as WeaponController
+	var weapon = player.get_node("WeaponController")
 	var first := _foe(player)
 	_plant(player, first)
 	if not _begin(weapon):
@@ -139,15 +140,21 @@ func _finish(feel) -> void:
 		quit(1)
 
 
-func _host() -> Player:
-	var player := Player.new()
+func _host():
+	if not (_Player is GDScript) or not (_Player as GDScript).can_instantiate():
+		_fail("player script did not compile")
+		return null
+	var player = _Player.new()
+	if player == null:
+		_fail("player did not spawn")
+		return null
 	player.set_process(false)
 	player.set_physics_process(false)
 	var body := MeshInstance3D.new()
 	body.name = "MeshInstance3D"
 	player.add_child(body)
 	root.add_child(player)
-	var weapon := player.get_node_or_null("WeaponController") as WeaponController
+	var weapon = player.get_node_or_null("WeaponController")
 	if weapon == null:
 		_fail("weapon missing")
 		player.free()
@@ -161,21 +168,21 @@ func _host() -> Player:
 	return player
 
 
-func _foe(player: Player) -> _Foe:
+func _foe(player) -> _Foe:
 	var foe := _Foe.new()
 	foe.add_to_group("world_entity")
 	player.get_parent().add_child(foe)
 	return foe
 
 
-func _plant(player: Player, foe: _Foe) -> void:
+func _plant(player, foe: _Foe) -> void:
 	var ws = _WorldSettings.get_active()
 	var forward := _Aim.attack_forward(player)
 	var origin := _Aim.attack_origin_world(player, 0.5)
 	foe.global_position = origin + forward * (ws.voxel_scale * 0.8)
 
 
-func _begin(weapon: WeaponController) -> bool:
+func _begin(weapon) -> bool:
 	weapon._cooldown_timer = 0.0
 	weapon._feel_item = "wooden_sword"
 	weapon._feel_def = _Items.get_def("wooden_sword")
@@ -184,7 +191,7 @@ func _begin(weapon: WeaponController) -> bool:
 	return weapon._tool_feel.try_begin(weapon, "sword_swing")
 
 
-func _until_live(weapon: WeaponController) -> bool:
+func _until_live(weapon) -> bool:
 	var guard := 0
 	while weapon._tool_feel.state == weapon._tool_feel.STATE_WIND and guard < 180:
 		weapon.advance_tool_feel(STEP)
@@ -192,7 +199,7 @@ func _until_live(weapon: WeaponController) -> bool:
 	return weapon._tool_feel.state == weapon._tool_feel.STATE_LIVE
 
 
-func _until_idle(weapon: WeaponController) -> bool:
+func _until_idle(weapon) -> bool:
 	var guard := 0
 	while weapon._tool_feel.state != weapon._tool_feel.STATE_IDLE and guard < 600:
 		weapon.advance_tool_feel(STEP)
