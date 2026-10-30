@@ -10,6 +10,7 @@ const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Farm = preload("res://scripts/honest_bot/honest_farm.gd")
 const _Walk = preload("res://scripts/honest_bot/honest_traversal.gd")
 const _World = preload("res://world/world_state.gd")
+const _Brain = preload("res://scripts/honest_bot/honest_brain.gd")
 const THREAT_COLUMNS := 14.0
 const CHIP_LEASH := 2.6
 const HEAL_RATIO := 0.55
@@ -86,6 +87,12 @@ var _home_mark := -1.0
 var _stand := Vector2.INF
 var _dodge := Vector2.INF
 var film_clear := false
+var brain = _Brain.new()
+var kite_bow := false
+var kite_move := ""
+var kite_fired := false
+var _kite_armed := false
+var _kite_wait := 0.0
 
 
 func release() -> void:
@@ -164,6 +171,12 @@ func reset() -> void:
 	_stand = Vector2.INF
 	_dodge = Vector2.INF
 	bot.extra_held = PackedStringArray()
+	kite_bow = false
+	kite_move = ""
+	kite_fired = false
+	_kite_armed = false
+	_kite_wait = 0.0
+	brain.reset()
 
 
 func outcome(kind: String) -> String:
@@ -865,6 +878,10 @@ func _fight(dt: float, tree: SceneTree, player: Node, choice: Dictionary, origin
 		_attack_wait = maxf(_attack_wait - dt, 0.0)
 		_face_foe(player, pos, foe)
 		trace_branch = "b10"
+		return ""
+	if kite_bow and _kite_melee(kind):
+		_kite_bow(dt, tree, player, pos, foe)
+		trace_branch = "kite"
 		return ""
 	if kind == "crystal_mite" and film_clear and not orbits():
 		if _await_off_film(dt, tree, player, pos, foe):
@@ -1679,8 +1696,81 @@ func _watch_level(tree: SceneTree) -> void:
 func _flush_stuck() -> void:
 	for line in bot.stuck_lines:
 		print(line)
+		if kite_bow:
+			_emit_break(brain.note_stuck(line))
 	if not bot.stuck_lines.is_empty():
 		bot.stuck_lines = PackedStringArray()
+
+
+func arm_kite() -> void:
+	kite_bow = true
+	kite_move = ""
+	kite_fired = false
+	_kite_armed = false
+	_kite_wait = 0.0
+	brain.reset()
+
+
+func _kite_melee(kind: String) -> bool:
+	return kind != "" and kind != "origin_warden"
+
+
+func _kite_bow(dt: float, tree: SceneTree, player: Node, pos: Vector2, foe: Vector2) -> void:
+	_kite_wait = maxf(_kite_wait - dt, 0.0)
+	kite_fired = false
+	_emit_break(brain.note_place(pos, foe))
+	var dist := pos.distance_to(foe)
+	var plan := brain.decide(dist)
+	kite_move = str(plan.get("move", "hold"))
+	if not _kite_armed:
+		bot.input.begin_tick()
+		if bot.input.pulse("hotbar_3"):
+			_kite_armed = true
+		return
+	var fire := bool(plan.get("fire", false))
+	if kite_move == "hold":
+		bot.release()
+		bot.has_target = false
+		bot.input.begin_tick()
+		var held := PackedStringArray()
+		var rot := _Nav.face_action(pos, foe, _yaw(player))
+		if rot != "":
+			held.append(rot)
+		bot.input.set_held(held)
+		bot.input.aim_foe(player, foe.x, foe.y)
+		_kite_fire(fire)
+		return
+	var goal := _Hazard.skirt_goal(tree, pos, brain.goal(pos, foe, kite_move))
+	if not bot.has_target or bot.arrived or bot.gave_up or bot.target.distance_to(goal) > 1.5:
+		bot.set_target(goal)
+	var sprint_now := kite_move == "retreat"
+	bot.extra_held = _Hazard.with_sprint(tree, pos, goal, _ratio(player), PackedStringArray(), sprint_now)
+	bot.tick(pos, _yaw(player), dt)
+	bot.input.aim_foe(player, foe.x, foe.y)
+	_kite_fire(fire)
+
+
+func _kite_fire(fire: bool) -> void:
+	if not fire or _kite_wait > 0.0:
+		return
+	if not bot.input.pulse("attack"):
+		return
+	_kite_wait = _Pace.strike_gap("bow_shot")
+	kite_fired = true
+
+
+func _emit_break(switched: Dictionary) -> void:
+	if switched.is_empty() or not bool(switched.get("broke", false)):
+		return
+	print(
+		"LOOP BREAK %s -> %s %s %d"
+		% [
+			str(switched.get("from", "")),
+			str(switched.get("to", "")),
+			str(switched.get("reason", "")),
+			int(switched.get("count", 0)),
+		]
+	)
 
 
 func _ratio(player: Node) -> float:

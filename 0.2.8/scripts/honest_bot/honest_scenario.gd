@@ -5,6 +5,7 @@ const _Hands = preload("res://scripts/honest_bot/honest_input.gd")
 const _Bot = preload("res://scripts/honest_bot/honest_play_bot.gd")
 const _Combat = preload("res://scripts/honest_bot/honest_combat.gd")
 const _Fight = preload("res://scripts/honest_bot/honest_fight.gd")
+const _KiteProbe = preload("res://scripts/honest_bot/honest_kite_probe.gd")
 const _Cast = preload("res://scripts/honest_bot/honest_skill_cast.gd")
 const _Hazard = preload("res://scripts/honest_bot/honest_hazard.gd")
 const _Nav = preload("res://scripts/honest_bot/honest_nav.gd")
@@ -52,6 +53,8 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_boss(tree, name)
 	if name == "level_up" or name == "unlock":
 		return await _play_progress(tree, name)
+	if name == "kite":
+		return _kite_scenario()
 	var multi := name == "multi_dig" or name == "multi_build" or name == "mouse_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
@@ -372,6 +375,17 @@ func _place_offer_button(panel: Node, button: Button) -> void:
 	button.set_as_top_level(true)
 	button.global_position = Vector2(80, 120)
 	button.size = Vector2(280, 48)
+
+
+func _kite_scenario() -> int:
+	var fight = _Fight.new()
+	if not _KiteProbe.new().run(fight):
+		return 1
+	var shot: String = str(fight.bot.save_view("kite", Vector2(6.5, 0.0)))
+	if shot == "":
+		print("FAIL harness kite shot")
+		return 1
+	return 0
 
 
 func _break(tree: SceneTree) -> int:
