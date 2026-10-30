@@ -2125,7 +2125,7 @@ func _play_boss(tree: SceneTree, name: String) -> int:
 		"sword": false,
 		"dodge": Vector2.INF,
 	}
-	var near := _kind_xz(tree, kind)
+	var near: Vector2 = _kind_xz(tree, kind)
 	if near == Vector2.INF:
 		near = origin_xz
 	print("HARNESS seeded near %s dist %.1f" % [kind, _xz(player).distance_to(near)])
@@ -2137,7 +2137,7 @@ func _play_boss(tree: SceneTree, name: String) -> int:
 		_note_banner(tree, seen)
 		if float(player.health) <= 0.0:
 			return _give_up(bot, player, "player died")
-		var err := _tick_boss(name, tree, player, crystal, origin, origin_xz, bot, hands, fight, job, delta)
+		var err: String = _tick_boss(name, tree, player, crystal, origin, origin_xz, bot, hands, fight, job, delta)
 		if err != "":
 			return _give_up(bot, player, err)
 		if bool(job["won"]):
@@ -2167,7 +2167,7 @@ func _play_boss(tree: SceneTree, name: String) -> int:
 		print("FAIL harness assertion defeat state missing")
 		return _give_up(bot, player, "defeat state missing")
 	print("HARNESS see %s warned yes won yes hp %s banners %s" % [name, str(after.get("hp_label", "")), "|".join(seen)])
-	var shot := bot.save_view(name, _xz(player))
+	var shot: String = str(bot.save_view(name, _xz(player)))
 	if shot == "":
 		return _give_up(bot, player, "screenshot was not saved")
 	return 0
@@ -2279,7 +2279,7 @@ func _play_progress(tree: SceneTree, name: String) -> int:
 		str(after.get("hp_label", "")),
 		"|".join(seen),
 	])
-	var shot := fight.bot.save_view(name, _xz(player))
+	var shot: String = str(fight.bot.save_view(name, _xz(player)))
 	if shot == "":
 		return _give_up(fight.bot, player, "screenshot was not saved")
 	return 0
