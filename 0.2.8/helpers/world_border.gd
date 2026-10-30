@@ -236,3 +236,95 @@ static func should_force_ramp(world_x: int, world_z: int) -> bool:
 static func prefer_diagonal_ramp(wx: float, wz: float) -> bool:
 	var info: Dictionary = zone_info(wx, wz)
 	return info.side == "corner" and float(info.transition) < 0.85
+
+
+const RIM_BAND_MIN := 28.0
+const RIM_BAND_MAX := 44.0
+const CREST_COLS := 2.0
+const WATER_COLS := 2.0
+const MOUNTAIN_EDGE_MIN := 36.0
+const CLIFF_FOOT := 20.0
+const OCEAN_EDGE_MAX := 8.0
+
+
+static func rim_unit(seed_value: int, wx: float, wz: float, salt: int) -> float:
+	var x := int(floor(wx))
+	var z := int(floor(wz))
+	var n: int = x * 374761393 + z * 668265263 + seed_value * 1442695041 + salt * 2246822519
+	n = (n ^ (n >> 13)) * 1274126177
+	n = n ^ (n >> 16)
+	if n < 0:
+		n = -n
+	return float(n % 1000) / 999.0
+
+
+static func rim_band_at(seed_value: int, wx: float, wz: float) -> float:
+	return lerpf(RIM_BAND_MIN, RIM_BAND_MAX, rim_unit(seed_value, wx, wz, 3))
+
+
+static func playable_inset(wx: float, wz: float) -> float:
+	var dx := float(PLAYABLE_HALF_X) - absf(wx)
+	var dz := float(PLAYABLE_HALF_Z) - absf(wz)
+	if dx < 0.0 or dz < 0.0:
+		return 0.0
+	return minf(dx, dz)
+
+
+static func rim_kind(wx: float, wz: float) -> String:
+	var dx := float(PLAYABLE_HALF_X) - absf(wx)
+	var dz := float(PLAYABLE_HALF_Z) - absf(wz)
+	if dx <= dz:
+		return "ocean"
+	return "mountain"
+
+
+static func finish_rim_height(seed_value: int, wx: float, wz: float, h: float) -> float:
+	if not is_playable(wx, wz):
+		return h
+	var inset := playable_inset(wx, wz)
+	var band := rim_band_at(seed_value, wx, wz)
+	if inset >= band:
+		return h
+	var t := rim_unit(seed_value, wx, wz, 9)
+	if rim_kind(wx, wz) == "ocean":
+		var sea := lerpf(4.0, 6.0, t)
+		var u := clampf(inset / band, 0.0, 1.0)
+		return lerpf(sea, h, smoothstep(0.0, 1.0, u))
+	if inset <= CREST_COLS:
+		return lerpf(MOUNTAIN_EDGE_MIN, 40.0, t)
+	var span := maxf(band - CREST_COLS, 1.0)
+	var u2 := clampf((inset - CREST_COLS) / span, 0.0, 1.0)
+	return lerpf(CLIFF_FOOT, h, smoothstep(0.0, 1.0, u2))
+
+
+static func rim_surface_tile(seed_value: int, wx: float, wz: float) -> int:
+	if not is_playable(wx, wz):
+		return -1
+	var inset := playable_inset(wx, wz)
+	var band := rim_band_at(seed_value, wx, wz)
+	if inset >= band:
+		return -1
+	var t := rim_unit(seed_value, wx, wz, 5)
+	if rim_kind(wx, wz) == "ocean":
+		if inset <= 1.01:
+			return _VoxelTypes.OCEAN
+		if inset <= WATER_COLS:
+			return _VoxelTypes.OCEAN2 if t < 0.5 else _VoxelTypes.OCEAN3
+		var beach := lerpf(8.0, 14.0, t)
+		if inset <= WATER_COLS + beach:
+			return _VoxelTypes.BEACH if t < 0.6 else _VoxelTypes.BEACH2
+		return -1
+	if inset <= CREST_COLS:
+		return _VoxelTypes.SNOW2 if t > 0.72 else _VoxelTypes.MOUNTAIN3
+	return -1
+
+
+static func rim_biome_name(seed_value: int, wx: float, wz: float) -> String:
+	var tile := rim_surface_tile(seed_value, wx, wz)
+	if tile < 0:
+		return ""
+	if is_ocean_tile(tile) or tile == _VoxelTypes.BEACH or tile == _VoxelTypes.BEACH2 or tile == _VoxelTypes.BEACH3:
+		return "ocean"
+	if is_border_mountain_tile(tile):
+		return "border_mountain"
+	return ""
