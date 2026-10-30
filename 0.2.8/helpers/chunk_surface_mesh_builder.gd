@@ -242,7 +242,9 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var q0: Dictionary = q_pre
 		var fc0: int = int(q0.get("face_code", -1))
 		if fc0 == FACE_RAMP:
-			extra_slots += 1 + int(q0.get("flank_a", 0)) + int(q0.get("flank_b", 0))
+			var strips := TerrainRamps.CURVE_STRIPS
+			var flank_n := int(q0.get("flank_a", 0)) + int(q0.get("flank_b", 0))
+			extra_slots += (strips - 1) + 1 + flank_n * strips
 		elif fc0 == FACE_RAMP_CORNER:
 			extra_slots += 1
 
@@ -281,14 +283,16 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
 		var atlas: Vector2i = _quad_atlas(data, tile_type, face_code, float(q["x"]), float(q["z"]))
 		var shade: float = _face_shade(face_code)
+		if face_code == FACE_TOP and q.has("wave_band"):
+			shade = TerrainLook.shade_for_band(int(q.get("wave_band", 2)))
 		if face_code == FACE_RAMP:
 			var dir := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
-			_write_cardinal_ramp(
+			var strips_written := _write_cardinal_ramp(
 				vertices, normals, uvs, colors, indices,
 				vi, ii, ox, oz, sx, sy, sz, surface_y, dir, atlas, shade
 			)
-			vi += 4
-			ii += 6
+			vi += strips_written * 4
+			ii += strips_written * 6
 			_write_cardinal_floor(
 				vertices, normals, uvs, colors, indices,
 				vi, ii, ox, oz, sx, sz, surface_y, atlas, shade
@@ -511,10 +515,21 @@ static func _write_face_quad(
 	normals[vi + 1] = normal
 	normals[vi + 2] = normal
 	normals[vi + 3] = normal
-	uvs[vi + 0] = Vector2(0.0, 0.0)
-	uvs[vi + 1] = Vector2(uv_w, 0.0)
-	uvs[vi + 2] = Vector2(uv_w, uv_h)
-	uvs[vi + 3] = Vector2(0.0, uv_h)
+	if face_code == FACE_TOP:
+		var voxel_s: float = _WorldSettings.get_active().voxel_scale
+		var u0 := ox / voxel_s
+		var v0 := oz / voxel_s
+		var u1 := (ox + sx) / voxel_s
+		var v1 := (oz + sz) / voxel_s
+		uvs[vi + 0] = Vector2(u0, v0)
+		uvs[vi + 1] = Vector2(u1, v0)
+		uvs[vi + 2] = Vector2(u1, v1)
+		uvs[vi + 3] = Vector2(u0, v1)
+	else:
+		uvs[vi + 0] = Vector2(0.0, 0.0)
+		uvs[vi + 1] = Vector2(uv_w, 0.0)
+		uvs[vi + 2] = Vector2(uv_w, uv_h)
+		uvs[vi + 3] = Vector2(0.0, uv_h)
 	colors[vi + 0] = Color(tint.r, tint.g, tint.b, ao.x)
 	colors[vi + 1] = Color(tint.r, tint.g, tint.b, ao.y)
 	colors[vi + 2] = Color(tint.r, tint.g, tint.b, ao.z)
@@ -545,36 +560,52 @@ static func _write_cardinal_ramp(
 	dir: Vector2i,
 	atlas: Vector2i,
 	shade: float
-) -> void:
-	# Landing column only. Low edge is toward `dir` (world-cell step-down).
-	var yh: float = surface_y + sy
-	var yl: float = surface_y
+) -> int:
+	var strips := TerrainRamps.CURVE_STRIPS
 	var x0 := ox
 	var x1 := ox + sx
 	var z0 := oz
 	var z1 := oz + sz
-	if dir.x > 0:
-		vertices[vi + 0] = Vector3(x0, yh, z0)
-		vertices[vi + 1] = Vector3(x0, yh, z1)
-		vertices[vi + 2] = Vector3(x1, yl, z1)
-		vertices[vi + 3] = Vector3(x1, yl, z0)
-	elif dir.x < 0:
-		vertices[vi + 0] = Vector3(x1, yh, z1)
-		vertices[vi + 1] = Vector3(x1, yh, z0)
-		vertices[vi + 2] = Vector3(x0, yl, z0)
-		vertices[vi + 3] = Vector3(x0, yl, z1)
-	elif dir.y > 0:
-		vertices[vi + 0] = Vector3(x1, yh, z0)
-		vertices[vi + 1] = Vector3(x0, yh, z0)
-		vertices[vi + 2] = Vector3(x0, yl, z1)
-		vertices[vi + 3] = Vector3(x1, yl, z1)
-	else:
-		vertices[vi + 0] = Vector3(x0, yh, z1)
-		vertices[vi + 1] = Vector3(x1, yh, z1)
-		vertices[vi + 2] = Vector3(x1, yl, z0)
-		vertices[vi + 3] = Vector3(x0, yl, z0)
-	var shade_n := _slope_shade_normal(vertices, vi)
-	_fill_face_attribs(vertices, normals, uvs, colors, indices, vi, ii, atlas, shade, shade_n, 1.0, 1.0)
+	var yh: float = surface_y + sy
+	for i in strips:
+		var t0 := float(i) / float(strips)
+		var t1 := float(i + 1) / float(strips)
+		var y0 := yh - TerrainRamps.slope_ease(t0) * sy
+		var y1 := yh - TerrainRamps.slope_ease(t1) * sy
+		var base := vi + i * 4
+		var ibase := ii + i * 6
+		if dir.x > 0:
+			var xa := lerpf(x0, x1, t0)
+			var xb := lerpf(x0, x1, t1)
+			vertices[base + 0] = Vector3(xa, y0, z0)
+			vertices[base + 1] = Vector3(xa, y0, z1)
+			vertices[base + 2] = Vector3(xb, y1, z1)
+			vertices[base + 3] = Vector3(xb, y1, z0)
+		elif dir.x < 0:
+			var xa2 := lerpf(x1, x0, t0)
+			var xb2 := lerpf(x1, x0, t1)
+			vertices[base + 0] = Vector3(xa2, y0, z1)
+			vertices[base + 1] = Vector3(xa2, y0, z0)
+			vertices[base + 2] = Vector3(xb2, y1, z0)
+			vertices[base + 3] = Vector3(xb2, y1, z1)
+		elif dir.y > 0:
+			var za := lerpf(z0, z1, t0)
+			var zb := lerpf(z0, z1, t1)
+			vertices[base + 0] = Vector3(x1, y0, za)
+			vertices[base + 1] = Vector3(x0, y0, za)
+			vertices[base + 2] = Vector3(x0, y1, zb)
+			vertices[base + 3] = Vector3(x1, y1, zb)
+		else:
+			var za2 := lerpf(z1, z0, t0)
+			var zb2 := lerpf(z1, z0, t1)
+			vertices[base + 0] = Vector3(x0, y0, za2)
+			vertices[base + 1] = Vector3(x1, y0, za2)
+			vertices[base + 2] = Vector3(x1, y1, zb2)
+			vertices[base + 3] = Vector3(x0, y1, zb2)
+		var shade_n := _slope_shade_normal(vertices, base)
+		_fill_face_attribs(vertices, normals, uvs, colors, indices, base, ibase, atlas, shade, shade_n, 1.0, 1.0)
+		_project_world_uvs(uvs, vertices, base)
+	return strips
 
 
 static func _write_cardinal_floor(
@@ -659,36 +690,57 @@ static func _write_cardinal_flanks(
 		sides.append(Vector2i(-dir.y, dir.x))
 	if flank_b:
 		sides.append(Vector2i(dir.y, -dir.x))
+	var strips := TerrainRamps.CURVE_STRIPS
 	for side_v in sides:
 		var side: Vector2i = side_v
-		var a: Vector3
-		var b: Vector3
-		var c: Vector3
-		if side.y != 0:
-			var zf: float = z1 if side.y > 0 else z0
-			var hx: float = x0 if dir.x > 0 else (x1 if dir.x < 0 else (x0 if dir.y < 0 else x1))
-			var lx: float = x1 if dir.x > 0 else (x0 if dir.x < 0 else (x1 if dir.y < 0 else x0))
-			if dir.x == 0:
-				hx = x0 if ((dir.y > 0 and side.y < 0) or (dir.y < 0 and side.y > 0)) else x1
-				lx = x1 if hx == x0 else x0
-			a = Vector3(hx, yh, zf)
-			b = Vector3(lx, yl, zf)
-			c = Vector3(hx, yl, zf)
-		else:
-			var xf: float = x1 if side.x > 0 else x0
-			var hz: float = z0 if dir.y > 0 else (z1 if dir.y < 0 else (z0 if dir.x < 0 else z1))
-			var lz: float = z1 if dir.y > 0 else (z0 if dir.y < 0 else (z1 if dir.x < 0 else z0))
-			if dir.y == 0:
-				hz = z0 if ((dir.x > 0 and side.x < 0) or (dir.x < 0 and side.x > 0)) else z1
-				lz = z1 if hz == z0 else z0
-			a = Vector3(xf, yh, hz)
-			b = Vector3(xf, yl, lz)
-			c = Vector3(xf, yl, hz)
-		var base: int = vi + n * 4
-		var ibase: int = ii + n * 6
-		_write_vertical_tri(vertices, normals, uvs, colors, indices, base, ibase, a, b, c, atlas, 0.68)
-		n += 1
+		for i in strips:
+			var t0 := float(i) / float(strips)
+			var t1 := float(i + 1) / float(strips)
+			var y0 := yh - TerrainRamps.slope_ease(t0) * sy
+			var y1 := yh - TerrainRamps.slope_ease(t1) * sy
+			var p0: Vector3
+			var p1: Vector3
+			if dir.x != 0:
+				var zf: float = z1 if side.y > 0 else z0
+				var xa: float = lerpf(x0 if dir.x > 0 else x1, x1 if dir.x > 0 else x0, t0)
+				var xb: float = lerpf(x0 if dir.x > 0 else x1, x1 if dir.x > 0 else x0, t1)
+				p0 = Vector3(xa, y0, zf)
+				p1 = Vector3(xb, y1, zf)
+			else:
+				var xf: float = x1 if side.x > 0 else x0
+				var za: float = lerpf(z0 if dir.y > 0 else z1, z1 if dir.y > 0 else z0, t0)
+				var zb: float = lerpf(z0 if dir.y > 0 else z1, z1 if dir.y > 0 else z0, t1)
+				p0 = Vector3(xf, y0, za)
+				p1 = Vector3(xf, y1, zb)
+			var f0 := Vector3(p0.x, yl, p0.z)
+			var f1 := Vector3(p1.x, yl, p1.z)
+			var base: int = vi + n * 4
+			var ibase: int = ii + n * 6
+			vertices[base + 0] = p0
+			vertices[base + 1] = f0
+			vertices[base + 2] = f1
+			vertices[base + 3] = p1
+			var geom: Vector3 = (f0 - p0).cross(p1 - p0)
+			var outward := Vector3(float(side.x), 0.0, float(side.y))
+			if geom.dot(outward) < 0.0:
+				var swap: Vector3 = vertices[base + 1]
+				vertices[base + 1] = vertices[base + 3]
+				vertices[base + 3] = swap
+				geom = -geom
+			var fn := geom.normalized() if geom.length_squared() > 0.0001 else outward
+			_fill_face_attribs(vertices, normals, uvs, colors, indices, base, ibase, atlas, 0.68, fn, 1.0, 1.0)
+			_project_world_uvs(uvs, vertices, base)
+			n += 1
 	return n
+
+
+static func _project_world_uvs(uvs: PackedVector2Array, vertices: PackedVector3Array, vi: int) -> void:
+	var voxel_s: float = _WorldSettings.get_active().voxel_scale
+	if voxel_s <= 0.0:
+		voxel_s = 1.0
+	for k in 4:
+		var p: Vector3 = vertices[vi + k]
+		uvs[vi + k] = Vector2(p.x / voxel_s, p.z / voxel_s)
 
 
 static func _write_corner_ramp(

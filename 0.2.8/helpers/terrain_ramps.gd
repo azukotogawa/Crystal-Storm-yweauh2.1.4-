@@ -16,7 +16,8 @@ static var _concave_mesh: ArrayMesh
 static var _corner_step_mesh: ArrayMesh
 static var _mesh_scale_key: float = -1.0
 const CONCAVE_MESH_REV := 3
-const WEDGE_MESH_REV := 8
+const WEDGE_MESH_REV := 9
+const CURVE_STRIPS := 8
 const CORNER_STEP_MESH_REV := 3
 static var _concave_mesh_rev: int = -1
 static var _wedge_mesh_rev: int = -1
@@ -105,17 +106,33 @@ static func get_wedge_mesh() -> ArrayMesh:
 	var s: float = _ws().voxel_scale
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	# Winding A,D,C,B so the slope normal is (-1, 1, 0) — toward +Y. The previous
-	# A,B,C,D winding faced -Y, so the iso camera lit the underside (black diamonds).
-	var a := Vector3(-0.5, -1, -0.5) * s
-	var b := Vector3(0.5, 0, -0.5) * s
-	var c := Vector3(0.5, 0, 0.5) * s
-	var d := Vector3(-0.5, -1, 0.5) * s
-	var slope_n := Vector3(-1, 1, 0).normalized()
-	_add_quad_uv(st, a, d, c, b, slope_n,
-		Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)
-	)
-	_add_quad_uv(st, a, b, c, d, Vector3.DOWN,
+	var z0 := -0.5 * s
+	var z1 := 0.5 * s
+	for i in CURVE_STRIPS:
+		var t0 := float(i) / float(CURVE_STRIPS)
+		var t1 := float(i + 1) / float(CURVE_STRIPS)
+		var x_hi := lerpf(0.5 * s, -0.5 * s, t0)
+		var x_lo := lerpf(0.5 * s, -0.5 * s, t1)
+		var y_hi := -slope_ease(t0) * s
+		var y_lo := -slope_ease(t1) * s
+		var lo_nz := Vector3(x_lo, y_lo, z0)
+		var lo_pz := Vector3(x_lo, y_lo, z1)
+		var hi_pz := Vector3(x_hi, y_hi, z1)
+		var hi_nz := Vector3(x_hi, y_hi, z0)
+		var slope_n := (lo_pz - lo_nz).cross(hi_pz - lo_nz)
+		if slope_n.length_squared() < 0.000001:
+			slope_n = Vector3.UP
+		else:
+			slope_n = slope_n.normalized()
+		_add_quad_uv(st, lo_nz, lo_pz, hi_pz, hi_nz, slope_n,
+			Vector2(lo_nz.x, lo_nz.z), Vector2(lo_pz.x, lo_pz.z),
+			Vector2(hi_pz.x, hi_pz.z), Vector2(hi_nz.x, hi_nz.z)
+		)
+	var fa := Vector3(-0.5 * s, -s, z0)
+	var fb := Vector3(0.5 * s, -s, z0)
+	var fc := Vector3(0.5 * s, -s, z1)
+	var fd := Vector3(-0.5 * s, -s, z1)
+	_add_quad_uv(st, fa, fb, fc, fd, Vector3.DOWN,
 		Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)
 	)
 	_wedge_mesh = st.commit()
@@ -214,10 +231,15 @@ static func voxel_top_y(surface_y: float) -> float:
 	return surface_y + _ws().layer_height()
 
 
+static func slope_ease(t: float) -> float:
+	var u := clampf(t, 0.0, 1.0)
+	return u * u * (3.0 - 2.0 * u)
+
+
 static func surface_height_on_ramp(wx: float, wz: float, base_h: float, dir: Vector2i) -> float:
 	var layer: float = _ws().layer_height()
 	var t: float = clampf(axis_t(wx, wz, dir), 0.0, 1.0)
-	return voxel_top_y(base_h) - t * layer
+	return voxel_top_y(base_h) - slope_ease(t) * layer
 
 
 static func walkable_height_from_entry(

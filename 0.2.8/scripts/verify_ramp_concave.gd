@@ -20,11 +20,11 @@ func _run() -> void:
 	var layer: float = _WorldSettings.get_active().layer_height()
 
 	var ramp_src := (load("res://helpers/terrain_ramps.gd") as GDScript).source_code
-	if "WEDGE_MESH_REV := 8" not in ramp_src:
-		push_error("terrain_ramps must use the one-cell landing wedge rev 8")
+	if "WEDGE_MESH_REV := 9" not in ramp_src:
+		push_error("terrain_ramps must use the one-cell curved landing wedge rev 9")
 		failed = true
 	else:
-		print("OK wedge mesh rev 8 (one-cell landing)")
+		print("OK wedge mesh rev 9 (curved one-cell landing)")
 	if "CORNER_STEP_MESH_REV := 3" not in ramp_src:
 		push_error("terrain_ramps must use the triangle corner top rev 3")
 		failed = true
