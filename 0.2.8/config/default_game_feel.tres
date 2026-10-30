@@ -40,3 +40,6 @@ draw_curve = 1.0
 swim_visual_depth = 0.5
 content_pace = 0.45
 crystal_core_lethal_tier = 1
+hit_stun_min_sec = 0.25
+hit_stun_max_sec = 0.4
+hit_stun_full_knock_voxels = 3.0

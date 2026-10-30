@@ -59,6 +59,7 @@ var _hurt_player: float = 0.0
 const HURT_LOCK := 0.22
 var _knock_dir := Vector3.ZERO
 var _knock_left := 0.0
+var _stagger_left := 0.0
 var _stall_time := 0.0
 var _base_tint: Color = Color(0.72, 0.72, 0.68)
 var _convert_elapsed: float = 0.0
@@ -391,6 +392,11 @@ func _physics_process(delta: float) -> void:
 			if profiler and profiler.has_method("end"):
 				profiler.end("entity_physics")
 			return
+	if _knock_left > 0.0 or _stagger_left > 0.0:
+		_tick_hit_stun(delta)
+		if profiler and profiler.has_method("end"):
+			profiler.end("entity_physics")
+		return
 	var player_cell := self_cell
 	if _player:
 		player_cell = _EntityNavigation.column_pos(
@@ -410,21 +416,6 @@ func _physics_process(delta: float) -> void:
 			target_cell = self_cell
 			if config.behavior_profile == _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE and brain.has_method("unstick"):
 				brain.unstick()
-
-	if _knock_left > 0.0:
-		var step := minf(_knock_left, maxf(config.move_speed, 6.0) * delta * 2.4)
-		var shoved := _EntityNavigation.knockback_step(
-			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
-		)
-		if shoved.distance_squared_to(global_position) < 0.0004:
-			_knock_left = 0.0
-		else:
-			global_position = shoved
-			_knock_left = maxf(_knock_left - step, 0.0)
-		_notify_spatial_moved()
-		if profiler and profiler.has_method("end"):
-			profiler.end("entity_physics")
-		return
 
 	var nav_t0 := Time.get_ticks_usec()
 	var passive := config.behavior_profile == _EntityBrainConfig.BehaviorProfile.PASSIVE_HERBIVORE
@@ -559,6 +550,23 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 		return
 	_knock_dir = flat.normalized()
 	_knock_left = distance
+	_stagger_left = GameFeelConfig.active().hit_stun_for_distance(distance, WorldSettings.get_active().voxel_scale)
+
+
+func _tick_hit_stun(delta: float) -> void:
+	if _knock_left > 0.0:
+		var step := minf(_knock_left, maxf(config.move_speed, 6.0) * delta * 2.4)
+		var shoved := _EntityNavigation.knockback_step(
+			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
+		)
+		if shoved.distance_squared_to(global_position) < 0.0004:
+			_knock_left = 0.0
+		else:
+			global_position = shoved
+			_knock_left = maxf(_knock_left - step, 0.0)
+		_notify_spatial_moved()
+		return
+	_stagger_left = maxf(_stagger_left - delta, 0.0)
 
 
 func _flash_hit() -> void:
