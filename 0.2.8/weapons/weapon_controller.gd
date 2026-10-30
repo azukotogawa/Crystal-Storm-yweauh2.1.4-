@@ -85,6 +85,8 @@ var _feel_def: Dictionary = {}
 var _feel_target := Vector3.ZERO
 var _feel_resolving := false
 var _feel_hit_entities := false
+var _swing_open := false
+var _swing_hit: Dictionary = {}
 
 
 func _ready() -> void:
@@ -611,17 +613,9 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	var forward := _ActionTargeting.attack_toward_column(player, range_v)
 	var ws = _WorldSettings.get_active()
 	var hit_pos := _surface_point(target_col.x, target_col.z, origin.y)
-	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
-	var connected := false
-	var saw_target := false
-
-	var targets := _cursor_capsule_targets(origin, range_v, 1)
-	for target in targets:
-		saw_target = true
-		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.0)))
-		if dealt > 0.0:
-			connected = true
-			entity_hit.emit(target, dealt, item_id)
+	var strike := _damage_sword_bodies(item_id, def)
+	var connected: bool = bool(strike.get("connected", false))
+	var saw_target: bool = bool(strike.get("saw", false))
 
 	if crystal_manager:
 		var mass_cell := _crystal_target_cell(range_v)
@@ -636,7 +630,7 @@ func _do_melee_attack(item_id: String, def: Dictionary) -> void:
 	if not connected:
 		_note_attack(hit_pos, _HitMarkers.Result.BLOCKED if saw_target else _HitMarkers.Result.MISS)
 
-	if _combat_def.log_hits_to_console and targets.is_empty():
+	if _combat_def.log_hits_to_console and not saw_target:
 		_CombatLog.push("melee %s — no entity hit" % item_id)
 
 	attacked.emit(item_id, hit_pos)
@@ -1682,6 +1676,13 @@ func _arm_accepted_tool(action_id: String) -> void:
 
 func advance_tool_feel(delta: float) -> void:
 	_tool_feel.advance(self, delta)
+	if not _swing_open:
+		return
+	if _tool_feel.action_id == "sword_swing" and _tool_feel.state == _ToolFeel.STATE_LIVE:
+		_tick_sword_swing()
+		return
+	_swing_open = false
+	_swing_hit.clear()
 
 
 func on_tool_buffer_open(action_id: String) -> void:
@@ -1695,6 +1696,8 @@ func resolve_tool_feel(action_id: String) -> bool:
 	_feel_resolving = true
 	var landed := true
 	if action_id == "sword_swing":
+		_swing_open = true
+		_swing_hit.clear()
 		_do_melee_attack(_feel_item, _feel_def)
 	elif action_id == "bow_shot":
 		_do_ranged_attack(_feel_item, _feel_def)
@@ -1715,6 +1718,40 @@ func release_tool_feel(action_id: String) -> void:
 	if action_id == "multi_block_break":
 		_listed_break = false
 	_feel_target = Vector3.ZERO
+
+
+func _tick_sword_swing() -> void:
+	if _feel_item == "" or _feel_def.is_empty():
+		return
+	_damage_sword_bodies(_feel_item, _feel_def)
+
+
+func _damage_sword_bodies(item_id: String, def: Dictionary) -> Dictionary:
+	var range_v: float = float(def.get("range", 2.0))
+	var origin := _attack_origin(0.5)
+	var targets := _cursor_capsule_targets(origin, range_v, 1)
+	var entity_damage: float = _entity_hit_damage(def, _StatIds.MELEE_DAMAGE)
+	var connected := false
+	var saw_target := false
+	for target in targets:
+		saw_target = true
+		if not _claim_sword_target(target):
+			continue
+		var dealt := _CombatHitResolver.apply_damage(target, entity_damage, StringName(item_id), "", origin, float(def.get("knockback", 1.0)))
+		if dealt > 0.0:
+			connected = true
+			entity_hit.emit(target, dealt, item_id)
+	return {"connected": connected, "saw": saw_target}
+
+
+func _claim_sword_target(target: Node) -> bool:
+	if not _swing_open or target == null:
+		return true
+	var key := target.get_instance_id()
+	if _swing_hit.has(key):
+		return false
+	_swing_hit[key] = true
+	return true
 
 
 func _cancel_pending_strike() -> void:
