@@ -1,7 +1,6 @@
 extends SceneTree
 
 const _MapScript = preload("res://ui/topographical_map.gd")
-const _World = preload("res://world/InfiniteNoiseWorld.gd")
 const _Quality = preload("res://config/performance_quality_config.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _Feel = preload("res://config/game_feel_config.gd")
@@ -99,7 +98,12 @@ func _run() -> void:
 		int(quality.map_pixels_per_frame), int(quality.map_time_budget_us), int(quality.map_sample_stride),
 		float(feel.map_open_budget_scale), int(float(feel.map_preview_sec) * 1000.0), PLAYABLE,
 	])
-	var world = _World.new(12349)
+	var world_script = load("res://world/InfiniteNoiseWorld.gd")
+	if world_script == null or not world_script.can_instantiate():
+		push_error("FAIL world script")
+		quit(1)
+		return
+	var world = world_script.new(12349)
 	var crystal := CrystalField.new()
 	crystal.add_to_group("crystal_manager")
 	root.add_child(world)
