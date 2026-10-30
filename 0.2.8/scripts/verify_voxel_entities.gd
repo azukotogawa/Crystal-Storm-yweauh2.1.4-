@@ -5,6 +5,16 @@ const _Body = preload("res://player/player_body_mesh.gd")
 const _Creatures = preload("res://helpers/voxel_creature_builder.gd")
 const _WS = preload("res://config/world_settings.gd")
 
+const _ANIMALS := [
+	["res://assets/voxel/entities/deer.json", "deer", false],
+	["res://assets/voxel/entities/crystal_stag.json", "crystal_stag", true],
+	["res://assets/voxel/entities/boar.json", "boar", false],
+	["res://assets/voxel/entities/corrupted_beast.json", "corrupted_beast", true],
+	["res://assets/voxel/entities/rabbit.json", "rabbit", false],
+	["res://assets/voxel/entities/bird.json", "bird", false],
+	["res://assets/voxel/entities/crystal_wisp.json", "crystal_wisp", true],
+]
+
 const _MODELS := [
 	["res://assets/voxel/entities/player.json", "player", 3000],
 	["res://assets/voxel/entities/crystal_mite.json", "crystal_mite", 3000],
@@ -32,6 +42,21 @@ func _run() -> void:
 		quads[str(spec[1])] = _check_model(str(spec[0]), str(spec[1]), int(spec[2]))
 	_check_player_anim()
 	_check_mites()
+	var animal_quads := {}
+	for spec in _ANIMALS:
+		animal_quads[str(spec[1])] = _check_animal(str(spec[0]), str(spec[1]), bool(spec[2]))
+	print(
+		"ANIMAL QUADS deer=%s stag=%s boar=%s beast=%s rabbit=%s bird=%s wisp=%s"
+		% [
+			animal_quads.get("deer", -1),
+			animal_quads.get("crystal_stag", -1),
+			animal_quads.get("boar", -1),
+			animal_quads.get("corrupted_beast", -1),
+			animal_quads.get("rabbit", -1),
+			animal_quads.get("bird", -1),
+			animal_quads.get("crystal_wisp", -1),
+		]
+	)
 	print(
 		"ENTITY QUADS before player=186 mite=140 after player=%s mite=%s spike=%s shard=%s"
 		% [quads.get("player", -1), quads.get("crystal_mite", -1), quads.get("crystal_mite_spike", -1), quads.get("crystal_mite_shard", -1)]
@@ -96,6 +121,58 @@ func _check_model(path: String, name: String, budget: int) -> int:
 					dark = true
 		if not dark:
 			_fail("%s head has no dark eye" % name)
+	return part_quads
+
+
+func _check_animal(path: String, name: String, crystal: bool) -> int:
+	var rig := _Loader.rig_for(path)
+	if rig.is_empty():
+		_fail("%s load" % name)
+		return -1
+	var model = rig.get("model", null)
+	var quads := int(rig.get("quads", -1))
+	var parts: Dictionary = rig.get("parts", {})
+	var part_quads := 0
+	for key in parts.keys():
+		part_quads += int((parts[key] as Dictionary).get("quads", 0))
+	print("VOXEL %s voxels=%d quads=%d part_quads=%d" % [name, int(rig.get("voxels", -1)), quads, part_quads])
+	if model == null or model.model_name != name or model.vpb != 16 or model.base_cell != 2 or model.scale_mode != "terrain_block":
+		_fail("%s fields" % name)
+	if part_quads > 3000 or quads > 3000:
+		_fail("%s quads %d part %d over 3000" % [name, quads, part_quads])
+	var need := ["body", "head", "leg_l", "leg_r"]
+	if name != "crystal_wisp":
+		need.append("tail")
+	if name == "bird" or name == "crystal_wisp":
+		need.append("wing_l")
+		need.append("wing_r")
+	for part_name in need:
+		var pack: Dictionary = parts.get(part_name, {})
+		if pack.get("mesh", null) == null:
+			_fail("%s missing %s" % [name, part_name])
+	if name != "bird" and name != "crystal_wisp" and parts.has("wing_l"):
+		_fail("%s has a wing" % name)
+	if name == "crystal_wisp" and parts.has("tail"):
+		_fail("crystal_wisp has a tail part")
+	var saw_eye := false
+	var saw_crystal := false
+	if model != null:
+		for col in model.palette:
+			var key := "%d,%d,%d" % [col.r8, col.g8, col.b8]
+			if not _allowed.has(key):
+				_fail("%s palette %s" % [name, key])
+			if key == "184,71,255":
+				saw_crystal = true
+		for cell in model.cells_for("head"):
+			var at := cell as Vector4i
+			if at.w >= 0 and at.w < model.palette.size():
+				var col: Color = model.palette[at.w]
+				if col.r8 == 20 and col.g8 == 20 and col.b8 == 26:
+					saw_eye = true
+	if not saw_eye:
+		_fail("%s head has no dark eye" % name)
+	if crystal != saw_crystal:
+		_fail("%s crystal colour present=%s" % [name, saw_crystal])
 	return part_quads
 
 

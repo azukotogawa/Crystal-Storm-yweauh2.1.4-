@@ -15,6 +15,43 @@ const _MITE_VOXEL := {
 	&"crystal_mite_shard": "res://assets/voxel/entities/crystal_mite_shard.json",
 }
 
+const _ANIMAL_VOXEL := {
+	&"deer": "res://assets/voxel/entities/deer.json",
+	&"boar": "res://assets/voxel/entities/boar.json",
+	&"rabbit": "res://assets/voxel/entities/rabbit.json",
+	&"bird": "res://assets/voxel/entities/bird.json",
+	&"crystal_stag": "res://assets/voxel/entities/crystal_stag.json",
+	&"corrupted_beast": "res://assets/voxel/entities/corrupted_beast.json",
+	&"crystal_wisp": "res://assets/voxel/entities/crystal_wisp.json",
+}
+
+const _QUADRUPED_RIG := [
+	["body", "body", "Body", "Root", "bottom"],
+	["head", "head", "Head", "Body", "bottom"],
+	["leg_l", "leg", "Leg_L", "Root", "top"],
+	["leg_r", "leg", "Leg_R", "Root", "top"],
+	["tail", "tail", "Tail", "Body", "center"],
+]
+
+const _BIRD_RIG := [
+	["body", "body", "Body", "Root", "bottom"],
+	["head", "head", "Head", "Body", "bottom"],
+	["leg_l", "leg", "Leg_L", "Root", "top"],
+	["leg_r", "leg", "Leg_R", "Root", "top"],
+	["wing_l", "wing", "Wing_L", "Body", "center"],
+	["wing_r", "wing", "Wing_R", "Body", "center"],
+	["tail", "tail", "Tail", "Body", "center"],
+]
+
+const _WISP_RIG := [
+	["body", "body", "Body", "Root", "bottom"],
+	["head", "head", "Head", "Body", "bottom"],
+	["leg_l", "leg", "Leg_L", "Root", "top"],
+	["leg_r", "leg", "Leg_R", "Root", "top"],
+	["wing_l", "wing", "Wing_L", "Body", "center"],
+	["wing_r", "wing", "Wing_R", "Body", "center"],
+]
+
 const _ANIM_LEN := TAU
 const _ANIM_STEPS := 16
 
@@ -26,13 +63,9 @@ static func uses_rig(kind: StringName) -> bool:
 
 
 static func parts_for(kind: StringName) -> Array:
-	if kind == &"boar":
-		return _boar_parts()
-	if kind == &"deer":
-		return _deer_parts()
-	if kind == &"rabbit":
-		return _rabbit_parts()
-	if kind == &"bird" or kind == &"duck":
+	if _ANIMAL_VOXEL.has(kind):
+		return _authored_animal_parts(kind)
+	if kind == &"duck":
 		return _bird_parts()
 	if kind == &"goat":
 		return _deer_parts()
@@ -42,12 +75,6 @@ static func parts_for(kind: StringName) -> Array:
 		return _militia_parts()
 	if _MITE_VOXEL.has(kind):
 		return _authored_mite_parts(kind)
-	if kind == &"crystal_stag":
-		return _stag_parts()
-	if kind == &"crystal_wisp":
-		return _wisp_parts()
-	if kind == &"corrupted_beast":
-		return _beast_parts()
 	if kind == &"farm_bomber":
 		return _bomber_parts()
 	if kind == &"thornling" or kind == &"ambush":
@@ -60,6 +87,8 @@ static func parts_for(kind: StringName) -> Array:
 
 
 static func palette_for(kind: StringName) -> PackedColorArray:
+	if _ANIMAL_VOXEL.has(kind):
+		return _palette_from_voxel(str(_ANIMAL_VOXEL[kind]))
 	if kind == &"boar":
 		return PackedColorArray([
 			Color(0, 0, 0),
@@ -188,7 +217,7 @@ static func cube_edge() -> float:
 
 static func build(kind: StringName) -> Node3D:
 	var cube := cube_edge()
-	if _MITE_VOXEL.has(kind):
+	if _MITE_VOXEL.has(kind) or _ANIMAL_VOXEL.has(kind):
 		cube = _Settings.get_active().voxel_scale / 16.0
 	var rig := build_parts(parts_for(kind), palette_for(kind), cube)
 	if rig != null and _MITE_VOXEL.has(kind):
@@ -279,6 +308,63 @@ static func _boar_parts() -> Array:
 		_part("leg_r", "leg", "Leg_R", "Root", "top", leg_r),
 		_part("tail", "tail", "Tail", "Body", "center", tail),
 	]
+
+
+static func _animal_order(kind: StringName) -> Array:
+	if kind == &"bird":
+		return _BIRD_RIG
+	if kind == &"crystal_wisp":
+		return _WISP_RIG
+	return _QUADRUPED_RIG
+
+
+static func _palette_from_voxel(path: String) -> PackedColorArray:
+	var out := PackedColorArray()
+	out.append(Color(0, 0, 0))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(data) != TYPE_DICTIONARY:
+		return out
+	var crystal := _crystal_albedo()
+	var raw = data.get("palette", [])
+	if typeof(raw) != TYPE_ARRAY:
+		return out
+	for rgb in raw:
+		if typeof(rgb) != TYPE_ARRAY or rgb.size() < 3:
+			continue
+		if int(rgb[0]) == 184 and int(rgb[1]) == 71 and int(rgb[2]) == 255:
+			out.append(crystal)
+		else:
+			out.append(Color8(int(rgb[0]), int(rgb[1]), int(rgb[2])))
+	return out
+
+
+static func _authored_animal_parts(kind: StringName) -> Array:
+	var path := str(_ANIMAL_VOXEL[kind])
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if typeof(data) != TYPE_DICTIONARY:
+		return []
+	var raw_parts = data.get("parts", {})
+	if typeof(raw_parts) != TYPE_DICTIONARY:
+		return []
+	var emit: Array = []
+	var raw_palette = data.get("palette", [])
+	if typeof(raw_palette) == TYPE_ARRAY:
+		for i in raw_palette.size():
+			var rgb = raw_palette[i]
+			if typeof(rgb) == TYPE_ARRAY and rgb.size() >= 3 and int(rgb[0]) == 184 and int(rgb[1]) == 71 and int(rgb[2]) == 255:
+				emit.append(i + 1)
+	var out: Array = []
+	for row in _animal_order(kind):
+		var raw = raw_parts.get(str(row[0]), [])
+		if typeof(raw) != TYPE_ARRAY or raw.is_empty():
+			return []
+		var cells: Array = []
+		for item in raw:
+			if typeof(item) != TYPE_ARRAY or item.size() < 4:
+				return []
+			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
+		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit))
+	return out
 
 
 static func _authored_mite_parts(kind: StringName) -> Array:
