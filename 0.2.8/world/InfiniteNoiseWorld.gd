@@ -749,10 +749,9 @@ func get_surface_height_smooth(wx: float, wz: float) -> float:
 
 func _compute_surface_height(wx: float, wz: float) -> float:
 	var base: float = _compute_raw_elevation(wx, wz)
-	var border_info: Dictionary = WorldBorder.zone_info(wx, wz)
 	var h: float = base
 
-	if border_info.zone == "playable":
+	if WorldBorder.is_playable(wx, wz):
 		var river: Dictionary = _compute_river_carve(wx, wz, base)
 		h = base - river.carve
 		var cave_near_surface: float = _sample_cave(wx, h - 3.5, wz)
@@ -760,8 +759,8 @@ func _compute_surface_height(wx: float, wz: float) -> float:
 		if cave_near_surface > CAVE_SURFACE_BREACH_MIN and breach_var < CAVE_SURFACE_BREACH_CHANCE:
 			var depress: float = (cave_near_surface - 0.45) * 13.0
 			h -= clamp(depress, 0.0, 11.0)
-
-	if border_info.zone == "border":
+	else:
+		var border_info: Dictionary = WorldBorder.zone_info(wx, wz)
 		var edge: Vector2 = WorldBorder.edge_interior_coords(wx, wz)
 		var edge_base: float = _compute_raw_elevation(edge.x, edge.y)
 		var edge_river: Dictionary = _compute_river_carve(edge.x, edge.y, edge_base)
