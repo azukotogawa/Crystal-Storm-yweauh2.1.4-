@@ -17,9 +17,8 @@ const KINDS: Array[String] = ["cave_mouth", "ruined_watchtower"]
 const PER_KIND := 4
 const MIN_SEPARATION := 100.0
 const MIN_FROM_SPAWN := 96.0
-const MAX_FROM_SPAWN := 360.0
+const MAX_FROM_SPAWN := 640.0
 const STRIDE := 16
-const MAX_STEP := 22.0
 const STONE_ALBEDO := "res://assets/structures/stone_wall/stone_wall_albedo.png"
 const PILLAR_ALBEDO := "res://assets/structures/ruin_pillar/ruin_pillar_albedo.png"
 const STONE_MESH := "res://assets/structures/stone_wall/stone_wall.obj"
@@ -85,34 +84,28 @@ static func plan(world, respect_features: bool = false) -> Array[Dictionary]:
 		return ra < rb
 	)
 	var towns: Array = _FeatureRegistry.get_towns()
+	var quota := {}
 	for kind in KINDS:
-		var need := PER_KIND
-		for phase in 3:
-			if need <= 0:
-				break
-			for cell in cells:
-				if need <= 0:
-					break
-				if _too_close(cell, out):
+		quota[kind] = PER_KIND
+	for phase in 3:
+		var progressed := true
+		while progressed:
+			progressed = false
+			for kind in KINDS:
+				if int(quota[kind]) <= 0:
 					continue
-				if respect_features and not _FeatureRegistry.get_feature(cell.x, cell.y).is_empty():
+				var found := _pick_cell(kind, phase, cells, out, world, towns, respect_features)
+				if found.x == 999999:
 					continue
-				if _near_town(cell, towns):
-					continue
-				var biome := _biome_name(world, cell)
-				if phase == 0 and not _preferred(kind, biome):
-					continue
-				if phase == 1 and biome == "marsh":
-					continue
-				var spot := {
-					"center": cell,
+				out.append({
+					"center": found,
 					"poi_kind": kind,
 					"spawn": spawn,
-					"biome": biome,
-					"site_index": PER_KIND - need,
-				}
-				out.append(spot)
-				need -= 1
+					"biome": _biome_name(world, found),
+					"site_index": PER_KIND - int(quota[kind]),
+				})
+				quota[kind] = int(quota[kind]) - 1
+				progressed = true
 	return out
 
 
@@ -256,9 +249,11 @@ static func model_height(node: Node3D) -> float:
 	var max_y := 0.0
 	for child in node.get_children():
 		if child is MeshInstance3D:
-			var mesh := (child as MeshInstance3D).mesh
+			var mesh_inst := child as MeshInstance3D
+			var mesh: Mesh = mesh_inst.mesh
 			if mesh != null:
-				var top := child.position.y + mesh.get_aabb().position.y + mesh.get_aabb().size.y
+				var aabb: AABB = mesh.get_aabb()
+				var top: float = mesh_inst.position.y + aabb.position.y + aabb.size.y
 				max_y = maxf(max_y, top)
 		elif child is Node3D:
 			max_y = maxf(max_y, child.position.y + model_height(child as Node3D))
@@ -336,6 +331,23 @@ static func _structure_pieces(blueprint_id: StringName, structure_id: String, pl
 	return pieces
 
 
+static func _pick_cell(kind: String, phase: int, cells: Array[Vector2i], placed: Array[Dictionary], world, towns: Array, respect_features: bool) -> Vector2i:
+	for cell in cells:
+		if _too_close(cell, placed):
+			continue
+		if respect_features and not _FeatureRegistry.get_feature(cell.x, cell.y).is_empty():
+			continue
+		if _near_town(cell, towns):
+			continue
+		var biome := _biome_name(world, cell)
+		if phase == 0 and not _preferred(kind, biome):
+			continue
+		if phase == 1 and biome == "marsh":
+			continue
+		return cell
+	return Vector2i(999999, 999999)
+
+
 static func _too_close(cell: Vector2i, placed: Array[Dictionary]) -> bool:
 	for spot in placed:
 		var other: Vector2i = spot.get("center", Vector2i.ZERO)
@@ -387,7 +399,6 @@ static func _build_mask(world, spawn: Vector2i) -> Dictionary:
 	while head < q.size():
 		var cur: Vector2i = q[head]
 		head += 1
-		var cur_h := float(world.get_surface_height(float(cur.x), float(cur.y)))
 		for d in dirs:
 			var nxt: Vector2i = cur + d
 			if seen.has(nxt):
@@ -395,7 +406,7 @@ static func _build_mask(world, spawn: Vector2i) -> Dictionary:
 			seen[nxt] = true
 			if spawn_v.distance_to(Vector2(nxt)) > limit:
 				continue
-			if not _step_open(world, nxt, cur_h):
+			if not _step_open(world, nxt):
 				continue
 			reached[nxt] = true
 			q.append(nxt)
@@ -410,12 +421,12 @@ static func _nearest_walk_start(world, spawn: Vector2i) -> Vector2i:
 				if ring > 0 and absi(dx) != ring and absi(dz) != ring:
 					continue
 				var cell := origin + Vector2i(dx * STRIDE, dz * STRIDE)
-				if _step_open(world, cell, -100000.0):
+				if _step_open(world, cell):
 					return cell
 	return Vector2i(999999, 999999)
 
 
-static func _step_open(world, cell: Vector2i, prev_h: float) -> bool:
+static func _step_open(world, cell: Vector2i) -> bool:
 	if not _WorldBorder.is_playable(float(cell.x), float(cell.y)):
 		return false
 	if world == null or not world.has_method("get_tile_type"):
@@ -425,10 +436,6 @@ static func _step_open(world, cell: Vector2i, prev_h: float) -> bool:
 		return false
 	if tile == _Voxels.RIVER or tile == _Voxels.WATER:
 		return false
-	if prev_h > -10000.0 and world.has_method("get_surface_height"):
-		var h := float(world.get_surface_height(float(cell.x), float(cell.y)))
-		if absf(h - prev_h) > MAX_STEP:
-			return false
 	return true
 
 

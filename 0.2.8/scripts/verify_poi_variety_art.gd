@@ -169,6 +169,9 @@ func _surface_verts(mesh: Mesh, surface: int) -> int:
 func _image_luma(image: Image) -> float:
 	if image == null or image.is_empty():
 		return 0.0
+	if image.is_compressed():
+		image = image.duplicate()
+		image.decompress()
 	var step := 4
 	var n := 0
 	var sum := 0.0
