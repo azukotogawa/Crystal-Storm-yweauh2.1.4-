@@ -487,6 +487,9 @@ static func _sample_cell_fast(world: InfiniteNoiseWorld, job: Dictionary, wx: in
 static func _apply_border_map_style(
 	base: Color, wx: int, wz: int, tile: int, cfg: _TopographicalMapConfig
 ) -> Color:
+	var rim: float = _WorldBorder.map_edge_rim_strength(float(wx), float(wz), 8.0)
+	if rim <= 0.001 and _WorldBorder.is_playable(float(wx), float(wz)):
+		return base
 	var info: Dictionary = _WorldBorder.zone_info(float(wx), float(wz))
 	var color: Color = base
 	if str(info.get("zone", "")) == "border":
@@ -503,7 +506,6 @@ static func _apply_border_map_style(
 			color = color.lerp(cfg.color_ocean, 0.35)
 		elif _WorldBorder.is_border_mountain_tile(tile):
 			color = color.lerp(cfg.color_mountain, 0.3)
-	var rim: float = _WorldBorder.map_edge_rim_strength(float(wx), float(wz), 8.0)
 	if rim > 0.001:
 		var rim_color := Color(0.04, 0.05, 0.08, 1.0)
 		if str(info.get("side", "")) == "ocean" or _WorldBorder.is_ocean_tile(tile):

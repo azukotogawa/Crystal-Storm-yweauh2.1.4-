@@ -74,7 +74,7 @@ static func zone_info(wx: float, wz: float) -> Dictionary:
 
 
 static func is_playable(wx: float, wz: float) -> bool:
-	return zone_info(wx, wz).zone == "playable"
+	return absf(wx) <= float(PLAYABLE_HALF_X) + 0.001 and absf(wz) <= float(PLAYABLE_HALF_Z) + 0.001
 
 
 static func allows_crystal(wx: float, wz: float) -> bool:
@@ -161,9 +161,9 @@ static func apply_border_height(wx: float, wz: float, interior_h: float, info: D
 
 
 static func interior_ridge_scale(wx: float, wz: float) -> float:
-	var info: Dictionary = zone_info(wx, wz)
-	if info.zone == "playable":
+	if is_playable(wx, wz):
 		return 0.0
+	var info: Dictionary = zone_info(wx, wz)
 	if info.side == "mountain":
 		return lerpf(0.45, 1.0, float(info.transition))
 	if info.side == "corner":
@@ -172,7 +172,7 @@ static func interior_ridge_scale(wx: float, wz: float) -> float:
 
 
 static func is_border_tile_zone(wx: float, wz: float) -> bool:
-	return zone_info(wx, wz).zone == "border"
+	return not is_playable(wx, wz)
 
 
 static func border_biome_name(wx: float, wz: float) -> String:
