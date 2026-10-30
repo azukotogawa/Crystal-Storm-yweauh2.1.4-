@@ -57,6 +57,7 @@ func _ensure_live_inspector() -> void:
 		tree.set_script(load("res://ui/skill_tree_panel.gd"))
 		add_child(tree)
 	_ensure_f3_overlay()
+	_ensure_debug_view_layer()
 	_ensure_dev_input_actions()
 
 
@@ -69,6 +70,15 @@ func _ensure_f3_overlay() -> void:
 	var overlay := packed.instantiate()
 	overlay.name = "F3Overlay"
 	add_child(overlay)
+
+
+func _ensure_debug_view_layer() -> void:
+	if get_node_or_null("DebugViewLayer") != null:
+		return
+	var views := Node3D.new()
+	views.name = "DebugViewLayer"
+	views.set_script(load("res://helpers/debug_view_layer.gd"))
+	add_child(views)
 
 
 func _ensure_dev_input_actions() -> void:
