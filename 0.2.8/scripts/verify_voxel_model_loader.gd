@@ -67,10 +67,10 @@ func _check_units() -> void:
 		print("OK single cell quads=6")
 	var pair := _model([Vector4i(0, 0, 0, 0), Vector4i(1, 0, 0, 0)], Vector3i(2, 1, 1), Vector3.ZERO)
 	var merged := _Loader.build_part(pair, "")
-	if int(merged["quads"]) != 10:
+	if int(merged["quads"]) != 6:
 		_fail("merged pair quads=%s" % merged["quads"])
 	else:
-		print("OK merged pair quads=10")
+		print("OK merged pair quads=6")
 	var split := _model([Vector4i(0, 0, 0, 0), Vector4i(1, 0, 0, 1)], Vector3i(2, 1, 1), Vector3.ZERO)
 	var split_mesh := _Loader.build_part(split, "")
 	if int(split_mesh["quads"]) != 10:
