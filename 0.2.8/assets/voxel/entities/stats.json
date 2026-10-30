@@ -61,5 +61,181 @@
       },
       "blocks_tall": 0.75
     }
-  }
+  },
+  "animals_before": {
+    "deer": {
+      "voxels": 270,
+      "quads": 99,
+      "part_quads": 96
+    },
+    "boar": {
+      "voxels": 270,
+      "quads": 81,
+      "part_quads": 79
+    },
+    "rabbit": {
+      "voxels": 144,
+      "quads": 77,
+      "part_quads": 73
+    },
+    "bird": {
+      "voxels": 116,
+      "quads": 74,
+      "part_quads": 78
+    },
+    "crystal_stag": {
+      "voxels": 270,
+      "quads": 99,
+      "part_quads": 96
+    },
+    "corrupted_beast": {
+      "voxels": 270,
+      "quads": 81,
+      "part_quads": 79
+    },
+    "crystal_wisp": {
+      "voxels": 138,
+      "quads": 50,
+      "part_quads": 52
+    }
+  },
+  "animals": {
+    "deer": {
+      "voxels": 1955,
+      "quads": 199,
+      "part_quads": 195,
+      "parts": {
+        "body": 1024,
+        "head": 728,
+        "leg_l": 68,
+        "leg_r": 68,
+        "tail": 67
+      },
+      "blocks_tall": 1.938,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 19,
+        "detail_buried": 0
+      }
+    },
+    "crystal_stag": {
+      "voxels": 1955,
+      "quads": 189,
+      "part_quads": 185,
+      "parts": {
+        "body": 1024,
+        "head": 728,
+        "leg_l": 68,
+        "leg_r": 68,
+        "tail": 67
+      },
+      "blocks_tall": 1.938,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 19,
+        "detail_buried": 0
+      }
+    },
+    "boar": {
+      "voxels": 2134,
+      "quads": 123,
+      "part_quads": 124,
+      "parts": {
+        "body": 1168,
+        "head": 852,
+        "leg_l": 48,
+        "leg_r": 48,
+        "tail": 18
+      },
+      "blocks_tall": 1.0,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 6,
+        "detail_buried": 0
+      }
+    },
+    "corrupted_beast": {
+      "voxels": 2134,
+      "quads": 131,
+      "part_quads": 132,
+      "parts": {
+        "body": 1168,
+        "head": 852,
+        "leg_l": 48,
+        "leg_r": 48,
+        "tail": 18
+      },
+      "blocks_tall": 1.0,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 6,
+        "detail_buried": 0
+      }
+    },
+    "rabbit": {
+      "voxels": 1014,
+      "quads": 117,
+      "part_quads": 118,
+      "parts": {
+        "body": 352,
+        "head": 356,
+        "leg_l": 120,
+        "leg_r": 120,
+        "tail": 66
+      },
+      "blocks_tall": 1.438,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 6,
+        "detail_buried": 0
+      }
+    },
+    "bird": {
+      "voxels": 810,
+      "quads": 195,
+      "part_quads": 194,
+      "parts": {
+        "body": 272,
+        "head": 304,
+        "leg_l": 18,
+        "leg_r": 18,
+        "wing_l": 81,
+        "wing_r": 81,
+        "tail": 36
+      },
+      "blocks_tall": 0.875,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 26,
+        "detail_buried": 0
+      }
+    },
+    "crystal_wisp": {
+      "voxels": 810,
+      "quads": 195,
+      "part_quads": 193,
+      "parts": {
+        "body": 308,
+        "head": 304,
+        "leg_l": 18,
+        "leg_r": 18,
+        "wing_l": 81,
+        "wing_r": 81
+      },
+      "blocks_tall": 0.875,
+      "audit": {
+        "overlap": 0,
+        "deep": 0,
+        "detail": 26,
+        "detail_buried": 0
+      }
+    }
+  },
+  "profile": "quads at authored occupancy; crystal load unchanged (no extra terrain or per-voxel nodes)"
 }
