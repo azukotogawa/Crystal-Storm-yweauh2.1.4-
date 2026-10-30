@@ -1,6 +1,7 @@
 extends SceneTree
 
 const _MapScript = preload("res://ui/topographical_map.gd")
+const _World = preload("res://world/InfiniteNoiseWorld.gd")
 const _Quality = preload("res://config/performance_quality_config.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
 const _Feel = preload("res://config/game_feel_config.gd")
@@ -98,7 +99,7 @@ func _run() -> void:
 		int(quality.map_pixels_per_frame), int(quality.map_time_budget_us), int(quality.map_sample_stride),
 		float(feel.map_open_budget_scale), int(float(feel.map_preview_sec) * 1000.0), PLAYABLE,
 	])
-	var world := InfiniteNoiseWorld.new(12349)
+	var world = _World.new(12349)
 	var crystal := CrystalField.new()
 	crystal.add_to_group("crystal_manager")
 	root.add_child(world)
@@ -117,7 +118,7 @@ func _run() -> void:
 	quit(0)
 
 
-func _bench(world: InfiniteNoiseWorld) -> void:
+func _bench(world) -> void:
 	var n := 400
 	var coords: Array[Vector2i] = []
 	for i in n:
@@ -158,7 +159,7 @@ func _bench(world: InfiniteNoiseWorld) -> void:
 	world._invalidate_height_caches()
 
 
-func _measure_open(map, world: InfiniteNoiseWorld, crystal: CrystalField, pct: float) -> void:
+func _measure_open(map, world, crystal: CrystalField, pct: float) -> void:
 	if map.is_fullscreen_open():
 		map.toggle_fullscreen_map()
 	map._full_tex = null
@@ -280,7 +281,7 @@ func _input_latency(map, kind: String) -> Dictionary:
 	while frames < 6:
 		frames += 1
 		await process_frame
-		var moved := canvas.view_center.distance_to(center) > 0.01 or absf(canvas.zoom - zoom) > 0.0001
+		var moved: bool = canvas.view_center.distance_to(center) > 0.01 or absf(canvas.zoom - zoom) > 0.0001
 		if moved and canvas.draw_count > draws:
 			var up := ev.duplicate()
 			up.pressed = false
