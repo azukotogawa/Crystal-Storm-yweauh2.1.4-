@@ -48,6 +48,10 @@ func play(tree: SceneTree, scenario: String) -> int:
 		return await _play_mite(tree)
 	if name == "relic_esc":
 		return await _play_relic(tree)
+	if name == "boss_tyrant" or name == "boss_warden" or name == "boss_heart":
+		return await _play_boss(tree, name)
+	if name == "level_up" or name == "unlock":
+		return await _play_progress(tree, name)
 	var multi := name == "multi_dig" or name == "multi_build" or name == "mouse_build" or name == "water_dig" or name == "dev_keys" or name == "water_trench" or name == "swim" or name == "camera" or name == "hotbar" or name == "controls_tour"
 	_film_tree = tree
 	if name != "dig" and name != "build" and not multi:
@@ -1609,6 +1613,7 @@ func _banner_allowed(line: String) -> bool:
 		"Origin Warden",
 		"Shard Tyrant",
 		"Used herb",
+		"Victory —",
 	])
 	for prefix in prefixes:
 		if line.begins_with(prefix):
@@ -2076,3 +2081,370 @@ func _yaw(player: Node) -> float:
 	if cam != null and "yaw_target_degrees" in cam:
 		return float(cam.yaw_target_degrees)
 	return 0.0
+
+
+const BOSS_LIMIT := {
+	"boss_tyrant": 150.0,
+	"boss_warden": 180.0,
+	"boss_heart": 180.0,
+}
+const PROGRESS_LIMIT := 180.0
+
+
+
+func _play_boss(tree: SceneTree, name: String) -> int:
+	print("HARNESS seed %d" % SEED)
+	print("HARNESS setup pending_launch harness-%s seed %d resume off" % [name, SEED])
+	var seen: PackedStringArray = PackedStringArray()
+	var player = await _boot(tree, name, seen)
+	if player == null:
+		return 1
+	var crystal = tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_origin_cell"):
+		print("FAIL harness no crystal")
+		return 1
+	var origin: Vector2i = crystal.get_origin_cell()
+	var origin_xz := Vector2(float(origin.x) + 0.5, float(origin.y) + 0.5)
+	var kind := _boss_kind(name)
+	var bot = _Bot.new()
+	bot.chapter = name
+	bot.objective = "read the warning and defeat %s" % kind
+	bot.stuck_limit = 24
+	var hands = _Hands.new()
+	var fight = _Combat.new()
+	fight.chip_skills = false
+	var job := {
+		"warned": false,
+		"won": false,
+		"kind": kind,
+		"heart_mark": _heart_hp(crystal),
+		"cell": Vector2i(999999, 999999),
+		"swings": 0,
+		"gap": 0.0,
+		"pick": false,
+		"sword": false,
+		"dodge": Vector2.INF,
+	}
+	var near := _kind_xz(tree, kind)
+	if near == Vector2.INF:
+		near = origin_xz
+	print("HARNESS seeded near %s dist %.1f" % [kind, _xz(player).distance_to(near)])
+	var elapsed := 0.0
+	var limit := float(BOSS_LIMIT.get(name, 150.0))
+	while elapsed < limit:
+		var delta := _delta(tree)
+		elapsed += delta
+		_note_banner(tree, seen)
+		if float(player.health) <= 0.0:
+			return _give_up(bot, player, "player died")
+		var err := _tick_boss(name, tree, player, crystal, origin, origin_xz, bot, hands, fight, job, delta)
+		if err != "":
+			return _give_up(bot, player, err)
+		if bool(job["won"]):
+			break
+		await tree.process_frame
+	if not bool(job["warned"]):
+		print("FAIL harness assertion attack warning missing")
+		return _give_up(bot, player, "attack warning missing")
+	if not bool(job["won"]):
+		print("FAIL harness assertion %s not defeated" % kind)
+		return _give_up(bot, player, "%s not defeated" % kind)
+	var after := _snap(tree, player)
+	if not bool(after.get("hp_panel", false)):
+		print("FAIL harness assertion hp bar hidden")
+		return _give_up(bot, player, "hp bar hidden")
+	var want_hp := "%d / %d" % [int(round(float(after.get("hp", 0.0)))), int(round(float(after.get("max", 0.0))))]
+	if str(after.get("hp_label", "")) != want_hp:
+		print("FAIL harness assertion hp label %s want %s" % [str(after.get("hp_label", "")), want_hp])
+		return _give_up(bot, player, "hp label mismatch")
+	if not _saw(seen, OPENING_BANNER):
+		print("FAIL harness assertion opening banner missing")
+		return _give_up(bot, player, "opening banner missing")
+	if not _boss_banner_ok(name, seen):
+		print("FAIL harness assertion boss banner missing")
+		return _give_up(bot, player, "boss banner missing")
+	if not _boss_defeat_ok(name, tree, crystal):
+		print("FAIL harness assertion defeat state missing")
+		return _give_up(bot, player, "defeat state missing")
+	print("HARNESS see %s warned yes won yes hp %s banners %s" % [name, str(after.get("hp_label", "")), "|".join(seen)])
+	var shot := bot.save_view(name, _xz(player))
+	if shot == "":
+		return _give_up(bot, player, "screenshot was not saved")
+	return 0
+
+
+func _play_progress(tree: SceneTree, name: String) -> int:
+	print("HARNESS seed %d" % SEED)
+	print("HARNESS setup pending_launch harness-%s seed %d resume off" % [name, SEED])
+	var seen: PackedStringArray = PackedStringArray()
+	var player = await _boot(tree, name, seen)
+	if player == null:
+		return 1
+	var crystal = tree.get_first_node_in_group("crystal_manager")
+	if crystal == null or not crystal.has_method("get_origin_cell"):
+		print("FAIL harness no crystal")
+		return 1
+	var origin: Vector2i = crystal.get_origin_cell()
+	var origin_xz := Vector2(float(origin.x) + 0.5, float(origin.y) + 0.5)
+	var bot = _Bot.new()
+	bot.chapter = name
+	bot.objective = "reach level 2" if name == "level_up" else "unlock Dash"
+	bot.stuck_limit = 24
+	var hands = _Hands.new()
+	var fight = _Fight.new()
+	fight._phase = "hunt"
+	fight._home_arrived = true
+	fight._home_logged = true
+	fight.finish_bow()
+	fight.film_clear = true
+	fight.bot.chapter = name
+	fight.bot.objective = bot.objective
+	fight.bot.stuck_limit = 24
+	fight.bot.input.pace_presses = true
+	var cast = _Cast.new()
+	var job := {
+		"cast_on": false,
+		"leveled": false,
+		"unlocked": false,
+		"cell": Vector2i(999999, 999999),
+		"swings": 0,
+		"gap": 0.0,
+		"pick": false,
+	}
+	print("HARNESS seeded near heart dist %.1f" % _xz(player).distance_to(origin_xz))
+	var elapsed := 0.0
+	while elapsed < PROGRESS_LIMIT:
+		var delta := _delta(tree)
+		elapsed += delta
+		fight.bot.input.advance_pace(delta)
+		_note_banner(tree, seen)
+		if float(player.health) <= 0.0:
+			return _give_up(fight.bot, player, "player died")
+		if _level_of(tree) >= 2:
+			job["leveled"] = true
+		if name == "level_up" and bool(job["leveled"]):
+			break
+		if name == "unlock":
+			if _unlocked(tree, "dash"):
+				job["unlocked"] = true
+				break
+			if bool(job["leveled"]) or _points(tree) >= 1:
+				if _Hazard.ring_hot(tree, _xz(player)) or _attack_warn(tree):
+					_leave_attack(tree, player, fight.bot, origin_xz, job, delta, _xz(player))
+				elif not bool(job["cast_on"]):
+					fight.bot.release()
+					cast.begin("skill_dash")
+					job["cast_on"] = true
+				else:
+					var result: String = cast.tick(delta, tree, player, hands, fight.bot, origin_xz, null)
+					if result == "fail":
+						job["cast_on"] = false
+					if _unlocked(tree, "dash"):
+						job["unlocked"] = true
+						print("HARNESS skill dash")
+						break
+				await tree.process_frame
+				continue
+		var hunt: String = fight.tick(delta, tree, player, origin_xz)
+		if hunt == "fail":
+			if bool(job["leveled"]) and name == "level_up":
+				break
+			return _give_up(fight.bot, player, "fight returned fail")
+		await tree.process_frame
+	if name == "level_up":
+		if not bool(job["leveled"]) or _level_of(tree) < 2:
+			print("FAIL harness assertion level-up missing")
+			return _give_up(fight.bot, player, "level-up missing")
+		if not _banner_has(seen, "Level up "):
+			print("FAIL harness assertion level-up banner missing")
+			return _give_up(fight.bot, player, "level-up banner missing")
+	else:
+		if not bool(job["unlocked"]) or not _unlocked(tree, "dash"):
+			print("FAIL harness assertion dash not unlocked")
+			return _give_up(fight.bot, player, "dash not unlocked")
+		if not _banner_has(seen, "Skill unlocked"):
+			print("FAIL harness assertion skill banner missing")
+			return _give_up(fight.bot, player, "skill banner missing")
+	var after := _snap(tree, player)
+	if not bool(after.get("hp_panel", false)):
+		print("FAIL harness assertion hp bar hidden")
+		return _give_up(fight.bot, player, "hp bar hidden")
+	if not _saw(seen, OPENING_BANNER):
+		print("FAIL harness assertion opening banner missing")
+		return _give_up(fight.bot, player, "opening banner missing")
+	print("HARNESS see %s level %d dash %s hp %s banners %s" % [
+		name,
+		_level_of(tree),
+		"yes" if _unlocked(tree, "dash") else "no",
+		str(after.get("hp_label", "")),
+		"|".join(seen),
+	])
+	var shot := fight.bot.save_view(name, _xz(player))
+	if shot == "":
+		return _give_up(fight.bot, player, "screenshot was not saved")
+	return 0
+
+
+func _tick_boss(name: String, tree: SceneTree, player: Node, crystal: Node, origin: Vector2i, origin_xz: Vector2, bot, hands, fight, job: Dictionary, delta: float) -> String:
+	var pos := _xz(player)
+	var kind := str(job["kind"])
+	if name == "boss_heart" and _heart_hp(crystal) <= 0.0:
+		job["won"] = true
+		print("HARNESS BOSS KILL %s" % kind)
+		bot.release()
+		return ""
+	if name != "boss_heart" and _kind_count(tree, kind) <= 0 and bool(job["warned"]):
+		job["won"] = true
+		print("HARNESS BOSS KILL %s" % kind)
+		bot.release()
+		return ""
+	if _kind_warn(tree, kind) or (name == "boss_heart" and _heart_warn(tree)):
+		if not bool(job["warned"]):
+			job["warned"] = true
+			print("HARNESS attack warning hp %.1f kind %s" % [float(player.health), kind])
+		if name != "boss_heart":
+			bot.release()
+			return ""
+	if _Hazard.ring_hot(tree, pos) and bool(job["warned"]):
+		_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
+		return ""
+	if _Hazard.burning(tree, pos) and name != "boss_heart":
+		_step_toward(bot, player, _Hazard.leave_goal(tree, pos, origin_xz), delta, pos)
+		return ""
+	var at := _kind_xz(tree, kind)
+	if name == "boss_heart":
+		at = origin_xz
+	if at == Vector2.INF:
+		if name == "boss_warden":
+			_swing_heart(tree, player, origin, bot, hands, job, delta, pos)
+			return ""
+		_step_toward(bot, player, origin_xz, delta, pos)
+		return ""
+	if pos.distance_to(at) > 28.0:
+		_step_toward(bot, player, at, delta, pos, true)
+		return ""
+	if name == "boss_heart":
+		if _kind_count(tree, "origin_warden") > 0:
+			kind = "origin_warden"
+			at = _kind_xz(tree, kind)
+			if at == Vector2.INF:
+				_swing_heart(tree, player, origin, bot, hands, job, delta, pos)
+				return ""
+		else:
+			_swing_heart(tree, player, origin, bot, hands, job, delta, pos)
+			return ""
+	var rows: Array = []
+	for row in _foe_rows(tree):
+		if str(row.get("kind", "")) != kind:
+			continue
+		rows.append(row)
+	fight.set_vitals(float(player.health), float(player.max_health))
+	fight.observe(rows)
+	bot.release()
+	hands.begin_tick()
+	hands.aim_foe(player, at.x, at.y)
+	if pos.distance_to(at) > POINT_BLANK_COLUMNS:
+		fight.walk_to(at, pos, _yaw(player), delta)
+		return ""
+	fight.aim_ready = true
+	fight.strike_point(pos, at, _yaw(player), delta)
+	return ""
+
+
+func _heart_warn(tree: SceneTree) -> bool:
+	var burn := tree.root.find_child("BurnWarn", true, false)
+	if burn != null and bool(burn.visible):
+		return true
+	return _kind_warn(tree, "origin_warden")
+
+
+func _boss_kind(name: String) -> String:
+	if name == "boss_warden":
+		return "origin_warden"
+	if name == "boss_heart":
+		return "origin_heart"
+	return "spawn_elite"
+
+
+func _kind_count(tree: SceneTree, kind: String) -> int:
+	var n := 0
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node):
+			continue
+		if str(node.get("enemy_id")) != kind:
+			continue
+		if float(node.get("health")) <= 0.0:
+			continue
+		n += 1
+	return n
+
+
+func _kind_xz(tree: SceneTree, kind: String) -> Vector2:
+	if kind == "spawn_elite":
+		var stand := _elite_stand(tree)
+		if stand != Vector2.INF:
+			return stand
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node) or str(node.get("enemy_id")) != kind:
+			continue
+		if float(node.get("health")) <= 0.0:
+			continue
+		var body := node as Node3D
+		if body == null:
+			continue
+		var col := _Move.column_pos(body.global_position)
+		return Vector2(float(col.x) + 0.5, float(col.y) + 0.5)
+	return Vector2.INF
+
+
+func _kind_warn(tree: SceneTree, kind: String) -> bool:
+	for node in tree.get_nodes_in_group("crystal_enemy"):
+		if not is_instance_valid(node):
+			continue
+		if kind != "" and str(node.get("enemy_id")) != kind:
+			continue
+		var disc := node.get_node_or_null("StrikeTelegraph")
+		if disc != null and disc.visible:
+			return true
+		var ring := node.get_node_or_null("TelegraphRing")
+		if ring != null and ring.visible:
+			return true
+	return false
+
+
+func _boss_banner_ok(name: String, seen: PackedStringArray) -> bool:
+	if name == "boss_tyrant":
+		return _banner_has(seen, "Shard Tyrant")
+	if name == "boss_warden":
+		return _banner_has(seen, "Boss warning") or _banner_has(seen, "Origin Warden")
+	return _banner_has(seen, "Boss warning") or _banner_has(seen, "Crystal cracked") or _banner_has(seen, "Victory —")
+
+
+func _boss_defeat_ok(name: String, tree: SceneTree, crystal: Node) -> bool:
+	if name == "boss_tyrant":
+		return _kind_count(tree, "spawn_elite") <= 0
+	if name == "boss_warden":
+		var gm = tree.get_first_node_in_group("game_manager")
+		if gm != null and bool(gm.get("boss_defeated")):
+			return true
+		return _kind_count(tree, "origin_warden") <= 0
+	if _heart_hp(crystal) > 0.0:
+		return false
+	var gm2 = tree.get_first_node_in_group("game_manager")
+	if gm2 == null:
+		return true
+	return int(gm2.get("run_state")) == GameManager.RunState.WON or int(gm2.get("phase")) == GameManager.Phase.VICTORY
+
+
+func _banner_has(seen: PackedStringArray, needle: String) -> bool:
+	for line in seen:
+		if needle in line:
+			return true
+	return false
+
+
+func _level_of(tree: SceneTree) -> int:
+	var svc := tree.get_first_node_in_group("progression_service")
+	if svc == null:
+		return 1
+	return int(svc.get("level"))
