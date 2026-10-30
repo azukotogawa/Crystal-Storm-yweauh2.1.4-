@@ -49,6 +49,9 @@ func _run() -> void:
 	crystal.harness_setup_spawns([heart])
 
 	var player := _Player.new()
+	var mesh := MeshInstance3D.new()
+	mesh.name = "MeshInstance3D"
+	player.add_child(mesh)
 	player.set_physics_process(false)
 	player.set_process(false)
 	root.add_child(player)
