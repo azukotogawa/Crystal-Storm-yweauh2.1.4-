@@ -2302,10 +2302,7 @@ func _tick_boss(name: String, tree: SceneTree, player: Node, crystal: Node, orig
 		if not bool(job["warned"]):
 			job["warned"] = true
 			print("HARNESS attack warning hp %.1f kind %s" % [float(player.health), kind])
-		if name != "boss_heart":
-			bot.release()
-			return ""
-	if _Hazard.ring_hot(tree, pos) and bool(job["warned"]):
+	if _Hazard.ring_hot(tree, pos) or (_kind_warn(tree, kind) and name != "boss_heart"):
 		_leave_attack(tree, player, bot, origin_xz, job, delta, pos)
 		return ""
 	if _Hazard.burning(tree, pos) and name != "boss_heart":
