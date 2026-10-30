@@ -2211,7 +2211,10 @@ func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int
 	var n: float = float(TerrainLook.STEPS_PER_BLOCK)
 	var px := float(wx) + (float(mx) + 0.5) / n
 	var pz := float(wz) + (float(mz) + 0.5) / n
-	return base + layer + float(TerrainLook.offset_steps(px, pz)) * (layer / n)
+	var off := 0
+	if TerrainLook.column_waves(_tile_type_at(data, col_x, col_z)):
+		off = TerrainLook.offset_steps(px, pz)
+	return base + layer + float(off) * (layer / n)
 
 
 func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: int, z1: int) -> void:
@@ -2260,7 +2263,10 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 						open[idx] = 1
 						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(mx) + 0.5) / float(n)
 						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(mz) + 0.5) / float(n)
-						steps[idx] = TerrainLook.offset_steps(px, pz)
+						if TerrainLook.column_waves(vox):
+							steps[idx] = TerrainLook.offset_steps(px, pz)
+						else:
+							steps[idx] = 0
 						bases[idx] = base_key
 	var visited := PackedByteArray()
 	visited.resize(w * h)
@@ -2302,12 +2308,10 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 			for zz in run_z:
 				for xx in run_x:
 					visited[(iz + zz) * w + (ix + xx)] = 1
-			var mx0 := ix % n
-			var mz0 := iz % n
-			out_quads.append({
-				"x": float(x0 + col_lx) + float(mx0) / float(n),
+			var top_quad := {
+				"x": float(x0) + float(ix) / float(n),
 				"y": float(want_base) / 1000.0 + float(want_step) * step,
-				"z": float(z0 + col_lz) + float(mz0) / float(n),
+				"z": float(z0) + float(iz) / float(n),
 				"dim_x": float(run_x) / float(n),
 				"dim_y": 1.0,
 				"dim_z": float(run_z) / float(n),
@@ -2315,8 +2319,145 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 				"uv_h": float(run_z) / float(n),
 				"type": want_tile,
 				"face_code": FACE_TOP,
-				"wave_band": TerrainLook.palette_band(want_step),
-			})
+			}
+			if TerrainLook.paints_height(want_tile):
+				top_quad["wave_band"] = TerrainLook.palette_band(want_step)
+			out_quads.append(top_quad)
+	_emit_wave_risers(out_quads, x0, z0, w, h, n, cw, open, steps, bases, tiles)
+
+
+func _emit_wave_risers(
+	out_quads: Array,
+	x0: int,
+	z0: int,
+	w: int,
+	h: int,
+	n: int,
+	cw: int,
+	open: PackedByteArray,
+	steps: PackedInt32Array,
+	bases: PackedInt32Array,
+	tiles: Array
+) -> void:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var ix := 0
+	while ix < w - 1:
+		if ix % n == n - 1:
+			ix += 1
+			continue
+		var iz := 0
+		while iz < h:
+			var a := iz * w + ix
+			var b := a + 1
+			if open[a] == 0 or open[b] == 0 or steps[a] == steps[b] or bases[a] != bases[b]:
+				iz += 1
+				continue
+			var sa := int(steps[a])
+			var sb := int(steps[b])
+			var base_key := int(bases[a])
+			var src := ix if sa > sb else ix + 1
+			var tile := _wave_micro_tile(tiles, cw, n, src, iz)
+			var run := 1
+			while iz + run < h:
+				var a2 := (iz + run) * w + ix
+				var b2 := a2 + 1
+				if open[a2] == 0 or open[b2] == 0 or int(steps[a2]) != sa or int(steps[b2]) != sb or int(bases[a2]) != base_key:
+					break
+				var src2 := ix if sa > sb else ix + 1
+				if _wave_micro_tile(tiles, cw, n, src2, iz + run) != tile:
+					break
+				run += 1
+			_append_wave_riser(out_quads, x0, z0, ix, iz, run, n, sa, sb, base_key, tile, true, layer)
+			iz += run
+		ix += 1
+	var izb := 0
+	while izb < h - 1:
+		if izb % n == n - 1:
+			izb += 1
+			continue
+		var ixb := 0
+		while ixb < w:
+			var a3 := izb * w + ixb
+			var b3 := a3 + w
+			if open[a3] == 0 or open[b3] == 0 or steps[a3] == steps[b3] or bases[a3] != bases[b3]:
+				ixb += 1
+				continue
+			var sa3 := int(steps[a3])
+			var sb3 := int(steps[b3])
+			var base3 := int(bases[a3])
+			var srcz := izb if sa3 > sb3 else izb + 1
+			var tile3 := _wave_micro_tile(tiles, cw, n, ixb, srcz)
+			var runz := 1
+			while ixb + runz < w:
+				var a4 := izb * w + (ixb + runz)
+				var b4 := a4 + w
+				if open[a4] == 0 or open[b4] == 0 or int(steps[a4]) != sa3 or int(steps[b4]) != sb3 or int(bases[a4]) != base3:
+					break
+				var srcz2 := izb if sa3 > sb3 else izb + 1
+				if _wave_micro_tile(tiles, cw, n, ixb + runz, srcz2) != tile3:
+					break
+				runz += 1
+			_append_wave_riser(out_quads, x0, z0, ixb, izb, runz, n, sa3, sb3, base3, tile3, false, layer)
+			ixb += runz
+		izb += 1
+
+
+func _wave_micro_tile(tiles: Array, cw: int, n: int, ix: int, iz: int) -> int:
+	var col_lx := int(ix / n)
+	var col_lz := int(iz / n)
+	return int(tiles[col_lz * cw + col_lx])
+
+
+func _append_wave_riser(
+	out_quads: Array,
+	x0: int,
+	z0: int,
+	ix: int,
+	iz: int,
+	run: int,
+	n: int,
+	sa: int,
+	sb: int,
+	base_key: int,
+	tile: int,
+	along_z: bool,
+	layer: float
+) -> void:
+	var n_f := float(n)
+	var lo := mini(sa, sb)
+	var hi := maxi(sa, sb)
+	var y := float(base_key) / 1000.0 + layer + float(lo) * (layer / n_f)
+	var dim_y := float(hi - lo) / n_f
+	if along_z:
+		var left_higher := sa > sb
+		var src := ix if left_higher else ix + 1
+		out_quads.append({
+			"x": float(x0) + float(src) / n_f,
+			"y": y,
+			"z": float(z0) + float(iz) / n_f,
+			"dim_x": 1.0 / n_f,
+			"dim_y": dim_y,
+			"dim_z": float(run) / n_f,
+			"uv_w": float(run) / n_f,
+			"uv_h": dim_y,
+			"type": tile,
+			"face_code": FACE_POS_X if left_higher else FACE_NEG_X,
+		})
+	else:
+		var near_higher := sa > sb
+		var srcz := iz if near_higher else iz + 1
+		out_quads.append({
+			"x": float(x0) + float(ix) / n_f,
+			"y": y,
+			"z": float(z0) + float(srcz) / n_f,
+			"dim_x": float(run) / n_f,
+			"dim_y": dim_y,
+			"dim_z": 1.0 / n_f,
+			"uv_w": float(run) / n_f,
+			"uv_h": dim_y,
+			"type": tile,
+			"face_code": FACE_POS_Z if near_higher else FACE_NEG_Z,
+		})
 
 
 func _column_face_atlas(data: ChunkData, lx: int, lz: int, tile: int, face_code: int) -> Vector2i:

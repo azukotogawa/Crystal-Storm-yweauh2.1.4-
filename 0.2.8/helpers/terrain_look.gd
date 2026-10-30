@@ -1,7 +1,7 @@
 class_name TerrainLook
 extends RefCounted
 
-const SURFACE_WAVE_AMPLITUDE_STEPS := 1
+const SURFACE_WAVE_AMPLITUDE_STEPS := 2
 const STEPS_PER_BLOCK := 8
 const _WAVE_SCALE := 1.05
 
@@ -22,6 +22,18 @@ static func palette_color(rel: int) -> Color:
 
 static func amplitude_steps() -> int:
 	return maxi(SURFACE_WAVE_AMPLITUDE_STEPS, 0)
+
+
+static func column_waves(tile: int) -> bool:
+	if tile < 0 or tile == VoxelTypes.AIR or tile <= VoxelTypes.OCEAN3:
+		return false
+	if tile == VoxelTypes.RIVER or tile == VoxelTypes.WATER:
+		return false
+	return true
+
+
+static func paints_height(tile: int) -> bool:
+	return tile >= VoxelTypes.GRASSLAND and tile <= VoxelTypes.GRASSLAND5
 
 
 static func offset_steps(px: float, pz: float) -> int:

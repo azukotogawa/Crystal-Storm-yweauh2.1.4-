@@ -15,7 +15,7 @@ func _run() -> void:
 	var failed := false
 	var amp := _TerrainLook.amplitude_steps()
 	var max_jump := 0
-	var span := 64
+	var span := 192
 	for z in span:
 		for x in span:
 			var a := _TerrainLook.offset_steps(float(x) / 8.0, float(z) / 8.0)
@@ -62,6 +62,10 @@ func _run() -> void:
 	var tops := 0
 	var sides := 0
 	var ramps := 0
+	var lips := 0
+	var painted := 0
+	var top_y := -99999.0
+	var varied := false
 	var n := 0
 	for cz in range(-1, 2):
 		for cx in range(-1, 2):
@@ -76,13 +80,25 @@ func _run() -> void:
 				var fc := int(q.get("face_code", -1))
 				if fc == 0:
 					tops += 1
+					if q.has("wave_band"):
+						painted += 1
+						var y := float(q.get("y", 0.0))
+						if top_y < -99990.0:
+							top_y = y
+						elif absf(y - top_y) > 0.01:
+							varied = true
 				elif fc >= 7:
 					ramps += 1
 				else:
 					sides += 1
-	print("WAVE_QUADS chunks=%d quads=%d per=%.1f tops=%d sides=%d ramps=%d amp=%d" % [
-		n, total, float(total) / float(n), tops, sides, ramps, amp
+					if fc >= 3 and fc <= 6 and float(q.get("dim_y", 1.0)) < 0.4:
+						lips += 1
+	print("WAVE_QUADS chunks=%d quads=%d per=%.1f tops=%d sides=%d ramps=%d lips=%d painted=%d amp=%d" % [
+		n, total, float(total) / float(n), tops, sides, ramps, lips, painted, amp
 	])
+	if amp > 0 and (lips == 0 or painted == 0 or not varied):
+		push_error("surface wave mesh flat lips=%d painted=%d varied=%s" % [lips, painted, str(varied)])
+		failed = true
 	if failed:
 		quit(1)
 		return
