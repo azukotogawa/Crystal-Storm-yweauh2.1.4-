@@ -42,6 +42,11 @@ static func ruin_loot_pool() -> Array[StringName]:
 	return [&"pathfinder_charm", &"ruin_seal", &"flow_anchor", &"mason_glove"]
 
 
+static func cave_loot_pool() -> Array[StringName]:
+	ensure_builtins()
+	return [&"flow_anchor", &"ruin_seal", &"pathfinder_charm"]
+
+
 static func _make_crystal_ward() -> _RelicDef:
 	var d := _RelicDef.new()
 	d.id = &"crystal_ward"

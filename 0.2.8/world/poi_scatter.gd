@@ -8,6 +8,7 @@ const _Blueprints = preload("res://helpers/structure_blueprints.gd")
 const _Props = preload("res://helpers/voxel_prop_builder.gd")
 const _VisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _Coords = preload("res://helpers/world_visual_coords.gd")
+const _Variety = preload("res://world/poi_variety.gd")
 
 static var ENABLED: bool = true
 
@@ -112,6 +113,8 @@ static func layout(poi_kind: String) -> Array[Dictionary]:
 
 
 static func build_visual(poi_kind: String) -> Node3D:
+	if _Variety.owns(poi_kind):
+		return _Variety.build_visual(poi_kind)
 	var root := Node3D.new()
 	root.name = "PoiVisual"
 	var scale := _Coords.voxel_scale()
