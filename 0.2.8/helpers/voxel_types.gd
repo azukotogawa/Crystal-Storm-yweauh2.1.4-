@@ -70,28 +70,47 @@ const ATLAS_TEXTURE_PATH := "res://assets/tiles/Cube.png"
 const ATLAS_GRID_COLUMNS := 7
 const ATLAS_GRID_ROWS := 10
 const ATLAS_TILE_PIXELS := 32
+const SOIL_BOTTOM := Vector2i(6, 7)
+const ROCK_BOTTOM := Vector2i(5, 7)
+const SAND_BOTTOM := Vector2i(4, 7)
+const CRYSTAL_BOTTOM := Vector2i(3, 8)
+const CRYSTAL_SIDE := Vector2i(4, 9)
 
 
 static func get_atlas_coord(tile_type: int) -> Vector2i:
 	return ATLAS_COORDS.get(tile_type, Vector2i(6, 0))
 
 
-## Minecraft-style face picking: grass tops on FACE_TOP, dirt/earth on vertical sides, dirt underside.
+## Minecraft-style face picking: grass tops on FACE_TOP, dirt/earth on vertical sides, a darker underside.
 static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i:
 	if face_code <= 0 or face_code >= 7:
 		return get_atlas_coord(tile_type)
 	if face_code == 2:
-		return get_atlas_coord(DIRT2)
+		return _bottom_for(tile_type)
 	if _is_grass_surface(tile_type):
 		return get_atlas_coord(DIRT) if face_code >= 3 else get_atlas_coord(tile_type)
 	if _is_forest_surface(tile_type):
 		return get_atlas_coord(TREE_TRUNK) if face_code >= 3 else get_atlas_coord(tile_type)
 	if _is_snow_surface(tile_type):
 		return get_atlas_coord(STONE2) if face_code >= 3 else get_atlas_coord(tile_type)
-	if _is_stone_surface(tile_type):
+	if tile_type == DIRT or tile_type == DIRT2:
+		return Vector2i(5, 6) if face_code >= 3 else get_atlas_coord(tile_type)
+	if tile_type == CRYSTAL_VEIN:
+		return Vector2i(4, 5) if face_code >= 3 else get_atlas_coord(tile_type)
+	if tile_type == CRYSTAL or tile_type == CRYSTAL_SHARD_GROUND or tile_type == CRYSTAL_SCAR:
+		return CRYSTAL_SIDE if face_code >= 3 else get_atlas_coord(tile_type)
+	if _column_rock(tile_type):
+		if face_code >= 3:
+			var rock_top := get_atlas_coord(tile_type)
+			return Vector2i(0, 4) if rock_top == Vector2i(2, 4) else Vector2i(2, 4)
 		return get_atlas_coord(tile_type)
 	if _is_desert_surface(tile_type):
-		return get_atlas_coord(DESERT3) if face_code >= 3 else get_atlas_coord(tile_type)
+		if face_code >= 3:
+			var sand_top := get_atlas_coord(tile_type)
+			return Vector2i(0, 7) if sand_top == Vector2i(2, 7) else Vector2i(2, 7)
+		return get_atlas_coord(tile_type)
+	if _is_stone_surface(tile_type):
+		return get_atlas_coord(tile_type)
 	return get_atlas_coord(tile_type)
 
 
@@ -165,26 +184,65 @@ static func _column_pick(cells: Array[Vector2i], world_x: int, world_z: int, sal
 
 
 ## Ramps (face >= 7) use the landing top. Bottoms stay the underside cell.
+static func _pick_other(cells: Array[Vector2i], world_x: int, world_z: int, salt: int, avoid: Vector2i) -> Vector2i:
+	var picked := _column_pick(cells, world_x, world_z, salt)
+	if picked != avoid:
+		return picked
+	var at := cells.find(picked)
+	if at < 0:
+		return picked
+	return cells[(at + 1) % cells.size()]
+
+
+static func _bottom_for(tile_type: int) -> Vector2i:
+	if tile_type == CRYSTAL or tile_type == CRYSTAL_VEIN or tile_type == CRYSTAL_SHARD_GROUND or tile_type == CRYSTAL_SCAR:
+		return CRYSTAL_BOTTOM
+	if _is_snow_only(tile_type) or _column_rock(tile_type) or tile_type == CAVE_STONE or _is_stone_surface(tile_type):
+		return ROCK_BOTTOM
+	if _is_desert_surface(tile_type) or _is_beach(tile_type):
+		return SAND_BOTTOM
+	return SOIL_BOTTOM
+
+
 static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: int) -> Vector2i:
 	var face := face_code
 	if face >= 7:
 		face = 0
 	if face == 2:
-		return get_atlas_coord(DIRT2)
+		return _bottom_for(tile_type)
 	if _green_grass_top(tile_type) and face == 0:
 		return _column_pick(GRASS_TOP_VARIANTS, world_x, world_z, 11)
-	if (_is_grass_surface(tile_type) or tile_type == DIRT or tile_type == DIRT2) and face >= 3:
-		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
 	if (tile_type == DIRT or tile_type == DIRT2) and face == 0:
 		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
+	if (tile_type == DIRT or tile_type == DIRT2) and face >= 3:
+		var dirt_top := _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
+		return _pick_other(DIRT_VARIANTS, world_x, world_z, 31, dirt_top)
+	if (_is_grass_surface(tile_type)) and face >= 3:
+		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
 	if tile_type == CAVE_STONE:
-		return _column_pick(CAVE_ROCK_VARIANTS, world_x, world_z, 83)
+		var cave_top := _column_pick(CAVE_ROCK_VARIANTS, world_x, world_z, 83)
+		if face >= 3:
+			return _pick_other(CAVE_ROCK_VARIANTS, world_x, world_z, 89, cave_top)
+		return cave_top
 	if tile_type == CRYSTAL_VEIN:
-		return _column_pick(ORE_VARIANTS, world_x, world_z, 67)
+		var vein_top := _column_pick(ORE_VARIANTS, world_x, world_z, 67)
+		if face >= 3:
+			return _pick_other(ORE_VARIANTS, world_x, world_z, 71, vein_top)
+		return vein_top
+	if tile_type == CRYSTAL or tile_type == CRYSTAL_SHARD_GROUND or tile_type == CRYSTAL_SCAR:
+		if face >= 3:
+			return CRYSTAL_SIDE
+		return get_atlas_coord(tile_type)
 	if _column_rock(tile_type):
-		return _column_pick(STONE_VARIANTS, world_x, world_z, 41)
+		var rock_top := _column_pick(STONE_VARIANTS, world_x, world_z, 41)
+		if face >= 3:
+			return _pick_other(STONE_VARIANTS, world_x, world_z, 43, rock_top)
+		return rock_top
 	if _is_desert_surface(tile_type):
-		return _column_pick(SAND_VARIANTS, world_x, world_z, 101)
+		var sand_top := _column_pick(SAND_VARIANTS, world_x, world_z, 101)
+		if face >= 3:
+			return _pick_other(SAND_VARIANTS, world_x, world_z, 103, sand_top)
+		return sand_top
 	if _is_beach(tile_type):
 		return _column_pick(BEACH_VARIANTS, world_x, world_z, 103)
 	if _is_forest_surface(tile_type) and face == 0:
