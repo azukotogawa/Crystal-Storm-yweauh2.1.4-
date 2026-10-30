@@ -404,3 +404,43 @@ terrain_cell_size={
 "type": "float",
 "value": 2.0
 }
+terrain_day_gain={
+"type": "float",
+"value": 1.0
+}
+torch_count={
+"type": "float",
+"value": 0.0
+}
+torch_0={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_1={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_2={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_3={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_4={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_5={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_6={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
+torch_7={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}

@@ -8,6 +8,47 @@ global uniform float terrain_cave_fog;
 global uniform float terrain_corner_darken;
 global uniform float terrain_cell_size;
 global uniform float terrain_shadow_darken;
+global uniform float terrain_day_gain;
+global uniform float torch_count;
+global uniform vec4 torch_0;
+global uniform vec4 torch_1;
+global uniform vec4 torch_2;
+global uniform vec4 torch_3;
+global uniform vec4 torch_4;
+global uniform vec4 torch_5;
+global uniform vec4 torch_6;
+global uniform vec4 torch_7;
+
+float cs_one_torch(vec3 world_pos, vec4 packed) {
+	if (packed.w < 0.01) {
+		return 0.0;
+	}
+	float dist = distance(world_pos, packed.xyz);
+	float t = 1.0 - smoothstep(1.2, 6.0, dist);
+	return t * packed.w;
+}
+
+float cs_torch_term(vec3 world_pos) {
+	float sum = 0.0;
+	sum += cs_one_torch(world_pos, torch_0);
+	sum += cs_one_torch(world_pos, torch_1);
+	sum += cs_one_torch(world_pos, torch_2);
+	sum += cs_one_torch(world_pos, torch_3);
+	sum += cs_one_torch(world_pos, torch_4);
+	sum += cs_one_torch(world_pos, torch_5);
+	sum += cs_one_torch(world_pos, torch_6);
+	sum += cs_one_torch(world_pos, torch_7);
+	return sum * 0.35;
+}
+
+vec3 cs_apply_night(vec3 col, vec3 albedo, vec3 world_pos) {
+	float gain = clamp(terrain_day_gain, 0.28, 1.0);
+	col *= gain;
+	if (torch_count > 0.5) {
+		col += albedo * cs_torch_term(world_pos);
+	}
+	return col;
+}
 
 float cs_hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -66,7 +107,7 @@ vec3 cs_finish(vec3 albedo, vec3 world_n, vec2 repeated_uv, vec3 world_pos, floa
 	float far = clamp((far_d - 28.0) / 100.0, 0.0, 1.0);
 	float fog = max(below * 0.55, far * 0.22) * clamp(terrain_cave_fog, 0.0, 1.0);
 	col = mix(col, vec3(0.58, 0.64, 0.74), fog);
-	return col;
+	return cs_apply_night(col, albedo, world_pos);
 }
 
 float cs_corner_mask(vec3 world_pos, vec3 world_n) {
@@ -103,5 +144,5 @@ vec3 cs_depth(vec3 albedo, vec3 world_n, vec3 world_pos, float ao) {
 	vec3 col = albedo * mix(1.0, ao_f, clamp(terrain_ao_strength, 0.0, 1.0));
 	float mask = cs_corner_mask(world_pos, world_n);
 	col *= 1.0 - mask * clamp(terrain_corner_darken, 0.0, 0.75);
-	return col;
+	return cs_apply_night(col, albedo, world_pos);
 }

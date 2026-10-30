@@ -26,6 +26,7 @@ static func apply_preset(preset: int) -> void:
 	RenderingServer.global_shader_parameter_set("terrain_corner_darken", float(cfg.terrain_corner_darken))
 	RenderingServer.global_shader_parameter_set("terrain_shadow_darken", float(cfg.terrain_shadow_darken))
 	RenderingServer.global_shader_parameter_set("terrain_cell_size", _cell_size())
+	RenderingServer.global_shader_parameter_set("terrain_day_gain", 1.0)
 	_Shadow.set_globally_enabled(cheap)
 
 
@@ -38,6 +39,16 @@ static func ensure_globals() -> void:
 	_add(have, &"terrain_corner_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.42)
 	_add(have, &"terrain_shadow_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.45)
 	_add(have, &"terrain_cell_size", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 2.0)
+	_add(have, &"terrain_day_gain", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
+	_add(have, &"torch_count", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
+	_add(have, &"torch_0", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_1", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_2", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_3", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_4", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_5", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_6", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
+	_add(have, &"torch_7", RenderingServer.GLOBAL_VAR_TYPE_VEC4, Vector4.ZERO)
 
 
 static func _cell_size() -> float:

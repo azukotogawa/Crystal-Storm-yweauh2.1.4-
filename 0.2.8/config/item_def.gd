@@ -23,6 +23,7 @@ const MAX_STACK := 99
 @export var cooldown: float = 0.0
 @export var crystal_damage: float = 0.0
 @export var description: String = ""
+@export var alt_use: String = ""
 @export var pierce: int = 1
 ## Horizontal shove in voxels. World distance is this times voxel_scale.
 @export var knockback: float = 0.8
@@ -61,6 +62,7 @@ func to_lookup() -> Dictionary:
 		"max_stack": max_stack,
 		"visual_id": str(resolved_visual_id()),
 		"description": description,
+		"alt_use": alt_use,
 	}
 	if category == Category.WEAPON or category == Category.TOOL:
 		out["weapon_kind"] = int(weapon_kind)
@@ -115,6 +117,7 @@ static func from_legacy(item_id: String, data: Dictionary):
 	d.crystal_damage = float(data.get("crystal_damage", 0.0))
 	d.heal_amount = float(data.get("heal_amount", 0.0))
 	d.description = str(data.get("description", ""))
+	d.alt_use = str(data.get("alt_use", ""))
 	d.pierce = int(data.get("pierce", 1))
 	d.knockback = float(data.get("knockback", 0.8))
 	d.splash = int(data.get("splash", 0))

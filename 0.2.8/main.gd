@@ -10,6 +10,7 @@ var _quit_save_started: bool = false
 
 func _ready() -> void:
 	add_to_group("game")
+	_ensure_day_night()
 	_bind_alive_quit_save()
 	_ensure_live_inspector()
 	if _StartupTotal.is_enabled():
@@ -32,6 +33,19 @@ func _ready() -> void:
 			_StartupTotal.event("main.boot_async_returned", {}, "first_playable_frame")
 	else:
 		push_warning("[Main] CompositionRoot missing — legacy child _ready boot only")
+
+
+func _ensure_day_night() -> void:
+	if get_node_or_null("DayNightClock") == null:
+		var clock := Node.new()
+		clock.name = "DayNightClock"
+		clock.set_script(load("res://world/day_night_clock.gd"))
+		add_child(clock)
+	if get_node_or_null("TorchField") == null:
+		var field := Node3D.new()
+		field.name = "TorchField"
+		field.set_script(load("res://world/torch_field.gd"))
+		add_child(field)
 
 
 func _ensure_live_inspector() -> void:
