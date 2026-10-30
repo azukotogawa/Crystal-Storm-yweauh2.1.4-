@@ -33,6 +33,11 @@ static var pending_continue: bool = false
 
 const CONTINUE_FILE_NAME := "continue.json"
 
+const MSG_SAVE_FAILED := "Couldn't save. Try again; your last save is untouched."
+const MSG_LOAD_FAILED := "Couldn't load that save. Your current game wasn't changed."
+const MSG_LOAD_MISSING := "No save to load yet."
+const MSG_BUSY := "Still saving or loading. Try again in a moment."
+
 @export var config: Resource
 
 var _auto_timer: float = 0.0
@@ -42,6 +47,7 @@ var _transaction_stage: String = STAGE_IDLE
 var _checkpoint: Dictionary = {}
 var _paused_nodes: Array = []
 var _stream_was_paused: bool = false
+var last_player_message: String = ""
 
 
 func _enter_tree() -> void:
@@ -59,6 +65,29 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(cfg.save_directory)
 	call_deferred("_post_boot")
 	_connect_autosave_hooks()
+	if not save_failed.is_connected(_on_save_failed_message):
+		save_failed.connect(_on_save_failed_message)
+
+
+static func player_message_for(reason: String) -> String:
+	if reason.begins_with("write_error") or reason.begins_with("validate_failed"):
+		return MSG_SAVE_FAILED
+	if reason == "transaction_busy":
+		return MSG_BUSY
+	if reason == "missing_file" or reason == "missing_world_save":
+		return MSG_LOAD_MISSING
+	return MSG_LOAD_FAILED
+
+
+func _on_save_failed_message(_slot: int, reason: String) -> void:
+	last_player_message = player_message_for(reason)
+	print("[SaveGame] player message: %s (%s)" % [last_player_message, reason])
+	var tree := get_tree()
+	if tree == null:
+		return
+	var overlay = tree.get_first_node_in_group("game_overlay")
+	if overlay and overlay.has_method("_show_toast"):
+		overlay.call("_show_toast", last_player_message)
 
 
 const _GameplayInput = preload("res://helpers/gameplay_input.gd")
