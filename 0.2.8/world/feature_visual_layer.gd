@@ -20,6 +20,7 @@ const _WorldObjectScene: PackedScene = preload("res://scenes/world_object.tscn")
 const _TextureSet = preload("res://helpers/texture_set.gd")
 const _VegCatalog = preload("res://helpers/vegetation_voxel_catalog.gd")
 const _VoxelLoader = preload("res://helpers/crystal_voxel_loader.gd")
+const _ObjectCatalog = preload("res://helpers/object_voxel_catalog.gd")
 const _VisualProximity = preload("res://helpers/visual_proximity.gd")
 
 var chunk_manager: ChunkManager
@@ -693,6 +694,7 @@ func _make_building_anchor(
 		var obj: Node = _WorldObjectScene.instantiate()
 		if obj and obj.has_method("bind"):
 			obj.bind(wx, wz, building_id, feat, world, chunk_manager, _crystal, _registry, size, height_offset)
+			_attach_ruin_chest(obj, building_id, feat)
 			return obj as Node3D
 	var anchor := Node3D.new()
 	anchor.name = "Building_%s_%d_%d" % [building_id, wx, wz]
@@ -705,7 +707,17 @@ func _make_building_anchor(
 	_apply_building_mesh(mesh_inst, tex, size, building_id)
 	var yaw: float = float(feat.get("yaw", _StructureOrientation.yaw_for(wx, wz, building_id)))
 	mesh_inst.rotation.y = yaw
+	_attach_ruin_chest(anchor, building_id, feat)
 	return anchor
+
+
+func _attach_ruin_chest(obj: Node, building_id: String, feat: Dictionary) -> void:
+	if obj == null or building_id != "ruin_pillar" or not feat.has("chest"):
+		return
+	var chest := _ObjectCatalog.build("chest")
+	var vs: float = _WorldSettings.get_active().voxel_scale
+	chest.position = Vector3(vs, 0.0, 0.0)
+	obj.add_child(chest)
 
 
 func _apply_plant_texture(
@@ -932,6 +944,8 @@ func _veg_lod(wx: int, wz: int) -> int:
 		return 1
 	var player = get_tree().get_first_node_in_group("player")
 	if player == null:
+		return 1
+	if not _VegCatalog.EDGE_DETAIL:
 		return 1
 	var dist := _VisualProximity.player_column_distance(get_tree(), wx, wz)
 	return 0 if dist <= float(_VegCatalog.LOD0_COLUMNS) else 1

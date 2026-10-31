@@ -5,6 +5,7 @@ const _Veg = preload("res://world/vegetation_manager.gd")
 
 const ROOT := "res://assets/voxel/vegetation/lod/"
 const LOD0_COLUMNS := 10
+const EDGE_DETAIL := true
 const _FLOWERS := ["red", "yellow", "blue", "white"]
 
 
@@ -23,6 +24,7 @@ static func is_authored(plant_id: String) -> bool:
 		"flower_yellow",
 		"flower_blue",
 		"flower_white",
+		"flower",
 	]
 
 
@@ -32,7 +34,7 @@ static func model_path(plant_id: String, stage: int, wx: int, wz: int, biome: St
 	if id == "sapling":
 		id = "tree"
 		use_stage = 0
-	if id == "wildflower":
+	if id == "wildflower" or id == "flower":
 		id = "flower_" + _FLOWERS[_variant(wx, wz, 44002) % 4]
 	var variant := _variant(wx, wz, 55021) % 3
 	use_stage = _clamp_stage(id, use_stage)
