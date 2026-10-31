@@ -46,6 +46,8 @@ func _run() -> void:
 	data.tile_map[low_x][z] = _VoxelTypes.GRASSLAND
 	data.surface_map[high_x][z] = high_h
 	data.tile_map[high_x][z] = _VoxelTypes.GRASSLAND
+	data.surface_map[high_x + 1][z] = high_h
+	data.tile_map[high_x + 1][z] = _VoxelTypes.GRASSLAND
 
 	var cm := _ChunkManager.new()
 	cm.world = world
@@ -64,7 +66,7 @@ func _run() -> void:
 	var top := Vector3(float(high_x) + 0.85, 0.0, float(z) + 0.5)
 	top.y = probe.walkable_height_at(top.x, top.z)
 	var mid := Vector3(float(high_x) + 0.25, 0.0, float(z) + 0.5)
-	mid.y = probe.walkable_height_at(mid.x, mid.z)
+	mid.y = probe.sample_walkable_feet(mid.x, mid.z)
 	var low := Vector3(float(low_x) + 0.5, low_h + layer, float(z) + 0.5)
 
 	if probe.is_blocked_at(mid, ph, pr):
@@ -90,6 +92,7 @@ func _run() -> void:
 
 	if failed:
 		quit(1)
+		return
 	print("All ramp descent walk tests OK")
 	quit(0)
 

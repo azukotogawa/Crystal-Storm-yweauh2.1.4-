@@ -7,6 +7,9 @@ const _EntityNavigation = preload("res://entities/entity_navigation.gd")
 const _WorldVisualCoords = preload("res://helpers/world_visual_coords.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _StructureMat = preload("res://helpers/structure_cutaway_material.gd")
+const _ObjectCatalog = preload("res://helpers/object_voxel_catalog.gd")
+const _VoxelLoader = preload("res://helpers/crystal_voxel_loader.gd")
+const _VoxelMat = preload("res://helpers/voxel_model_builder.gd")
 
 const SURFACE_LIFT: float = 0.12
 ## World units per texture pixel (= voxel_scale * factor in 0.025–0.04 band).
@@ -520,6 +523,8 @@ func configure_building_mesh(
 		else:
 			mesh_inst.scale = Vector3.ONE
 	else:
+		if _apply_voxel_object_fallback(mesh_inst, id):
+			return
 		var parts: Array = structure_mesh_parts(id, size)
 		if id == "wood_wall" or id == "stone_wall":
 			var cap_parts: Array = []
@@ -565,6 +570,25 @@ func configure_building_mesh(
 		authored_path
 	)
 	mesh_inst.visible = true
+
+
+func _apply_voxel_object_fallback(mesh_inst: MeshInstance3D, id: String) -> bool:
+	if not _ObjectCatalog.is_authored(id):
+		return false
+	var rig: Dictionary = _VoxelLoader.rig_for(_ObjectCatalog.path_for(id))
+	var mesh: ArrayMesh = rig.get("mesh", null)
+	if mesh == null:
+		return false
+	mesh_inst.mesh = mesh
+	mesh_inst.scale = Vector3.ONE
+	mesh_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mesh_inst.set_meta("uses_authored_mesh", false)
+	mesh_inst.set_meta("authored_resource_path", "")
+	mesh_inst.set_meta("structure_part_count", 1)
+	mesh_inst.set_meta("voxel_object", true)
+	mesh_inst.material_override = _VoxelMat.make_material()
+	mesh_inst.visible = true
+	return true
 
 
 func structure_mesh_parts(building_id: String, fallback_size: Vector3 = Vector3(1, 1.5, 1)) -> Array:

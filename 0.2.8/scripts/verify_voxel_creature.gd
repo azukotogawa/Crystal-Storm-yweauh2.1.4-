@@ -345,8 +345,10 @@ func _check_mite_rig(rig: Node3D) -> void:
 		else:
 			var purple := _Palette.mass_albedo(false)
 			var bush := Color(0.18, 0.42, 0.16)
-			if _rgb_near(look.albedo, purple) or _rgb_near(look.albedo, bush):
-				_fail("mite albedo still matches the ground or the bushes")
+			if not _rgb_near(look.albedo, purple) or _rgb_near(look.albedo, bush):
+				_fail("mite albedo is not the crystal mass")
+			elif not _rgb_near(look.emission, _Palette.mass_emission(false)):
+				_fail("mite emission is not the crystal glow")
 			else:
 				_Builder.repaint(rig)
 				var again := _first_glow(rig).material_override as StandardMaterial3D

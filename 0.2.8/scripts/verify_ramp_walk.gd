@@ -38,6 +38,8 @@ func _run() -> void:
 	data.tile_map[low_x][z] = _VoxelTypes.GRASSLAND
 	data.surface_map[high_x][z] = high_h
 	data.tile_map[high_x][z] = _VoxelTypes.GRASSLAND
+	data.surface_map[high_x + 1][z] = high_h
+	data.tile_map[high_x + 1][z] = _VoxelTypes.GRASSLAND
 
 	var cm := _ChunkManager.new()
 	cm.world = world
@@ -74,12 +76,26 @@ func _run() -> void:
 	else:
 		print("OK step ramp mid -> interior")
 
+	mid.y = probe.sample_walkable_feet(mid.x, mid.z)
 	var blocked_mid := probe.is_blocked_at(mid, ph, pr)
 	if blocked_mid:
 		push_error("ramp mid position should not be head-blocked")
 		failed = true
 	else:
 		print("OK ramp mid head clearance")
+
+	var slope_limit: float = tan(deg_to_rad(_WorldSettings.get_active().player_slope_limit_degrees)) * pr
+	var steep_mul := 1.0
+	for u in [0.15, 0.35, 0.5, 0.65, 0.85]:
+		var excess: float = probe.slope_excess_at(float(high_x) + float(u), float(z) + 0.5)
+		var mul := 1.0
+		if excess > slope_limit * 1.35:
+			mul = clampf(1.0 - (excess - slope_limit) / (layer * 2.2), 0.82, 1.0)
+		steep_mul = minf(steep_mul, mul)
+	print("OK ramp climb mul=%.3f" % steep_mul)
+	if steep_mul < 0.82:
+		push_error("ramp climb multiplier dropped below 0.82 (%.3f)" % steep_mul)
+		failed = true
 
 	_TerrainRamps.placement_chance = old_chance
 	_TerrainRamps.invalidate_mesh_cache()

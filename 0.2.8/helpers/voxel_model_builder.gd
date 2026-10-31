@@ -1,6 +1,8 @@
 class_name VoxelModelBuilder
 extends RefCounted
 
+const PLAYER_VOXEL := "res://assets/voxel/entities/player.json"
+
 static var USE_GRID_PARTS := true
 
 static var _wind_sign: float = 0.0
@@ -73,44 +75,35 @@ static func palette_for(who: StringName) -> PackedColorArray:
 
 
 static func _player_parts() -> Array:
-	var skin := 1
-	var hair := 2
-	var tunic := 3
-	var belt := 4
-	var boot := 5
-	var eye := 6
-	var torso: Array = []
-	_fill(torso, 1, 7, 0, 7, 12, 4, tunic)
-	_fill(torso, 1, 6, 0, 7, 7, 4, belt)
-	var head: Array = []
-	_fill(head, 2, 15, 0, 6, 17, 4, hair)
-	_fill(head, 2, 13, 0, 6, 15, 4, skin)
-	_fill(head, 3, 14, 3, 5, 15, 4, eye)
-	var arm_l: Array = []
-	_fill(arm_l, 0, 9, 1, 2, 12, 3, tunic)
-	var arm_r: Array = []
-	_fill(arm_r, 6, 9, 1, 8, 12, 3, tunic)
-	var fore_l: Array = []
-	_fill(fore_l, 0, 7, 1, 2, 9, 3, skin)
-	var fore_r: Array = []
-	_fill(fore_r, 6, 7, 1, 8, 9, 3, skin)
-	var leg_l: Array = []
-	_fill(leg_l, 1, 2, 1, 3, 6, 3, tunic)
-	_fill(leg_l, 1, 0, 1, 3, 2, 3, boot)
-	var leg_r: Array = []
-	_fill(leg_r, 5, 2, 1, 7, 6, 3, tunic)
-	_fill(leg_r, 5, 0, 1, 7, 2, 3, boot)
-	return [
-		_part("torso", "Torso", "Root", torso),
-		_part("head", "Head", "Torso", head),
-		_part("upper_arm_l", "UpperArm_L", "Torso", arm_l),
-		_part("lower_arm_l", "LowerArm_L", "UpperArm_L", fore_l),
-		_part("upper_arm_r", "UpperArm_R", "Torso", arm_r),
-		_part("lower_arm_r", "LowerArm_R", "UpperArm_R", fore_r),
-		_part("leg_l", "Leg_L", "Root", leg_l),
-		_part("leg_r", "Leg_R", "Root", leg_r),
-		{"id": "held_item", "bone": "HeldSocket", "parent": "LowerArm_R", "socket": true, "cells": []},
+	var data = JSON.parse_string(FileAccess.get_file_as_string(PLAYER_VOXEL))
+	if typeof(data) != TYPE_DICTIONARY:
+		return []
+	var parts = data.get("parts", {})
+	if typeof(parts) != TYPE_DICTIONARY:
+		return []
+	var rig := [
+		["torso", "Torso", "Root"],
+		["head", "Head", "Torso"],
+		["upper_arm_l", "UpperArm_L", "Torso"],
+		["lower_arm_l", "LowerArm_L", "UpperArm_L"],
+		["upper_arm_r", "UpperArm_R", "Torso"],
+		["lower_arm_r", "LowerArm_R", "UpperArm_R"],
+		["leg_l", "Leg_L", "Root"],
+		["leg_r", "Leg_R", "Root"],
 	]
+	var out: Array = []
+	for row in rig:
+		var raw = parts.get(str(row[0]), [])
+		if typeof(raw) != TYPE_ARRAY or raw.is_empty():
+			return []
+		var cells: Array = []
+		for item in raw:
+			if typeof(item) != TYPE_ARRAY or item.size() < 4:
+				return []
+			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
+		out.append(_part(str(row[0]), str(row[1]), str(row[2]), cells))
+	out.append({"id": "held_item", "bone": "HeldSocket", "parent": "LowerArm_R", "socket": true, "cells": []})
+	return out
 
 
 static func _part(id: String, bone: String, parent: String, cells: Array) -> Dictionary:

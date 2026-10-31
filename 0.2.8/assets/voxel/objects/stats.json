@@ -1,0 +1,258 @@
+{
+  "budget_quads": 1500,
+  "before_quads": {
+    "torch": 0,
+    "chest": 0,
+    "door": 0,
+    "workbench": 0,
+    "furnace": 0,
+    "crystal_node": 0,
+    "bed": 0,
+    "sign": 0,
+    "wood_wall": 12,
+    "stone_wall": 12,
+    "gate": 18,
+    "bridge": 18,
+    "town_hall": 18,
+    "ruin_pillar": 18
+  },
+  "profile": "Godot greedy quads at authored occupancy; live buildings stay on authored OBJ meshes (not sprites or boxes), so the 10% crystal load profile is unchanged",
+  "models": {
+    "torch": {
+      "voxels": 99,
+      "quads": 105,
+      "parts": {
+        "body": 76,
+        "flame": 23
+      },
+      "palette": 6,
+      "pivot": [
+        3,
+        0,
+        3
+      ],
+      "yspan_cells": 20,
+      "detail": 11,
+      "before_quads": 0
+    },
+    "chest": {
+      "voxels": 955,
+      "quads": 264,
+      "parts": {
+        "body": 736,
+        "lid": 219
+      },
+      "palette": 5,
+      "pivot": [
+        8,
+        8,
+        0
+      ],
+      "yspan_cells": 10,
+      "detail": 315,
+      "before_quads": 0
+    },
+    "door": {
+      "voxels": 1031,
+      "quads": 142,
+      "parts": {
+        "hinge": 135,
+        "leaf": 896
+      },
+      "palette": 5,
+      "pivot": [
+        1,
+        0,
+        3
+      ],
+      "yspan_cells": 32,
+      "detail": 7,
+      "before_quads": 0
+    },
+    "workbench": {
+      "voxels": 404,
+      "quads": 166,
+      "parts": {
+        "body": 404
+      },
+      "palette": 6,
+      "pivot": [
+        8,
+        0,
+        8
+      ],
+      "yspan_cells": 12,
+      "detail": 276,
+      "before_quads": 0
+    },
+    "furnace": {
+      "voxels": 1726,
+      "quads": 243,
+      "parts": {
+        "body": 1707,
+        "ember": 19
+      },
+      "palette": 5,
+      "pivot": [
+        8,
+        0,
+        8
+      ],
+      "yspan_cells": 24,
+      "detail": 430,
+      "before_quads": 0
+    },
+    "crystal_node": {
+      "voxels": 286,
+      "quads": 83,
+      "parts": {
+        "body": 144,
+        "crystal": 142
+      },
+      "palette": 4,
+      "pivot": [
+        8,
+        0,
+        8
+      ],
+      "yspan_cells": 14,
+      "detail": 150,
+      "before_quads": 0
+    },
+    "bed": {
+      "voxels": 718,
+      "quads": 116,
+      "parts": {
+        "frame": 352,
+        "bedding": 366
+      },
+      "palette": 6,
+      "pivot": [
+        8,
+        0,
+        16
+      ],
+      "yspan_cells": 4,
+      "detail": 366,
+      "before_quads": 0
+    },
+    "sign": {
+      "voxels": 278,
+      "quads": 166,
+      "parts": {
+        "board": 174,
+        "post": 104
+      },
+      "palette": 5,
+      "pivot": [
+        7,
+        0,
+        7
+      ],
+      "yspan_cells": 29,
+      "detail": 174,
+      "before_quads": 0
+    },
+    "wood_wall": {
+      "voxels": 456,
+      "quads": 240,
+      "parts": {
+        "body": 456
+      },
+      "palette": 5,
+      "pivot": [
+        8,
+        0,
+        2
+      ],
+      "yspan_cells": 26,
+      "detail": 8,
+      "before_quads": 12
+    },
+    "stone_wall": {
+      "voxels": 1648,
+      "quads": 133,
+      "parts": {
+        "body": 1648
+      },
+      "palette": 3,
+      "pivot": [
+        8,
+        0,
+        3
+      ],
+      "yspan_cells": 26,
+      "detail": 16,
+      "before_quads": 12
+    },
+    "gate": {
+      "voxels": 1238,
+      "quads": 354,
+      "parts": {
+        "post": 832,
+        "lintel": 400,
+        "hinge": 6
+      },
+      "palette": 4,
+      "pivot": [
+        8,
+        0,
+        3
+      ],
+      "yspan_cells": 33,
+      "detail": 22,
+      "before_quads": 18
+    },
+    "bridge": {
+      "voxels": 460,
+      "quads": 138,
+      "parts": {
+        "deck": 268,
+        "rail": 192
+      },
+      "palette": 5,
+      "pivot": [
+        8,
+        0,
+        8
+      ],
+      "yspan_cells": 7,
+      "detail": 268,
+      "before_quads": 18
+    },
+    "town_hall": {
+      "voxels": 2648,
+      "quads": 315,
+      "parts": {
+        "body": 1962,
+        "roof": 668,
+        "crystal": 18
+      },
+      "palette": 8,
+      "pivot": [
+        16,
+        0,
+        12
+      ],
+      "yspan_cells": 30,
+      "detail": 2648,
+      "before_quads": 18
+    },
+    "ruin_pillar": {
+      "voxels": 574,
+      "quads": 346,
+      "parts": {
+        "body": 574
+      },
+      "palette": 3,
+      "pivot": [
+        6,
+        0,
+        6
+      ],
+      "yspan_cells": 27,
+      "detail": 574,
+      "before_quads": 18
+    }
+  }
+}

@@ -114,14 +114,11 @@ func _run() -> void:
 		cymin = minf(cymin, v.y)
 		cymax = maxf(cymax, v.y)
 		cunique["%d:%d" % [int(round(v.x * 50.0)), int(round(v.z * 50.0))]] = true
-	if cv.is_empty():
-		_fail("cardinal ramp must emit ArrayMesh vertices")
-	elif cymax - cymin < layer * 0.85:
-		_fail("cardinal ramp surface must be a slope, y_span=%.3f" % (cymax - cymin))
-	elif cunique.size() != 4:
-		_fail("cardinal ramp must occupy one column quad, unique_xz=%d" % cunique.size())
-	else:
-		print("OK cardinal ArrayMesh slope y_span=%.3f xz=%d" % [cymax - cymin, cunique.size()])
+	var outside := 0
+	for v2 in cv:
+		if v2.x < -0.05 or v2.x > s + 0.05 or v2.z < -0.05 or v2.z > s + 0.05:
+			outside += 1
+	var flat_treads := 0
 	var slope_up := 0
 	var cidx_all: PackedInt32Array = card_built.get("indices", PackedInt32Array())
 	var si := 0
@@ -131,13 +128,25 @@ func _run() -> void:
 		var sc: Vector3 = cv[cidx_all[si + 2]]
 		var cr: Vector3 = (sb - sa).cross(sc - sa)
 		var yspan: float = maxf(sa.y, maxf(sb.y, sc.y)) - minf(sa.y, minf(sb.y, sc.y))
-		if cr.length_squared() > 0.0001 and cr.y > 0.0 and yspan > layer * 0.35:
-			slope_up += 1
+		if cr.length_squared() > 0.0001 and cr.y > 0.0:
+			var floor_y: float = minf(sa.y, minf(sb.y, sc.y))
+			if yspan <= 0.001 and floor_y > cymin + 0.05:
+				flat_treads += 1
+			elif yspan > 0.001:
+				slope_up += 1
 		si += 3
-	if slope_up != 2:
-		_fail("cardinal must be one slope quad (2 +Y sloped tris), got %d" % slope_up)
+	if cv.is_empty():
+		_fail("cardinal ramp must emit ArrayMesh vertices")
+	elif cymax - cymin < layer * 0.85:
+		_fail("cardinal ramp surface must be a slope, y_span=%.3f" % (cymax - cymin))
+	elif outside > 0:
+		_fail("cardinal ramp verts left the column, n=%d" % outside)
+	elif flat_treads > 0:
+		_fail("cardinal ramp has flat treads, n=%d" % flat_treads)
+	elif slope_up < 8:
+		_fail("cardinal curve must be several +Y strips, got %d" % slope_up)
 	else:
-		print("OK cardinal single slope tris=%d" % slope_up)
+		print("OK cardinal curved slope y_span=%.3f tris=%d xz=%d" % [cymax - cymin, slope_up, cunique.size()])
 	var cidx: PackedInt32Array = card_built.get("indices", PackedInt32Array())
 	if cidx.size() >= 3 and cv.size() > int(cidx[2]):
 		var ge: Vector3 = (cv[cidx[1]] - cv[cidx[0]]).cross(cv[cidx[2]] - cv[cidx[0]])
@@ -145,6 +154,33 @@ func _run() -> void:
 			_fail("cardinal slope winding must face +Y, geom.y=%.3f" % ge.y)
 		else:
 			print("OK cardinal slope winding +Y (geom.y=%.3f)" % ge.y)
+	var cnormals: PackedVector3Array = card_built.get("normals", PackedVector3Array())
+	var cuvs: PackedVector2Array = card_built.get("uvs", PackedVector2Array())
+	var seam_bad := 0
+	var uv_bad := 0
+	var ny_high := 0.0
+	var ny_mid := 1.0
+	for i in cv.size():
+		if cv[i].y > cymax - 0.04:
+			ny_high = maxf(ny_high, cnormals[i].y)
+		elif absf(cv[i].y - (cymin + cymax) * 0.5) < layer * 0.15:
+			ny_mid = minf(ny_mid, cnormals[i].y)
+		var expect_uv := Vector2(fposmod(cv[i].x / s, 1.0), fposmod(cv[i].z / s, 1.0))
+		if cuvs[i].distance_squared_to(expect_uv) > 0.0004:
+			uv_bad += 1
+		for j in range(i + 1, cv.size()):
+			if cv[i].distance_squared_to(cv[j]) > 0.0001:
+				continue
+			if cnormals[i].distance_squared_to(cnormals[j]) > 0.01:
+				seam_bad += 1
+	if seam_bad > 0:
+		_fail("cardinal curve still has faceted seams, n=%d" % seam_bad)
+	elif ny_high < 0.97 or ny_mid > 0.75:
+		_fail("cardinal ease normals high=%.3f mid=%.3f" % [ny_high, ny_mid])
+	elif uv_bad > 0:
+		_fail("cardinal uvs are not world-projected, n=%d" % uv_bad)
+	else:
+		print("OK cardinal ease normals high=%.3f mid=%.3f world uv" % [ny_high, ny_mid])
 	var cn_q := {
 		"x": 1, "y": 10.0, "z": 1,
 		"dim_x": 1.0, "dim_y": 1.0, "dim_z": 1.0,

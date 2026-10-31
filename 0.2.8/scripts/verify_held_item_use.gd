@@ -55,9 +55,12 @@ func _run() -> void:
 	var weapon := WeaponController.new()
 	weapon.name = "WeaponController"
 	weapon.set_process(false)
+	weapon.set_physics_process(false)
 	player.add_child(weapon)
 	await process_frame
 	await process_frame
+	player.process_mode = Node.PROCESS_MODE_DISABLED
+	weapon.process_mode = Node.PROCESS_MODE_DISABLED
 	var view := player.get_node_or_null("HeldItemView") as Node3D
 	if view == null:
 		_fail("WeaponController did not attach HeldItemView")
@@ -186,19 +189,10 @@ func _note_hammer_hit(_id: String, _pos: Vector3) -> void:
 
 
 func _bow_string(held: Node3D) -> Node3D:
-	var best: Node3D = null
-	var best_h := 0.0
 	for child in held.get_children():
-		var mi := child as MeshInstance3D
-		if mi == null or mi.mesh == null:
-			continue
-		var box := mi.mesh as BoxMesh
-		if box == null:
-			continue
-		if box.size.y > best_h and box.size.x < box.size.y * 0.25:
-			best = mi
-			best_h = box.size.y
-	return best
+		if str(child.get_meta("held_role", "")) == "string":
+			return child as Node3D
+	return null
 
 
 func _check_bow(weapon: WeaponController, view: Node3D, vs: float) -> void:

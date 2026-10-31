@@ -9,6 +9,16 @@ const _Props = preload("res://helpers/voxel_prop_builder.gd")
 const _VisualRegistry = preload("res://systems/game_visual_registry.gd")
 const _Coords = preload("res://helpers/world_visual_coords.gd")
 const _Variety = preload("res://world/poi_variety.gd")
+const _Veg = preload("res://helpers/vegetation_voxel_catalog.gd")
+const _VoxelLoader = preload("res://helpers/crystal_voxel_loader.gd")
+
+const _PLANT_STANDIN := {
+	"bush": "bush",
+	"fern": "fern",
+	"crystal_bush": "bush",
+	"crystal_grass": "grass_tuft",
+	"shard_tree": "tree",
+}
 
 static var ENABLED: bool = true
 
@@ -133,8 +143,7 @@ static func build_visual(poi_kind: String) -> Node3D:
 				})
 		var plant_id := str(piece.get("plant", ""))
 		if plant_id != "":
-			var prop := _Props.build_plant(plant_id, 2)
-			prop.name = "VoxelProp_%s_%d_%d" % [plant_id, off.x, off.y]
+			var prop := _poi_plant(plant_id, off)
 			prop.position = shift
 			root.add_child(prop)
 	if not parts.is_empty():
@@ -144,6 +153,28 @@ static func build_visual(poi_kind: String) -> Node3D:
 		root.add_child(mesh_inst)
 	registry.free()
 	return root
+
+
+static func _poi_plant(plant_id: String, off: Vector2i) -> Node3D:
+	var standin := str(_PLANT_STANDIN.get(plant_id, ""))
+	var stage := 2 if standin == "bush" or standin == "tree" else 1
+	var lod := 1 if standin == "tree" else 0
+	var path := ""
+	if standin != "":
+		path = _Veg.model_path(standin, stage, off.x + 3, off.y + 5, "forest", lod)
+	var mesh: ArrayMesh = _VoxelLoader.mesh_for(path) if path != "" else null
+	if mesh == null:
+		var fallback := _Props.build_plant(plant_id, 2)
+		fallback.name = "VoxelProp_%s_%d_%d" % [plant_id, off.x, off.y]
+		return fallback
+	var prop := Node3D.new()
+	prop.name = "VoxelProp_%s_%d_%d" % [plant_id, off.x, off.y]
+	var mi := MeshInstance3D.new()
+	mi.name = "Mesh"
+	mi.mesh = mesh
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	prop.add_child(mi)
+	return prop
 
 
 static func _accept(proposed: Array[Dictionary]) -> Array[Dictionary]:

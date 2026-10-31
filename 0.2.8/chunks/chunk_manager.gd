@@ -1001,26 +1001,7 @@ func _build_micro_mesh_region(data: ChunkData, rect: Rect2i) -> Dictionary:
 
 
 func _emit_single_surface_top_quad(data: ChunkData, out_quads: Array, x: int, z: int) -> void:
-	if _skips_greedy_surface_cell(data, x, z):
-		return
-	var sy: float = _surface_y_at(data, x, z)
-	if sy >= float(ChunkData.HEIGHT):
-		return
-	var vox: int = _tile_type_at(data, x, z)
-	if vox == VoxelTypes.AIR:
-		return
-	out_quads.append({
-		"x": x,
-		"y": sy,
-		"z": z,
-		"dim_x": 1.0,
-		"dim_y": 1.0,
-		"dim_z": 1.0,
-		"uv_w": 1.0,
-		"uv_h": 1.0,
-		"type": vox,
-		"face_code": FACE_TOP,
-	})
+	_emit_waved_tops(data, out_quads, x, z, x + 1, z + 1)
 
 
 func _is_ramp_approach_from_landing(data: ChunkData, x: int, z: int) -> bool:
@@ -1973,63 +1954,8 @@ func _greedy_mesh_plane_region(
 	z1: int
 ) -> void:
 	if normal_dir.y != 0:
-		if normal_dir.y > 0 and x1 - x0 == 1 and z1 - z0 == 1:
-			_emit_single_surface_top_quad(data, out_quads, x0, z0)
-			return
-		var visited: Array = _ChunkPipeline.alloc_greedy_visited(ChunkData.SIZE)
-
-		for x in range(x0, x1):
-			for z in range(z0, z1):
-				if visited[x][z] or _skips_greedy_surface_cell(data, x, z):
-					continue
-				var sy: float = _surface_y_at(data, x, z)
-				if sy >= float(ChunkData.HEIGHT):
-					continue
-				var vox := _tile_type_at(data, x, z)
-				if vox == VoxelTypes.AIR:
-					continue
-				var variant := _column_face_atlas(data, x, z, vox, face_code)
-
-				var dx := 1
-				while x + dx < x1 and not visited[x + dx][z] \
-						and not _skips_greedy_surface_cell(data, x + dx, z) \
-						and is_equal_approx(_surface_y_at(data, x + dx, z), sy) \
-						and _tile_type_at(data, x + dx, z) == vox \
-						and _column_face_atlas(data, x + dx, z, vox, face_code) == variant:
-					dx += 1
-
-				var dz := 1
-				while z + dz < z1:
-					var can := true
-					for xx in range(dx):
-						var cx := x + xx
-						var cz := z + dz
-						if visited[cx][cz] or _skips_greedy_surface_cell(data, cx, cz) \
-								or not is_equal_approx(_surface_y_at(data, cx, cz), sy) \
-								or _tile_type_at(data, cx, cz) != vox \
-								or _column_face_atlas(data, cx, cz, vox, face_code) != variant:
-							can = false
-							break
-					if not can:
-						break
-					dz += 1
-
-				for xx in range(dx):
-					for zz in range(dz):
-						visited[x + xx][z + zz] = true
-
-				out_quads.append({
-					"x": x,
-					"y": sy,
-					"z": z,
-					"dim_x": float(dx),
-					"dim_y": 1.0,
-					"dim_z": float(dz),
-					"uv_w": float(dx),
-					"uv_h": float(dz),
-					"type": vox,
-					"face_code": face_code
-				})
+		if normal_dir.y > 0:
+			_emit_waved_tops(data, out_quads, x0, z0, x1, z1)
 		return
 
 	_emit_surface_side_walls_region(data, normal_dir, face_code, out_quads, x0, z0, x1, z1)
@@ -2162,85 +2088,376 @@ func _emit_surface_side_walls_region(
 	var dz = normal_dir.z
 	if dx == 0 and dz == 0:
 		return
-
 	if abs(dx) == 1:
 		for x in range(x0, x1):
-			var run_start = -1
-			var run_spec: Dictionary = {}
-			var run_atlas := Vector2i(-1, -1)
-			for z in range(z0, z1 + 1):
-				var spec: Dictionary = {}
-				if z < z1:
-					spec = _side_wall_spec(data, x, z, x + dx, z, Vector2i(-dx, 0))
-				var cell_atlas := Vector2i(-1, -1)
-				if not spec.is_empty():
-					cell_atlas = _column_face_atlas(data, x, z, int(spec.t), face_code)
-				var same := (not spec.is_empty() and not run_spec.is_empty()
-						and is_equal_approx(float(spec.y), float(run_spec.y))
-						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
-						and int(spec.t) == int(run_spec.t)
-						and cell_atlas == run_atlas)
-				if not spec.is_empty() and (run_start == -1 or same):
-					if run_start == -1:
-						run_start = z
-						run_spec = spec
-						run_atlas = cell_atlas
-				else:
-					if run_start != -1:
-						out_quads.append({
-							"x": x,
-							"y": float(run_spec.y),
-							"z": run_start,
-							"dim_x": 1.0,
-							"dim_y": float(run_spec.dim_y),
-							"dim_z": float(z - run_start),
-							"uv_w": float(z - run_start),
-							"uv_h": float(run_spec.dim_y),
-							"type": int(run_spec.t),
-							"face_code": face_code
-						})
-					run_start = -1 if spec.is_empty() else z
-					run_spec = spec
-					run_atlas = Vector2i(-1, -1) if spec.is_empty() else cell_atlas
+			for z in range(z0, z1):
+				_emit_one_side(data, out_quads, x, z, x + dx, z, face_code)
 	elif abs(dz) == 1:
 		for z in range(z0, z1):
-			var run_start = -1
-			var run_spec: Dictionary = {}
-			var run_atlas := Vector2i(-1, -1)
-			for x in range(x0, x1 + 1):
-				var spec: Dictionary = {}
-				if x < x1:
-					spec = _side_wall_spec(data, x, z, x, z + dz, Vector2i(0, -dz))
-				var cell_atlas := Vector2i(-1, -1)
-				if not spec.is_empty():
-					cell_atlas = _column_face_atlas(data, x, z, int(spec.t), face_code)
-				var same := (not spec.is_empty() and not run_spec.is_empty()
-						and is_equal_approx(float(spec.y), float(run_spec.y))
-						and is_equal_approx(float(spec.dim_y), float(run_spec.dim_y))
-						and int(spec.t) == int(run_spec.t)
-						and cell_atlas == run_atlas)
-				if not spec.is_empty() and (run_start == -1 or same):
-					if run_start == -1:
-						run_start = x
-						run_spec = spec
-						run_atlas = cell_atlas
-				else:
-					if run_start != -1:
-						out_quads.append({
-							"x": run_start,
-							"y": float(run_spec.y),
-							"z": z,
-							"dim_x": float(x - run_start),
-							"dim_y": float(run_spec.dim_y),
-							"dim_z": 1.0,
-							"uv_w": float(x - run_start),
-							"uv_h": float(run_spec.dim_y),
-							"type": int(run_spec.t),
-							"face_code": face_code
-						})
-					run_start = -1 if spec.is_empty() else x
-					run_spec = spec
-					run_atlas = Vector2i(-1, -1) if spec.is_empty() else cell_atlas
+			for x in range(x0, x1):
+				_emit_one_side(data, out_quads, x, z, x, z + dz, face_code)
+
+
+func _emit_one_side(
+	data: ChunkData, out_quads: Array, x: int, z: int, nx: int, nz: int, face_code: int
+) -> void:
+	var spec: Dictionary = _side_wall_spec(data, x, z, nx, nz, Vector2i(x - nx, z - nz))
+	var inside := nx >= 0 and nx < ChunkData.SIZE and nz >= 0 and nz < ChunkData.SIZE
+	var ramp_here := _is_ramp_landing(data, x, z) or (inside and _is_ramp_landing(data, nx, nz))
+	if ramp_here:
+		if not spec.is_empty():
+			out_quads.append({
+				"x": x,
+				"y": float(spec.y),
+				"z": z,
+				"dim_x": 1.0,
+				"dim_y": float(spec.dim_y),
+				"dim_z": 1.0,
+				"uv_w": 1.0,
+				"uv_h": float(spec.dim_y),
+				"type": int(spec.t),
+				"face_code": face_code,
+			})
+		return
+	var neighbor_known := inside or data.get_halo_surface_y(nx, nz) > -9000.0
+	if spec.is_empty():
+		if neighbor_known:
+			_emit_wave_lip(data, out_quads, x, z, nx, nz, face_code)
+		return
+	if not neighbor_known:
+		out_quads.append({
+			"x": x,
+			"y": float(spec.y),
+			"z": z,
+			"dim_x": 1.0,
+			"dim_y": float(spec.dim_y),
+			"dim_z": 1.0,
+			"uv_w": 1.0,
+			"uv_h": float(spec.dim_y),
+			"type": int(spec.t),
+			"face_code": face_code,
+		})
+		return
+	_emit_side_strips(data, out_quads, x, z, nx, nz, face_code, int(spec.t))
+
+
+func _emit_side_strips(
+	data: ChunkData, out_quads: Array, x: int, z: int, nx: int, nz: int, face_code: int, tile: int
+) -> void:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var n: int = TerrainLook.STEPS_PER_BLOCK
+	var along_x := nz != z
+	for m in n:
+		var y_hi: float
+		var y_lo: float
+		if along_x:
+			var mz_hi := (n - 1) if nz > z else 0
+			var mz_lo := 0 if nz > z else (n - 1)
+			y_hi = _column_micro_top(data, x, z, m, mz_hi)
+			y_lo = _column_micro_top(data, nx, nz, m, mz_lo)
+		else:
+			var mx_hi := (n - 1) if nx > x else 0
+			var mx_lo := 0 if nx > x else (n - 1)
+			y_hi = _column_micro_top(data, x, z, mx_hi, m)
+			y_lo = _column_micro_top(data, nx, nz, mx_lo, m)
+		if y_hi - y_lo <= 0.02:
+			continue
+		var qx := float(x)
+		var qz := float(z)
+		var dw := 1.0
+		var dd := 1.0
+		if along_x:
+			qx = float(x) + float(m) / float(n)
+			dw = 1.0 / float(n)
+		else:
+			qz = float(z) + float(m) / float(n)
+			dd = 1.0 / float(n)
+		out_quads.append({
+			"x": qx,
+			"y": y_lo,
+			"z": qz,
+			"dim_x": dw,
+			"dim_y": (y_hi - y_lo) / layer,
+			"dim_z": dd,
+			"uv_w": dw if along_x else dd,
+			"uv_h": (y_hi - y_lo) / layer,
+			"type": tile,
+			"face_code": face_code,
+		})
+
+
+func _emit_wave_lip(
+	data: ChunkData, out_quads: Array, x: int, z: int, nx: int, nz: int, face_code: int
+) -> void:
+	if _skips_greedy_surface_cell(data, x, z) or _skips_greedy_surface_cell(data, nx, nz):
+		return
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var base_h: float = _surface_y_at(data, x, z)
+	var base_n: float = _surface_y_at(data, nx, nz)
+	if absf(base_h - base_n) > layer * 0.2:
+		return
+	if _tile_type_at(data, x, z) == VoxelTypes.AIR or _tile_type_at(data, nx, nz) == VoxelTypes.AIR:
+		return
+	_emit_side_strips(data, out_quads, x, z, nx, nz, face_code, _tile_type_at(data, x, z))
+
+
+func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int) -> float:
+	var base: float = _sample_height(data, col_x, col_z)
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if base < -9000.0:
+		return base
+	var wx := data.position.x * ChunkData.SIZE + col_x
+	var wz := data.position.y * ChunkData.SIZE + col_z
+	var n: float = float(TerrainLook.STEPS_PER_BLOCK)
+	var px := float(wx) + (float(mx) + 0.5) / n
+	var pz := float(wz) + (float(mz) + 0.5) / n
+	var off := 0
+	if TerrainLook.column_waves(_tile_type_at(data, col_x, col_z)):
+		off = TerrainLook.offset_steps(px, pz)
+	return base + layer + float(off) * (layer / n)
+
+
+func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: int, z1: int) -> void:
+	var n: int = TerrainLook.STEPS_PER_BLOCK
+	var cw := x1 - x0
+	var ch := z1 - z0
+	if cw <= 0 or ch <= 0 or n <= 0:
+		return
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var step: float = layer / float(n)
+	var w := cw * n
+	var h := ch * n
+	var open := PackedByteArray()
+	var steps := PackedInt32Array()
+	var bases := PackedInt32Array()
+	open.resize(w * h)
+	steps.resize(w * h)
+	bases.resize(w * h)
+	var tiles: Array = []
+	tiles.resize(cw * ch)
+	var atlas: Array = []
+	atlas.resize(cw * ch)
+	for lz in ch:
+		for lx in cw:
+			var col_x := x0 + lx
+			var col_z := z0 + lz
+			var ti := lz * cw + lx
+			var usable := not _skips_greedy_surface_cell(data, col_x, col_z)
+			var sy := _surface_y_at(data, col_x, col_z) if usable else 0.0
+			var vox := _tile_type_at(data, col_x, col_z) if usable else VoxelTypes.AIR
+			if (not usable) or sy >= float(ChunkData.HEIGHT) or vox == VoxelTypes.AIR:
+				tiles[ti] = -1
+				atlas[ti] = Vector2i.ZERO
+			else:
+				tiles[ti] = vox
+				atlas[ti] = _column_face_atlas(data, col_x, col_z, vox, FACE_TOP)
+			var base_key := int(round(sy * 1000.0))
+			for mz in n:
+				for mx in n:
+					var idx := (lz * n + mz) * w + (lx * n + mx)
+					if int(tiles[ti]) < 0:
+						open[idx] = 0
+						steps[idx] = 0
+						bases[idx] = 0
+					else:
+						open[idx] = 1
+						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(mx) + 0.5) / float(n)
+						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(mz) + 0.5) / float(n)
+						if TerrainLook.column_waves(vox):
+							steps[idx] = TerrainLook.offset_steps(px, pz)
+						else:
+							steps[idx] = 0
+						bases[idx] = base_key
+	var visited := PackedByteArray()
+	visited.resize(w * h)
+	for iz in h:
+		for ix in w:
+			var idx := iz * w + ix
+			if visited[idx] != 0 or open[idx] == 0:
+				continue
+			var col_lx := ix / n
+			var col_lz := iz / n
+			var ti := col_lz * cw + col_lx
+			var want_step := steps[idx]
+			var want_base := bases[idx]
+			var want_tile := int(tiles[ti])
+			var want_atlas: Vector2i = atlas[ti]
+			var run_x := 1
+			while ix + run_x < w:
+				var j := iz * w + (ix + run_x)
+				if visited[j] != 0 or open[j] == 0 or steps[j] != want_step or bases[j] != want_base:
+					break
+				var tix := (iz / n) * cw + ((ix + run_x) / n)
+				if int(tiles[tix]) != want_tile or atlas[tix] != want_atlas:
+					break
+				run_x += 1
+			var run_z := 1
+			var growing := true
+			while growing and iz + run_z < h:
+				for k in run_x:
+					var j2 := (iz + run_z) * w + (ix + k)
+					if visited[j2] != 0 or open[j2] == 0 or steps[j2] != want_step or bases[j2] != want_base:
+						growing = false
+						break
+					var tiz := ((iz + run_z) / n) * cw + ((ix + k) / n)
+					if int(tiles[tiz]) != want_tile or atlas[tiz] != want_atlas:
+						growing = false
+						break
+				if growing:
+					run_z += 1
+			for zz in run_z:
+				for xx in run_x:
+					visited[(iz + zz) * w + (ix + xx)] = 1
+			var top_quad := {
+				"x": float(x0) + float(ix) / float(n),
+				"y": float(want_base) / 1000.0 + float(want_step) * step,
+				"z": float(z0) + float(iz) / float(n),
+				"dim_x": float(run_x) / float(n),
+				"dim_y": 1.0,
+				"dim_z": float(run_z) / float(n),
+				"uv_w": float(run_x) / float(n),
+				"uv_h": float(run_z) / float(n),
+				"type": want_tile,
+				"face_code": FACE_TOP,
+			}
+			if TerrainLook.paints_height(want_tile):
+				top_quad["wave_band"] = TerrainLook.palette_band(want_step)
+			out_quads.append(top_quad)
+	_emit_wave_risers(out_quads, x0, z0, w, h, n, cw, open, steps, bases, tiles)
+
+
+func _emit_wave_risers(
+	out_quads: Array,
+	x0: int,
+	z0: int,
+	w: int,
+	h: int,
+	n: int,
+	cw: int,
+	open: PackedByteArray,
+	steps: PackedInt32Array,
+	bases: PackedInt32Array,
+	tiles: Array
+) -> void:
+	var layer: float = _WorldSettings.get_active().layer_height()
+	var ix := 0
+	while ix < w - 1:
+		if ix % n == n - 1:
+			ix += 1
+			continue
+		var iz := 0
+		while iz < h:
+			var a := iz * w + ix
+			var b := a + 1
+			if open[a] == 0 or open[b] == 0 or steps[a] == steps[b] or bases[a] != bases[b]:
+				iz += 1
+				continue
+			var sa := int(steps[a])
+			var sb := int(steps[b])
+			var base_key := int(bases[a])
+			var src := ix if sa > sb else ix + 1
+			var tile := _wave_micro_tile(tiles, cw, n, src, iz)
+			var run := 1
+			while iz + run < h:
+				var a2 := (iz + run) * w + ix
+				var b2 := a2 + 1
+				if open[a2] == 0 or open[b2] == 0 or int(steps[a2]) != sa or int(steps[b2]) != sb or int(bases[a2]) != base_key:
+					break
+				var src2 := ix if sa > sb else ix + 1
+				if _wave_micro_tile(tiles, cw, n, src2, iz + run) != tile:
+					break
+				run += 1
+			_append_wave_riser(out_quads, x0, z0, ix, iz, run, n, sa, sb, base_key, tile, true, layer)
+			iz += run
+		ix += 1
+	var izb := 0
+	while izb < h - 1:
+		if izb % n == n - 1:
+			izb += 1
+			continue
+		var ixb := 0
+		while ixb < w:
+			var a3 := izb * w + ixb
+			var b3 := a3 + w
+			if open[a3] == 0 or open[b3] == 0 or steps[a3] == steps[b3] or bases[a3] != bases[b3]:
+				ixb += 1
+				continue
+			var sa3 := int(steps[a3])
+			var sb3 := int(steps[b3])
+			var base3 := int(bases[a3])
+			var srcz := izb if sa3 > sb3 else izb + 1
+			var tile3 := _wave_micro_tile(tiles, cw, n, ixb, srcz)
+			var runz := 1
+			while ixb + runz < w:
+				var a4 := izb * w + (ixb + runz)
+				var b4 := a4 + w
+				if open[a4] == 0 or open[b4] == 0 or int(steps[a4]) != sa3 or int(steps[b4]) != sb3 or int(bases[a4]) != base3:
+					break
+				var srcz2 := izb if sa3 > sb3 else izb + 1
+				if _wave_micro_tile(tiles, cw, n, ixb + runz, srcz2) != tile3:
+					break
+				runz += 1
+			_append_wave_riser(out_quads, x0, z0, ixb, izb, runz, n, sa3, sb3, base3, tile3, false, layer)
+			ixb += runz
+		izb += 1
+
+
+func _wave_micro_tile(tiles: Array, cw: int, n: int, ix: int, iz: int) -> int:
+	var col_lx := int(ix / n)
+	var col_lz := int(iz / n)
+	return int(tiles[col_lz * cw + col_lx])
+
+
+func _append_wave_riser(
+	out_quads: Array,
+	x0: int,
+	z0: int,
+	ix: int,
+	iz: int,
+	run: int,
+	n: int,
+	sa: int,
+	sb: int,
+	base_key: int,
+	tile: int,
+	along_z: bool,
+	layer: float
+) -> void:
+	var n_f := float(n)
+	var lo := mini(sa, sb)
+	var hi := maxi(sa, sb)
+	var y := float(base_key) / 1000.0 + layer + float(lo) * (layer / n_f)
+	var dim_y := float(hi - lo) / n_f
+	if along_z:
+		var left_higher := sa > sb
+		var src := ix if left_higher else ix + 1
+		out_quads.append({
+			"x": float(x0) + float(src) / n_f,
+			"y": y,
+			"z": float(z0) + float(iz) / n_f,
+			"dim_x": 1.0 / n_f,
+			"dim_y": dim_y,
+			"dim_z": float(run) / n_f,
+			"uv_w": float(run) / n_f,
+			"uv_h": dim_y,
+			"type": tile,
+			"face_code": FACE_POS_X if left_higher else FACE_NEG_X,
+		})
+	else:
+		var near_higher := sa > sb
+		var srcz := iz if near_higher else iz + 1
+		out_quads.append({
+			"x": float(x0) + float(ix) / n_f,
+			"y": y,
+			"z": float(z0) + float(srcz) / n_f,
+			"dim_x": float(run) / n_f,
+			"dim_y": dim_y,
+			"dim_z": 1.0 / n_f,
+			"uv_w": float(run) / n_f,
+			"uv_h": dim_y,
+			"type": tile,
+			"face_code": FACE_POS_Z if near_higher else FACE_NEG_Z,
+		})
 
 
 func _column_face_atlas(data: ChunkData, lx: int, lz: int, tile: int, face_code: int) -> Vector2i:

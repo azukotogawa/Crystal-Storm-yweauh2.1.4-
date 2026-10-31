@@ -334,7 +334,7 @@ func _check_aim() -> void:
 	var end: MeshInstance3D = aim.get_node("AimEnd")
 	if not end.visible:
 		_fail("ranged aim hid the end marker")
-	var bow_reach := 14.0 * vs
+	var bow_reach := float(_ItemTypes.get_def("shortbow").get("range", 14.0)) * vs
 	var bow_d := _horiz(end.global_position, rig.global_position)
 	if bow_d > bow_reach + 0.35 or bow_d < vs:
 		_fail("bow marker distance %s, cap %s" % [bow_d, bow_reach])

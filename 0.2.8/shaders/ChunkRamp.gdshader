@@ -16,6 +16,7 @@ global uniform float cutaway_past;
 
 uniform sampler2D texture_atlas : source_color, filter_nearest, repeat_disable;
 uniform vec2 atlas_grid = vec2(7.0, 10.0);
+uniform float voxel_scale = 2.0;
 
 #include "res://shaders/atlas_sample.gdshaderinc"
 #include "res://shaders/terrain_shade.gdshaderinc"
@@ -57,13 +58,13 @@ void fragment() {
 	}
 	float col = floor(instance_data.r * 255.0 + 0.5);
 	float row = floor(instance_data.g * 255.0 + 0.5);
-	vec2 repeated_uv = max(UV, vec2(0.0));
+	vec3 ramp_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec2 repeated_uv = ramp_pos.xz / max(voxel_scale, 0.001);
 	vec4 tex_color = cs_sample_atlas(texture_atlas, atlas_grid, vec2(col, row), repeated_uv);
 	// Same near-black gate as ChunkSurfaceMesh. 0.04 flattened real tile texels.
 	if (tex_color.a < 0.1 || dot(tex_color.rgb, vec3(0.33, 0.33, 0.34)) < 0.002) {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
-	vec3 ramp_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec3 ramp_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	ALBEDO = cs_depth(tex_color.rgb * 0.92, ramp_n, ramp_pos, 1.0);
 }

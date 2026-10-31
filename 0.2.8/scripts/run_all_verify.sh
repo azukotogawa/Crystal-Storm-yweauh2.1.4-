@@ -10,6 +10,7 @@ export CRYSTALSTORM_BAKE_ON_NEW="${CRYSTALSTORM_BAKE_ON_NEW:-0}"
 SUITES=(
 	"res://scripts/verify_stability_perf.gd"
 	"res://scripts/verify_game_visuals.gd"
+	"res://scripts/verify_voxel_model_loader.gd"
 	"res://scripts/verify_world_scale.gd"
 	"res://scripts/verify_height_agreement.gd"
 	"res://scripts/verify_water_redraw.gd"
