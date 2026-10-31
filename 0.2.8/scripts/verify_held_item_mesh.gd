@@ -43,7 +43,7 @@ func _run() -> void:
 	root.add_child(env_node)
 	var sun := DirectionalLight3D.new()
 	sun.name = "Sun"
-	sun.look_at_from_position(Vector3.ZERO, -Vector3(0.55, 0.82, 0.38), Vector3.UP)
+	sun.look_at_from_position(Vector3.ZERO, -Vector3(0.62, 0.57, 0.54), Vector3.UP)
 	root.add_child(sun)
 
 	var player := _Host.new()

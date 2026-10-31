@@ -355,7 +355,7 @@ func _ensure_cutaway_globals() -> void:
 	_add_cutaway_global(have, &"cutaway_past", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, _Cutaway.PAST_DISTANCE)
 	# Register once. Do not overwrite AO strength; quality owns that value.
 	_add_cutaway_global(have, &"terrain_ao_strength", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
-	_add_cutaway_global(have, &"terrain_sun_dir", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0.55, 0.82, 0.38))
+	_add_cutaway_global(have, &"terrain_sun_dir", RenderingServer.GLOBAL_VAR_TYPE_VEC3, Vector3(0.62, 0.57, 0.54))
 	_add_cutaway_global(have, &"terrain_detail", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0)
 	_add_cutaway_global(have, &"terrain_cave_fog", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.55)
 	_add_cutaway_global(have, &"terrain_corner_darken", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.42)

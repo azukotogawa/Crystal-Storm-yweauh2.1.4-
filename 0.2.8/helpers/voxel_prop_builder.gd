@@ -38,6 +38,7 @@ static func build_plant(plant_id: String, stage: int, tint: Color = Color.WHITE,
 	var boxes: Array = _plant_boxes(plant_id, u, growth, tint, biome)
 	for spec in boxes:
 		root.add_child(_box_instance(spec.center, spec.size, spec.color))
+	_Lit.apply(root)
 	return root
 
 

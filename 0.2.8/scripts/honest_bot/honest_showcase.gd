@@ -1180,7 +1180,7 @@ func _ruin_count() -> int:
 
 
 func _lighting_reason() -> String:
-	if not _Sun.SUN.is_equal_approx(Vector3(0.55, 0.82, 0.38)):
+	if not _Sun.SUN.is_equal_approx(Vector3(0.62, 0.57, 0.54)):
 		return "locked sun %s" % _Sun.SUN
 	var sun_v: Variant = _sun_vector()
 	if typeof(sun_v) != TYPE_VECTOR3:

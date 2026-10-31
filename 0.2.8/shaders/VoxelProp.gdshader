@@ -22,12 +22,12 @@ void vertex() {
 	vec3 n = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 	vec3 sun = terrain_sun_dir;
 	if (dot(sun, sun) < 0.001) {
-		sun = vec3(0.55, 0.82, 0.38);
+		sun = vec3(0.62, 0.57, 0.54);
 	}
 	float ndl = clamp(dot(n, normalize(sun)), 0.0, 1.0);
 	float hemi = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
 	float fill = 0.52 + 0.28 * hemi + 0.28 * ndl;
-	fill_tint = vec3(fill) * mix(vec3(0.84, 0.87, 0.95), vec3(1.10, 1.06, 0.98), ndl);
+	fill_tint = vec3(fill) * mix(vec3(0.80, 0.84, 0.96), vec3(1.16, 1.04, 0.90), ndl);
 }
 
 void fragment() {

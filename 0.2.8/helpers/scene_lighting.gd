@@ -66,7 +66,7 @@ static func _apply_light(light: DirectionalLight3D, quality) -> void:
 	light.light_color = color
 	light.light_energy = energy
 	light.transform = Transform3D(basis, origin)
-	if not _Sun.SUN.is_equal_approx(Vector3(0.55, 0.82, 0.38)):
+	if not _Sun.SUN.is_equal_approx(Vector3(0.62, 0.57, 0.54)):
 		push_error("locked sun moved")
 
 

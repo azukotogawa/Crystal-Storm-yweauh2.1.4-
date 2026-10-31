@@ -382,7 +382,7 @@ terrain_ao_strength={
 }
 terrain_sun_dir={
 "type": "vec3",
-"value": Vector3(0.55, 0.82, 0.38)
+"value": Vector3(0.62, 0.57, 0.54)
 }
 terrain_detail={
 "type": "float",
