@@ -37,8 +37,19 @@ static func offset_steps(px: float, pz: float) -> int:
 	var amp := amplitude_steps()
 	if amp <= 0:
 		return 0
-	var n := clampf(_wave(px, pz) / _WAVE_SCALE, -1.0, 1.0)
+	var rim := border_wave_scale(px, pz)
+	if rim <= 0.0:
+		return 0
+	var n := clampf(_wave(px, pz) / _WAVE_SCALE, -1.0, 1.0) * rim
 	return clampi(int(round(n * float(amp))), -amp, amp)
+
+
+const BORDER_WAVE_FADE := 8.0
+
+
+static func border_wave_scale(px: float, pz: float) -> float:
+	var inset := WorldBorder.playable_inset(px, pz)
+	return clampf((inset - WorldBorder.RIM_BAND_MAX) / BORDER_WAVE_FADE, 0.0, 1.0)
 
 
 static func max_step_per_micro_column() -> float:
