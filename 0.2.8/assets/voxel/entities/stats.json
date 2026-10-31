@@ -237,5 +237,104 @@
       }
     }
   },
-  "profile": "quads at authored occupancy; crystal load unchanged (no extra terrain or per-voxel nodes)"
+  "profile": "quads at authored occupancy; crystal load unchanged (no extra terrain or per-voxel nodes)",
+  "bosses_before": {
+    "shard_guard": {
+      "voxels": 181,
+      "quads": 48,
+      "part_quads": 55
+    },
+    "origin_warden": {
+      "voxels": 632,
+      "quads": 163,
+      "part_quads": 163
+    },
+    "shard_tyrant": {
+      "voxels": 181,
+      "quads": 48,
+      "part_quads": 55,
+      "note": "spawn elite reused the shard guard rig"
+    }
+  },
+  "bosses": {
+    "shard_guard": {
+      "overlap": 0,
+      "deep": 0,
+      "detail": 17,
+      "detail_buried": 0,
+      "eyes": 8,
+      "voxels": 2545,
+      "quads": 136,
+      "part_quads": 134,
+      "parts": {
+        "body": 1284,
+        "head": 482,
+        "leg_l": 260,
+        "leg_r": 260,
+        "tail": 259
+      },
+      "quads_by_part": {
+        "body": 54,
+        "head": 41,
+        "leg_l": 10,
+        "leg_r": 10,
+        "tail": 19
+      },
+      "blocks_tall": 2.562,
+      "visual_blocks": 2.562
+    },
+    "origin_warden": {
+      "overlap": 0,
+      "deep": 0,
+      "detail": 19,
+      "detail_buried": 0,
+      "eyes": 18,
+      "voxels": 6291,
+      "quads": 151,
+      "part_quads": 144,
+      "parts": {
+        "body": 3124,
+        "head": 1428,
+        "leg_l": 452,
+        "leg_r": 452,
+        "tail": 835
+      },
+      "quads_by_part": {
+        "body": 40,
+        "head": 60,
+        "leg_l": 10,
+        "leg_r": 10,
+        "tail": 24
+      },
+      "blocks_tall": 4.5,
+      "visual_blocks": 5.85
+    },
+    "shard_tyrant": {
+      "overlap": 0,
+      "deep": 0,
+      "detail": 23,
+      "detail_buried": 0,
+      "eyes": 18,
+      "voxels": 7367,
+      "quads": 159,
+      "part_quads": 155,
+      "parts": {
+        "body": 3908,
+        "head": 1976,
+        "leg_l": 356,
+        "leg_r": 356,
+        "tail": 771
+      },
+      "quads_by_part": {
+        "body": 42,
+        "head": 60,
+        "leg_l": 10,
+        "leg_r": 10,
+        "tail": 33
+      },
+      "blocks_tall": 4.125,
+      "visual_blocks": 5.569
+    }
+  },
+  "boss_profile": "Godot part quads guard 132 (was 55), warden 145 (was 163), tyrant 155 (was 55). One mesh per part. Terrain and the 10% crystal mesh are unchanged, so that profile does not move."
 }
