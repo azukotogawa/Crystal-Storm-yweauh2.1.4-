@@ -25,6 +25,7 @@ var _harness_us: Array = []
 var _peak_static := 0
 var _prof := false
 var _spikes := false
+var _god := false
 var _spike_rows: Array = []
 var _snap_prev := ""
 
@@ -39,6 +40,8 @@ func _init() -> void:
 			_prof = true
 		elif a == "--spikes":
 			_spikes = true
+		elif a == "--god":
+			_god = true
 	call_deferred("_run")
 
 
@@ -69,6 +72,8 @@ func _run() -> void:
 	if _player == null or _crystal == null or _GI.blocks_actions():
 		_ProbeExit.finish_tree(self, 1, "CRYSTAL LOAD FAIL boot")
 		return
+	if _god:
+		_player.set("dev_god", true)
 	var boot_ms := Time.get_ticks_msec() - t0
 	print("LOAD boot_ms=%d cells_natural=%d static_mb=%.1f" % [boot_ms, int(_crystal.covered_cells), _mem() / 1048576.0])
 	var target := int(round(_pct / 100.0 * MAX_COVERAGE * float(_WorldBorder.PLAYABLE_HALF_X * 2 * _WorldBorder.PLAYABLE_HALF_Z * 2)))
