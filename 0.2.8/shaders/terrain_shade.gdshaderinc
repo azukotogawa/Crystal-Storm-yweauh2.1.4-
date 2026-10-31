@@ -155,7 +155,14 @@ vec3 cs_depth(vec3 albedo, vec3 world_n, vec3 world_pos, float ao) {
 		ao_f = 1.0;
 	}
 	vec3 col = albedo * mix(1.0, ao_f, clamp(terrain_ao_strength, 0.0, 1.0));
-	col *= cs_top_variation(world_pos, normalize(world_n));
+	vec3 nn = normalize(world_n);
+	vec3 sun = terrain_sun_dir;
+	if (dot(sun, sun) < 0.001) {
+		sun = vec3(0.55, 0.82, 0.38);
+	}
+	float ndl = clamp(dot(nn, normalize(sun)), 0.0, 1.0);
+	col *= mix(vec3(0.84, 0.87, 0.95), vec3(1.10, 1.06, 0.98), ndl);
+	col *= cs_top_variation(world_pos, nn);
 	float mask = cs_corner_mask(world_pos, world_n);
 	col *= 1.0 - mask * clamp(terrain_corner_darken, 0.0, 0.75);
 	return cs_apply_night(col, albedo, world_pos);
