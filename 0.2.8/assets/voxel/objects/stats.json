@@ -16,7 +16,7 @@
     "town_hall": 18,
     "ruin_pillar": 18
   },
-  "profile": "quads at authored occupancy; live buildings stay on authored OBJ meshes (not sprites or boxes), so the 10% crystal load profile is unchanged",
+  "profile": "Godot greedy quads at authored occupancy; live buildings stay on authored OBJ meshes (not sprites or boxes), so the 10% crystal load profile is unchanged",
   "models": {
     "torch": {
       "voxels": 99,
@@ -37,7 +37,7 @@
     },
     "chest": {
       "voxels": 955,
-      "quads": 252,
+      "quads": 264,
       "parts": {
         "body": 736,
         "lid": 219
@@ -87,7 +87,7 @@
     },
     "furnace": {
       "voxels": 1726,
-      "quads": 244,
+      "quads": 243,
       "parts": {
         "body": 1707,
         "ember": 19
@@ -121,7 +121,7 @@
     },
     "bed": {
       "voxels": 718,
-      "quads": 117,
+      "quads": 116,
       "parts": {
         "frame": 352,
         "bedding": 366
@@ -187,7 +187,7 @@
     },
     "gate": {
       "voxels": 1238,
-      "quads": 361,
+      "quads": 354,
       "parts": {
         "post": 832,
         "lintel": 400,
@@ -205,7 +205,7 @@
     },
     "bridge": {
       "voxels": 460,
-      "quads": 143,
+      "quads": 138,
       "parts": {
         "deck": 268,
         "rail": 192
