@@ -10,6 +10,7 @@ const _Layer = preload("res://world/feature_visual_layer.gd")
 const _Registry = preload("res://systems/game_visual_registry.gd")
 const _World = preload("res://world/InfiniteNoiseWorld.gd")
 const _Voxels = preload("res://helpers/voxel_types.gd")
+const _VegCatalog = preload("res://helpers/vegetation_voxel_catalog.gd")
 
 var _failed: int = 0
 
@@ -179,7 +180,10 @@ func _check_layer_places(seed_value: int, coord: Vector2i) -> void:
 	_set_live_prop_budget(12)
 	layer._props_per_chunk = 12
 	layer._populate_chunk(coord)
-	var want: Array[Dictionary] = _Scatter.for_chunk(seed_value, coord.x, coord.y, 12, world)
+	var want: Array[Dictionary] = []
+	for spot in _Scatter.for_chunk(seed_value, coord.x, coord.y, 12, world):
+		if not _VegCatalog.is_authored(str(spot.get("kind", ""))):
+			want.append(spot)
 	var got := 0
 	var kinds: Dictionary = {}
 	for child in veg.get_children():

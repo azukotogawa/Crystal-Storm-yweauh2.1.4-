@@ -20,6 +20,10 @@ static func amplitude_steps() -> int:
 	return maxi(SURFACE_WAVE_AMPLITUDE_STEPS, 0)
 
 
+static func max_offset(layer: float) -> float:
+	return float(amplitude_steps()) * layer / float(STEPS_PER_BLOCK)
+
+
 static func column_waves(tile: int) -> bool:
 	if tile < 0 or tile == VoxelTypes.AIR or tile <= VoxelTypes.OCEAN3:
 		return false

@@ -52,7 +52,7 @@ func _run() -> void:
 		var fc := int(q.get("face_code", -1))
 		if fc == FACE_RAMP_SIDE:
 			diagonal += 1
-		elif fc == FACE_TOP and is_equal_approx(float(q.get("y", -1)), gap_h):
+		elif fc == FACE_TOP and absf(float(q.get("y", -1.0)) - gap_h) <= TerrainLook.max_offset(layer) + 0.001:
 			floor_tops += 1
 
 	if diagonal != 0:

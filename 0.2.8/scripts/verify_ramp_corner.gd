@@ -58,7 +58,7 @@ func _run() -> void:
 				failed = true
 		elif fc == FACE_RAMP:
 			cardinal_at_cell += 1
-		elif fc == FACE_TOP and float(q.get("y", -1.0)) == low_h:
+		elif fc == FACE_TOP and absf(float(q.get("y", -1.0)) - low_h) <= TerrainLook.max_offset(layer) + 0.001:
 			floor_tops += 1
 
 	if corner < 1:

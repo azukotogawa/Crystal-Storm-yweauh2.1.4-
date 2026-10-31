@@ -88,7 +88,7 @@ func _run() -> void:
 		var fc := int(q.get("face_code", -1))
 		if fc == 8:
 			corner_prism += 1
-		elif fc == FACE_TOP and is_equal_approx(float(q.get("y", -1)), low_h):
+		elif fc == FACE_TOP and absf(float(q.get("y", -1)) - low_h) <= TerrainLook.max_offset(layer) + 0.001:
 			tops_at_base += 1
 	if corner_prism > 0:
 		push_error("isolated L without diagonal must not emit corner, got %d" % corner_prism)

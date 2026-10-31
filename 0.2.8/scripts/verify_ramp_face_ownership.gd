@@ -183,7 +183,7 @@ func _test_parallel_pair_no_seam(layer: float) -> void:
 		var qz := int(q.get("z", -999))
 		if qx <= 6 and 6 < qx + maxi(1, int(round(float(q.get("dim_x", 1.0))))) \
 				and qz <= 6 and 6 < qz + maxi(1, int(round(float(q.get("dim_z", 1.0))))) \
-				and absf(float(q.get("y", -1.0)) - 10.0) < 0.01:
+				and absf(float(q.get("y", -1.0)) - 10.0) <= TerrainLook.max_offset(_WorldSettings.get_active().layer_height()) + 0.01:
 			top_kept = true
 			break
 	if not top_kept:

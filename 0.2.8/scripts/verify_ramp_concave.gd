@@ -73,9 +73,10 @@ func _run() -> void:
 			continue
 		if fc == FACE_TOP:
 			var y: float = float(q.get("y", -999.0))
-			if y > gap_h + layer * 0.25:
+			var wave_tol := TerrainLook.max_offset(layer) + 0.001
+			if y > gap_h + maxf(layer * 0.25, wave_tol):
 				support_tops += 1
-			elif is_equal_approx(y, gap_h):
+			elif absf(y - gap_h) <= wave_tol:
 				gap_floor += 1
 
 	if diagonal != 0:
