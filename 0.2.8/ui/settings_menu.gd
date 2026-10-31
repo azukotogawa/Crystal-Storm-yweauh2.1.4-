@@ -34,6 +34,7 @@ var _vsync: CheckBox
 var _fps_cap: OptionButton
 var _cutaway: CheckBox
 var _blueprint: CheckBox
+var _flat_faces: CheckBox
 var _texture_set: OptionButton
 var _resolution: OptionButton
 var _ui_scale: HSlider
@@ -75,6 +76,7 @@ func _ready() -> void:
 	_fx = _check(graphics, "Combat visuals", "CombatVisuals")
 	_cutaway = _check(graphics, "Camera cutaway", "CameraCutaway")
 	_blueprint = _check(graphics, "Texture blueprint (F6)", "TextureBlueprintToggle")
+	_flat_faces = _check(graphics, "Flat voxel faces", "FlatBlockFacesToggle")
 	var set_label := Label.new()
 	set_label.text = "Texture set"
 	graphics.add_child(set_label)
@@ -350,6 +352,7 @@ func sync_from_settings() -> void:
 	_set_check(_colorblind, bool(data.get("colorblind_palette", false)))
 	_set_check(_cutaway, bool(data.get("camera_cutaway_enabled", true)))
 	_set_check(_blueprint, bool(data.get("texture_blueprint", false)))
+	_set_check(_flat_faces, bool(data.get("flat_block_faces", false)))
 	_set_texture_set(str(data.get("texture_set", "original")))
 	_apply_reduce_motion_lock()
 	_refresh_scale_label()
@@ -537,6 +540,8 @@ func _persist() -> void:
 		data["camera_cutaway_enabled"] = bool(_cutaway.button_pressed)
 	if _blueprint:
 		data["texture_blueprint"] = bool(_blueprint.button_pressed)
+	if _flat_faces:
+		data["flat_block_faces"] = bool(_flat_faces.button_pressed)
 	if _texture_set:
 		data["texture_set"] = "batch1" if _texture_set.selected == 1 else "original"
 	_apply_reduce_motion_lock()
@@ -551,6 +556,7 @@ func _persist() -> void:
 	)
 	var scale_changed := absf(float(data.get("ui_scale", 1.0)) - _PlayerSettings.ui_scale) > 0.001
 	var set_changed := str(data.get("texture_set", "original")) != _PlayerSettings.texture_set
+	var flat_changed := bool(data.get("flat_block_faces", false)) != _PlayerSettings.flat_block_faces
 	if not _PlayerSettings.save_settings(data):
 		if _status:
 			_status.text = "Could not save settings."
@@ -565,6 +571,8 @@ func _persist() -> void:
 	var tree := get_tree()
 	if set_changed:
 		_TextureSet.refresh_live(tree)
+	if flat_changed:
+		ChunkView.refresh_block_atlas()
 	_PlayerSettings.apply_accessibility(tree)
 	var perf = tree.get_first_node_in_group("performance_service") if tree else null
 	var root = tree.get_first_node_in_group("composition_root") if tree else null

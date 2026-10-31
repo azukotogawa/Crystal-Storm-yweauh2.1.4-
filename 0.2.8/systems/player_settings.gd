@@ -35,6 +35,7 @@ static var camera_pitch_degrees: float = CAMERA_PITCH_DEFAULT
 static var camera_pitch_save_count: int = 0
 static var texture_blueprint: bool = false
 static var texture_set: String = "original"
+static var flat_block_faces: bool = false
 static var keybinds: Dictionary = {}
 static var control_profile: String = "standard"
 const SETTINGS_VERSION := 2
@@ -79,6 +80,7 @@ static func defaults() -> Dictionary:
 		"camera_pitch_degrees": CAMERA_PITCH_DEFAULT,
 		"texture_blueprint": false,
 		"texture_set": "original",
+		"flat_block_faces": false,
 		"keybinds": {},
 		"control_profile": "standard",
 		"settings_version": SETTINGS_VERSION,
@@ -143,6 +145,8 @@ static func load_settings() -> Dictionary:
 		out["camera_pitch_degrees"] = float(data.camera_pitch_degrees)
 	if data.has("texture_blueprint"):
 		out["texture_blueprint"] = bool(data.texture_blueprint)
+	if data.has("flat_block_faces"):
+		out["flat_block_faces"] = bool(data.flat_block_faces)
 	out["texture_set"] = _normalize_texture_set(str(data.get("texture_set", "original")))
 	if data.has("keybinds") and data.keybinds is Dictionary:
 		out["keybinds"] = data.keybinds
@@ -186,6 +190,7 @@ static func _sync_runtime(data: Dictionary) -> void:
 	camera_cutaway_enabled = bool(data.get("camera_cutaway_enabled", true))
 	camera_pitch_degrees = float(data.get("camera_pitch_degrees", CAMERA_PITCH_DEFAULT))
 	texture_blueprint = bool(data.get("texture_blueprint", false))
+	flat_block_faces = bool(data.get("flat_block_faces", false))
 	texture_set = _normalize_texture_set(str(data.get("texture_set", "original")))
 	control_profile = str(data.get("control_profile", "standard"))
 	var binds = data.get("keybinds", {})

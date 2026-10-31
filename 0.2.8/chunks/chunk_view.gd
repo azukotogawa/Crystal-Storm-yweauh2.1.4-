@@ -11,6 +11,8 @@ const _ChunkSurfaceMeshBuilder = preload("res://helpers/chunk_surface_mesh_build
 const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
 const _WaterSurface = preload("res://helpers/water_surface.gd")
 const _ATLAS_TEX: Texture2D = preload("res://assets/tiles/Cube.png")
+const _FlatBlockAtlas = preload("res://helpers/flat_block_atlas.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 @export var chunk_material: ShaderMaterial
 @onready var layer_container: Node3D = $LayerContainer
@@ -71,6 +73,10 @@ static func _bind_chunk_atlas(mat: ShaderMaterial) -> void:
 	if mat == null:
 		return
 	var atlas: Texture2D = _ATLAS_TEX
+	if _PlayerSettings.flat_block_faces:
+		var flat := _FlatBlockAtlas.texture()
+		if flat != null:
+			atlas = flat
 	if atlas == null or atlas.get_width() <= 0:
 		atlas = _CHUNK_MATERIAL_RES.get_shader_parameter("texture_atlas") as Texture2D
 	if atlas != null:
@@ -80,6 +86,12 @@ static func _bind_chunk_atlas(mat: ShaderMaterial) -> void:
 		else:
 			mat.set_shader_parameter("texture_atlas", atlas)
 	mat.set_shader_parameter("atlas_grid", _VoxelTypes.atlas_grid_vec2())
+
+
+static func refresh_block_atlas() -> void:
+	for mat in [_shared_chunk_material, _shared_ramp_material, _shared_surface_material]:
+		if mat != null:
+			_bind_chunk_atlas(mat)
 
 
 static func _texture_blueprint() -> Node:
