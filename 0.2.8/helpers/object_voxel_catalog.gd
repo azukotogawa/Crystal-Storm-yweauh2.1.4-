@@ -2,6 +2,7 @@ class_name ObjectVoxelCatalog
 extends RefCounted
 
 const _Loader = preload("res://helpers/crystal_voxel_loader.gd")
+const _Lit = preload("res://helpers/voxel_lit_material.gd")
 const _Builder = preload("res://helpers/voxel_model_builder.gd")
 const _Palette = preload("res://ui/crystal_palette.gd")
 
@@ -68,4 +69,5 @@ static func _instance(part_name: String, mesh: ArrayMesh, glow: bool) -> MeshIns
 		mi.set_meta("emissive_part", true)
 	else:
 		mi.material_override = _Builder.make_material()
+	mi.material_override = _Lit.from_standard(mi.material_override)
 	return mi

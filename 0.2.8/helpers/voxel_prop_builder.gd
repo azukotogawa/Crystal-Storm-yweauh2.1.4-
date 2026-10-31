@@ -1,6 +1,7 @@
 class_name VoxelPropBuilder
 extends RefCounted
 
+const _Lit = preload("res://helpers/voxel_lit_material.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _BRICK_PATH := "res://assets/art/voxel_brick.png"
 
@@ -41,6 +42,12 @@ static func build_plant(plant_id: String, stage: int, tint: Color = Color.WHITE,
 
 
 static func build_scatter_prop(kind: String) -> Node3D:
+	var node := _scatter_node(kind)
+	_Lit.apply(node)
+	return node
+
+
+static func _scatter_node(kind: String) -> Node3D:
 	match kind:
 		"bush":
 			var bush := build_plant("bush", 2)
