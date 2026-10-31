@@ -75,9 +75,13 @@ static func end_window(name: String = "initial_chunk_stream") -> int:
 	return _window_us
 
 
+static var _lock: Mutex = Mutex.new()
+
+
 static func record(stage: String, us: int, coord: Vector2i = Vector2i(999999, 999999)) -> void:
 	if not is_enabled() or us < 0:
 		return
+	_lock.lock()
 	if not _totals.has(stage):
 		_totals[stage] = 0
 		_samples[stage] = PackedInt64Array()
@@ -88,30 +92,34 @@ static func record(stage: String, us: int, coord: Vector2i = Vector2i(999999, 99
 	_samples[stage] = arr
 	if coord.x != 999999:
 		_note_chunk_stage(coord, stage, us)
+	_lock.unlock()
 
 
 static func begin_chunk(coord: Vector2i) -> void:
 	if not is_enabled():
 		return
 	var key := "%d,%d" % [coord.x, coord.y]
+	_lock.lock()
 	_chunk_open[key] = {
 		"coord_x": coord.x,
 		"coord_z": coord.y,
 		"stages": {},
 		"t0": Time.get_ticks_usec(),
 	}
+	_lock.unlock()
 
 
 static func end_chunk(coord: Vector2i) -> void:
 	if not is_enabled():
 		return
 	var key := "%d,%d" % [coord.x, coord.y]
-	if not _chunk_open.has(key):
-		return
-	var rec: Dictionary = _chunk_open[key]
-	rec["wall_us"] = Time.get_ticks_usec() - int(rec.get("t0", 0))
-	_chunks.append(rec)
-	_chunk_open.erase(key)
+	_lock.lock()
+	if _chunk_open.has(key):
+		var rec: Dictionary = _chunk_open[key]
+		rec["wall_us"] = Time.get_ticks_usec() - int(rec.get("t0", 0))
+		_chunks.append(rec)
+		_chunk_open.erase(key)
+	_lock.unlock()
 
 
 static func _note_chunk_stage(coord: Vector2i, stage: String, us: int) -> void:

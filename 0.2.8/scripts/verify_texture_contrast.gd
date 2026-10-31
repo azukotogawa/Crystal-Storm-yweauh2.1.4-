@@ -90,7 +90,8 @@ func _mesh_cells(tile: int, world) -> Dictionary:
 			data.patch_local_column(x, z, y, tile)
 	var cm := _ChunkManager.new()
 	var mesh: Dictionary = cm._build_mesh(data)
-	var arrays: Dictionary = _Builder.build_surface_arrays_from_terrain_quads(data, mesh.get("quads", []))
+	var block_quads: Array = mesh.get("quads", []).filter(func(q): return not q.has("wave_riser"))
+	var arrays: Dictionary = _Builder.build_surface_arrays_from_terrain_quads(data, block_quads)
 	var normals: PackedVector3Array = arrays.get("normals", PackedVector3Array())
 	var colors: PackedColorArray = arrays.get("colors", PackedColorArray())
 	var tops: Dictionary = {}
