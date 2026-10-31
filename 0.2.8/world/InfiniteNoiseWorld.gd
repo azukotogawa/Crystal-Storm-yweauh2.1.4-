@@ -748,6 +748,14 @@ func get_surface_height_smooth(wx: float, wz: float) -> float:
 	return lerpf(h0, h1, tz)
 
 func _compute_surface_height(wx: float, wz: float) -> float:
+	return _quantize_to_voxel_layer(_compute_surface_height_raw(wx, wz))
+
+
+func surface_height_raw(wx: float, wz: float) -> float:
+	return _compute_surface_height_raw(wx, wz)
+
+
+func _compute_surface_height_raw(wx: float, wz: float) -> float:
 	var base: float = _compute_raw_elevation(wx, wz)
 	var h: float = base
 
@@ -774,8 +782,7 @@ func _compute_surface_height(wx: float, wz: float) -> float:
 
 	h += _RouteDressing.relief_world(world_seed, wx, wz, float(_WorldSettings.get_active().layer_height()))
 	h = clamp(h, -4.0 * _height_gen_scale(), _max_height())
-	h = WorldBorder.finish_rim_height(world_seed, wx, wz, h)
-	return _quantize_to_voxel_layer(h)
+	return WorldBorder.finish_rim_height(world_seed, wx, wz, h)
 
 
 func _quantize_to_voxel_layer(h: float) -> float:

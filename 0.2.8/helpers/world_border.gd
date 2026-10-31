@@ -248,6 +248,15 @@ const OCEAN_EDGE_MAX := 8.0
 
 
 const RIM_NOISE_CELL := 16.0
+const RIM_PLANE_COLS := 48.0
+
+
+static func in_rim_planes(wx: float, wz: float) -> bool:
+	if not is_playable(wx, wz):
+		return false
+	var dx := float(PLAYABLE_HALF_X) - absf(wx)
+	var dz := float(PLAYABLE_HALF_Z) - absf(wz)
+	return dx >= 0.0 and dz >= 0.0 and minf(dx, dz) < RIM_PLANE_COLS
 
 
 static func rim_unit(seed_value: int, wx: float, wz: float, salt: int) -> float:

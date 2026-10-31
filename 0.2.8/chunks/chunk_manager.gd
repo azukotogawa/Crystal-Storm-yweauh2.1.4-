@@ -1106,6 +1106,8 @@ func _has_player_build_at(data: ChunkData, x: int, z: int) -> bool:
 
 
 func _should_place_ramp(world_x: int, world_z: int, dir: Vector2i, surface_h: float = -1.0) -> bool:
+	if WorldBorder.in_rim_planes(float(world_x), float(world_z)):
+		return false
 	if surface_h >= 0.0:
 		if surface_h > ramp_max_surface_height:
 			return false
@@ -1115,6 +1117,8 @@ func _should_place_ramp(world_x: int, world_z: int, dir: Vector2i, surface_h: fl
 
 
 func _should_place_corner(world_x: int, world_z: int) -> bool:
+	if WorldBorder.in_rim_planes(float(world_x), float(world_z)):
+		return false
 	return TerrainRamps.should_place_corner(world_x, world_z)
 
 
@@ -2172,7 +2176,7 @@ func _emit_side_strips(
 		else:
 			qz = float(z) + float(m) / float(n)
 			dd = 1.0 / float(n)
-		out_quads.append({
+		var strip := {
 			"x": qx,
 			"y": y_lo,
 			"z": qz,
@@ -2183,7 +2187,10 @@ func _emit_side_strips(
 			"uv_h": (y_hi - y_lo) / layer,
 			"type": tile,
 			"face_code": face_code,
-		})
+		}
+		if y_hi - y_lo <= layer * 0.5 + 0.001:
+			strip["wave_riser"] = true
+		out_quads.append(strip)
 
 
 func _emit_wave_lip(
@@ -2213,7 +2220,7 @@ func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int
 	var pz := float(wz) + (float(mz) + 0.5) / n
 	var off := 0
 	if TerrainLook.column_waves(_tile_type_at(data, col_x, col_z)):
-		off = TerrainLook.offset_steps(px, pz)
+		off = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(wx, wz, mx, mz, base)
 	return base + layer + float(off) * (layer / n)
 
 
@@ -2252,6 +2259,8 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 				tiles[ti] = vox
 				atlas[ti] = _column_face_atlas(data, col_x, col_z, vox, FACE_TOP)
 			var base_key := int(round(sy * 1000.0))
+			var plane_wx := data.position.x * ChunkData.SIZE + col_x
+			var plane_wz := data.position.y * ChunkData.SIZE + col_z
 			for mz in n:
 				for mx in n:
 					var idx := (lz * n + mz) * w + (lx * n + mx)
@@ -2264,7 +2273,7 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(mx) + 0.5) / float(n)
 						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(mz) + 0.5) / float(n)
 						if TerrainLook.column_waves(vox):
-							steps[idx] = TerrainLook.offset_steps(px, pz)
+							steps[idx] = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(plane_wx, plane_wz, mx, mz, sy)
 						else:
 							steps[idx] = 0
 						bases[idx] = base_key

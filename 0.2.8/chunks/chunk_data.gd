@@ -11,6 +11,53 @@ static var USE_MICRO_BRICKS: bool = false
 
 var position: Vector2i
 var world: InfiniteNoiseWorld = null
+var _rim_plane_cache: Dictionary = {}
+var _rim_plane_lock: Mutex = Mutex.new()
+
+
+func rim_raw(wx: int, wz: int) -> float:
+	var k := Vector2i(wx, wz)
+	_rim_plane_lock.lock()
+	var hit: bool = _rim_plane_cache.has(k)
+	var v: float = float(_rim_plane_cache.get(k, 0.0))
+	_rim_plane_lock.unlock()
+	if hit:
+		return v
+	v = world.surface_height_raw(float(wx), float(wz))
+	_rim_plane_lock.lock()
+	_rim_plane_cache[k] = v
+	_rim_plane_lock.unlock()
+	return v
+
+
+func _rim_near(c: float, wx: int, wz: int, layer: float) -> float:
+	var v := rim_raw(wx, wz)
+	if absf(v - c) > layer:
+		return c
+	return v
+
+
+func rim_plane_steps(wx: int, wz: int, mx: int, mz: int, base: float) -> int:
+	if world == null or not WorldBorder.in_rim_planes(float(wx), float(wz)):
+		return 0
+	var layer: float = _WorldSettings.get_active().layer_height()
+	if layer <= 0.001:
+		return 0
+	var n := TerrainLook.STEPS_PER_BLOCK
+	var fx := (float(mx) + 0.5) / float(n) - 0.5
+	var fz := (float(mz) + 0.5) / float(n) - 0.5
+	var sx := 1 if fx >= 0.0 else -1
+	var sz := 1 if fz >= 0.0 else -1
+	var c := rim_raw(wx, wz)
+	if absf(c - base) > layer:
+		return 0
+	var a := _rim_near(c, wx + sx, wz, layer)
+	var b := _rim_near(c, wx, wz + sz, layer)
+	var d := _rim_near(c, wx + sx, wz + sz, layer)
+	var tx := absf(fx)
+	var tz := absf(fz)
+	var raw := lerpf(lerpf(c, a, tx), lerpf(b, d, tx), tz)
+	return clampi(int(round((raw - base) * float(n) / layer)), -n, n)
 
 
 ## Macro terrain authority (v2). Legacy maps are synced views for mesh/verify scripts.

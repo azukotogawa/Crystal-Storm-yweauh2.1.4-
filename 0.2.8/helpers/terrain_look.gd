@@ -49,7 +49,7 @@ const BORDER_WAVE_FADE := 8.0
 
 static func border_wave_scale(px: float, pz: float) -> float:
 	var inset := WorldBorder.playable_inset(px, pz)
-	return clampf((inset - WorldBorder.RIM_BAND_MAX) / BORDER_WAVE_FADE, 0.0, 1.0)
+	return clampf((inset - WorldBorder.RIM_PLANE_COLS) / BORDER_WAVE_FADE, 0.0, 1.0)
 
 
 static func max_step_per_micro_column() -> float:
