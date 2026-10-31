@@ -25,6 +25,12 @@ const _ANIMAL_VOXEL := {
 	&"crystal_wisp": "res://assets/voxel/entities/crystal_wisp.json",
 }
 
+const _BOSS_VOXEL := {
+	&"shard_guard": "res://assets/voxel/entities/shard_guard.json",
+	&"origin_warden": "res://assets/voxel/entities/origin_warden.json",
+	&"shard_tyrant": "res://assets/voxel/entities/shard_tyrant.json",
+}
+
 const _QUADRUPED_RIG := [
 	["body", "body", "Body", "Root", "bottom"],
 	["head", "head", "Head", "Body", "bottom"],
@@ -65,6 +71,10 @@ static func uses_rig(kind: StringName) -> bool:
 static func parts_for(kind: StringName) -> Array:
 	if _ANIMAL_VOXEL.has(kind):
 		return _authored_animal_parts(kind)
+	if _BOSS_VOXEL.has(kind):
+		var authored := _authored_boss_parts(kind)
+		if not authored.is_empty():
+			return authored
 	if kind == &"duck":
 		return _bird_parts()
 	if kind == &"goat":
@@ -89,6 +99,8 @@ static func parts_for(kind: StringName) -> Array:
 static func palette_for(kind: StringName) -> PackedColorArray:
 	if _ANIMAL_VOXEL.has(kind):
 		return _palette_from_voxel(str(_ANIMAL_VOXEL[kind]))
+	if _BOSS_VOXEL.has(kind):
+		return _palette_from_voxel(str(_BOSS_VOXEL[kind]))
 	if kind == &"boar":
 		return PackedColorArray([
 			Color(0, 0, 0),
@@ -217,7 +229,7 @@ static func cube_edge() -> float:
 
 static func build(kind: StringName) -> Node3D:
 	var cube := cube_edge()
-	if _MITE_VOXEL.has(kind) or _ANIMAL_VOXEL.has(kind):
+	if _MITE_VOXEL.has(kind) or _ANIMAL_VOXEL.has(kind) or _BOSS_VOXEL.has(kind):
 		cube = _Settings.get_active().voxel_scale / 16.0
 	var rig := build_parts(parts_for(kind), palette_for(kind), cube)
 	if rig != null and _MITE_VOXEL.has(kind):
@@ -338,8 +350,15 @@ static func _palette_from_voxel(path: String) -> PackedColorArray:
 	return out
 
 
+static func _authored_boss_parts(kind: StringName) -> Array:
+	return _authored_from_file(str(_BOSS_VOXEL[kind]), _QUADRUPED_RIG, _crystal_glow())
+
+
 static func _authored_animal_parts(kind: StringName) -> Array:
-	var path := str(_ANIMAL_VOXEL[kind])
+	return _authored_from_file(str(_ANIMAL_VOXEL[kind]), _animal_order(kind), _crystal_glow())
+
+
+static func _authored_from_file(path: String, order: Array, glow: Color) -> Array:
 	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
 	if typeof(data) != TYPE_DICTIONARY:
 		return []
@@ -354,7 +373,7 @@ static func _authored_animal_parts(kind: StringName) -> Array:
 			if typeof(rgb) == TYPE_ARRAY and rgb.size() >= 3 and int(rgb[0]) == 184 and int(rgb[1]) == 71 and int(rgb[2]) == 255:
 				emit.append(i + 1)
 	var out: Array = []
-	for row in _animal_order(kind):
+	for row in order:
 		var raw = raw_parts.get(str(row[0]), [])
 		if typeof(raw) != TYPE_ARRAY or raw.is_empty():
 			return []
@@ -363,7 +382,7 @@ static func _authored_animal_parts(kind: StringName) -> Array:
 			if typeof(item) != TYPE_ARRAY or item.size() < 4:
 				return []
 			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
-		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit))
+		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit, glow))
 	return out
 
 

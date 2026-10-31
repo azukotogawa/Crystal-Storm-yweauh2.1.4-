@@ -37,7 +37,7 @@ static func ensure_builtins() -> void:
 	elite.mesh_radius = 0.4
 	elite.mesh_height = 1.15
 	elite.hit_radius = 0.5
-	elite.visual_id = &"shard_guard"
+	elite.visual_id = &"shard_tyrant"
 	_register(elite)
 
 
