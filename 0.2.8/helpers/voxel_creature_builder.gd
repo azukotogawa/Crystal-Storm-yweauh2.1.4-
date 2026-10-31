@@ -58,9 +58,6 @@ const _WISP_RIG := [
 	["wing_r", "wing", "Wing_R", "Body", "center"],
 ]
 
-const _CRYSTAL_MAT := 1
-const _CRYSTAL_BODY_MAT := 3
-
 const _ANIM_LEN := TAU
 const _ANIM_STEPS := 16
 
@@ -131,7 +128,6 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0, 0, 0),
 			_mite_albedo(),
 			Color(0.08, 0.08, 0.10),
-			_crystal_body(_mite_albedo()),
 		])
 	if kind == &"crystal_wisp":
 		return PackedColorArray([
@@ -381,31 +377,6 @@ static func _palette_from_voxel(path: String) -> PackedColorArray:
 			out.append(crystal)
 		else:
 			out.append(Color8(int(rgb[0]), int(rgb[1]), int(rgb[2])))
-	if _is_crystal_only(raw):
-		out.append(_crystal_body(crystal))
-	return out
-
-
-static func _is_crystal_only(raw) -> bool:
-	if typeof(raw) != TYPE_ARRAY or raw.size() != 2:
-		return false
-	var rgb = raw[0]
-	return typeof(rgb) == TYPE_ARRAY and rgb.size() >= 3 and int(rgb[0]) == 184 and int(rgb[1]) == 71 and int(rgb[2]) == 255
-
-
-static func _crystal_body(albedo: Color) -> Color:
-	return albedo.darkened(0.42)
-
-
-static func _facet_crystal(cells: Array) -> Array:
-	var out: Array = []
-	for c in cells:
-		var v: Vector4i = c
-		if v.w == _CRYSTAL_MAT:
-			var hsh: int = (v.x * 73856093) ^ (v.y * 19349663) ^ (v.z * 83492791)
-			if (hsh & 3) != 0:
-				v.w = _CRYSTAL_BODY_MAT
-		out.append(v)
 	return out
 
 
@@ -441,8 +412,6 @@ static func _authored_from_file(path: String, order: Array, glow: Color) -> Arra
 			if typeof(item) != TYPE_ARRAY or item.size() < 4:
 				return []
 			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
-		if _is_crystal_only(raw_palette):
-			cells = _facet_crystal(cells)
 		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit, glow))
 	return out
 
@@ -474,7 +443,6 @@ static func _authored_mite_parts(kind: StringName) -> Array:
 			if typeof(item) != TYPE_ARRAY or item.size() < 4:
 				return []
 			cells.append(Vector4i(int(item[0]), int(item[1]), int(item[2]), int(item[3]) + 1))
-		cells = _facet_crystal(cells)
 		out.append(_part(str(row[0]), str(row[1]), str(row[2]), str(row[3]), str(row[4]), cells, emit, glow))
 	return out
 
