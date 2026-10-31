@@ -4,7 +4,7 @@ extends RefCounted
 const _Sun = preload("res://helpers/terrain_lighting.gd")
 
 const AMBIENT := Color(0.34, 0.38, 0.48, 1)
-const FOG_COLOR := Color(0.72, 0.78, 0.9, 1)
+const FOG_COLOR := Color(0.86, 0.82, 0.78, 1)
 
 
 static func apply_from(service: Node, quality) -> void:
@@ -81,12 +81,13 @@ static func _apply_env(env: Environment, quality) -> void:
 	env.ssao_intensity = float(quality.ssao_intensity)
 	env.ssao_power = float(quality.ssao_power)
 	env.ssao_detail = 0.35
+	env.ssao_light_affect = 0.3
 	env.fog_enabled = bool(quality.fog_enabled)
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = FOG_COLOR
 	env.fog_light_energy = float(quality.fog_light_energy)
-	env.fog_sun_scatter = 0.08
+	env.fog_sun_scatter = 0.18
 	env.fog_density = float(quality.fog_density)
-	env.fog_aerial_perspective = 0.12
+	env.fog_aerial_perspective = 0.35
 	env.fog_sky_affect = 0.35
 	env.volumetric_fog_enabled = false
