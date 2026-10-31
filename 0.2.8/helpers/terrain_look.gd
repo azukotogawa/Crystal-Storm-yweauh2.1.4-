@@ -15,20 +15,6 @@ const _WAVES := [
 	[0.99, 0.14, 11.7, 4.4, 0.25],
 ]
 
-static func palette_color(rel: int) -> Color:
-	var band := palette_band(rel)
-	match band:
-		0:
-			return Color(78.0 / 255.0, 136.0 / 255.0, 52.0 / 255.0)
-		1:
-			return Color(92.0 / 255.0, 152.0 / 255.0, 58.0 / 255.0)
-		3:
-			return Color(122.0 / 255.0, 180.0 / 255.0, 72.0 / 255.0)
-		4:
-			return Color(138.0 / 255.0, 192.0 / 255.0, 82.0 / 255.0)
-		_:
-			return Color(106.0 / 255.0, 166.0 / 255.0, 64.0 / 255.0)
-
 
 static func amplitude_steps() -> int:
 	return maxi(SURFACE_WAVE_AMPLITUDE_STEPS, 0)
@@ -41,9 +27,6 @@ static func column_waves(tile: int) -> bool:
 		return false
 	return true
 
-
-static func paints_height(tile: int) -> bool:
-	return tile >= VoxelTypes.GRASSLAND and tile <= VoxelTypes.GRASSLAND5
 
 
 static func offset_steps(px: float, pz: float) -> int:
@@ -63,13 +46,6 @@ static func max_step_per_micro_column() -> float:
 	return g / _WAVE_SCALE * float(amplitude_steps()) / float(STEPS_PER_BLOCK)
 
 
-static func palette_band(rel: int) -> int:
-	var amp := maxi(amplitude_steps(), 1)
-	return clampi(int(round(float(rel) / float(amp) * 1.5 + 2.0)), 0, 4)
-
-
-static func shade_for_band(band: int) -> float:
-	return 0.88 + float(clampi(band, 0, 4)) * 0.015
 
 
 static func _wave(px: float, pz: float) -> float:

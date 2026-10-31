@@ -86,11 +86,11 @@ func _run() -> void:
 					tops += 1
 					if q.has("wave_band"):
 						painted += 1
-						var y := float(q.get("y", 0.0))
-						if top_y < -99990.0:
-							top_y = y
-						elif absf(y - top_y) > 0.01:
-							varied = true
+					var y := float(q.get("y", 0.0))
+					if top_y < -99990.0:
+						top_y = y
+					elif absf(y - top_y) > 0.01:
+						varied = true
 				elif fc >= 7:
 					ramps += 1
 				else:
@@ -100,7 +100,10 @@ func _run() -> void:
 	print("WAVE_QUADS chunks=%d quads=%d per=%.1f tops=%d sides=%d ramps=%d lips=%d painted=%d amp=%d" % [
 		n, total, float(total) / float(n), tops, sides, ramps, lips, painted, amp
 	])
-	if amp > 0 and (lips == 0 or painted == 0 or not varied):
+	if painted > 0:
+		push_error("surface wave tops still carry height bands painted=%d" % painted)
+		failed = true
+	if amp > 0 and (lips == 0 or not varied):
 		push_error("surface wave mesh flat lips=%d painted=%d varied=%s" % [lips, painted, str(varied)])
 		failed = true
 	if failed:

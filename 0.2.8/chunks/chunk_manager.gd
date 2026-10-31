@@ -2320,8 +2320,6 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 				"type": want_tile,
 				"face_code": FACE_TOP,
 			}
-			if TerrainLook.paints_height(want_tile):
-				top_quad["wave_band"] = TerrainLook.palette_band(want_step)
 			out_quads.append(top_quad)
 	_emit_wave_risers(out_quads, x0, z0, w, h, n, cw, open, steps, bases, tiles)
 

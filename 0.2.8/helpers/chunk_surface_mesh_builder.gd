@@ -283,8 +283,6 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
 		var atlas: Vector2i = _quad_atlas(data, tile_type, face_code, float(q["x"]), float(q["z"]))
 		var shade: float = _face_shade(face_code)
-		if face_code == FACE_TOP and q.has("wave_band"):
-			shade = TerrainLook.shade_for_band(int(q.get("wave_band", 2)))
 		if face_code == FACE_RAMP:
 			var dir := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
 			var strips_written := _write_cardinal_ramp(
@@ -525,11 +523,19 @@ static func _write_face_quad(
 		uvs[vi + 1] = Vector2(u1, v0)
 		uvs[vi + 2] = Vector2(u1, v1)
 		uvs[vi + 3] = Vector2(u0, v1)
-	else:
+	elif face_code == FACE_BOTTOM:
 		uvs[vi + 0] = Vector2(0.0, 0.0)
 		uvs[vi + 1] = Vector2(uv_w, 0.0)
 		uvs[vi + 2] = Vector2(uv_w, uv_h)
 		uvs[vi + 3] = Vector2(0.0, uv_h)
+	else:
+		var vs: float = _WorldSettings.get_active().voxel_scale
+		var along_x := face_code == FACE_NEG_Z or face_code == FACE_POS_Z
+		var y_top: float = ceil((surface_y + sy) / vs - 0.001) * vs
+		for k in 4:
+			var p: Vector3 = vertices[vi + k]
+			var h: float = p.x if along_x else p.z
+			uvs[vi + k] = Vector2(h / vs, (y_top - p.y) / vs)
 	colors[vi + 0] = Color(tint.r, tint.g, tint.b, ao.x)
 	colors[vi + 1] = Color(tint.r, tint.g, tint.b, ao.y)
 	colors[vi + 2] = Color(tint.r, tint.g, tint.b, ao.z)

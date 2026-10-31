@@ -81,27 +81,10 @@ void fragment() {
 		tex_color = vec4(0.35, 0.42, 0.22, 1.0);
 	}
 
-	float shade = face_tint.b;
+	float shade = max(face_tint.b, 0.55);
 	vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	vec3 world_n = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
-	vec3 albedo = tex_color.rgb;
-	if (world_n.y > 0.72 && shade >= 0.875 && shade <= 0.945) {
-		float band = clamp(round((shade - 0.88) / 0.015), 0.0, 4.0);
-		vec3 pal = vec3(106.0 / 255.0, 166.0 / 255.0, 64.0 / 255.0);
-		if (band < 0.5) {
-			pal = vec3(78.0 / 255.0, 136.0 / 255.0, 52.0 / 255.0);
-		} else if (band < 1.5) {
-			pal = vec3(92.0 / 255.0, 152.0 / 255.0, 58.0 / 255.0);
-		} else if (band > 3.5) {
-			pal = vec3(138.0 / 255.0, 192.0 / 255.0, 82.0 / 255.0);
-		} else if (band > 2.5) {
-			pal = vec3(122.0 / 255.0, 180.0 / 255.0, 72.0 / 255.0);
-		}
-		vec3 mid = vec3(106.0 / 255.0, 166.0 / 255.0, 64.0 / 255.0);
-		albedo *= pal / mid;
-	}
-	shade = max(shade, 0.55);
-	ALBEDO = cs_depth(albedo * shade * fill_light, world_n, world_pos, face_tint.a);
+	ALBEDO = cs_depth(tex_color.rgb * shade * fill_light, world_n, world_pos, face_tint.a);
 }
 
 void light() {
