@@ -166,8 +166,12 @@ func _walk_slope_gap(world, cm, landing: Vector2i, toward_low: Vector2i) -> Stri
 func _find_dry_origin(world, cm) -> Vector2i:
 	if world == null:
 		return Vector2i(8, 8)
-	for oz in range(8, 40, 4):
-		for ox in range(8, 40, 4):
+	var anchor := Vector2i(8, 8)
+	var player = get_first_node_in_group("player")
+	if player != null:
+		anchor = Vector2i(floori(player.voxel_position.x / 16.0) * 16 - 16, floori(player.voxel_position.z / 16.0) * 16 - 16)
+	for oz in range(anchor.y, anchor.y + 32, 4):
+		for ox in range(anchor.x, anchor.x + 32, 4):
 			var wet := false
 			for dx in range(0, 16):
 				for dz in range(0, 4):
@@ -182,7 +186,7 @@ func _find_dry_origin(world, cm) -> Vector2i:
 					break
 			if not wet:
 				return Vector2i(ox, oz)
-	return Vector2i(8, 8)
+	return anchor
 
 
 func _look(wx: int, wz: int) -> void:
