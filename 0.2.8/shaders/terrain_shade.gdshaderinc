@@ -136,12 +136,26 @@ float cs_corner_mask(vec3 world_pos, vec3 world_n) {
 	return cx * cy;
 }
 
+float cs_top_variation(vec3 world_pos, vec3 world_n) {
+	if (world_n.y < 0.65) {
+		return 1.0;
+	}
+	float cell = terrain_cell_size;
+	if (cell < 0.05) {
+		cell = 2.0;
+	}
+	float h = cs_hash(floor(world_pos.xz / cell + vec2(0.001)));
+	float v = h < 0.3 ? 1.06 : (h < 0.6 ? 0.92 : (h < 0.85 ? 0.8 : 0.7));
+	return mix(1.0, v, clamp(terrain_detail, 0.0, 1.0));
+}
+
 vec3 cs_depth(vec3 albedo, vec3 world_n, vec3 world_pos, float ao) {
 	float ao_f = ao;
 	if (ao_f < 0.02) {
 		ao_f = 1.0;
 	}
 	vec3 col = albedo * mix(1.0, ao_f, clamp(terrain_ao_strength, 0.0, 1.0));
+	col *= cs_top_variation(world_pos, normalize(world_n));
 	float mask = cs_corner_mask(world_pos, world_n);
 	col *= 1.0 - mask * clamp(terrain_corner_darken, 0.0, 0.75);
 	return cs_apply_night(col, albedo, world_pos);

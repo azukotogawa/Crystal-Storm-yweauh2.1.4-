@@ -18,7 +18,7 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const BAKE_VERSION: int = 4
+const BAKE_VERSION: int = 7
 const MAGIC: String = "CSWB"
 const CHUNK_MAGIC: String = "CSCH"
 const INDEX_MAGIC: String = "CSWI"

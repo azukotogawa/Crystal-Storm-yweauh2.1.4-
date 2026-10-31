@@ -2340,9 +2340,6 @@ func _emit_wave_risers(
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var ix := 0
 	while ix < w - 1:
-		if ix % n == n - 1:
-			ix += 1
-			continue
 		var iz := 0
 		while iz < h:
 			var a := iz * w + ix
@@ -2370,9 +2367,6 @@ func _emit_wave_risers(
 		ix += 1
 	var izb := 0
 	while izb < h - 1:
-		if izb % n == n - 1:
-			izb += 1
-			continue
 		var ixb := 0
 		while ixb < w:
 			var a3 := izb * w + ixb
@@ -2440,6 +2434,7 @@ func _append_wave_riser(
 			"uv_h": dim_y,
 			"type": tile,
 			"face_code": FACE_POS_X if left_higher else FACE_NEG_X,
+			"wave_riser": true,
 		})
 	else:
 		var near_higher := sa > sb
@@ -2455,6 +2450,7 @@ func _append_wave_riser(
 			"uv_h": dim_y,
 			"type": tile,
 			"face_code": FACE_POS_Z if near_higher else FACE_NEG_Z,
+			"wave_riser": true,
 		})
 
 

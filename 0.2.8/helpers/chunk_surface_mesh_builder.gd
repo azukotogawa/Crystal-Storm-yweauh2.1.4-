@@ -111,7 +111,7 @@ static func build_fused_terrain_buffers(
 
 		var face_code := int(q.get("face_code", 0))
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
-		var atlas: Vector2i = _quad_atlas(data, tile_type, face_code, float(q["x"]), float(q["z"]))
+		var atlas: Vector2i = _quad_atlas(data, tile_type, FACE_TOP if q.has("wave_riser") else face_code, float(q["x"]), float(q["z"]))
 		var shade: float = _face_shade(face_code)
 		var uv_w: float = float(q.get("uv_w", dim_x))
 		var uv_h: float = float(q.get("uv_h", dim_z))
@@ -281,7 +281,7 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var sy: float = dim_y * voxel_s
 		var sz: float = dim_z * voxel_s
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
-		var atlas: Vector2i = _quad_atlas(data, tile_type, face_code, float(q["x"]), float(q["z"]))
+		var atlas: Vector2i = _quad_atlas(data, tile_type, FACE_TOP if q.has("wave_riser") else face_code, float(q["x"]), float(q["z"]))
 		var shade: float = _face_shade(face_code)
 		if face_code == FACE_RAMP:
 			var dir := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
@@ -368,7 +368,7 @@ static func patch_terrain_faces_into_cache(
 		var sy: float = dim_y * voxel_s
 		var sz: float = dim_z * voxel_s
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
-		var atlas: Vector2i = _quad_atlas(data, tile_type, face_code, float(q["x"]), float(q["z"]))
+		var atlas: Vector2i = _quad_atlas(data, tile_type, FACE_TOP if q.has("wave_riser") else face_code, float(q["x"]), float(q["z"]))
 		var vi: int = face_index * 4
 		var ii: int = face_index * 6
 		_write_face_quad(
@@ -412,8 +412,8 @@ static func build_array_mesh_into(arrays: Dictionary, mesh: ArrayMesh) -> ArrayM
 
 
 static func _quad_atlas(data: ChunkData, tile_type: int, face_code: int, local_x: float, local_z: float) -> Vector2i:
-	var wx := int(round(local_x))
-	var wz := int(round(local_z))
+	var wx := int(floor(local_x + 0.001))
+	var wz := int(floor(local_z + 0.001))
 	if data != null:
 		wx += data.position.x * ChunkData.SIZE
 		wz += data.position.y * ChunkData.SIZE
