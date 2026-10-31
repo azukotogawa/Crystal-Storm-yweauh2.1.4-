@@ -319,7 +319,9 @@ static func _attach_bone(
 		var glow_mi := _mesh_instance(glow, -pivot)
 		glow_mi.name = "Mesh" if solid == null else "Glow"
 		var emission: Color = part.get("glow", Color(0.55, 0.18, 0.95))
-		glow_mi.material_override = make_glow_material(emission)
+		var glow_mat := make_glow_material(emission)
+		glow_mat.emission_energy_multiplier = float(part.get("glow_energy", 1.0))
+		glow_mi.material_override = glow_mat
 		glow_mi.set_meta("crystal_glow", true)
 		att.add_child(glow_mi)
 	meta.append({"id": att.name, "bone": bone_name, "pivot": pivot})

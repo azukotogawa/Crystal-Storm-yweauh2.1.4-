@@ -1030,6 +1030,9 @@ static func _rot_sin(anim: Animation, bone_name: String, axis: Vector3, amp: flo
 		anim.rotation_track_insert_key(track, t, Quaternion(axis, sin(t * freq) * amp))
 
 
+const CREATURE_GLOW_ENERGY := 0.35
+
+
 static func _part(id: String, kind: String, bone: String, parent: String, pivot: String, cells: Array, emit_ids: Array = [], glow_color: Color = Color(-1, -1, -1)) -> Dictionary:
 	var spec := {
 		"id": id,
@@ -1042,6 +1045,7 @@ static func _part(id: String, kind: String, bone: String, parent: String, pivot:
 	if not emit_ids.is_empty():
 		spec["emit"] = emit_ids
 		spec["glow"] = _crystal_glow() if glow_color.r < 0.0 else glow_color
+		spec["glow_energy"] = CREATURE_GLOW_ENERGY
 	return spec
 
 
