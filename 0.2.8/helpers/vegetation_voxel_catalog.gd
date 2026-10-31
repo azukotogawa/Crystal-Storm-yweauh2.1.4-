@@ -7,6 +7,20 @@ const ROOT := "res://assets/voxel/vegetation/lod/"
 const LOD0_COLUMNS := 10
 const EDGE_DETAIL := true
 const _FLOWERS := ["red", "yellow", "blue", "white"]
+const SPECIES := {
+	"grass_tuft": {"scale": 1.6, "cells": 1},
+	"tall_grass": {"scale": 1.4, "cells": 1},
+	"flower_red": {"scale": 1.6, "cells": 1},
+	"flower_yellow": {"scale": 1.4, "cells": 1},
+	"flower_blue": {"scale": 1.4, "cells": 1},
+	"flower_white": {"scale": 1.4, "cells": 1},
+	"mushroom": {"scale": 1.7, "cells": 1},
+	"fern": {"scale": 1.6, "cells": 3},
+	"bush": {"scale": 1.2, "cells": 1},
+	"reeds": {"scale": 1.3, "cells": 1},
+	"sapling": {"scale": 1.0, "cells": 1},
+	"tree": {"scale": 1.0, "cells": 1},
+}
 
 
 static func is_authored(plant_id: String) -> bool:
@@ -75,3 +89,19 @@ static func _species(wx: int, wz: int, biome: String) -> String:
 	if biome == "plains":
 		return "oak" if h != 2 else "birch"
 	return ["oak", "birch", "pine"][h]
+
+
+static func species_key(plant_id: String, wx: int, wz: int) -> String:
+	if plant_id == "wildflower" or plant_id == "flower":
+		return "flower_" + _FLOWERS[_variant(wx, wz, 44002) % 4]
+	return plant_id
+
+
+static func species_scale(plant_id: String, wx: int, wz: int) -> float:
+	var row: Dictionary = SPECIES.get(species_key(plant_id, wx, wz), {})
+	return float(row.get("scale", 1.0))
+
+
+static func footprint_cells(plant_id: String, wx: int, wz: int) -> int:
+	var row: Dictionary = SPECIES.get(species_key(plant_id, wx, wz), {})
+	return int(row.get("cells", 1))

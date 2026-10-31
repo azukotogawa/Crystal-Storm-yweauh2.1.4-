@@ -971,7 +971,7 @@ func _flush_veg_chunk(coord: Vector2i) -> void:
 	if records.is_empty():
 		return
 	var groups := {}
-	for rec_v in records:
+	for rec_v in _veg_resolve_footprints(records):
 		var rec: Dictionary = rec_v
 		var plant_id := str(rec.get("plant_id", ""))
 		var wx := int(rec.get("wx", 0))
@@ -1006,12 +1006,48 @@ func _flush_veg_chunk(coord: Vector2i) -> void:
 		multi.instance_count = list.size()
 		for i in list.size():
 			var rec: Dictionary = list[i]
-			var basis := Basis(Vector3.UP, float(rec.get("yaw", 0.0)))
+			var grow := _VegCatalog.species_scale(str(rec.get("plant_id", "")), int(rec.get("wx", 0)), int(rec.get("wz", 0)))
+			var basis := Basis(Vector3.UP, float(rec.get("yaw", 0.0))).scaled(Vector3.ONE * grow)
 			multi.set_instance_transform(i, Transform3D(basis, rec.get("pos", Vector3.ZERO)))
 		var inst := MultiMeshInstance3D.new()
 		inst.multimesh = multi
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(inst)
+
+
+func _veg_resolve_footprints(records: Array) -> Array:
+	var big: Array = []
+	var small: Array = []
+	for rec_v in records:
+		var rec: Dictionary = rec_v
+		if _VegCatalog.footprint_cells(str(rec.get("plant_id", "")), int(rec.get("wx", 0)), int(rec.get("wz", 0))) > 1:
+			big.append(rec)
+		else:
+			small.append(rec)
+	if big.is_empty():
+		return records
+	var taken := {}
+	var kept: Array = []
+	for rec_v in big + small:
+		var rec: Dictionary = rec_v
+		var wx := int(rec.get("wx", 0))
+		var wz := int(rec.get("wz", 0))
+		var n := _VegCatalog.footprint_cells(str(rec.get("plant_id", "")), wx, wz)
+		var r := n >> 1
+		var cells: Array[Vector2i] = []
+		var free := true
+		for dz in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var c := Vector2i(wx + dx, wz + dz)
+				if taken.has(c):
+					free = false
+				cells.append(c)
+		if not free:
+			continue
+		for c in cells:
+			taken[c] = true
+		kept.append(rec)
+	return kept
 
 
 func _clear_chunk(coord: Vector2i) -> void:
