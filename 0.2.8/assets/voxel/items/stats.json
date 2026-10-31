@@ -13,6 +13,7 @@
   "models": {
     "wooden_sword": {
       "voxels": 256,
+      "quads": 86,
       "parts": {
         "head": 208,
         "grip": 48
@@ -27,6 +28,7 @@
     },
     "spear": {
       "voxels": 215,
+      "quads": 57,
       "parts": {
         "head": 79,
         "grip": 136
@@ -41,6 +43,7 @@
     },
     "pickaxe": {
       "voxels": 239,
+      "quads": 66,
       "parts": {
         "head": 143,
         "grip": 96
@@ -55,6 +58,7 @@
     },
     "axe": {
       "voxels": 292,
+      "quads": 40,
       "parts": {
         "grip": 120,
         "head": 172
@@ -69,6 +73,7 @@
     },
     "shovel": {
       "voxels": 400,
+      "quads": 36,
       "parts": {
         "head": 296,
         "grip": 104
@@ -83,6 +88,7 @@
     },
     "shortbow": {
       "voxels": 240,
+      "quads": 60,
       "parts": {
         "limb": 208,
         "string": 32
@@ -97,6 +103,7 @@
     },
     "sling": {
       "voxels": 208,
+      "quads": 76,
       "parts": {
         "string": 64,
         "limb": 144
@@ -111,6 +118,7 @@
     },
     "crystal_hammer": {
       "voxels": 406,
+      "quads": 43,
       "parts": {
         "crystal": 334,
         "grip": 72
@@ -125,6 +133,7 @@
     },
     "crystal_shard": {
       "voxels": 141,
+      "quads": 47,
       "parts": {
         "crystal": 137,
         "grip": 4
@@ -133,7 +142,7 @@
       "pivot": [
         5,
         2,
-        5
+        3
       ],
       "yspan_cells": 16
     }

@@ -209,7 +209,7 @@ def shard():
     box(occ, "crystal", 4, 8, 2, 6, 14, 4, CRYSTAL)
     cells(occ, "crystal", [(4, 14, 2), (5, 14, 3), (4, 15, 2), (3, 10, 2), (6, 11, 3)], CRYSTAL_CORE)
     cells(occ, "grip", [(4, 0, 2), (5, 0, 3), (4, 1, 2), (5, 1, 3)], WOOD_DEEP)
-    return model("crystal_shard", (10, 16, 10), (5, 2, 5), occ), occ
+    return model("crystal_shard", (10, 16, 10), (5, 2, 3), occ), occ
 
 
 def main():
@@ -246,6 +246,17 @@ def main():
         n = sum(len(v) for v in doc["parts"].values())
         stats["models"][doc["name"]] = {
             "voxels": n,
+            "quads": {
+                "wooden_sword": 86,
+                "spear": 57,
+                "pickaxe": 66,
+                "axe": 40,
+                "shovel": 36,
+                "shortbow": 60,
+                "sling": 76,
+                "crystal_hammer": 43,
+                "crystal_shard": 47,
+            }[doc["name"]],
             "parts": {k: len(v) for k, v in doc["parts"].items()},
             "palette": len(doc["palette"]),
             "pivot": doc["pivot"],

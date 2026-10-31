@@ -16,17 +16,51 @@ func _fail(msg: String) -> void:
 
 
 func _tip_local(item: Node3D) -> Vector3:
-	var best := Vector3.ZERO
-	for child in item.get_children():
-		var mi := child as MeshInstance3D
-		if mi == null or not mi.visible:
+	var best := Vector3(0.0, -1.0e9, 0.0)
+	var pending: Array[Node] = [item]
+	while not pending.is_empty():
+		var node: Node = pending.pop_back()
+		for child in node.get_children():
+			pending.append(child)
+		var mi := node as MeshInstance3D
+		if mi == null or mi.mesh == null or not mi.visible:
 			continue
-		var top := mi.position + Vector3(0.0, (mi.mesh as BoxMesh).size.y * 0.5, 0.0)
+		var top := _mesh_tip(mi)
+		if mi != item:
+			top = mi.transform * top
 		if top.y > best.y:
 			best = top
-	var own := item as MeshInstance3D
-	var own_top := Vector3(0.0, (own.mesh as BoxMesh).size.y * 0.5, 0.0)
-	return own_top if own_top.y > best.y else best
+	return best
+
+
+func _mesh_tip(mi: MeshInstance3D) -> Vector3:
+	var mesh := mi.mesh
+	var max_y := -1.0e9
+	var saw := false
+	for s in mesh.get_surface_count():
+		var arrays: Array = mesh.surface_get_arrays(s)
+		if arrays.is_empty():
+			continue
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for p in verts:
+			if not saw or p.y > max_y:
+				max_y = p.y
+				saw = true
+	if not saw:
+		var ab := mi.get_aabb()
+		return ab.position + Vector3(ab.size.x * 0.5, ab.size.y, ab.size.z * 0.5)
+	var sum := Vector3.ZERO
+	var count := 0
+	for s in mesh.get_surface_count():
+		var arrays: Array = mesh.surface_get_arrays(s)
+		if arrays.is_empty():
+			continue
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		for p in verts:
+			if p.y >= max_y - 0.0001:
+				sum += p
+				count += 1
+	return sum / float(count)
 
 
 func _run() -> void:

@@ -6,6 +6,24 @@ const _ItemAnim = preload("res://systems/item_anim.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _Body = preload("res://player/player_body_mesh.gd")
+const _Loader = preload("res://helpers/crystal_voxel_loader.gd")
+const _VoxelModel = preload("res://helpers/voxel_model_builder.gd")
+const _CrystalPalette = preload("res://ui/crystal_palette.gd")
+const _PlayerSettings = preload("res://systems/player_settings.gd")
+
+const _VOXEL := {
+	"stone_pick": "res://assets/voxel/items/pickaxe.json",
+	"pickaxe": "res://assets/voxel/items/pickaxe.json",
+	"axe": "res://assets/voxel/items/axe.json",
+	"shovel": "res://assets/voxel/items/shovel.json",
+	"wooden_sword": "res://assets/voxel/items/wooden_sword.json",
+	"spear": "res://assets/voxel/items/spear.json",
+	"shortbow": "res://assets/voxel/items/shortbow.json",
+	"bow": "res://assets/voxel/items/shortbow.json",
+	"sling": "res://assets/voxel/items/sling.json",
+	"crystal_hammer": "res://assets/voxel/items/crystal_hammer.json",
+	"crystal_shard": "res://assets/voxel/items/crystal_shard.json",
+}
 
 const _BRICK_PATH := "res://assets/art/voxel_brick.png"
 const _PART_COUNT := 6
@@ -163,7 +181,142 @@ func visual_child_count() -> int:
 	return get_child_count()
 
 
+func _voxel_path(item_id: String) -> String:
+	if _VOXEL.has(item_id):
+		return str(_VOXEL[item_id])
+	var key := _ItemTypes.visual_key(item_id) if item_id != "" else ""
+	if _VOXEL.has(key):
+		return str(_VOXEL[key])
+	return ""
+
+
+func _apply_voxel(item_id: String) -> bool:
+	var path := _voxel_path(item_id)
+	if path == "" or not FileAccess.file_exists(path):
+		return false
+	var parts := _Loader.part_meshes(path)
+	var crystal: ArrayMesh = parts.get("crystal", null)
+	var string_mesh: ArrayMesh = parts.get("string", null)
+	var limb: ArrayMesh = parts.get("limb", null)
+	var grip: ArrayMesh = parts.get("grip", null)
+	_item.scale = Vector3.ONE
+	_item.material_override = null
+	for i in range(1, _parts.size()):
+		var extra := _parts[i]
+		extra.visible = false
+		extra.position = Vector3.ZERO
+		extra.rotation = Vector3.ZERO
+		if extra.has_meta("held_role"):
+			extra.remove_meta("held_role")
+	if string_mesh != null:
+		var body: ArrayMesh = limb if limb != null else grip
+		if body == null:
+			body = _Loader.mesh_for(path)
+		if body == null:
+			return false
+		_item.mesh = body
+		_item.set_meta("rest_pos", Vector3.ZERO)
+		_mount_string(string_mesh)
+		_mark_bow_tips(body)
+		return true
+	var crystal_id := item_id == "crystal_hammer" or item_id == "crystal_shard" or _ItemTypes.visual_key(item_id) == "crystal_shard"
+	if crystal != null and crystal_id:
+		if grip != null:
+			_item.mesh = grip
+			var head := _parts[1]
+			head.mesh = crystal
+			head.material_override = _crystal_mat()
+			head.position = Vector3.ZERO
+			head.rotation = Vector3.ZERO
+			head.visible = true
+		else:
+			_item.mesh = crystal
+			_item.material_override = _crystal_mat()
+		_item.set_meta("rest_pos", Vector3.ZERO)
+		return true
+	var full := _Loader.mesh_for(path)
+	if full == null:
+		return false
+	_item.mesh = full
+	_item.set_meta("rest_pos", Vector3.ZERO)
+	return true
+
+
+func _mount_string(mesh: ArrayMesh) -> void:
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var cz := 0.0
+	if not verts.is_empty():
+		for p in verts:
+			cz += p.z
+		cz /= float(verts.size())
+	var rest := Vector3(0.0, 0.0, cz)
+	var mi := _parts[5]
+	mi.mesh = _offset_mesh(mesh, -rest)
+	mi.material_override = null
+	mi.position = rest
+	mi.rotation = Vector3.ZERO
+	mi.set_meta("rest_pos", rest)
+	mi.set_meta("held_role", "string")
+	mi.visible = true
+
+
+func _mark_bow_tips(mesh: ArrayMesh) -> void:
+	var arrays: Array = mesh.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	if verts.is_empty():
+		return
+	var lo := verts[0]
+	var hi := verts[0]
+	for p in verts:
+		if p.y < lo.y:
+			lo = p
+		elif p.y > hi.y:
+			hi = p
+	_parts[2].position = lo
+	_parts[4].position = hi
+	_parts[2].visible = false
+	_parts[4].visible = false
+
+
+func _offset_mesh(src: ArrayMesh, delta: Vector3) -> ArrayMesh:
+	var arrays: Array = src.surface_get_arrays(0)
+	var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	var moved := PackedVector3Array()
+	moved.resize(verts.size())
+	for i in verts.size():
+		moved[i] = verts[i] + delta
+	arrays[Mesh.ARRAY_VERTEX] = moved
+	var out := ArrayMesh.new()
+	out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	var mat := src.surface_get_material(0)
+	if mat != null:
+		out.surface_set_material(0, mat)
+	return out
+
+
+func _crystal_mat() -> StandardMaterial3D:
+	var blind := _PlayerSettings.colorblind_palette
+	var mat := _VoxelModel.make_glow_material(_CrystalPalette.mass_emission(blind))
+	mat.albedo_color = _CrystalPalette.mass_albedo(blind)
+	mat.vertex_color_use_as_albedo = false
+	return mat
+
+
+func _as_box(mi: MeshInstance3D) -> BoxMesh:
+	var box := mi.mesh as BoxMesh
+	if box == null:
+		box = BoxMesh.new()
+		mi.mesh = box
+	var mat := mi.material_override as StandardMaterial3D
+	if mat == null or mat.albedo_texture == null:
+		mi.material_override = _voxel_mat(Color.WHITE)
+	return mi.mesh as BoxMesh
+
+
 func _tint_for(item_id: String, kind: int) -> void:
+	if _apply_voxel(item_id):
+		return
 	var layout: Array = _layout(item_id, kind)
 	_item.scale = Vector3.ONE
 	for i in _parts.size():
@@ -174,7 +327,7 @@ func _tint_for(item_id: String, kind: int) -> void:
 				mi.remove_meta("held_role")
 			continue
 		var spec: Array = layout[i]
-		var box := mi.mesh as BoxMesh
+		var box := _as_box(mi)
 		box.size = spec[1]
 		if i > 0:
 			mi.position = spec[0]
