@@ -61,6 +61,12 @@
     { "name": "rabbit_ear", "rgb": [219, 158, 148] },
     { "name": "bird_body", "rgb": [115, 148, 199] },
     { "name": "bird_belly", "rgb": [199, 219, 240] },
-    { "name": "bird_beak", "rgb": [230, 140, 56] }
+    { "name": "bird_beak", "rgb": [230, 140, 56] },
+    { "name": "stone_body", "rgb": [132, 134, 140] },
+    { "name": "stone_edge", "rgb": [176, 178, 184] },
+    { "name": "stone_dark", "rgb": [78, 80, 86] },
+    { "name": "blade", "rgb": [196, 200, 206] },
+    { "name": "blade_edge", "rgb": [232, 234, 238] },
+    { "name": "crystal_core", "rgb": [140, 46, 242] }
   ]
 }

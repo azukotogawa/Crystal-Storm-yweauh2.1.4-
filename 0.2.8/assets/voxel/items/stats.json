@@ -1,0 +1,141 @@
+{
+  "before_quads_box_parts": {
+    "wooden_sword": 24,
+    "spear": 18,
+    "pickaxe": 18,
+    "axe": 0,
+    "shovel": 0,
+    "shortbow": 36,
+    "sling": 36,
+    "crystal_hammer": 18,
+    "crystal_shard": 6
+  },
+  "models": {
+    "wooden_sword": {
+      "voxels": 256,
+      "parts": {
+        "head": 208,
+        "grip": 48
+      },
+      "palette": 5,
+      "pivot": [
+        7,
+        6,
+        3
+      ],
+      "yspan_cells": 37
+    },
+    "spear": {
+      "voxels": 215,
+      "parts": {
+        "head": 79,
+        "grip": 136
+      },
+      "palette": 5,
+      "pivot": [
+        5,
+        10,
+        3
+      ],
+      "yspan_cells": 45
+    },
+    "pickaxe": {
+      "voxels": 239,
+      "parts": {
+        "head": 143,
+        "grip": 96
+      },
+      "palette": 4,
+      "pivot": [
+        13,
+        8,
+        5
+      ],
+      "yspan_cells": 28
+    },
+    "axe": {
+      "voxels": 292,
+      "parts": {
+        "grip": 120,
+        "head": 172
+      },
+      "palette": 4,
+      "pivot": [
+        5,
+        8,
+        5
+      ],
+      "yspan_cells": 30
+    },
+    "shovel": {
+      "voxels": 400,
+      "parts": {
+        "head": 296,
+        "grip": 104
+      },
+      "palette": 5,
+      "pivot": [
+        7,
+        10,
+        5
+      ],
+      "yspan_cells": 39
+    },
+    "shortbow": {
+      "voxels": 240,
+      "parts": {
+        "limb": 208,
+        "string": 32
+      },
+      "palette": 5,
+      "pivot": [
+        3,
+        20,
+        3
+      ],
+      "yspan_cells": 40
+    },
+    "sling": {
+      "voxels": 208,
+      "parts": {
+        "string": 64,
+        "limb": 144
+      },
+      "palette": 6,
+      "pivot": [
+        5,
+        14,
+        3
+      ],
+      "yspan_cells": 28
+    },
+    "crystal_hammer": {
+      "voxels": 406,
+      "parts": {
+        "crystal": 334,
+        "grip": 72
+      },
+      "palette": 4,
+      "pivot": [
+        11,
+        8,
+        5
+      ],
+      "yspan_cells": 29
+    },
+    "crystal_shard": {
+      "voxels": 141,
+      "parts": {
+        "crystal": 137,
+        "grip": 4
+      },
+      "palette": 3,
+      "pivot": [
+        5,
+        2,
+        5
+      ],
+      "yspan_cells": 16
+    }
+  }
+}
