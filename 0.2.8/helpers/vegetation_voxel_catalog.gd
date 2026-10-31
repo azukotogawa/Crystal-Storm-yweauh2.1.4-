@@ -18,7 +18,7 @@ const SPECIES := {
 	"fern": {"scale": 1.6, "cells": 3},
 	"bush": {"scale": 1.2, "cells": 1},
 	"reeds": {"scale": 1.3, "cells": 1},
-	"sapling": {"scale": 1.0, "cells": 1},
+	"sapling": {"scale": 0.5, "cells": 1},
 	"tree": {"scale": 1.0, "cells": 1},
 }
 
@@ -47,7 +47,7 @@ static func model_path(plant_id: String, stage: int, wx: int, wz: int, biome: St
 	var use_stage := stage
 	if id == "sapling":
 		id = "tree"
-		use_stage = 0
+		use_stage = 1
 	if id == "wildflower" or id == "flower":
 		id = "flower_" + _FLOWERS[_variant(wx, wz, 44002) % 4]
 	var variant := _variant(wx, wz, 55021) % 3

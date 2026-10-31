@@ -70,7 +70,7 @@ func _run() -> void:
 	if not flower.contains("/flower_"):
 		push_error("FAIL catalog flower %s" % flower)
 		failed = true
-	if not sapling.contains("_s0_lod"):
+	if not sapling.contains("_s1_lod"):
 		push_error("FAIL catalog sapling %s" % sapling)
 		failed = true
 	if _Catalog.mirror_variant("tree", 4, 9) < 0:
