@@ -160,9 +160,14 @@ static func apply_border_height(wx: float, wz: float, interior_h: float, info: D
 	return lerpf(edge_h, target, smoothstep(0.0, 1.0, t))
 
 
+const PLAYABLE_RIDGE := 0.3
+const PLAYABLE_RIDGE_FADE := 48.0
+
+
 static func interior_ridge_scale(wx: float, wz: float) -> float:
 	if is_playable(wx, wz):
-		return 0.0
+		var inner := minf(float(PLAYABLE_HALF_X) - absf(wx), float(PLAYABLE_HALF_Z) - absf(wz)) - RIM_PLANE_COLS
+		return PLAYABLE_RIDGE * smoothstep(0.0, PLAYABLE_RIDGE_FADE, inner)
 	var info: Dictionary = zone_info(wx, wz)
 	if info.side == "mountain":
 		return lerpf(0.45, 1.0, float(info.transition))

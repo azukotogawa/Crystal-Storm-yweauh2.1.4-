@@ -1040,7 +1040,7 @@ func _greedy_mesh_plane(data: ChunkData, normal_dir: Vector3i, face_code: int, o
 				if visited[x][z] or _skips_greedy_surface_cell(data, x, z):
 					continue
 				var sy: float = _surface_y_at(data, x, z)
-				if sy >= float(ChunkData.HEIGHT):
+				if sy >= float(_WorldSettings.get_active().chunk_height_bound()):
 					continue
 				var vox := _tile_type_at(data, x, z)
 				if vox == VoxelTypes.AIR:
@@ -2252,7 +2252,7 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 			var usable := not _skips_greedy_surface_cell(data, col_x, col_z)
 			var sy := _surface_y_at(data, col_x, col_z) if usable else 0.0
 			var vox := _tile_type_at(data, col_x, col_z) if usable else VoxelTypes.AIR
-			if (not usable) or sy >= float(ChunkData.HEIGHT) or vox == VoxelTypes.AIR:
+			if (not usable) or sy >= float(_WorldSettings.get_active().chunk_height_bound()) or vox == VoxelTypes.AIR:
 				tiles[ti] = -1
 				atlas[ti] = Vector2i.ZERO
 			else:
