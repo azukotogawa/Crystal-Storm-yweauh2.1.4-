@@ -515,10 +515,10 @@ static func _write_face_quad(
 	normals[vi + 3] = normal
 	if face_code == FACE_TOP:
 		var voxel_s: float = _WorldSettings.get_active().voxel_scale
-		var u0 := ox / voxel_s
-		var v0 := oz / voxel_s
-		var u1 := (ox + sx) / voxel_s
-		var v1 := (oz + sz) / voxel_s
+		var u0 := fposmod(ox / voxel_s, 1.0)
+		var v0 := fposmod(oz / voxel_s, 1.0)
+		var u1 := u0 + sx / voxel_s
+		var v1 := v0 + sz / voxel_s
 		uvs[vi + 0] = Vector2(u0, v0)
 		uvs[vi + 1] = Vector2(u1, v0)
 		uvs[vi + 2] = Vector2(u1, v1)
@@ -746,9 +746,14 @@ static func _project_world_uvs(uvs: PackedVector2Array, vertices: PackedVector3A
 	var voxel_s: float = _WorldSettings.get_active().voxel_scale
 	if voxel_s <= 0.0:
 		voxel_s = 1.0
+	var lo := Vector2(INF, INF)
+	for k in 4:
+		var q: Vector3 = vertices[vi + k]
+		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.z))
+	var start := Vector2(fposmod(lo.x / voxel_s, 1.0), fposmod(lo.y / voxel_s, 1.0))
 	for k in 4:
 		var p: Vector3 = vertices[vi + k]
-		uvs[vi + k] = Vector2(fposmod(p.x / voxel_s, 1.0), fposmod(p.z / voxel_s, 1.0))
+		uvs[vi + k] = start + Vector2(p.x - lo.x, p.z - lo.y) / voxel_s
 
 
 static func _ramp_axis_t(p: Vector3, ox: float, oz: float, sx: float, sz: float, dir: Vector2i) -> float:

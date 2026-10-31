@@ -166,7 +166,9 @@ func _run() -> void:
 		elif absf(cv[i].y - (cymin + cymax) * 0.5) < layer * 0.15:
 			ny_mid = minf(ny_mid, cnormals[i].y)
 		var expect_uv := Vector2(fposmod(cv[i].x / s, 1.0), fposmod(cv[i].z / s, 1.0))
-		if cuvs[i].distance_squared_to(expect_uv) > 0.0004:
+		var uv_gap := cuvs[i] - expect_uv
+		uv_gap -= uv_gap.round()
+		if uv_gap.length_squared() > 0.0004:
 			uv_bad += 1
 		for j in range(i + 1, cv.size()):
 			if cv[i].distance_squared_to(cv[j]) > 0.0001:
