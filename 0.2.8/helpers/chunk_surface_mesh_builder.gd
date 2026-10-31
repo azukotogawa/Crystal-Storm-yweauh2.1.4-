@@ -746,14 +746,20 @@ static func _project_world_uvs(uvs: PackedVector2Array, vertices: PackedVector3A
 	var voxel_s: float = _WorldSettings.get_active().voxel_scale
 	if voxel_s <= 0.0:
 		voxel_s = 1.0
+	var nrm: Vector3 = (vertices[vi + 1] - vertices[vi + 0]).cross(vertices[vi + 2] - vertices[vi + 0])
+	var flat_h := Vector2(nrm.x, nrm.z).length()
+	var wall := nrm.length_squared() > 0.00000001 and absf(nrm.y) < flat_h * 0.05
+	var axis := Vector2(-nrm.z, nrm.x).normalized() if wall else Vector2.ZERO
+	var coords: Array[Vector2] = []
 	var lo := Vector2(INF, INF)
 	for k in 4:
 		var q: Vector3 = vertices[vi + k]
-		lo = Vector2(minf(lo.x, q.x), minf(lo.y, q.z))
+		var c := Vector2(q.x * axis.x + q.z * axis.y, -q.y) if wall else Vector2(q.x, q.z)
+		coords.append(c)
+		lo = Vector2(minf(lo.x, c.x), minf(lo.y, c.y))
 	var start := Vector2(fposmod(lo.x / voxel_s, 1.0), fposmod(lo.y / voxel_s, 1.0))
 	for k in 4:
-		var p: Vector3 = vertices[vi + k]
-		uvs[vi + k] = start + Vector2(p.x - lo.x, p.z - lo.y) / voxel_s
+		uvs[vi + k] = start + (coords[k] - lo) / voxel_s
 
 
 static func _ramp_axis_t(p: Vector3, ox: float, oz: float, sx: float, sz: float, dir: Vector2i) -> float:
