@@ -235,7 +235,7 @@ func _check_crystal_body(kind: StringName, rig: Node3D, body_mi: MeshInstance3D,
 		if body_glows or glow_n > 0:
 			_fail("%s crystal cubes glow" % kind)
 		return
-	var mostly := kind == &"crystal_mite" or kind == &"crystal_wisp" or kind == &"farm_bomber" or kind == &"shard_guard"
+	var mostly := kind == &"crystal_wisp" or kind == &"farm_bomber"
 	if mostly and not body_glows:
 		_fail("%s body is not crystal" % kind)
 	elif not mostly and body_glows:
@@ -329,8 +329,8 @@ func _check_enemy() -> void:
 
 func _check_mite_rig(rig: Node3D) -> void:
 	var look = _MiteLook.load_active()
-	if look.visual_scale < 1.9 or look.visual_scale > 2.1:
-		_fail("mite visual scale %.2f is not about 2" % look.visual_scale)
+	if look.visual_scale < 1.4 or look.visual_scale > 1.6:
+		_fail("mite visual scale %.2f is not about 1.5" % look.visual_scale)
 	elif not rig.scale.is_equal_approx(Vector3(look.visual_scale, look.visual_scale, look.visual_scale)):
 		_fail("mite rig scale %s != look %.2f" % [rig.scale, look.visual_scale])
 	elif not bool(rig.get_meta("mite_look", false)):
@@ -420,7 +420,7 @@ func _check_mite_readability() -> void:
 	var warden_r: float = float(warden_def.hit_radius) * float(_Settings.get_active().voxel_scale)
 	if warden_rig == null or not warden.scale.is_equal_approx(Vector3.ONE):
 		_fail("warden body scale changed")
-	elif not is_equal_approx(warden_rig.scale.x, 1.3) or not bool(warden_rig.get_meta("boss_rig", false)):
+	elif not is_equal_approx(warden_rig.scale.x, 1.15) or not bool(warden_rig.get_meta("boss_rig", false)):
 		_fail("warden visual scale %.2f" % warden_rig.scale.x)
 	elif not is_equal_approx(warden.get_combat_radius(), warden_r):
 		_fail("warden combat radius changed")

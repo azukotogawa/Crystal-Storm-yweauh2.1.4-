@@ -328,9 +328,9 @@ func _setup_mesh(tint: Color, radius: float = 0.22, height: float = 0.70) -> voi
 func _apply_body_scale() -> void:
 	var s := 1.0
 	if enemy_id == &"origin_warden":
-		s = 1.3 if _part_rig and is_instance_valid(_part_rig) else 1.65
+		s = 1.15 if _part_rig and is_instance_valid(_part_rig) else 1.65
 	elif enemy_id == &"spawn_elite":
-		s = 1.35
+		s = 1.0
 	else:
 		return
 	if _part_rig and is_instance_valid(_part_rig):

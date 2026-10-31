@@ -210,7 +210,7 @@ func _check_boss(path: String, name: String, budget: int, boss: bool) -> int:
 		_fail("%s quads %d part %d over %d" % [name, quads, part_quads, budget])
 	if boss and (blocks < 4.0 or blocks > 6.0):
 		_fail("%s height %.3f blocks" % [name, blocks])
-	var scale := 1.3 if name == "origin_warden" else (1.35 if name == "shard_tyrant" else 1.0)
+	var scale := 1.15 if name == "origin_warden" else (1.0 if name == "shard_tyrant" else 1.0)
 	if blocks * scale > 6.05:
 		_fail("%s visual height %.3f" % [name, blocks * scale])
 	for part_name in ["body", "head", "leg_l", "leg_r", "tail"]:

@@ -124,11 +124,10 @@ static func palette_for(kind: StringName) -> PackedColorArray:
 			Color(0.08, 0.08, 0.08),
 		])
 	if _MITE_VOXEL.has(kind):
-		return PackedColorArray([
-			Color(0, 0, 0),
-			_mite_albedo(),
-			Color(0.08, 0.08, 0.10),
-		])
+		var mite := _palette_from_voxel(str(_MITE_VOXEL[kind]))
+		if mite.size() > 1:
+			mite[1] = _mite_albedo()
+		return mite
 	if kind == &"crystal_wisp":
 		return PackedColorArray([
 			Color(0, 0, 0),
