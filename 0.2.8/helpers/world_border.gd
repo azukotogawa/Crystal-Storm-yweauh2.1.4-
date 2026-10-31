@@ -247,9 +247,26 @@ const CLIFF_FOOT := 20.0
 const OCEAN_EDGE_MAX := 8.0
 
 
+const RIM_NOISE_CELL := 16.0
+
+
 static func rim_unit(seed_value: int, wx: float, wz: float, salt: int) -> float:
-	var x := int(floor(wx))
-	var z := int(floor(wz))
+	var x := wx / RIM_NOISE_CELL
+	var z := wz / RIM_NOISE_CELL
+	var x0 := int(floor(x))
+	var z0 := int(floor(z))
+	var fx := x - float(x0)
+	var fz := z - float(z0)
+	fx = fx * fx * (3.0 - 2.0 * fx)
+	fz = fz * fz * (3.0 - 2.0 * fz)
+	var a := _rim_hash(seed_value, x0, z0, salt)
+	var b := _rim_hash(seed_value, x0 + 1, z0, salt)
+	var c := _rim_hash(seed_value, x0, z0 + 1, salt)
+	var d := _rim_hash(seed_value, x0 + 1, z0 + 1, salt)
+	return clampf(lerpf(lerpf(a, b, fx), lerpf(c, d, fx), fz), 0.0, 1.0)
+
+
+static func _rim_hash(seed_value: int, x: int, z: int, salt: int) -> float:
 	var n: int = x * 374761393 + z * 668265263 + seed_value * 1442695041 + salt * 2246822519
 	n = (n ^ (n >> 13)) * 1274126177
 	n = n ^ (n >> 16)
