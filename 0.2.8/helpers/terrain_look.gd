@@ -3,7 +3,17 @@ extends RefCounted
 
 const SURFACE_WAVE_AMPLITUDE_STEPS := 2
 const STEPS_PER_BLOCK := 8
-const _WAVE_SCALE := 1.05
+const _WAVE_SCALE := 0.85
+const _WARP_CELL := 23.0
+const _WARP_AMOUNT := 7.0
+const _DETAIL_CELL := 4.0
+const _DETAIL_AMOUNT := 0.4
+const _WAVES := [
+	[0.92, 0.39, 7.3, 0.7, 0.40],
+	[-0.31, 0.95, 5.3, 1.9, 0.30],
+	[0.57, -0.82, 3.9, 3.1, 0.18],
+	[0.99, 0.14, 11.7, 4.4, 0.25],
+]
 
 static func palette_color(rel: int) -> Color:
 	var band := palette_band(rel)
@@ -40,11 +50,17 @@ static func offset_steps(px: float, pz: float) -> int:
 	var amp := amplitude_steps()
 	if amp <= 0:
 		return 0
-	var w := _wave(px, pz)
-	if amp <= 1:
-		w += sin(TAU * (px * 1.7 + pz * 1.15) / 3.1 + 0.4) * 0.28
-	var n := clampf(w / _WAVE_SCALE, -1.0, 1.0)
+	var n := clampf(_wave(px, pz) / _WAVE_SCALE, -1.0, 1.0)
 	return clampi(int(round(n * float(amp))), -amp, amp)
+
+
+static func max_step_per_micro_column() -> float:
+	var g := 0.0
+	for wv in _WAVES:
+		g += float(wv[4]) * TAU / float(wv[2])
+	g *= 1.0 + _WARP_AMOUNT * 1.5 / _WARP_CELL
+	g += _DETAIL_AMOUNT * 1.5 / _DETAIL_CELL
+	return g / _WAVE_SCALE * float(amplitude_steps()) / float(STEPS_PER_BLOCK)
 
 
 static func palette_band(rel: int) -> int:
@@ -57,13 +73,15 @@ static func shade_for_band(band: int) -> float:
 
 
 static func _wave(px: float, pz: float) -> float:
-	var s1 := sin(TAU * (px * 0.8 + pz * 0.35) / 4.5 + 0.7) * 0.5
-	var s2 := sin(TAU * (-px * 0.3 + pz * 0.9) / 3.4 + 1.9) * 0.35
-	return s1 + s2 + (_noise(px, pz) - 0.5) * 0.6
+	var wx := px + (_noise_cell(px + 71.3, pz - 19.1, _WARP_CELL) - 0.5) * _WARP_AMOUNT
+	var wz := pz + (_noise_cell(px - 43.7, pz + 88.9, _WARP_CELL) - 0.5) * _WARP_AMOUNT
+	var w := 0.0
+	for wv in _WAVES:
+		w += float(wv[4]) * sin(TAU * (wx * float(wv[0]) + wz * float(wv[1])) / float(wv[2]) + float(wv[3]))
+	return w + (_noise_cell(px, pz, _DETAIL_CELL) - 0.5) * _DETAIL_AMOUNT
 
 
-static func _noise(px: float, pz: float) -> float:
-	var cell := 5.0
+static func _noise_cell(px: float, pz: float, cell: float) -> float:
 	var x := px / cell
 	var z := pz / cell
 	var x0 := int(floor(x))

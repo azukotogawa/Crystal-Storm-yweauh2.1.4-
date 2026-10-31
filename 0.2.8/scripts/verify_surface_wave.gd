@@ -15,6 +15,10 @@ func _run() -> void:
 	var failed := false
 	var amp := _TerrainLook.amplitude_steps()
 	var max_jump := 0
+	var bound := _TerrainLook.max_step_per_micro_column()
+	if bound >= 1.0:
+		push_error("surface wave gradient bound %.3f >= 1 step" % bound)
+		failed = true
 	var span := 192
 	for z in span:
 		for x in span:
