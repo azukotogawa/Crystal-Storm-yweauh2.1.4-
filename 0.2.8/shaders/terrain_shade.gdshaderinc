@@ -142,7 +142,21 @@ vec3 cs_depth(vec3 albedo, vec3 world_n, vec3 world_pos, float ao) {
 		ao_f = 1.0;
 	}
 	vec3 col = albedo * mix(1.0, ao_f, clamp(terrain_ao_strength, 0.0, 1.0));
+	float sky = clamp(normalize(world_n + vec3(0.0, 1e-4, 0.0)).y * 0.5 + 0.5, 0.0, 1.0);
+	col *= mix(0.9, 1.02, sky);
 	float mask = cs_corner_mask(world_pos, world_n);
 	col *= 1.0 - mask * clamp(terrain_corner_darken, 0.0, 0.75);
 	return cs_apply_night(col, albedo, world_pos);
+}
+
+vec3 cs_sun_light(float lit, float dark, vec3 n, vec3 l, bool directional) {
+	if (!directional) {
+		return vec3(mix(1.0 - dark, 1.0, lit));
+	}
+	float soft = smoothstep(0.0, 1.0, lit);
+	float wrap = clamp((dot(n, l) + 0.35) / 1.35, 0.0, 1.0);
+	float dusk = clamp(1.0 - abs(terrain_day_gain - 0.74) * 5.0, 0.0, 1.0);
+	vec3 sun_col = mix(vec3(1.07, 1.0, 0.89), vec3(1.14, 0.84, 0.64), dusk * 0.8);
+	vec3 sky_col = vec3(0.84, 0.91, 1.08) * (1.0 - dark);
+	return mix(sky_col, sun_col, soft * mix(0.72, 1.0, wrap));
 }

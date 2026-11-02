@@ -42,7 +42,7 @@
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
 ambient_light_source = 2
-ambient_light_color = Color(0.34, 0.38, 0.48, 1)
+ambient_light_color = Color(0.42, 0.5, 0.66, 1)
 ambient_light_energy = 0.22
 tonemap_mode = 2
 tonemap_exposure = 0.72
@@ -52,9 +52,9 @@ ssao_intensity = 0.55
 ssao_power = 1.1
 ssao_detail = 0.35
 fog_enabled = true
-fog_light_color = Color(0.72, 0.78, 0.9, 1)
+fog_light_color = Color(0.78, 0.8, 0.86, 1)
 fog_light_energy = 0.28
-fog_sun_scatter = 0.08
+fog_sun_scatter = 0.22
 fog_density = 0.00032
 fog_aerial_perspective = 0.12
 fog_sky_affect = 0.35
