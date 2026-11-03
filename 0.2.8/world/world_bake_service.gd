@@ -19,6 +19,7 @@ extends RefCounted
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 const BAKE_VERSION: int = 122
+const _RegionPack = preload("res://world/region_pack.gd")
 const CompactPlan = preload("res://world/compact_plan.gd")
 const MAGIC: String = "CSWB"
 const CHUNK_MAGIC: String = "CSCH"
@@ -576,7 +577,22 @@ func package_ready(coord: Vector2i) -> bool:
 	if FileAccess.file_exists(chunk_package_path(coord)):
 		_packages_known[coord] = true
 		return true
+	if _RegionPack.enabled() and _RegionPack.has_chunk(regions_dir(), coord):
+		_packages_known[coord] = true
+		return true
 	return false
+
+
+func regions_dir() -> String:
+	return package_dir.path_join("regions")
+
+
+## Region-file prototype: raw v122 chunk bytes from the region file when
+## CRYSTALSTORM_BAKE_REGION=1, else empty (the loose .chk path is used).
+func _region_chunk_bytes(coord: Vector2i) -> PackedByteArray:
+	if package_dir.is_empty() or not _RegionPack.enabled():
+		return PackedByteArray()
+	return _RegionPack.read_chunk_bytes(regions_dir(), coord)
 
 
 func fill_status() -> Dictionary:
@@ -977,22 +993,6 @@ func start_background_fill(world, host) -> void:
 	)
 
 
-static func fill_mode_from_env() -> String:
-	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FILL_MODE").strip_edges().to_lower()
-	return "old" if raw == "old" else "budget"
-
-
-static func budget_workers_from_env() -> int:
-	var raw := OS.get_environment("CRYSTALSTORM_BAKE_WORKERS").strip_edges()
-	return clampi(int(raw), 1, 4) if raw.is_valid_int() else 1
-
-
-static func budget_frame_ms_from_env() -> float:
-	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FRAME_MS").strip_edges()
-	return float(raw) if raw.is_valid_float() else 16.7
-
-
-func _budget_player_chunk() -> Vector2i:
 static func stream_first_from_env() -> bool:
 	return OS.get_environment("CRYSTALSTORM_BAKE_STREAM_FIRST").strip_edges() != "0"
 
@@ -1072,6 +1072,22 @@ func _adaptive_observe(dt_ms: float, now_ms: int) -> void:
 	budget_workers_peak = maxi(budget_workers_peak, budget_workers)
 
 
+static func fill_mode_from_env() -> String:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FILL_MODE").strip_edges().to_lower()
+	return "old" if raw == "old" else "budget"
+
+
+static func budget_workers_from_env() -> int:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_WORKERS").strip_edges()
+	return clampi(int(raw), 1, 4) if raw.is_valid_int() else 1
+
+
+static func budget_frame_ms_from_env() -> float:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FRAME_MS").strip_edges()
+	return float(raw) if raw.is_valid_float() else 16.7
+
+
+func _budget_player_chunk() -> Vector2i:
 	var player = _fill_host.get("player") if _fill_host != null and "player" in _fill_host else null
 	if player == null or not player.has_method("get_voxel_position"):
 		return Vector2i((min_cx + max_cx) / 2, (min_cz + max_cz) / 2)
@@ -1132,6 +1148,9 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 	if pc != _budget_pchunk:
 		if _budget_pchunk.x != (1 << 30):
 			budget_skips_move += 1
+			_ad_last_move_ms = now_ms
+			if not adaptive:
+				_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 1000)
 		_budget_pchunk = pc
 		_budget_ring = 0
 		_budget_ring_list.clear()
@@ -1139,6 +1158,9 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 	if mesh_queue_depth > 0 or hold_fill:
 		_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 250)
 		budget_skips_load += 1
+	if adaptive and stream_busy > 0:
+		budget_skips_stream += 1
+		return 0
 	if now_ms < _budget_quiet_until_ms:
 		return 0
 	var cap := budget_workers if adaptive else budget_workers_from_env()
@@ -1148,9 +1170,6 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 		var c = _budget_next(deadline)
 		if c == null:
 			break
-			_ad_last_move_ms = now_ms
-			if not adaptive:
-				_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 1000)
 		var veg: Array = (_veg_by_chunk.get(c, []) as Array).duplicate(true)
 		_submit_pool_job(c, PRI_FILL, veg)
 		budget_submits += 1
@@ -1158,9 +1177,6 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 	return n
 
 
-	if adaptive and stream_busy > 0:
-		budget_skips_stream += 1
-		return 0
 func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 	var t_tick := Time.get_ticks_usec()
 	last_tick_ops = _collect_jobs()
@@ -1244,6 +1260,10 @@ func _tick_sync_fill_one() -> int:
 func ensure_package_for_stream(coord: Vector2i) -> bool:
 	if package_ready(coord):
 		return true
+	if stream_first_from_env():
+		# Stream-first: never block a streamed chunk on a bake. The procedural
+		# path generates it; the background fill writes the package later.
+		return false
 	if not coord_in_package(coord):
 		return false
 	if valid:
@@ -1260,10 +1280,6 @@ func ensure_package_for_stream(coord: Vector2i) -> bool:
 		return bool(one.get("ok", false))
 	if _job_inflight.has(coord):
 		var ok_wait: bool = _wait_job(coord)
-	if stream_first_from_env():
-		# Stream-first: never block a streamed chunk on a bake. The procedural
-		# path generates it; the background fill writes the package later.
-		return false
 		last_ondemand_us = Time.get_ticks_usec() - t0
 		return ok_wait
 	enqueue_package_job(coord, PRI_STREAM)
@@ -2547,14 +2563,15 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 	var SPP = load("res://systems/stream_phase_profiler.gd")
 	var spp_on: bool = SPP != null and SPP.is_enabled()
 	var t_leaf := Time.get_ticks_usec() if _res_measure else 0
-	if not FileAccess.file_exists(path):
+	var region_bytes: PackedByteArray = _region_chunk_bytes(coord)
+	if region_bytes.is_empty() and not FileAccess.file_exists(path):
 		last_error = "missing chunk package %s" % path
 		stats_missing_package_errors += 1
 		return {}
 	if _res_measure:
 		_res_add("file_exists", Time.get_ticks_usec() - t_leaf)
 		t_leaf = Time.get_ticks_usec()
-	var f := FileAccess.open(path, FileAccess.READ)
+	var f = _RegionPack.ChunkReader.new(region_bytes) if not region_bytes.is_empty() else FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		last_error = "open failed %s" % path
 		stats_missing_package_errors += 1
@@ -2564,7 +2581,7 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		t_leaf = Time.get_ticks_usec()
 	if spp_on:
 		SPP.record("decompression", 0, coord)
-	var magic := f.get_buffer(4).get_string_from_utf8()
+	var magic: String = f.get_buffer(4).get_string_from_utf8()
 	if magic != CHUNK_MAGIC:
 		last_error = "bad chunk magic %s" % path
 		f.close()
@@ -2605,7 +2622,7 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		t_leaf = Time.get_ticks_usec()
 	var file_read_us: int = Time.get_ticks_usec() - t0
 	var t_deser0 := Time.get_ticks_usec()
-	var plan_hdr := f.get_buffer(8)
+	var plan_hdr: PackedByteArray = f.get_buffer(8)
 	var plan = CompactPlan.decode(plan_hdr + f.get_buffer(plan_hdr.decode_u32(4)) if plan_hdr.size() == 8 else plan_hdr)
 	if typeof(plan) != TYPE_ARRAY:
 		last_error = "plan not array"
@@ -2667,16 +2684,17 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
 	var path := chunk_package_path(coord)
 	var t0 := Time.get_ticks_usec()
-	if not FileAccess.file_exists(path):
+	var region_bytes: PackedByteArray = _region_chunk_bytes(coord)
+	if region_bytes.is_empty() and not FileAccess.file_exists(path):
 		last_error = "missing chunk package %s" % path
 		stats_missing_package_errors += 1
 		return {}
-	var f := FileAccess.open(path, FileAccess.READ)
+	var f = _RegionPack.ChunkReader.new(region_bytes) if not region_bytes.is_empty() else FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		last_error = "open failed %s" % path
 		stats_missing_package_errors += 1
 		return {}
-	var magic := f.get_buffer(4).get_string_from_utf8()
+	var magic: String = f.get_buffer(4).get_string_from_utf8()
 	if magic != CHUNK_MAGIC:
 		last_error = "bad chunk magic %s" % path
 		f.close()
