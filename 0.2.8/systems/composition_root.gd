@@ -335,6 +335,8 @@ func boot_async() -> bool:
 		cm.end_start_region_boost()
 	if cm.has_method("is_start_region_ready") and not bool(cm.is_start_region_ready()):
 		var fst: Dictionary = cm.start_region_status() if cm.has_method("start_region_status") else {}
+		if cm.has_method("start_region_missing"):
+			print("STARTMISS %s" % str(cm.start_region_missing()))
 		return _fail("Start region timeout: %s (packages %d/%d, built %d/%d)" % [
 			stall_reason,
 			int(fst.get("packages", 0)), int(fst.get("needed", 0)),

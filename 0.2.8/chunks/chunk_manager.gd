@@ -2874,6 +2874,9 @@ func _drain_mesh_queue() -> void:
 			var item: Dictionary = _mesh_completion_queue.pop_front()
 			var item_coord: Vector2i = item.get("coord", Vector2i.ZERO)
 			var item_token: int = int(item.get("token", -1))
+			if item.get("data") == null or (item["data"] as ChunkData).position != item_coord:
+				pending.erase(item_coord)
+				continue
 			if _ChunkStreamingTelemetry.is_enabled() and item_token >= 0:
 				_ChunkStreamingTelemetry.transition(
 					item_coord,
@@ -2905,6 +2908,9 @@ func _drain_mesh_queue() -> void:
 			var item2: Dictionary = _mesh_completion_queue.pop_front()
 			var c2: Vector2i = item2.get("coord", Vector2i.ZERO)
 			var tok2: int = int(item2.get("token", -1))
+			if item2.get("data") == null or (item2["data"] as ChunkData).position != c2:
+				pending.erase(c2)
+				continue
 			if profiler and profiler.has_method("begin"):
 				profiler.begin("chunk_upload")
 			var up0 := Time.get_ticks_usec()
@@ -4194,6 +4200,19 @@ func start_region_status() -> Dictionary:
 		"resident": resident,
 		"ready": need_n > 0 and resident >= need_n and packages >= need_n,
 	}
+
+
+func start_region_missing() -> Array:
+	var out: Array = []
+	for c_v in start_stream_coords():
+		var c: Vector2i = c_v
+		if not chunks.has(c):
+			var inq := false
+			for it in _mesh_completion_queue:
+				if it is Dictionary and it.get("coord", null) == c:
+					inq = true
+			out.append({"c": c, "pending": pending.has(c), "task": _chunk_tasks.has(c), "tok": _chunk_gen_tokens.get(c, -1), "meshq": inq, "pend_val": str(pending.get(c, null))})
+	return out
 
 
 func is_start_region_ready() -> bool:
