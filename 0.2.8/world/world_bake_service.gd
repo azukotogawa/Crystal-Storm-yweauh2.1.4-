@@ -18,7 +18,8 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const BAKE_VERSION: int = 8
+const BAKE_VERSION: int = 116
+const CompactPlan = preload("res://world/compact_plan.gd")
 const MAGIC: String = "CSWB"
 const CHUNK_MAGIC: String = "CSCH"
 const INDEX_MAGIC: String = "CSWI"
@@ -2298,7 +2299,7 @@ func _write_chunk_package(
 		checksum = checksum ^ tv
 	f.store_32(plan.size())
 	checksum = checksum ^ plan.size()
-	f.store_var(plan, false)
+	f.store_buffer(CompactPlan.encode(plan))
 	f.store_32(vegetation.size())
 	checksum = checksum ^ vegetation.size()
 	f.store_var(vegetation, false)
@@ -2387,7 +2388,8 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		t_leaf = Time.get_ticks_usec()
 	var file_read_us: int = Time.get_ticks_usec() - t0
 	var t_deser0 := Time.get_ticks_usec()
-	var plan = f.get_var(false)
+	var plan_hdr := f.get_buffer(8)
+	var plan = CompactPlan.decode(plan_hdr + f.get_buffer(plan_hdr.decode_u32(4)) if plan_hdr.size() == 8 else plan_hdr)
 	if typeof(plan) != TYPE_ARRAY:
 		last_error = "plan not array"
 		f.close()
