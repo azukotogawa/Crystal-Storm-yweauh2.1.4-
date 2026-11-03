@@ -2876,6 +2876,7 @@ func _drain_mesh_queue() -> void:
 			var item_token: int = int(item.get("token", -1))
 			if item.get("data") == null or (item["data"] as ChunkData).position != item_coord:
 				pending.erase(item_coord)
+				call_deferred("request_chunk", item_coord, true)
 				continue
 			if _ChunkStreamingTelemetry.is_enabled() and item_token >= 0:
 				_ChunkStreamingTelemetry.transition(
@@ -2910,6 +2911,7 @@ func _drain_mesh_queue() -> void:
 			var tok2: int = int(item2.get("token", -1))
 			if item2.get("data") == null or (item2["data"] as ChunkData).position != c2:
 				pending.erase(c2)
+				call_deferred("request_chunk", c2, true)
 				continue
 			if profiler and profiler.has_method("begin"):
 				profiler.begin("chunk_upload")
