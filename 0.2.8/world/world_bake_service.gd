@@ -1151,6 +1151,8 @@ func _bootstrap_deferred_async(world, host, seed: int, want_full: bool) -> Dicti
 	var prime_coords: Array = startup_prime_coords(host)
 	var primed: Dictionary = await prime_region_async(prime_coords, world, host, yield_tree)
 	start_background_fill(world, host)
+	if not valid and not _packages_known.is_empty():
+		_activate_partial_plan_cache()
 	var mode := "partial"
 	if valid:
 		mode = "baked"
@@ -3201,3 +3203,20 @@ func write_version_mismatch_stub(seed: int, rad: int = -1) -> String:
 	f.store_32(0)
 	f.close()
 	return index_path
+
+func _activate_partial_plan_cache() -> void:
+	var mp_script = load("res://world/mesh_plan_cache.gd")
+	if mp_script == null:
+		return
+	var plans = mp_script.ensure_active()
+	plans.world_seed = world_seed
+	plans.min_cx = min_cx
+	plans.max_cx = max_cx
+	plans.min_cz = min_cz
+	plans.max_cz = max_cz
+	plans.full_world = full_world
+	plans.radius = radius
+	plans.valid = true
+	plans.streamed_from_bake = true
+	mp_script.set_active(plans)
+	print("[MeshPlanCache] mode=partial_streamed packages=%d" % _packages_known.size())
