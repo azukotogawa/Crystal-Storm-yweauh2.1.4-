@@ -2216,11 +2216,11 @@ func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int
 	var wx := data.position.x * ChunkData.SIZE + col_x
 	var wz := data.position.y * ChunkData.SIZE + col_z
 	var n: float = float(TerrainLook.STEPS_PER_BLOCK)
-	var px := float(wx) + (float(mx) + 0.5) / n
-	var pz := float(wz) + (float(mz) + 0.5) / n
+	var px := float(wx) + (float(TerrainLook.wave_rep_micro(mx)) + 0.5) / n
+	var pz := float(wz) + (float(TerrainLook.wave_rep_micro(mz)) + 0.5) / n
 	var off := 0
 	if TerrainLook.column_waves(_tile_type_at(data, col_x, col_z)):
-		off = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(wx, wz, mx, mz, base)
+		off = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(wx, wz, TerrainLook.wave_rep_micro(mx), TerrainLook.wave_rep_micro(mz), base)
 	return base + layer + float(off) * (layer / n)
 
 
@@ -2270,10 +2270,10 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 						bases[idx] = 0
 					else:
 						open[idx] = 1
-						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(mx) + 0.5) / float(n)
-						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(mz) + 0.5) / float(n)
+						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(TerrainLook.wave_rep_micro(mx)) + 0.5) / float(n)
+						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(TerrainLook.wave_rep_micro(mz)) + 0.5) / float(n)
 						if TerrainLook.column_waves(vox):
-							steps[idx] = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(plane_wx, plane_wz, mx, mz, sy)
+							steps[idx] = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(plane_wx, plane_wz, TerrainLook.wave_rep_micro(mx), TerrainLook.wave_rep_micro(mz), sy)
 						else:
 							steps[idx] = 0
 						bases[idx] = base_key

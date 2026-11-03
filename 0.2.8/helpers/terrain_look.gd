@@ -3,6 +3,7 @@ extends RefCounted
 
 const SURFACE_WAVE_AMPLITUDE_STEPS := 2
 const STEPS_PER_BLOCK := 8
+const WAVE_CELL_STEPS := 4
 const _WAVE_SCALE := 0.85
 const _WARP_CELL := 23.0
 const _WARP_AMOUNT := 7.0
@@ -94,3 +95,13 @@ static func _hash_unit(ix: int, iz: int) -> float:
 	n = n ^ (n >> 13)
 	n = (n * 1274126177) & 2147483647
 	return float(n) / 2147483647.0
+
+
+static func wave_rep_micro(m: int) -> int:
+	var g: int = clampi(WAVE_CELL_STEPS, 1, STEPS_PER_BLOCK)
+	if g == 1:
+		return m
+	var b: int = (m / g) * g
+	if b < STEPS_PER_BLOCK / 2:
+		return b + g / 2 - 1
+	return b + g / 2
