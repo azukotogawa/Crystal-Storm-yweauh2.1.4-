@@ -10,10 +10,12 @@ using namespace godot;
 void CsNativeMesher::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("waved_tops", "x0", "z0", "cw", "ch", "n", "layer", "tiles", "atlas", "base_keys", "col_steps", "reps", "faces"),
 			&CsNativeMesher::waved_tops);
+	ClassDB::bind_method(D_METHOD("surface_arrays", "quads", "atlas", "grid", "chunk_ox", "chunk_oz", "voxel_s", "layer", "ao_on", "curve_strips"),
+			&CsNativeMesher::surface_arrays);
 	ClassDB::bind_method(D_METHOD("version"), &CsNativeMesher::version);
 }
 
-int64_t CsNativeMesher::version() const { return 1; }
+int64_t CsNativeMesher::version() const { return 2; }
 
 // Mirrors chunk_manager.gd _emit_waved_tops (greedy merge part) and
 // _emit_wave_risers/_append_wave_riser. Inputs per column (index lz*cw+lx):

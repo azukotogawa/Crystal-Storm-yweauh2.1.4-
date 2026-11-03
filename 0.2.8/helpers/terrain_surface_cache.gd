@@ -48,6 +48,12 @@ static func pack_from_terrain_buffer(buffer: PackedFloat32Array, terrain_count: 
 
 
 static func build_from_quads(data: ChunkData, terrain_quads: Array) -> Dictionary:
+	var nb := _ChunkSurfaceMeshBuilder.build_surface_arrays_native(data, terrain_quads)
+	if not nb.is_empty():
+		var cache := _cache_from_built(nb, [])
+		cache["terrain_count"] = terrain_quads.size()
+		cache["face_keys"] = nb["face_keys"]
+		return cache
 	var built := _ChunkSurfaceMeshBuilder.build_surface_arrays_from_terrain_quads(data, terrain_quads)
 	return _cache_from_built(built, terrain_quads)
 

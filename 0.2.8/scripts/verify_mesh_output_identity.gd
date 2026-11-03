@@ -13,6 +13,13 @@ const _WorldBakeService = preload("res://world/world_bake_service.gd")
 const SEEDS := [77123, 4242, 9001]
 const ROWS := [0, 7, -11]
 const PER_ROW := 12
+## Cliff-heavy chunks found by scripts/scan_cliffs.gd (most side faces / largest drops).
+## Printed as GC lines; baseline in scripts/reference/mesh_hashes_cliffs_20261103.txt.
+const CLIFFS := {
+	77123: [Vector2i(16, 0), Vector2i(48, 40), Vector2i(48, 0), Vector2i(-56, 24), Vector2i(16, 56)],
+	4242: [Vector2i(48, -32), Vector2i(24, -40), Vector2i(-8, 32), Vector2i(48, 24)],
+	9001: [Vector2i(24, -24), Vector2i(40, 56)],
+}
 
 func _init() -> void:
 	call_deferred("_run")
@@ -41,9 +48,15 @@ func _run() -> void:
 		await process_frame
 		if seed == SEEDS[0]:
 			print("GH native_mesher=%s" % str(mgr.native_mesher_active() if mgr.has_method("native_mesher_active") else false))
+		var coords: Array = []
 		for row in ROWS:
 			for i in PER_ROW:
-				var c := Vector2i(i * 3 - 18, row * 2)
+				coords.append([Vector2i(i * 3 - 18, row * 2), "GH"])
+		for cc in CLIFFS.get(seed, []):
+			coords.append([cc, "GC"])
+		for item in coords:
+			if true:
+				var c: Vector2i = item[0]
 				var data = _ChunkData.new(c, world)
 				data.capture_worker_snapshot()
 				var ta := Time.get_ticks_usec()
@@ -75,10 +88,11 @@ func _run() -> void:
 					if fc >= 3 and fc <= 6 and float(q.get("dim_y", 0.0)) > 1.5:
 						nc += 1
 				feat.ramp += nr; feat.water += nw; feat.riser += nri; feat.cliff += nc
-				print("GH seed=%d c=%d,%d src=%s n=%d ramp=%d water=%d riser=%d cliff=%d %s" % [seed, c.x, c.y, str(job.get("mesh_source", "")), quads.size(), nr, nw, nri, nc, " ".join(parts)])
+				print("%s seed=%d c=%d,%d src=%s n=%d ramp=%d water=%d riser=%d cliff=%d %s" % [item[1], seed, c.x, c.y, str(job.get("mesh_source", "")), quads.size(), nr, nw, nri, nc, " ".join(parts)])
 				total += 1
 		mgr.queue_free()
 		await process_frame
 	print("GH summary chunks=%d seeds=%d ramp=%d water=%d riser=%d cliff=%d avg_worker_ms=%.1f" % [total, SEEDS.size(), feat.ramp, feat.water, feat.riser, feat.cliff, t_all / 1000.0 / maxi(total, 1)])
+	print("GH native_surface calls_fallbacks=%s" % str(ChunkSurfaceMeshBuilder.native_surface_stats()))
 	print("GH DONE")
 	quit(0)

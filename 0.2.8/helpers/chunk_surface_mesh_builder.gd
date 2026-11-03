@@ -18,6 +18,139 @@ const WAVE_LOD_R := 2
 static var wave_lod_on := false
 static var wave_lod_center := Vector2i.ZERO
 
+# Native surface writer (CsNativeMesher.surface_arrays). CS_NATIVE_MESH=0 or
+# CS_NATIVE_SURFACE=0 keeps the GDScript writer. The native object holds no state.
+static var _native_surface: RefCounted = _make_native_surface()
+static var _native_surface_mutex := Mutex.new()
+static var _native_surface_calls := 0
+static var _native_surface_fallbacks := 0
+
+
+static func _make_native_surface() -> RefCounted:
+	if OS.get_environment("CS_NATIVE_MESH") == "0" or OS.get_environment("CS_NATIVE_SURFACE") == "0":
+		return null
+	if not ClassDB.class_exists(&"CsNativeMesher"):
+		return null
+	var m: RefCounted = ClassDB.instantiate(&"CsNativeMesher")
+	if m == null or not m.has_method("surface_arrays"):
+		return null
+	return m
+
+
+static func native_surface_stats() -> Vector2i:
+	_native_surface_mutex.lock()
+	var s := Vector2i(_native_surface_calls, _native_surface_fallbacks)
+	_native_surface_mutex.unlock()
+	return s
+
+
+## Same output as build_surface_arrays_from_terrain_quads plus "face_keys", or {}
+## when the native writer is off or a ramp slot count differs (caller falls back).
+static func build_surface_arrays_native(data: ChunkData, terrain_quads: Array) -> Dictionary:
+	var nm: RefCounted = _native_surface
+	if nm == null or data == null or terrain_quads.is_empty():
+		return {}
+	var n := terrain_quads.size()
+	var atlas_in := PackedInt32Array()
+	atlas_in.resize(n * 2)
+	for i in n:
+		var q: Dictionary = terrain_quads[i]
+		var fc := int(q.get("face_code", -1))
+		if not (fc < FACE_RAMP or fc == FACE_RAMP or fc == FACE_RAMP_CORNER):
+			continue
+		var a: Vector2i = _quad_atlas(data, int(q.get("type", _VoxelTypes.AIR)), FACE_TOP if q.has("wave_riser") else fc, float(q["x"]), float(q["z"]))
+		atlas_in[i * 2] = a.x
+		atlas_in[i * 2 + 1] = a.y
+	var ao_on: bool = _TerrainAO.bake_enabled
+	var grid := PackedFloat64Array()
+	grid.resize(400)
+	if ao_on:
+		for gx in 20:
+			for gz in 20:
+				grid[gx * 20 + gz] = _TerrainAO.sample_surface(data, gx - 2, gz - 2)
+	var ws = _WorldSettings.get_active()
+	var voxel_s: float = ws.voxel_scale
+	var chunk_ox: float = ws.column_to_world(float(data.position.x * ChunkData.SIZE))
+	var chunk_oz: float = ws.column_to_world(float(data.position.y * ChunkData.SIZE))
+	var r: Dictionary = nm.surface_arrays(terrain_quads, atlas_in, grid, chunk_ox, chunk_oz, voxel_s, _TerrainAO._layer(), ao_on, TerrainRamps.CURVE_STRIPS)
+	if r.has("error"):
+		_note_native_surface(false)
+		return {}
+	var vertices: PackedVector3Array = r["vertices"]
+	var normals: PackedVector3Array = r["normals"]
+	var uvs: PackedVector2Array = r["uvs"]
+	var colors: PackedColorArray = r["colors"]
+	var indices: PackedInt32Array = r["indices"]
+	var ramp_q: PackedInt32Array = r["ramp_q"]
+	var ramp_vi: PackedInt32Array = r["ramp_vi"]
+	var ramp_ii: PackedInt32Array = r["ramp_ii"]
+	for k in ramp_q.size():
+		var qi: int = ramp_q[k]
+		var q: Dictionary = terrain_quads[qi]
+		var vi: int = ramp_vi[k]
+		var ii: int = ramp_ii[k]
+		var face_code := int(q.get("face_code", -1))
+		var dim_x: float = float(q.get("dim_x", 1.0))
+		var dim_y: float = float(q.get("dim_y", 1.0))
+		var dim_z: float = float(q.get("dim_z", 1.0))
+		var surface_y: float = float(q["y"])
+		var ox: float = chunk_ox + ws.column_to_world(float(q["x"]))
+		var oz: float = chunk_oz + ws.column_to_world(float(q["z"]))
+		var sx: float = dim_x * voxel_s
+		var sy: float = dim_y * voxel_s
+		var sz: float = dim_z * voxel_s
+		var atlas := Vector2i(atlas_in[qi * 2], atlas_in[qi * 2 + 1])
+		var shade: float = _face_shade(face_code) * float(q.get("wave_shade", 1.0))
+		if face_code == FACE_RAMP:
+			var dir := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
+			var strips_written := _write_cardinal_ramp(
+				vertices, normals, uvs, colors, indices,
+				vi, ii, ox, oz, sx, sy, sz, surface_y, dir, atlas, shade
+			)
+			vi += strips_written * 4
+			ii += strips_written * 6
+			_write_cardinal_floor(
+				vertices, normals, uvs, colors, indices,
+				vi, ii, ox, oz, sx, sz, surface_y, atlas, shade
+			)
+			vi += 4
+			ii += 6
+			var wrote := _write_cardinal_flanks(
+				vertices, normals, uvs, colors, indices,
+				vi, ii, ox, oz, sx, sy, sz, surface_y, dir, atlas, shade,
+				int(q.get("flank_a", 0)) != 0, int(q.get("flank_b", 0)) != 0
+			)
+			var flank_n := int(q.get("flank_a", 0)) + int(q.get("flank_b", 0))
+			if strips_written != TerrainRamps.CURVE_STRIPS or wrote != flank_n * TerrainRamps.CURVE_STRIPS:
+				_note_native_surface(false)
+				return {}
+		else:
+			var dir_a := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
+			var dir_b := Vector2i(int(q.get("ramp_dir2_x", 0)), int(q.get("ramp_dir2_z", 1)))
+			_write_corner_ramp(
+				vertices, normals, uvs, colors, indices,
+				vi, ii, ox, oz, sx, sy, sz, surface_y, dir_a, dir_b, atlas, shade
+			)
+	_note_native_surface(true)
+	return {
+		"vertices": vertices,
+		"normals": normals,
+		"uvs": uvs,
+		"colors": colors,
+		"indices": indices,
+		"triangle_count": int(r["triangle_count"]),
+		"face_keys": r["face_keys"],
+	}
+
+
+static func _note_native_surface(ok: bool) -> void:
+	_native_surface_mutex.lock()
+	if ok:
+		_native_surface_calls += 1
+	else:
+		_native_surface_fallbacks += 1
+	_native_surface_mutex.unlock()
+
 
 static func attach_surface_only_payload(data: ChunkData, terrain_quads: Array, payload: Dictionary) -> void:
 	var built := build_surface_arrays_from_terrain_quads(data, terrain_quads)

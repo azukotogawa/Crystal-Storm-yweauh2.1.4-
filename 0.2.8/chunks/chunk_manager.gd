@@ -2265,6 +2265,17 @@ func native_mesher_active() -> bool:
 	return _native_mesher != null
 
 
+var _native_calls_mutex := Mutex.new()
+var _native_calls := 0
+
+
+func native_mesher_calls() -> int:
+	_native_calls_mutex.lock()
+	var c := _native_calls
+	_native_calls_mutex.unlock()
+	return c
+
+
 func _emit_waved_tops_native(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: int, z1: int) -> void:
 	var n: int = TerrainLook.STEPS_PER_BLOCK
 	var cw := x1 - x0
@@ -2314,6 +2325,9 @@ func _emit_waved_tops_native(data: ChunkData, out_quads: Array, x0: int, z0: int
 					var pz := float(plane_wz) + (float(rz) + 0.5) / float(n)
 					col_steps[ti * nn + rz * n + rx] = TerrainLook.offset_steps(px, pz) \
 							+ data.rim_plane_steps(plane_wx, plane_wz, rx, rz, sy)
+	_native_calls_mutex.lock()
+	_native_calls += 1
+	_native_calls_mutex.unlock()
 	out_quads.append_array(_native_mesher.waved_tops(
 		x0, z0, cw, ch, n, _WorldSettings.get_active().layer_height(),
 		tiles, atlas, base_keys, col_steps, reps,

@@ -57,6 +57,7 @@ func _run() -> void:
 			sc += r[0]; sm += r[1]; sb += r[2]; st += r[3]
 		var n := float(cs.size())
 		P("W=%d chunks=%d per_chunk_ms column=%.1f mesh=%.1f buffer=%.1f total=%.1f | wall_ms=%.0f throughput_ms_per_chunk=%.1f speedup_vs_serial_sum=%.2f" % [w, cs.size(), sc / n / 1000.0, sm / n / 1000.0, sb / n / 1000.0, st / n / 1000.0, wall / 1000.0, wall / 1000.0 / n, st / float(maxi(wall, 1))])
+	P("NATIVE_MESHER class_exists=%s active=%s calls=%d surface=%s env=%s" % [ClassDB.class_exists(&"CsNativeMesher"), mgr.native_mesher_active(), mgr.native_mesher_calls(), ChunkSurfaceMeshBuilder.native_surface_stats(), OS.get_environment("CS_NATIVE_MESH")])
 	P("DONE")
 	get_tree().quit(0)
 
