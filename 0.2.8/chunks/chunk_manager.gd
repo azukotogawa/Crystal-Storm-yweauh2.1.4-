@@ -2162,19 +2162,32 @@ func _emit_side_strips(
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var n: int = TerrainLook.STEPS_PER_BLOCK
 	var along_x := nz != z
+	# _column_micro_top depends on m only via wave_rep_micro(m): memo per rep.
+	var memo_rep := PackedInt32Array()
+	var memo_hi := PackedFloat64Array()
+	var memo_lo := PackedFloat64Array()
 	for m in n:
 		var y_hi: float
 		var y_lo: float
-		if along_x:
-			var mz_hi := (n - 1) if nz > z else 0
-			var mz_lo := 0 if nz > z else (n - 1)
-			y_hi = _column_micro_top(data, x, z, m, mz_hi)
-			y_lo = _column_micro_top(data, nx, nz, m, mz_lo)
+		var rep := TerrainLook.wave_rep_micro(m)
+		var hit := memo_rep.find(rep)
+		if hit >= 0:
+			y_hi = memo_hi[hit]
+			y_lo = memo_lo[hit]
 		else:
-			var mx_hi := (n - 1) if nx > x else 0
-			var mx_lo := 0 if nx > x else (n - 1)
-			y_hi = _column_micro_top(data, x, z, mx_hi, m)
-			y_lo = _column_micro_top(data, nx, nz, mx_lo, m)
+			if along_x:
+				var mz_hi := (n - 1) if nz > z else 0
+				var mz_lo := 0 if nz > z else (n - 1)
+				y_hi = _column_micro_top(data, x, z, m, mz_hi)
+				y_lo = _column_micro_top(data, nx, nz, m, mz_lo)
+			else:
+				var mx_hi := (n - 1) if nx > x else 0
+				var mx_lo := 0 if nx > x else (n - 1)
+				y_hi = _column_micro_top(data, x, z, mx_hi, m)
+				y_lo = _column_micro_top(data, nx, nz, mx_lo, m)
+			memo_rep.append(rep)
+			memo_hi.append(y_hi)
+			memo_lo.append(y_lo)
 		if y_hi - y_lo <= 0.02:
 			continue
 		var qx := float(x)
@@ -2255,6 +2268,16 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 	tiles.resize(cw * ch)
 	var atlas: Array = []
 	atlas.resize(cw * ch)
+	# Per-column memo: wave_rep_micro() collapses the n micro indices to a few
+	# representative positions, so offset/rim steps only vary by rep pair.
+	var reps := PackedInt32Array()
+	reps.resize(n)
+	for m in n:
+		reps[m] = TerrainLook.wave_rep_micro(m)
+	var memo := PackedInt32Array()
+	memo.resize(n * n)
+	var memo_set := PackedByteArray()
+	memo_set.resize(n * n)
 	for lz in ch:
 		for lx in cw:
 			var col_x := x0 + lx
@@ -2272,19 +2295,29 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 			var base_key := int(round(sy * 1000.0))
 			var plane_wx := data.position.x * ChunkData.SIZE + col_x
 			var plane_wz := data.position.y * ChunkData.SIZE + col_z
+			var col_open := int(tiles[ti]) >= 0
+			var col_waves := col_open and TerrainLook.column_waves(vox)
+			if col_waves:
+				memo_set.fill(0)
 			for mz in n:
 				for mx in n:
 					var idx := (lz * n + mz) * w + (lx * n + mx)
-					if int(tiles[ti]) < 0:
+					if not col_open:
 						open[idx] = 0
 						steps[idx] = 0
 						bases[idx] = 0
 					else:
 						open[idx] = 1
-						var px := float(data.position.x * ChunkData.SIZE + col_x) + (float(TerrainLook.wave_rep_micro(mx)) + 0.5) / float(n)
-						var pz := float(data.position.y * ChunkData.SIZE + col_z) + (float(TerrainLook.wave_rep_micro(mz)) + 0.5) / float(n)
-						if TerrainLook.column_waves(vox):
-							steps[idx] = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(plane_wx, plane_wz, TerrainLook.wave_rep_micro(mx), TerrainLook.wave_rep_micro(mz), sy)
+						if col_waves:
+							var rx: int = reps[mx]
+							var rz: int = reps[mz]
+							var mk := rz * n + rx
+							if memo_set[mk] == 0:
+								var px := float(plane_wx) + (float(rx) + 0.5) / float(n)
+								var pz := float(plane_wz) + (float(rz) + 0.5) / float(n)
+								memo[mk] = TerrainLook.offset_steps(px, pz) + data.rim_plane_steps(plane_wx, plane_wz, rx, rz, sy)
+								memo_set[mk] = 1
+							steps[idx] = memo[mk]
 						else:
 							steps[idx] = 0
 						bases[idx] = base_key
