@@ -2329,6 +2329,9 @@ func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: i
 				"type": want_tile,
 				"face_code": FACE_TOP,
 			}
+			if want_step != 0:
+				top_quad["wave_step"] = int(want_step)
+				top_quad["wave_base"] = float(want_base) / 1000.0
 			out_quads.append(top_quad)
 	_emit_wave_risers(out_quads, x0, z0, w, h, n, cw, open, steps, bases, tiles)
 
@@ -2937,6 +2940,8 @@ func update_stream(cx: int, cz: int) -> void:
 		return
 	var player_chunk := Vector2i(cx, cz)
 	_update_player_velocity_hint(player_chunk)
+	_wave_lod_recheck(player_chunk)
+	_update_near_props(player_chunk)
 	var camera_hint := _camera_forward_chunk_hint()
 	var needed := {}
 	var queued_count := 0
@@ -4238,3 +4243,31 @@ func end_start_region_boost() -> void:
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake != null and "hold_fill" in bake:
 		bake.hold_fill = false
+
+
+const _NearProps = preload("res://world/near_props.gd")
+var _near_props: Node3D = null
+
+
+func _wave_lod_recheck(c: Vector2i) -> void:
+	var old: Vector2i = ChunkSurfaceMeshBuilder.wave_lod_center
+	var had: bool = ChunkSurfaceMeshBuilder.wave_lod_on
+	ChunkSurfaceMeshBuilder.wave_lod_center = c
+	ChunkSurfaceMeshBuilder.wave_lod_on = true
+	if not had or old == c:
+		return
+	var r: int = ChunkSurfaceMeshBuilder.WAVE_LOD_R
+	for key: Vector2i in chunks.keys():
+		var was_near: bool = maxi(absi(key.x - old.x), absi(key.y - old.y)) <= r
+		var now_near: bool = maxi(absi(key.x - c.x), absi(key.y - c.y)) <= r
+		if was_near != now_near:
+			rebuild_chunk(key)
+
+
+func _update_near_props(c: Vector2i) -> void:
+	if _near_props == null:
+		_near_props = _NearProps.new()
+		_near_props.manager = self
+		add_child(_near_props)
+		chunk_unloaded.connect(_near_props.drop_chunk)
+	_near_props.set_center(c)

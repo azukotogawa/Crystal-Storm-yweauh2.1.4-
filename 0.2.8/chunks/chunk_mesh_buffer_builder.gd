@@ -22,6 +22,7 @@ static func build_mesh_payload(
 	_keep_quads: Array = [],
 	_patch_quads: Array = []
 ) -> Dictionary:
+	quads = ChunkSurfaceMeshBuilder.wave_far_quads(data, quads)
 	var terrain_quads: Array = []
 	var ramp_quads: Array = []
 	var corner_quads: Array = []

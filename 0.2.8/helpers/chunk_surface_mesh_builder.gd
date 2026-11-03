@@ -14,6 +14,9 @@ const FACE_POS_Z := 6
 const FACE_RAMP := 7
 const FACE_RAMP_CORNER := 8
 const FACE_RAMP_SIDE := 9
+const WAVE_LOD_R := 2
+static var wave_lod_on := false
+static var wave_lod_center := Vector2i.ZERO
 
 
 static func attach_surface_only_payload(data: ChunkData, terrain_quads: Array, payload: Dictionary) -> void:
@@ -112,7 +115,7 @@ static func build_fused_terrain_buffers(
 		var face_code := int(q.get("face_code", 0))
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
 		var atlas: Vector2i = _quad_atlas(data, tile_type, FACE_TOP if q.has("wave_riser") else face_code, float(q["x"]), float(q["z"]))
-		var shade: float = _face_shade(face_code)
+		var shade: float = _face_shade(face_code) * float(q.get("wave_shade", 1.0))
 		var uv_w: float = float(q.get("uv_w", dim_x))
 		var uv_h: float = float(q.get("uv_h", dim_z))
 		if include_terrain_buffer:
@@ -282,7 +285,7 @@ static func build_surface_arrays_from_terrain_quads(data: ChunkData, terrain_qua
 		var sz: float = dim_z * voxel_s
 		var tile_type: int = int(q.get("type", _VoxelTypes.AIR))
 		var atlas: Vector2i = _quad_atlas(data, tile_type, FACE_TOP if q.has("wave_riser") else face_code, float(q["x"]), float(q["z"]))
-		var shade: float = _face_shade(face_code)
+		var shade: float = _face_shade(face_code) * float(q.get("wave_shade", 1.0))
 		if face_code == FACE_RAMP:
 			var dir := Vector2i(int(q.get("ramp_dir_x", 1)), int(q.get("ramp_dir_z", 0)))
 			var strips_written := _write_cardinal_ramp(
@@ -908,3 +911,22 @@ static func _face_shade(face_code: int) -> float:
 	if face_code > 0 and face_code < 7:
 		return 0.68
 	return 0.96
+
+static func wave_far_quads(data: ChunkData, quads: Array) -> Array:
+	if not wave_lod_on or data == null:
+		return quads
+	if maxi(absi(data.position.x - wave_lod_center.x), absi(data.position.y - wave_lod_center.y)) <= WAVE_LOD_R:
+		return quads
+	var out: Array = []
+	for q_variant in quads:
+		var q: Dictionary = q_variant
+		if q.has("wave_riser"):
+			continue
+		if q.has("wave_step"):
+			var f: Dictionary = q.duplicate()
+			f["y"] = float(q["wave_base"])
+			f["wave_shade"] = clampf(1.0 + 0.05 * float(int(q["wave_step"])), 0.85, 1.12)
+			out.append(f)
+			continue
+		out.append(q)
+	return out

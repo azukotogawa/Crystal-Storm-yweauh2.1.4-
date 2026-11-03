@@ -1,7 +1,7 @@
 class_name MeshPlanCache
 extends RefCounted
 
-const PLAN_VERSION: int = 119
+const PLAN_VERSION: int = 123
 const MAGIC: String = "CSMP"
 const CELLS: int = 16
 const FLAG_FULL_WORLD: int = 1
