@@ -4,7 +4,7 @@ const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainLook = preload("res://helpers/terrain_look.gd")
 const RADIUS := 1
-const MAX_CUBES_PER_CHUNK := 320
+const MAX_CUBES_PER_CHUNK := 480
 const PROP_CHANCE := 18
 const GRASS_D := Color(0.30, 0.50, 0.24)
 const GRASS_L := Color(0.40, 0.58, 0.28)
@@ -29,6 +29,7 @@ func _ready() -> void:
 	_mesh.size = Vector3(vs, vs, vs)
 	_mat = StandardMaterial3D.new()
 	_mat.vertex_color_use_as_albedo = true
+	_mat.vertex_color_is_srgb = true
 	_mat.roughness = 1.0
 	_mesh.material = _mat
 
@@ -105,28 +106,33 @@ func _build(data: ChunkData) -> Node3D:
 				continue
 			var mx: int = 1 + (h >> 8) % (n - 2)
 			var mz: int = 1 + (h >> 12) % (n - 2)
-			var px: float = float(wx) + (float(_TerrainLook.wave_rep_micro(mx)) + 0.5) / float(n)
-			var pz: float = float(wz) + (float(_TerrainLook.wave_rep_micro(mz)) + 0.5) / float(n)
-			var y: float = data.get_surface_y(lx, lz) + float(_TerrainLook.offset_steps(px, pz)) * vs
+			var y: float = manager._column_micro_top(data, lx, lz, mx, mz)
+			if y < -9000.0:
+				continue
 			var o := Vector3(float(wx) * bs + (float(mx) + 0.5) * vs, y + vs * 0.5, float(wz) * bs + (float(mz) + 0.5) * vs)
 			var kind: int = (h >> 16) % 10
 			if kind < 6:
 				var c1: Color = GRASS_L if (h >> 20) & 1 == 0 else GRASS_Y
-				_add(xf, cols, o, c1)
+				for d in [Vector3(0, 0, 0), Vector3(vs, 0, 0), Vector3(0, 0, vs), Vector3(vs, 0, vs)]:
+					_add(xf, cols, o + d, GRASS_D)
 				_add(xf, cols, o + Vector3(0, vs, 0), c1)
-				_add(xf, cols, o + Vector3(vs, 0, 0), GRASS_D)
+				_add(xf, cols, o + Vector3(vs, vs, vs), c1)
+				_add(xf, cols, o + Vector3(0, vs * 2.0, 0), c1)
 				if (h >> 21) & 1 == 1:
-					_add(xf, cols, o + Vector3(-vs, 0, vs), GRASS_D)
-					_add(xf, cols, o + Vector3(-vs, vs, vs), c1)
+					_add(xf, cols, o + Vector3(vs, vs * 2.0, vs), GRASS_Y)
 			elif kind < 8:
 				_add(xf, cols, o, STONE)
+				_add(xf, cols, o + Vector3(vs, 0, 0), STONE_L)
 				if (h >> 20) & 1 == 1:
-					_add(xf, cols, o + Vector3(vs, 0, 0), STONE_L)
+					_add(xf, cols, o + Vector3(0, 0, vs), STONE)
+					_add(xf, cols, o + Vector3(0, vs, 0), STONE_L)
 			else:
 				var pc: Color = PETALS[(h >> 20) % PETALS.size()]
 				_add(xf, cols, o, GRASS_D)
 				_add(xf, cols, o + Vector3(0, vs, 0), GRASS_D)
-				_add(xf, cols, o + Vector3(0, vs * 2.0, 0), pc)
+				var top := o + Vector3(0, vs * 2.0, 0)
+				for d in [Vector3(0, 0, 0), Vector3(vs, 0, 0), Vector3(-vs, 0, 0), Vector3(0, 0, vs), Vector3(0, 0, -vs)]:
+					_add(xf, cols, top + d, pc)
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
