@@ -2248,7 +2248,81 @@ func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int
 	return base + layer + float(off) * (layer / n)
 
 
+# Optional native mesher (GDExtension CsNativeMesher, see native/). Absent DLL or
+# CS_NATIVE_MESH=0 keeps the GDScript mesher. The object holds no state.
+var _native_mesher: RefCounted = _make_native_mesher()
+
+
+static func _make_native_mesher() -> RefCounted:
+	if OS.get_environment("CS_NATIVE_MESH") == "0":
+		return null
+	if not ClassDB.class_exists(&"CsNativeMesher"):
+		return null
+	return ClassDB.instantiate(&"CsNativeMesher") as RefCounted
+
+
+func native_mesher_active() -> bool:
+	return _native_mesher != null
+
+
+func _emit_waved_tops_native(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: int, z1: int) -> void:
+	var n: int = TerrainLook.STEPS_PER_BLOCK
+	var cw := x1 - x0
+	var ch := z1 - z0
+	if cw <= 0 or ch <= 0 or n <= 0:
+		return
+	var nn := n * n
+	var height_bound := float(_WorldSettings.get_active().chunk_height_bound())
+	var tiles := PackedInt32Array()
+	var atlas := PackedInt32Array()
+	var base_keys := PackedInt32Array()
+	var col_steps := PackedInt32Array()
+	tiles.resize(cw * ch)
+	atlas.resize(cw * ch * 2)
+	base_keys.resize(cw * ch)
+	col_steps.resize(cw * ch * nn)
+	var reps := PackedInt32Array()
+	reps.resize(n)
+	var ureps := PackedInt32Array()
+	for m in n:
+		reps[m] = TerrainLook.wave_rep_micro(m)
+		if ureps.find(reps[m]) < 0:
+			ureps.append(reps[m])
+	for lz in ch:
+		for lx in cw:
+			var col_x := x0 + lx
+			var col_z := z0 + lz
+			var ti := lz * cw + lx
+			var usable := not _skips_greedy_surface_cell(data, col_x, col_z)
+			var sy := _surface_y_at(data, col_x, col_z) if usable else 0.0
+			var vox := _tile_type_at(data, col_x, col_z) if usable else VoxelTypes.AIR
+			if (not usable) or sy >= height_bound or vox == VoxelTypes.AIR:
+				tiles[ti] = -1
+				continue
+			tiles[ti] = vox
+			var at: Vector2i = _column_face_atlas(data, col_x, col_z, vox, FACE_TOP)
+			atlas[ti * 2] = at.x
+			atlas[ti * 2 + 1] = at.y
+			base_keys[ti] = int(round(sy * 1000.0))
+			if not TerrainLook.column_waves(vox):
+				continue
+			var plane_wx := data.position.x * ChunkData.SIZE + col_x
+			var plane_wz := data.position.y * ChunkData.SIZE + col_z
+			for rz in ureps:
+				for rx in ureps:
+					var px := float(plane_wx) + (float(rx) + 0.5) / float(n)
+					var pz := float(plane_wz) + (float(rz) + 0.5) / float(n)
+					col_steps[ti * nn + rz * n + rx] = TerrainLook.offset_steps(px, pz) \
+							+ data.rim_plane_steps(plane_wx, plane_wz, rx, rz, sy)
+	out_quads.append_array(_native_mesher.waved_tops(
+		x0, z0, cw, ch, n, _WorldSettings.get_active().layer_height(),
+		tiles, atlas, base_keys, col_steps, reps,
+		PackedInt32Array([FACE_TOP, FACE_NEG_X, FACE_POS_X, FACE_NEG_Z, FACE_POS_Z])))
+
 func _emit_waved_tops(data: ChunkData, out_quads: Array, x0: int, z0: int, x1: int, z1: int) -> void:
+	if _native_mesher != null:
+		_emit_waved_tops_native(data, out_quads, x0, z0, x1, z1)
+		return
 	var n: int = TerrainLook.STEPS_PER_BLOCK
 	var cw := x1 - x0
 	var ch := z1 - z0

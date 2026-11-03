@@ -39,6 +39,8 @@ func _run() -> void:
 		if "world" in mgr:
 			mgr.world = world
 		await process_frame
+		if seed == SEEDS[0]:
+			print("GH native_mesher=%s" % str(mgr.native_mesher_active() if mgr.has_method("native_mesher_active") else false))
 		for row in ROWS:
 			for i in PER_ROW:
 				var c := Vector2i(i * 3 - 18, row * 2)

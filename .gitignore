@@ -11,3 +11,6 @@ __pycache__/
 accept_shots/
 .claude/settings.local.json
 conversation with supergrok
+
+# native mesher build output (see native/build.ps1)
+0.2.8/native/
