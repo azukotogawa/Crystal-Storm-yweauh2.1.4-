@@ -165,6 +165,8 @@ func _tick_deferred_bake_fill() -> void:
 			profiler.end("world_bake_fill")
 		return
 	var meshq: int = _mesh_completion_queue.size()
+	if "stream_busy" in bake:
+		bake.stream_busy = _chunk_tasks.size()
 	if meshq > 8 and profiler and profiler.has_method("inc_frame"):
 		profiler.inc_frame("world_bake_fill_skip_meshq")
 	var fbs = _fbs_node
@@ -4303,14 +4305,47 @@ func get_chunk_lifecycle(coord: Vector2i) -> String:
 	return "missing"
 
 
+## Start gate radius in chunks around the player: 1 = 3x3, 2 = 5x5.
+## CRYSTALSTORM_START_RADIUS=-1 keeps the old full render-distance gate.
+static func start_gate_radius_from_env() -> int:
+	var raw := OS.get_environment("CRYSTALSTORM_START_RADIUS").strip_edges()
+	return int(raw) if raw.is_valid_int() else 1
+
+
+func start_gate_coords() -> Array:
+	var r := start_gate_radius_from_env()
+	if r < 0:
+		return start_stream_coords()
+	var pc := get_player_chunk_coord()
+	var out: Array = []
+	var seen: Dictionary = {}
+	for z in range(pc.y - r, pc.y + r + 1):
+		for x in range(pc.x - r, pc.x + r + 1):
+			var key := Vector2i(x, z)
+			if _WorldBakeService_is_outside(key):
+				continue
+			out.append(key)
+			seen[key] = true
+	for extra_v in _start_threat_chunk_coords():
+		var extra: Vector2i = extra_v
+		if seen.has(extra) or _WorldBakeService_is_outside(extra):
+			continue
+		out.append(extra)
+		seen[extra] = true
+	return out
+
+
 func start_region_status() -> Dictionary:
-	var needed: Array = start_stream_coords()
+	var needed: Array = start_gate_coords()
 	var bake = load("res://world/world_bake_service.gd").get_active()
+	var stream_first: bool = bake != null and bake.has_method("stream_first_from_env") and bool(bake.stream_first_from_env())
 	var packages := 0
 	var resident := 0
 	for c_v in needed:
 		var c: Vector2i = c_v
-		if bake != null and bake.has_method("package_ready") and bool(bake.package_ready(c)):
+		if stream_first:
+			packages += 1
+		elif bake != null and bake.has_method("package_ready") and bool(bake.package_ready(c)):
 			packages += 1
 		elif bake == null or not bool(bake.get("bake_in_progress")):
 			packages += 1
@@ -4327,7 +4362,7 @@ func start_region_status() -> Dictionary:
 
 func start_region_missing() -> Array:
 	var out: Array = []
-	for c_v in start_stream_coords():
+	for c_v in start_gate_coords():
 		var c: Vector2i = c_v
 		if not chunks.has(c):
 			var inq := false
@@ -4384,22 +4419,43 @@ func spawn_area_ready(center_x:int, center_z:int) -> bool:
 
 var _boost_saved_chunks: int = -1
 var _boost_saved_budget: int = -1
+var _boost_saved_inflight: int = -1
+var _boost_saved_starts: int = -1
 
 
 func begin_start_region_boost() -> void:
 	if _boost_saved_chunks < 0:
 		_boost_saved_chunks = MAX_CHUNKS_PER_FRAME
 		_boost_saved_budget = chunk_upload_budget_us
+	if _boost_saved_inflight < 0:
+		_boost_saved_inflight = MAX_INFLIGHT_CHUNKS
+		_boost_saved_starts = max_stream_starts_per_frame
 	MAX_CHUNKS_PER_FRAME = maxi(_boost_saved_chunks, 3)
 	chunk_upload_budget_us = maxi(_boost_saved_budget, 8000)
+	# The game is not interactive yet: use every spare core for the start area.
+	MAX_INFLIGHT_CHUNKS = maxi(_boost_saved_inflight, maxi(OS.get_processor_count() - 1, 2))
+	max_stream_starts_per_frame = maxi(_boost_saved_starts, 4)
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake != null and "hold_fill" in bake:
 		bake.hold_fill = true
 
 
 func prioritize_start_region_packages() -> int:
+	# Gate chunks jump the stream queue so the start area is built first.
+	var pc := get_player_chunk_coord()
+	for g_v in start_gate_coords():
+		var g: Vector2i = g_v
+		if _stream_load_pending.has(g):
+			var e: Dictionary = _stream_load_pending[g]
+			var d := float(maxi(absi(g.x - pc.x), absi(g.y - pc.y)))
+			if float(e.get("score", 0.0)) < 1.0e9 - d:
+				e["score"] = 1.0e9 - d
+				e["urgent"] = true
+				_stream_load_order_dirty = true
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake == null or not bake.has_method("prioritize_stream_coords"):
+		return 0
+	if bake.has_method("stream_first_from_env") and bool(bake.stream_first_from_env()):
 		return 0
 	return int(bake.prioritize_stream_coords(start_stream_coords()))
 
@@ -4410,6 +4466,11 @@ func end_start_region_boost() -> void:
 		chunk_upload_budget_us = _boost_saved_budget
 		_boost_saved_chunks = -1
 		_boost_saved_budget = -1
+	if _boost_saved_inflight >= 0:
+		MAX_INFLIGHT_CHUNKS = _boost_saved_inflight
+		max_stream_starts_per_frame = _boost_saved_starts
+		_boost_saved_inflight = -1
+		_boost_saved_starts = -1
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	if bake != null and "hold_fill" in bake:
 		bake.hold_fill = false

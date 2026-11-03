@@ -993,6 +993,85 @@ static func budget_frame_ms_from_env() -> float:
 
 
 func _budget_player_chunk() -> Vector2i:
+static func stream_first_from_env() -> bool:
+	return OS.get_environment("CRYSTALSTORM_BAKE_STREAM_FIRST").strip_edges() != "0"
+
+
+static func budget_cap_workers() -> int:
+	var hw := maxi(OS.get_processor_count() - 1, 1)
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_WORKERS").strip_edges()
+	return clampi(int(raw), 1, hw) if raw.is_valid_int() else hw
+
+
+## Adaptive budget state. Frame times feed a short ring; every
+## ADAPT_EVAL_FRAMES frames the worker count moves up when p90 is under the
+## target and down when it is over (or on a spike).
+const ADAPT_RING := 30
+const ADAPT_EVAL_FRAMES := 15
+var stream_busy: int = 0
+var _ad_ring: PackedFloat32Array = PackedFloat32Array()
+var _ad_frames: int = 0
+var _ad_baseline_ms: float = 0.0
+var _ad_last_move_ms: int = -100000
+var budget_workers: int = 1
+var budget_target_ms: float = 0.0
+var budget_ramp_up: int = 0
+var budget_ramp_down: int = 0
+var budget_skips_stream: int = 0
+var budget_workers_peak: int = 0
+
+
+func _adaptive_target_ms() -> float:
+	var fixed := OS.get_environment("CRYSTALSTORM_BAKE_FRAME_MS").strip_edges()
+	if fixed.is_valid_float():
+		return float(fixed)
+	var refresh := DisplayServer.screen_get_refresh_rate()
+	if refresh <= 1.0:
+		refresh = 60.0
+	var floor_ms := 1000.0 / refresh
+	if Engine.max_fps > 0:
+		floor_ms = maxf(floor_ms, 1000.0 / float(Engine.max_fps))
+	if DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED:
+		floor_ms *= 1.05
+	return maxf(floor_ms, _ad_baseline_ms * 1.2)
+
+
+func _adaptive_observe(dt_ms: float, now_ms: int) -> void:
+	if dt_ms <= 0.0:
+		return
+	_ad_ring.append(dt_ms)
+	if _ad_ring.size() > ADAPT_RING:
+		_ad_ring.remove_at(0)
+	_ad_frames += 1
+	if _ad_frames < ADAPT_EVAL_FRAMES or _ad_ring.size() < ADAPT_EVAL_FRAMES:
+		return
+	_ad_frames = 0
+	var sorted := _ad_ring.duplicate()
+	sorted.sort()
+	var p50: float = sorted[sorted.size() / 2]
+	var p90: float = sorted[mini(sorted.size() - 1, int(sorted.size() * 0.9))]
+	var mx: float = sorted[sorted.size() - 1]
+	# Baseline tracks the cheap frames: falls fast, rises slowly, so bake load
+	# cannot drag its own target upward.
+	if _ad_baseline_ms <= 0.0 or p50 < _ad_baseline_ms:
+		_ad_baseline_ms = p50
+	else:
+		_ad_baseline_ms += (p50 - _ad_baseline_ms) * 0.02
+	budget_target_ms = _adaptive_target_ms()
+	var cap := budget_cap_workers()
+	if now_ms - _ad_last_move_ms < 2000:
+		cap = maxi(1, cap / 2)
+	if p90 > budget_target_ms * 1.15 or mx > budget_target_ms * 3.0:
+		if budget_workers > 0:
+			budget_workers -= 1
+			budget_ramp_down += 1
+	elif p90 <= budget_target_ms and budget_workers < cap:
+		budget_workers += 1
+		budget_ramp_up += 1
+	budget_workers = mini(budget_workers, cap)
+	budget_workers_peak = maxi(budget_workers_peak, budget_workers)
+
+
 	var player = _fill_host.get("player") if _fill_host != null and "player" in _fill_host else null
 	if player == null or not player.has_method("get_voxel_position"):
 		return Vector2i((min_cx + max_cx) / 2, (min_cz + max_cz) / 2)
@@ -1040,13 +1119,18 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 	var dt_ms := 0.0
 	if _fill_host is Node:
 		dt_ms = (_fill_host as Node).get_process_delta_time() * 1000.0
-	if dt_ms > budget_frame_ms_from_env():
+	var adaptive := OS.get_environment("CRYSTALSTORM_BAKE_ADAPTIVE").strip_edges() != "0"
+	if adaptive:
+		_adaptive_observe(dt_ms, now_ms)
+		if budget_target_ms > 0.0 and dt_ms > budget_target_ms * 3.0:
+			_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 100)
+			budget_skips_frame += 1
+	elif dt_ms > budget_frame_ms_from_env():
 		_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 100)
 		budget_skips_frame += 1
 	var pc := _budget_player_chunk()
 	if pc != _budget_pchunk:
 		if _budget_pchunk.x != (1 << 30):
-			_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 1000)
 			budget_skips_move += 1
 		_budget_pchunk = pc
 		_budget_ring = 0
@@ -1057,13 +1141,16 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 		budget_skips_load += 1
 	if now_ms < _budget_quiet_until_ms:
 		return 0
-	var cap := budget_workers_from_env()
+	var cap := budget_workers if adaptive else budget_workers_from_env()
 	var deadline := t0_us + 1000
 	var n := 0
 	while _job_inflight.size() < cap and Time.get_ticks_usec() < deadline:
 		var c = _budget_next(deadline)
 		if c == null:
 			break
+			_ad_last_move_ms = now_ms
+			if not adaptive:
+				_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 1000)
 		var veg: Array = (_veg_by_chunk.get(c, []) as Array).duplicate(true)
 		_submit_pool_job(c, PRI_FILL, veg)
 		budget_submits += 1
@@ -1071,6 +1158,9 @@ func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
 	return n
 
 
+	if adaptive and stream_busy > 0:
+		budget_skips_stream += 1
+		return 0
 func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 	var t_tick := Time.get_ticks_usec()
 	last_tick_ops = _collect_jobs()
@@ -1170,6 +1260,10 @@ func ensure_package_for_stream(coord: Vector2i) -> bool:
 		return bool(one.get("ok", false))
 	if _job_inflight.has(coord):
 		var ok_wait: bool = _wait_job(coord)
+	if stream_first_from_env():
+		# Stream-first: never block a streamed chunk on a bake. The procedural
+		# path generates it; the background fill writes the package later.
+		return false
 		last_ondemand_us = Time.get_ticks_usec() - t0
 		return ok_wait
 	enqueue_package_job(coord, PRI_STREAM)
@@ -1267,8 +1361,10 @@ func _bootstrap_deferred_async(world, host, seed: int, want_full: bool) -> Dicti
 	last_vegetation_entries = 0
 	for ck in _veg_by_chunk.keys():
 		last_vegetation_entries += (_veg_by_chunk[ck] as Array).size()
-	var prime_coords: Array = startup_prime_coords(host)
-	var primed: Dictionary = await prime_region_async(prime_coords, world, host, yield_tree)
+	var primed: Dictionary = {}
+	if not stream_first_from_env():
+		var prime_coords: Array = startup_prime_coords(host)
+		primed = await prime_region_async(prime_coords, world, host, yield_tree)
 	start_background_fill(world, host)
 	if not valid and not _packages_known.is_empty():
 		_activate_partial_plan_cache()
