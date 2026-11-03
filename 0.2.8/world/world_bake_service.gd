@@ -64,6 +64,15 @@ var forbid_session_replace: bool = false
 var _veg_by_chunk: Dictionary = {}
 var _fill_queue: Array = []
 var _fill_queue_i: int = 0
+var _budget_quiet_until_ms: int = 0
+var _budget_pchunk: Vector2i = Vector2i(1 << 30, 0)
+var _budget_ring: int = 0
+var _budget_ring_list: Array = []
+var _budget_exhausted: bool = false
+var budget_skips_frame: int = 0
+var budget_skips_move: int = 0
+var budget_skips_load: int = 0
+var budget_submits: int = 0
 var _fill_inflight: Dictionary = {}
 var _packages_known: Dictionary = {}
 var _fill_host = null
@@ -968,6 +977,100 @@ func start_background_fill(world, host) -> void:
 	)
 
 
+static func fill_mode_from_env() -> String:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FILL_MODE").strip_edges().to_lower()
+	return "old" if raw == "old" else "budget"
+
+
+static func budget_workers_from_env() -> int:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_WORKERS").strip_edges()
+	return clampi(int(raw), 1, 4) if raw.is_valid_int() else 1
+
+
+static func budget_frame_ms_from_env() -> float:
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_FRAME_MS").strip_edges()
+	return float(raw) if raw.is_valid_float() else 16.7
+
+
+func _budget_player_chunk() -> Vector2i:
+	var player = _fill_host.get("player") if _fill_host != null and "player" in _fill_host else null
+	if player == null or not player.has_method("get_voxel_position"):
+		return Vector2i((min_cx + max_cx) / 2, (min_cz + max_cz) / 2)
+	var col: Vector3 = player.get_voxel_position()
+	return Vector2i(int(floor(col.x / float(CELLS))), int(floor(col.z / float(CELLS))))
+
+
+func _budget_max_ring() -> int:
+	var p := _budget_pchunk
+	return maxi(maxi(absi(min_cx - p.x), absi(max_cx - p.x)), maxi(absi(min_cz - p.y), absi(max_cz - p.y)))
+
+
+func _budget_ring_coords(p: Vector2i, r: int) -> Array:
+	if r == 0:
+		return [p]
+	var out: Array = []
+	for x in range(p.x - r, p.x + r + 1):
+		out.append(Vector2i(x, p.y - r))
+		out.append(Vector2i(x, p.y + r))
+	for z in range(p.y - r + 1, p.y + r):
+		out.append(Vector2i(p.x - r, z))
+		out.append(Vector2i(p.x + r, z))
+	out.reverse()
+	return out
+
+
+func _budget_next(deadline_us: int):
+	while Time.get_ticks_usec() < deadline_us:
+		if _budget_ring_list.is_empty():
+			if _budget_ring > _budget_max_ring():
+				_budget_exhausted = true
+				return null
+			_budget_ring_list = _budget_ring_coords(_budget_pchunk, _budget_ring)
+			_budget_ring += 1
+			continue
+		var c: Vector2i = _budget_ring_list.pop_back()
+		if not coord_in_package(c) or _packages_known.has(c) or _job_inflight.has(c) or _job_pending_set.has(c):
+			continue
+		return c
+	return null
+
+
+func _tick_budgeted(mesh_queue_depth: int, t0_us: int) -> int:
+	var now_ms := Time.get_ticks_msec()
+	var dt_ms := 0.0
+	if _fill_host is Node:
+		dt_ms = (_fill_host as Node).get_process_delta_time() * 1000.0
+	if dt_ms > budget_frame_ms_from_env():
+		_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 100)
+		budget_skips_frame += 1
+	var pc := _budget_player_chunk()
+	if pc != _budget_pchunk:
+		if _budget_pchunk.x != (1 << 30):
+			_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 1000)
+			budget_skips_move += 1
+		_budget_pchunk = pc
+		_budget_ring = 0
+		_budget_ring_list.clear()
+		_budget_exhausted = false
+	if mesh_queue_depth > 0 or hold_fill:
+		_budget_quiet_until_ms = maxi(_budget_quiet_until_ms, now_ms + 250)
+		budget_skips_load += 1
+	if now_ms < _budget_quiet_until_ms:
+		return 0
+	var cap := budget_workers_from_env()
+	var deadline := t0_us + 1000
+	var n := 0
+	while _job_inflight.size() < cap and Time.get_ticks_usec() < deadline:
+		var c = _budget_next(deadline)
+		if c == null:
+			break
+		var veg: Array = (_veg_by_chunk.get(c, []) as Array).duplicate(true)
+		_submit_pool_job(c, PRI_FILL, veg)
+		budget_submits += 1
+		n += 1
+	return n
+
+
 func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 	var t_tick := Time.get_ticks_usec()
 	last_tick_ops = _collect_jobs()
@@ -981,6 +1084,22 @@ func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 		return last_tick_ops
 	if not use_worker_fill_from_env():
 		last_tick_ops += _tick_sync_fill_one()
+		last_tick_us = Time.get_ticks_usec() - t_tick
+		return last_tick_ops
+	if fill_mode_from_env() != "old":
+		_pump_jobs(false)
+		last_tick_ops += _tick_budgeted(mesh_queue_depth, t_tick)
+		_fill_done = _packages_known.size()
+		var all_done: bool = _fill_done >= _fill_total or (_budget_exhausted and _job_inflight.is_empty() and _job_pending.is_empty())
+		if budget_submits % 40 == 1 or all_done:
+			_emit_status(
+				"generating",
+				float(_fill_done) / float(maxi(_fill_total, 1)),
+				"Generating World... %d / %d chunks" % [_fill_done, _fill_total]
+			)
+		if all_done:
+			_fill_queue_i = _fill_queue.size()
+			_try_commit_index()
 		last_tick_us = Time.get_ticks_usec() - t_tick
 		return last_tick_ops
 	var allow_fill: bool = mesh_queue_depth <= 8 and not hold_fill

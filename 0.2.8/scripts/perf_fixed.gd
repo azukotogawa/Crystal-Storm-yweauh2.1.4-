@@ -57,7 +57,10 @@ func _mem() -> int:
 
 func _run() -> void:
 	var t0 := Time.get_ticks_msec()
-	_Worlds.start_fresh_run()
+	if OS.get_environment("CS_SEED") != "":
+		_Worlds.start_fresh_run(int(OS.get_environment("CS_SEED")))
+	else:
+		_Worlds.start_fresh_run()
 	var game: Node = (load(MAIN_SCENE) as PackedScene).instantiate()
 	root.add_child(game)
 	var compose = game.get_node_or_null("CompositionRoot")
@@ -80,6 +83,9 @@ func _run() -> void:
 		_player.set("dev_god", true)
 	var boot_ms := Time.get_ticks_msec() - t0
 	print("LOAD boot_ms=%d cells_natural=%d static_mb=%.1f" % [boot_ms, int(_crystal.covered_cells), _mem() / 1048576.0])
+	print("COLDLOAD playable_launch_ms=%d playable_script_ms=%d" % [Time.get_ticks_msec(), boot_ms])
+	if OS.get_environment("CS_LOADWATCH") != "":
+		await _load_watch(t0)
 	var target := int(round(_pct / 100.0 * MAX_COVERAGE * float(_WorldBorder.PLAYABLE_HALF_X * 2 * _WorldBorder.PLAYABLE_HALF_Z * 2)))
 	var mem_before := _mem()
 	var s0 := Time.get_ticks_msec()
@@ -206,6 +212,51 @@ func _count(id: String) -> int:
 	return int(inv.count_item(id)) if inv != null else -1
 
 
+func _chunk_stat(tag: String) -> void:
+	var cm = _player.get("chunk_manager")
+	if cm == null:
+		return
+	var wn := int(cm.get("stat_worker_n"))
+	var mn := int(cm.get("stat_main_n"))
+	var un := int(cm.get("stat_upload_n"))
+	print("CHUNKSTAT %s worker_n=%d worker_avg_ms=%.2f main_n=%d main_complete_avg_ms=%.2f upload_n=%d upload_avg_ms=%.2f main_total_ms=%.1f worker_total_ms=%.1f" % [tag, wn, float(cm.get("stat_worker_us")) / 1000.0 / maxf(wn, 1), mn, float(cm.get("stat_main_us")) / 1000.0 / maxf(mn, 1), un, float(cm.get("stat_upload_us")) / 1000.0 / maxf(un, 1), (float(cm.get("stat_main_us")) + float(cm.get("stat_upload_us"))) / 1000.0, float(cm.get("stat_worker_us")) / 1000.0])
+
+
+func _load_watch(t0: int) -> void:
+	var cm = _player.get("chunk_manager")
+	_chunk_stat("playable")
+	var rd := int(cm.get("RENDER_DISTANCE"))
+	for f in 7200:
+		var pc := Vector2i(floori(_col().x / 16.0), floori(_col().y / 16.0))
+		var need := 0
+		var have := 0
+		for z in range(pc.y - rd, pc.y + rd + 2):
+			for x in range(pc.x - rd, pc.x + rd + 2):
+				if cm.call("_WorldBakeService_is_outside", Vector2i(x, z)):
+					continue
+				need += 1
+				if cm.call("_is_chunk_resident", Vector2i(x, z)):
+					have += 1
+		var pend := (cm.get("_chunk_tasks") as Dictionary).size() + (cm.get("_mesh_completion_queue") as Array).size() + (cm.get("_stream_load_pending") as Dictionary).size()
+		if have >= need and pend == 0:
+			print("NEARLOAD rd=%d need=%d have=%d launch_ms=%d after_playable_ms=%d frames=%d" % [rd, need, have, Time.get_ticks_msec(), Time.get_ticks_msec() - t0, f])
+			_chunk_stat("nearload")
+			return
+		if f % 600 == 0:
+			print("NEARWAIT rd=%d need=%d have=%d pend=%d" % [rd, need, have, pend])
+		await process_frame
+	print("NEARLOAD TIMEOUT rd=%d" % rd)
+	_chunk_stat("timeout")
+
+
+func _bake_prog(tag: String) -> void:
+	var bk = load("res://world/world_bake_service.gd").get_active()
+	if bk == null:
+		print("BAKEPROG %s none t_ms=%d" % [tag, Time.get_ticks_msec()])
+		return
+	print("BAKEPROG %s t_ms=%d done=%d total=%d active=%s submits=%d skip_frame=%d skip_move=%d skip_load=%d completed=%d" % [tag, Time.get_ticks_msec(), int(bk.get("_fill_done")), int(bk.get("_fill_total")), str(bk.get("bake_in_progress")), int(bk.get("budget_submits")), int(bk.get("budget_skips_frame")), int(bk.get("budget_skips_move")), int(bk.get("budget_skips_load")), int(bk.get("worker_jobs_completed"))])
+
+
 func _play() -> void:
 	var hitch := 0
 	var min_hp := float(_player.get("health"))
@@ -255,6 +306,7 @@ func _play() -> void:
 	_peak_static = 0
 	var moved_max := 0.0
 	var frames := int(_play_sec * 60.0)
+	_bake_prog("start")
 	_last_usec = Time.get_ticks_usec()
 	for f in frames:
 		await process_frame
@@ -272,6 +324,8 @@ func _play() -> void:
 		if f % 300 == 0:
 			print("PLAY t=%.0f pos=%.1f,%.1f hp=%.0f cells=%d static_mb=%.1f" % [float(f) / 60.0, _col().x, _col().y, float(_player.get("health")), int(_crystal.covered_cells), _mem() / 1048576.0])
 			_last_usec = Time.get_ticks_usec()
+	_bake_prog("end")
+	_chunk_stat("end")
 	print("PLAYER dir=fixed min_hp=%.1f died_at=-1.0 moved_max=%.1f dig_windows=0 stone_from_dig=0 stone_spent_placing=0 hitches_over_100ms=%d" % [min_hp, moved_max, hitch])
 	_cs_eff("end")
 	if OS.get_environment("CS_CROSS") != "":
@@ -565,6 +619,7 @@ func _pm_sample() -> void:
 		_pm_add("fill_inflight", float((bk.get("_job_inflight") as Dictionary).size()))
 		_pm_add("fill_active", 1.0 if bool(bk.get("bake_in_progress")) else 0.0)
 		_pm_add("fill_done", float(bk.get("_fill_done")))
+		_pm_add("budget_submits", float(bk.get("budget_submits")))
 
 
 func _pm_report() -> void:

@@ -27,6 +27,13 @@ var pending := {}
 var _chunk_tasks := {}
 var _chunk_gen_tokens := {}
 var _mesh_completion_queue: Array = []
+var _stat_mutex := Mutex.new()
+var stat_worker_us: int = 0
+var stat_worker_n: int = 0
+var stat_main_us: int = 0
+var stat_main_n: int = 0
+var stat_upload_us: int = 0
+var stat_upload_n: int = 0
 var _shutting_down: bool = false
 var stream_paused: bool = false
 
@@ -2874,6 +2881,8 @@ func _drain_mesh_queue() -> void:
 			if profiler and profiler.has_method("begin"):
 				profiler.begin("chunk_upload")
 			_on_chunk_ready(item["data"], item["mesh"], item_token, apply_t0)
+			stat_upload_us += Time.get_ticks_usec() - apply_t0
+			stat_upload_n += 1
 			if profiler and profiler.has_method("end"):
 				profiler.end("chunk_upload")
 			if token != null:
@@ -2894,7 +2903,10 @@ func _drain_mesh_queue() -> void:
 			var tok2: int = int(item2.get("token", -1))
 			if profiler and profiler.has_method("begin"):
 				profiler.begin("chunk_upload")
-			_on_chunk_ready(item2["data"], item2["mesh"], tok2, Time.get_ticks_usec())
+			var up0 := Time.get_ticks_usec()
+			_on_chunk_ready(item2["data"], item2["mesh"], tok2, up0)
+			stat_upload_us += Time.get_ticks_usec() - up0
+			stat_upload_n += 1
 			if profiler and profiler.has_method("end"):
 				profiler.end("chunk_upload")
 			count_budget -= 1
@@ -3495,6 +3507,7 @@ func _chunk_mesh_task(
 	keep_quads: Array,
 	prior_surface_cache: Dictionary = {}
 ) -> void:
+	var tw0 := Time.get_ticks_usec()
 	if data == null or not data._has_worker_snapshot:
 		call_deferred("_on_chunk_task_complete", coord, null, {}, 0, 0, token, {})
 		return
@@ -3573,9 +3586,20 @@ func _chunk_mesh_task(
 		}, true)
 	# Do not null data.world here: regen reuses view.chunk_data and concurrent main-thread
 	# rebuild enqueue can race a still-running or just-finished worker if world is cleared early.
+	_stat_mutex.lock()
+	stat_worker_us += Time.get_ticks_usec() - tw0
+	stat_worker_n += 1
+	_stat_mutex.unlock()
 	call_deferred(
-		"_on_chunk_task_complete", coord, data, payload, mesh_us, buffer_us, token, worker_telemetry
+		"_on_chunk_task_complete_timed", coord, data, payload, mesh_us, buffer_us, token, worker_telemetry
 	)
+
+
+func _on_chunk_task_complete_timed(coord: Vector2i, data: ChunkData, payload: Dictionary, mesh_us: int, buffer_us: int, token: int, worker_telemetry: Dictionary) -> void:
+	var t0 := Time.get_ticks_usec()
+	_on_chunk_task_complete(coord, data, payload, mesh_us, buffer_us, token, worker_telemetry)
+	stat_main_us += Time.get_ticks_usec() - t0
+	stat_main_n += 1
 
 
 ## True when a completed mesh job must not be applied (token or WorldState mesh stamp).
