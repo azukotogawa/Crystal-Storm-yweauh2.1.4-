@@ -883,13 +883,17 @@ func _enqueue_chunk_mesh_work(
 
 func _surface_y_at(data: ChunkData, x: int, z: int) -> float:
 	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
-		return float(data.surface_map[x][z])
+		var sv = data.surface_map[x][z]
+		if sv != null:
+			return float(sv)
 	return data.get_surface_y(x, z)
 
 
 func _tile_type_at(data: ChunkData, x: int, z: int) -> int:
 	if x >= 0 and x < ChunkData.SIZE and z >= 0 and z < ChunkData.SIZE:
-		return int(data.tile_map[x][z])
+		var tv = data.tile_map[x][z]
+		if tv != null:
+			return int(tv)
 	return data.get_tile_type(x, z)
 
 
