@@ -1029,7 +1029,7 @@ func _request_variant(path: String, variant: int, coord: Vector2i) -> void:
 		waiting[coord] = true
 		return
 	_variant_waiting[key] = {coord: true}
-	var wr := weakref(self)
+	var wr: WeakRef = weakref(self)
 	var task := func() -> void:
 		var built := _VoxelLoader.build_variant_detached(path, variant)
 		var layer = wr.get_ref()
