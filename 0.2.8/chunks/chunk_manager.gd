@@ -466,6 +466,9 @@ func _unload_chunk_view(key: Vector2i) -> void:
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.record_unload(key, "start", {"active_chunks": chunks.size()})
 	_set_lifecycle_state(key, _ChunkStreamLifecycle.UNLOADING)
+	if _chunk_tasks.has(key):
+		_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
+		_reap_chunk_task(key)
 	var view: ChunkView = chunks[key]
 	chunks.erase(key)
 	if is_instance_valid(view):
@@ -3592,6 +3595,19 @@ func _on_chunk_ready(
 		profiler.end_func("ChunkManager::_on_chunk_ready")
 
 
+func _release_unowned_chunk_data(coord: Vector2i, data: ChunkData) -> void:
+	if data == null or data.has_meta("_pooled") or data.has_meta("_pooled_released"):
+		return
+	# Pooled shell already re-acquired for another chunk: not ours to release.
+	if Vector2i(data.position) != coord:
+		return
+	if chunks.has(coord):
+		var live: ChunkView = chunks[coord] as ChunkView
+		if is_instance_valid(live) and live.chunk_data == data:
+			return
+	_ChunkDataPool.release(data)
+
+
 func _pool_chunk_data_after_view_free(data: ChunkData) -> void:
 	if data == null or _shutting_down:
 		return
@@ -3841,7 +3857,7 @@ func _on_chunk_task_complete(
 			and not data.is_overlay_mesh_stamp_current()
 		)
 		if data != null and _telemetry_trigger in ["stream", "movement"]:
-			_ChunkDataPool.release(data)
+			_release_unowned_chunk_data(coord, data)
 		if token_stale and not _chunk_tasks.has(coord):
 			pending.erase(coord)
 		if stamp_stale and not _shutting_down:
@@ -3881,7 +3897,7 @@ func _on_chunk_task_complete(
 			profiler.note_worker_job_ms(job_ms)
 	if not is_inside_tree() or not pending.has(coord):
 		if _telemetry_trigger in ["stream", "movement"]:
-			_ChunkDataPool.release(data)
+			_release_unowned_chunk_data(coord, data)
 		pending.erase(coord)
 		if profiler and profiler.has_method("end_func"):
 			profiler.end_func("ChunkManager::_on_chunk_task_complete")
