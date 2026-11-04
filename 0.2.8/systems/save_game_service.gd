@@ -709,6 +709,7 @@ func collect_snapshot() -> Dictionary:
 		"world_seed": seed_val,
 		"world": {
 			"seed": seed_val,
+			"playable_half": int(_SaveSchema.world_size_header().playable_half),
 			"metadata": {},
 		},
 		"world_state": world_state_bundle,

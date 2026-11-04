@@ -31,5 +31,10 @@ extends Resource
 @export var color_height_shadow: Color = Color(0.05, 0.06, 0.08, 0.35)
 
 
+## Cells per map pixel so a square of half_extent cells fits in internal_size pixels.
+static func stride_for_extent(half_extent: int, internal_size: int, min_stride: int) -> int:
+	return maxi(min_stride, maxi(1, int(ceil(float(half_extent * 2) / float(maxi(internal_size, 1))))))
+
+
 static func create_default() -> TopographicalMapConfig:
 	return TopographicalMapConfig.new()

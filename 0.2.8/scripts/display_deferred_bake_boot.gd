@@ -53,7 +53,7 @@ func _run() -> void:
 		return
 	if bake and bake.valid and int(fill.get("total", 0)) > 200 and ready_ms < 60000:
 		print("DISPLAY_DEFERRED note=warm_or_completed_index")
-	elif bake and int(fill.get("total", 16384)) >= 1000 and bake.valid:
+	elif bake and int(fill.get("total", _WorldBakeService.full_world_chunk_bounds().chunks)) >= 1000 and bake.valid:
 		_ProbeExit.finish_tree(self, 1, "DISPLAY DEFERRED BAKE FAIL index valid at playable on cold full map")
 		return
 

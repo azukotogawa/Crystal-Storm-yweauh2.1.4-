@@ -90,9 +90,11 @@ var _drain_enqueue_n: int = 0
 var _drain_enqueue_max_us: int = 0
 var _drain_enqueue_worst: Dictionary = {}
 
-# Mirrored from WorldBorder — worker threads cannot call class_name statics reliably.
-const _WB_PLAYABLE_HALF := 1024
-const _WB_TRANSITION := 240.0
+# Read from WorldBorder through a preload so worker threads only touch constants.
+const _WorldBorderConsts = preload("res://helpers/world_border.gd")
+const _WB_PLAYABLE_HALF_X: int = _WorldBorderConsts.PLAYABLE_HALF_X
+const _WB_PLAYABLE_HALF_Z: int = _WorldBorderConsts.PLAYABLE_HALF_Z
+const _WB_TRANSITION: float = _WorldBorderConsts.TRANSITION_WIDTH
 
 const FACE_TOP := 0
 const FACE_RAMP := 7
@@ -1172,8 +1174,8 @@ func apply_performance_config(cfg) -> void:
 
 
 func _world_border_should_force_ramp(world_x: int, world_z: int) -> bool:
-	var ox: float = maxf(absf(float(world_x)) - float(_WB_PLAYABLE_HALF), 0.0)
-	var oz: float = maxf(absf(float(world_z)) - float(_WB_PLAYABLE_HALF), 0.0)
+	var ox: float = maxf(absf(float(world_x)) - float(_WB_PLAYABLE_HALF_X), 0.0)
+	var oz: float = maxf(absf(float(world_z)) - float(_WB_PLAYABLE_HALF_Z), 0.0)
 	if ox <= 0.001 and oz <= 0.001:
 		return false
 	var margin := 8.0
@@ -1183,8 +1185,8 @@ func _world_border_should_force_ramp(world_x: int, world_z: int) -> bool:
 
 
 func _prefer_diagonal_ramp(world_x: int, world_z: int) -> bool:
-	var ox: float = maxf(absf(float(world_x)) - float(_WB_PLAYABLE_HALF), 0.0)
-	var oz: float = maxf(absf(float(world_z)) - float(_WB_PLAYABLE_HALF), 0.0)
+	var ox: float = maxf(absf(float(world_x)) - float(_WB_PLAYABLE_HALF_X), 0.0)
+	var oz: float = maxf(absf(float(world_z)) - float(_WB_PLAYABLE_HALF_Z), 0.0)
 	return ox > 0.001 and oz > 0.001 and sqrt(ox * ox + oz * oz) / _WB_TRANSITION < 0.85
 
 

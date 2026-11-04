@@ -5,7 +5,7 @@ extends RefCounted
 ## Loading UI may connect to status_changed for real progress (mode + 0..1).
 ##
 ## Disk layout (v4):
-##   user://world_bakes/v4_s{seed}_{full|rN}/
+##   user://world_bakes/v{ver}_s{seed}_{h{half}_full|rN}/
 ##     world.index          — lightweight bounds + flags (only thing loaded at startup)
 ##     chunks/cx_cz.chk     — terrain columns + mesh plan + baked vegetation
 ##     static_meta.json     — optional non-authoritative placement hints
@@ -17,6 +17,9 @@ extends RefCounted
 ## Never procedural-generates static terrain/vegetation for coords covered by a valid index.
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _WorldBorder = preload("res://helpers/world_border.gd")
+## Full bakes made before the folder name carried the half extent were all this size.
+const LEGACY_FULL_BAKE_HALF: int = 1024
 
 const BAKE_VERSION: int = 122
 const _RegionPack = preload("res://world/region_pack.gd")
@@ -256,12 +259,11 @@ func note_dirty_bake_hit() -> void:
 
 
 static func full_world_chunk_bounds() -> Dictionary:
-	var half_x: int = 1024
-	var half_z: int = 1024
-	var wb = load("res://helpers/world_border.gd")
-	if wb:
-		half_x = int(wb.PLAYABLE_HALF_X)
-		half_z = int(wb.PLAYABLE_HALF_Z)
+	return chunk_bounds_for_half(_WorldBorder.PLAYABLE_HALF_X, _WorldBorder.PLAYABLE_HALF_Z)
+
+
+## Chunk bounds for a world of (2*half_x) x (2*half_z) cells centred on the origin.
+static func chunk_bounds_for_half(half_x: int, half_z: int) -> Dictionary:
 	var min_c := Vector2i(
 		int(floor(-float(half_x) / float(CELLS))),
 		int(floor(-float(half_z) / float(CELLS)))
@@ -287,7 +289,7 @@ static func full_world_chunk_bounds() -> Dictionary:
 
 static func production_chunk_side() -> int:
 	var b: Dictionary = full_world_chunk_bounds()
-	return int(b.get("span_x", 128))
+	return int(b.span_x)
 
 
 static func use_full_world_from_env() -> bool:
@@ -462,15 +464,50 @@ func coord_in_package(coord: Vector2i) -> bool:
 
 func bake_dir_for(seed: int, rad: int = -1, as_full: bool = false) -> String:
 	if as_full:
-		return "user://world_bakes/v%d_s%d_full" % [BAKE_VERSION, seed]
+		return full_bake_dir_for_seed(seed)
 	var r := rad if rad >= 0 else radius
 	return "user://world_bakes/v%d_s%d_r%d" % [BAKE_VERSION, seed, r]
 
 
+static func full_bake_dir(version: int, seed: int, half: int) -> String:
+	return "user://world_bakes/v%d_s%d_h%d_full" % [version, seed, half]
+
+
+## Full-world bake folder for the current world size. A folder from before the
+## half extent was in the name is renamed once when the size is the old default.
+static func full_bake_dir_for_seed(seed: int) -> String:
+	var half: int = _WorldBorder.PLAYABLE_HALF_X
+	var dir := full_bake_dir(BAKE_VERSION, seed, half)
+	if half != LEGACY_FULL_BAKE_HALF or _WorldBorder.PLAYABLE_HALF_Z != LEGACY_FULL_BAKE_HALF:
+		return dir
+	var abs_dir := ProjectSettings.globalize_path(dir)
+	if DirAccess.dir_exists_absolute(abs_dir):
+		return dir
+	var legacy_abs := ProjectSettings.globalize_path("user://world_bakes/v%d_s%d_full" % [BAKE_VERSION, seed])
+	if DirAccess.dir_exists_absolute(legacy_abs):
+		var err := DirAccess.rename_absolute(legacy_abs, abs_dir)
+		if err != OK:
+			push_warning("WorldBakeService: could not rename %s (%d)" % [legacy_abs, err])
+	return dir
+
+
+## Empty string when a full bake's chunk bounds match the expected world bounds.
+static func bounds_mismatch_reason(got: Dictionary, want: Dictionary) -> String:
+	if (
+		int(got.min_cx) == int(want.min_cx) and int(got.max_cx) == int(want.max_cx)
+		and int(got.min_cz) == int(want.min_cz) and int(got.max_cz) == int(want.max_cz)
+	):
+		return ""
+	return "bounds got=%d..%d x %d..%d want=%d..%d x %d..%d" % [
+		int(got.min_cx), int(got.max_cx), int(got.min_cz), int(got.max_cz),
+		int(want.min_cx), int(want.max_cx), int(want.min_cz), int(want.max_cz),
+	]
+
+
 ## Catalog metadata only. Does not mutate the active bake session or open packages.
 static func inspect_disk_status(seed: int) -> Dictionary:
-	var expected: int = int(full_world_chunk_bounds().get("chunks", 16384))
-	var dir := "user://world_bakes/v%d_s%d_full" % [BAKE_VERSION, seed]
+	var expected: int = int(full_world_chunk_bounds().chunks)
+	var dir := full_bake_dir_for_seed(seed)
 	var index_path := dir.path_join("world.index")
 	var has_index := FileAccess.file_exists(index_path)
 	var packages := 0
@@ -3123,6 +3160,15 @@ func load_index(dir: String, expected_seed: int = -1) -> bool:
 		last_error = "load_bake: index checksum mismatch"
 		valid = false
 		return false
+	if full_world:
+		var why := bounds_mismatch_reason(
+			{"min_cx": min_cx, "max_cx": max_cx, "min_cz": min_cz, "max_cz": max_cz},
+			full_world_chunk_bounds()
+		)
+		if not why.is_empty():
+			last_error = "load_bake: world %s" % why
+			valid = false
+			return false
 	world_seed = file_seed
 	radius = maxi(absi(min_cx), absi(max_cx))
 	package_dir = dir

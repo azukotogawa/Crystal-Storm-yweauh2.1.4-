@@ -52,10 +52,7 @@ static func begin_job(
 	var internal_size: int = maxi(32, int(ceil(float(display_size) / float(divisor))))
 	if internal_override > 0:
 		internal_size = maxi(16, internal_override + (internal_override % 2))
-	var stride: int = maxi(
-		cfg.sample_stride,
-		maxi(1, int(ceil(float(radius * 2) / float(internal_size))))
-	)
+	var stride: int = _TopographicalMapConfig.stride_for_extent(radius, internal_size, cfg.sample_stride)
 	var image := Image.create(internal_size, internal_size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0.05, 0.06, 0.08, 1.0))
 	var bounds := _world_bounds(center_cell, internal_size, stride)

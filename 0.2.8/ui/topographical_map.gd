@@ -9,7 +9,9 @@ const _WorldState = preload("res://world/world_state.gd")
 const _ThemeBuilder = preload("res://ui/theme/theme_builder.gd")
 const _GameFeelConfig = preload("res://config/game_feel_config.gd")
 const _WorldBorder = preload("res://helpers/world_border.gd")
-const FULL_HALF_EXTENT := 1088
+## Fullscreen map pan and bake extent: the playable half plus a 64-cell margin.
+const FULL_MAP_MARGIN := 64
+const FULL_HALF_EXTENT: int = _WorldBorder.PLAYABLE_HALF_X + FULL_MAP_MARGIN
 const FULL_COARSE_SIZE := 72
 const FULL_FINE_SIZE := 288
 const SHARED_CACHE_LIMIT := 250000
@@ -24,7 +26,7 @@ class MapCanvas:
 	var texture: Texture2D
 	var tex_origin := Vector2.ZERO
 	var tex_span := Vector2.ONE
-	var half_extent := 1088.0
+	var half_extent: float = float(FULL_HALF_EXTENT)
 	var view_center := Vector2.ZERO
 	var zoom := 0.0
 	var player_cell := Vector2.ZERO

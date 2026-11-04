@@ -55,7 +55,7 @@ static func _row_from(raw: Dictionary) -> Dictionary:
 	var seed: int = int(raw.get("seed", 12349))
 	var bake: Dictionary = _WorldBakeService.inspect_disk_status(seed)
 	var packages: int = int(bake.get("packages", 0))
-	var expected: int = int(bake.get("expected", 16384))
+	var expected: int = int(bake.get("expected", _WorldBakeService.full_world_chunk_bounds().chunks))
 	var valid: bool = bool(bake.get("valid", false))
 	var progress := "Not generated"
 	if valid:

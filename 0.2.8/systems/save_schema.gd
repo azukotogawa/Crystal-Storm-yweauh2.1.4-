@@ -7,6 +7,10 @@ extends RefCounted
 
 const _MicroColumnBrick = preload("res://helpers/micro_column_brick.gd")
 const _ChunkData = preload("res://chunks/chunk_data.gd")
+const _WorldBorder = preload("res://helpers/world_border.gd")
+## Saves written before world.playable_half existed all came from this world size.
+const LEGACY_PLAYABLE_HALF: int = 1024
+const WORLD_SIZE_MISMATCH_MESSAGE := "world from a different world size, create a new world"
 
 const FORMAT_ID := "crystalstorm_save"
 const CURRENT_VERSION := 3
@@ -20,6 +24,33 @@ const _MICRO_DROP_KEYS: Array[String] = ["FLAG_MICRO"]
 
 static func current_version() -> int:
 	return CURRENT_VERSION
+
+
+## Stored under "world" in every save.
+static func world_size_header() -> Dictionary:
+	return {"playable_half": _WorldBorder.PLAYABLE_HALF_X}
+
+
+static func saved_playable_half(data: Dictionary) -> int:
+	var w: Variant = data.get("world", {})
+	if w is Dictionary and (w as Dictionary).has("playable_half"):
+		return int((w as Dictionary).playable_half)
+	return LEGACY_PLAYABLE_HALF
+
+
+static func check_world_size(data: Dictionary, current_half: int = -1) -> Dictionary:
+	var want: int = current_half if current_half > 0 else _WorldBorder.PLAYABLE_HALF_X
+	var got: int = saved_playable_half(data)
+	if got != want:
+		return {
+			"ok": false,
+			"reason": "world_size_mismatch",
+			"message": WORLD_SIZE_MISMATCH_MESSAGE,
+			"saved_half": got,
+			"current_half": want,
+			"data": {},
+		}
+	return {"ok": true, "reason": "ok"}
 
 
 static func content_hash(payload: Dictionary) -> String:
@@ -86,6 +117,10 @@ static func validate_and_migrate(raw) -> Dictionary:
 		var actual: String = content_hash(data)
 		if expected != "" and expected != actual:
 			return {"ok": false, "reason": "checksum_mismatch", "data": {}}
+
+	var size_check: Dictionary = check_world_size(data)
+	if not bool(size_check.get("ok", false)):
+		return size_check
 
 	var structural: Dictionary = validate_structure(data)
 	if not bool(structural.get("ok", false)):
