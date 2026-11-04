@@ -55,7 +55,7 @@ func _capture() -> void:
 	var light := _light()
 	if light != null:
 		_base_sun = light.light_energy
-		_sun_basis = light.transform.basis
+		_sun_basis = _Terrain.SUN_BASIS if light.transform.basis.is_equal_approx(_Terrain.SUN_BASIS.transposed()) else light.transform.basis
 		_have_basis = true
 
 

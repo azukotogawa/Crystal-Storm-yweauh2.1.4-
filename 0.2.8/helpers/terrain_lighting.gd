@@ -7,7 +7,8 @@ const _Shadow = preload("res://helpers/contact_shadow.gd")
 const _Quality = preload("res://config/performance_quality_config.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const SUN := Vector3(0.62, 0.57, 0.54)
+const SUN := Vector3(0.55, 0.82, 0.38)
+const SUN_BASIS := Basis(Vector3(0.568432, 0, -0.82273), Vector3(-0.637673, 0.631876, -0.440574), Vector3(0.519864, 0.775069, 0.359179))
 
 
 static func cheap_for_preset(preset: int) -> bool:

@@ -30,7 +30,7 @@ void vertex() {
 	face_tint = COLOR;
 	// Fake iso key light so slopes, tops, and vertical cuts read apart without
 	// Lambert black-out. Chunks are not rotated; NORMAL is world-ish.
-	vec3 L = normalize(vec3(0.62, 0.57, 0.54));
+	vec3 L = normalize(vec3(0.55, 0.82, 0.38));
 	vec3 n = normalize(NORMAL);
 	float ndl = clamp(dot(n, L), 0.0, 1.0);
 	float hemi = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);
@@ -90,5 +90,5 @@ void fragment() {
 void light() {
 	float lit = clamp(ATTENUATION, 0.0, 1.0);
 	float dark = clamp(terrain_shadow_darken, 0.0, 0.8);
-	DIFFUSE_LIGHT += vec3(mix(1.0 - dark, 1.0, lit));
+	DIFFUSE_LIGHT += cs_sun_light(lit, dark, NORMAL, LIGHT, LIGHT_IS_DIRECTIONAL);
 }

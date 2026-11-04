@@ -42,7 +42,7 @@
 [sub_resource type="Environment" id="Environment_tipki"]
 background_mode = 1
 ambient_light_source = 2
-ambient_light_color = Color(0.34, 0.38, 0.48, 1)
+ambient_light_color = Color(0.42, 0.5, 0.66, 1)
 ambient_light_energy = 0.22
 tonemap_mode = 2
 tonemap_exposure = 0.72
@@ -50,14 +50,13 @@ ssao_enabled = true
 ssao_radius = 1.35
 ssao_intensity = 0.55
 ssao_power = 1.1
-ssao_light_affect = 0.3
 ssao_detail = 0.35
 fog_enabled = true
-fog_light_color = Color(0.86, 0.82, 0.78, 1)
+fog_light_color = Color(0.78, 0.8, 0.86, 1)
 fog_light_energy = 0.28
-fog_sun_scatter = 0.18
-fog_density = 0.0016
-fog_aerial_perspective = 0.35
+fog_sun_scatter = 0.22
+fog_density = 0.00032
+fog_aerial_perspective = 0.12
 fog_sky_affect = 0.35
 
 [node name="Game" type="Node3D" unique_id=238200303]
@@ -158,13 +157,13 @@ script = ExtResource("23_devasst")
 environment = SubResource("Environment_tipki")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1030504662]
-transform = Transform3D(0.656781, 0, -0.754082, -0.429633, 0.821822, -0.374197, 0.619721, 0.569744, 0.539757, 0, 0, 0)
-light_color = Color(1, 0.88, 0.72, 1)
+transform = Transform3D(0.568432, 0, -0.82273, -0.637673, 0.631876, -0.440574, 0.519864, 0.775069, 0.359179, 0, 0, 0)
+light_color = Color(0.72, 0.78, 0.9, 1)
 light_energy = 0.58
 shadow_enabled = true
 shadow_bias = 0.04
 shadow_normal_bias = 1.0
-shadow_blur = 1.6
+shadow_blur = 0.55
 directional_shadow_mode = 1
 directional_shadow_blend_splits = true
 directional_shadow_max_distance = 220.0

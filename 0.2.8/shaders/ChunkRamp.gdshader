@@ -72,5 +72,5 @@ void fragment() {
 void light() {
 	float lit = clamp(ATTENUATION, 0.0, 1.0);
 	float dark = clamp(terrain_shadow_darken, 0.0, 0.8);
-	DIFFUSE_LIGHT += vec3(mix(1.0 - dark, 1.0, lit));
+	DIFFUSE_LIGHT += cs_sun_light(lit, dark, NORMAL, LIGHT, LIGHT_IS_DIRECTIONAL);
 }

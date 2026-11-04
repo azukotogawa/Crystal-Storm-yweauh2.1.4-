@@ -3,8 +3,8 @@ extends RefCounted
 
 const _Sun = preload("res://helpers/terrain_lighting.gd")
 
-const AMBIENT := Color(0.34, 0.38, 0.48, 1)
-const FOG_COLOR := Color(0.86, 0.82, 0.78, 1)
+const AMBIENT := Color(0.42, 0.5, 0.66, 1)
+const FOG_COLOR := Color(0.78, 0.8, 0.86, 1)
 
 
 static func apply_from(service: Node, quality) -> void:
@@ -49,7 +49,7 @@ static func _world_env(host: Node) -> WorldEnvironment:
 static func _apply_light(light: DirectionalLight3D, quality) -> void:
 	var color := light.light_color
 	var energy := light.light_energy
-	var basis := light.transform.basis
+	var basis := _Sun.SUN_BASIS
 	var origin := light.transform.origin
 	light.shadow_enabled = bool(quality.scene_shadows)
 	light.shadow_bias = float(quality.shadow_bias)
@@ -66,7 +66,7 @@ static func _apply_light(light: DirectionalLight3D, quality) -> void:
 	light.light_color = color
 	light.light_energy = energy
 	light.transform = Transform3D(basis, origin)
-	if not _Sun.SUN.is_equal_approx(Vector3(0.62, 0.57, 0.54)):
+	if not _Sun.SUN.is_equal_approx(Vector3(0.55, 0.82, 0.38)):
 		push_error("locked sun moved")
 
 
@@ -81,13 +81,12 @@ static func _apply_env(env: Environment, quality) -> void:
 	env.ssao_intensity = float(quality.ssao_intensity)
 	env.ssao_power = float(quality.ssao_power)
 	env.ssao_detail = 0.35
-	env.ssao_light_affect = 0.3
 	env.fog_enabled = bool(quality.fog_enabled)
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_light_color = FOG_COLOR
 	env.fog_light_energy = float(quality.fog_light_energy)
-	env.fog_sun_scatter = 0.18
+	env.fog_sun_scatter = 0.22
 	env.fog_density = float(quality.fog_density)
-	env.fog_aerial_perspective = 0.35
+	env.fog_aerial_perspective = 0.12
 	env.fog_sky_affect = 0.35
 	env.volumetric_fog_enabled = false

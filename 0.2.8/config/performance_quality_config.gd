@@ -144,7 +144,7 @@ var shadow_bias: float = 0.04
 @export_range(0.0, 4.0, 0.05)
 var shadow_normal_bias: float = 1.0
 @export_range(0.0, 2.0, 0.05)
-var shadow_blur: float = 1.6
+var shadow_blur: float = 0.9
 @export_range(0.0, 0.8, 0.01)
 var terrain_corner_darken: float = 0.42
 @export_range(0.0, 0.8, 0.01)
@@ -172,7 +172,7 @@ var ssao_intensity: float = 0.55
 var ssao_power: float = 1.1
 @export var fog_enabled: bool = true
 @export_range(0.0, 0.02, 0.00001)
-var fog_density: float = 0.0016
+var fog_density: float = 0.00032
 @export_range(0.0, 2.0, 0.01)
 var fog_light_energy: float = 0.28
 @export_range(0.0, 2.0, 0.01)
@@ -462,11 +462,11 @@ static func paint_scene_light(c: PerformanceQualityConfig) -> void:
 	c.ssao_power = 1.1
 	c.terrain_corner_darken = 0.42
 	c.terrain_shadow_darken = 0.45
-	c.fog_density = 0.0016
+	c.fog_density = 0.00032
 	c.fog_light_energy = 0.28
 	c.shadow_bias = 0.04
 	c.shadow_normal_bias = 1.0
-	c.shadow_blur = 1.6
+	c.shadow_blur = 0.9
 	c.shadow_max_distance = 220.0
 	c.shadow_split_1 = 0.86
 	c.shadow_split_2 = 0.94
@@ -491,10 +491,10 @@ static func paint_scene_light(c: PerformanceQualityConfig) -> void:
 		c.ssao_power = 1.15
 		c.terrain_corner_darken = 0.5
 		c.terrain_shadow_darken = 0.5
-		c.fog_density = 0.0018
+		c.fog_density = 0.0004
 		c.shadow_bias = 0.03
 		c.shadow_normal_bias = 0.85
-		c.shadow_blur = 1.2
+		c.shadow_blur = 0.7
 		c.shadow_max_distance = 260.0
 		c.shadow_split_1 = 0.62
 		c.shadow_split_2 = 0.78
