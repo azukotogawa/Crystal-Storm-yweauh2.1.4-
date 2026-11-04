@@ -75,6 +75,10 @@ var _maps_resident: bool = false
 static var s_macro_enabled_from_env: bool = true
 static var s_micro_enabled_from_env: bool = true
 var ramp_map: Dictionary = {}
+## Main-thread copy of ramp_map taken when a mesh job starts; served to
+## main-thread queries while that job (token _ramp_pub_token) rewrites ramp_map.
+var _ramp_published: Dictionary = {}
+var _ramp_pub_token: int = -1
 var _worker_force_ramp: Dictionary = {}
 var _worker_water_lid: Dictionary = {}
 
@@ -132,6 +136,8 @@ func prepare_for_reuse(coord: Vector2i, world_ref: InfiniteNoiseWorld) -> void:
 	surface_map.clear()
 	tile_map.clear()
 	ramp_map.clear()
+	_ramp_published = {}
+	_ramp_pub_token = -1
 	_worker_height_delta.clear()
 	_worker_build_tile.clear()
 	_worker_feature_tile.clear()

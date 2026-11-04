@@ -860,6 +860,10 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 		})
 
 	var t_wq := Time.get_ticks_usec() if _drain_measure else 0
+	# The job rewrites data.ramp_map on a worker. Main-thread ramp queries read this
+	# copy until the job is gone (entries are replaced, never mutated, so shallow).
+	data._ramp_published = data.ramp_map.duplicate()
+	data._ramp_pub_token = token
 	var task_id := WorkerThreadPool.add_task(
 		Callable(self, "_chunk_mesh_task").bind(
 			coord, data, token, true, [], Rect2i(0, 0, ChunkData.SIZE, ChunkData.SIZE), [], {}
@@ -983,6 +987,10 @@ func _enqueue_chunk_mesh_work(
 			"alloc_path": alloc_path,
 		})
 
+	# The job rewrites data.ramp_map on a worker. Main-thread ramp queries read this
+	# copy until the job is gone (entries are replaced, never mutated, so shallow).
+	data._ramp_published = data.ramp_map.duplicate()
+	data._ramp_pub_token = token
 	var task_id := WorkerThreadPool.add_task(
 		Callable(self, "_chunk_mesh_task").bind(
 			coord, data, token, full_rebuild, dirty_local, patch_rect, keep_quads, prior_surface_cache
@@ -4113,6 +4121,8 @@ func get_ramp_entry_at_world(wx: float, wz: float) -> Dictionary:
 	var data: ChunkData = chunks[chunk_coord].chunk_data
 	var lx := ix - chunk_coord.x * ChunkData.SIZE
 	var lz := iz - chunk_coord.y * ChunkData.SIZE
+	if _chunk_tasks.has(chunk_coord) and data._ramp_pub_token == int(_chunk_task_tokens.get(chunk_coord, -2)):
+		return data._ramp_published.get(Vector2i(lx, lz), ChunkData.empty_ramp_entry())
 	if data.has_ramp(lx, lz):
 		return data.get_ramp_entry(lx, lz)
 	return ChunkData.empty_ramp_entry()
