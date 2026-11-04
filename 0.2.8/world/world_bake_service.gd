@@ -113,7 +113,7 @@ const BAKE_COST_HISTORY := 512
 const PRI_STREAM := 0
 const PRI_NEARBY := 1
 const PRI_FILL := 2
-const MAX_INFLIGHT := 2
+const _WorkerBudget = preload("res://config/worker_budget.gd")
 const MAX_PENDING := 12
 var _job_pending: Array = []
 var _job_pending_set: Dictionary = {}
@@ -887,7 +887,7 @@ func enqueue_package_job(coord: Vector2i, priority: int = PRI_FILL) -> Dictionar
 
 
 func _pump_jobs(allow_fill: bool = true) -> void:
-	while _job_inflight.size() < MAX_INFLIGHT and not _job_pending.is_empty():
+	while _job_inflight.size() < bake_job_cap() and not _job_pending.is_empty():
 		var item: Dictionary = _job_pending[0]
 		var pri: int = int(item.get("priority", PRI_FILL))
 		if pri >= PRI_FILL and not allow_fill:
@@ -1071,8 +1071,12 @@ static func stream_first_from_env() -> bool:
 	return OS.get_environment("CRYSTALSTORM_BAKE_STREAM_FIRST").strip_edges() != "0"
 
 
+static func bake_job_cap() -> int:
+	return _WorkerBudget.bake_jobs_inflight(_WorkerBudget.cores())
+
+
 static func budget_cap_workers() -> int:
-	var hw := maxi(OS.get_processor_count() - 1, 1)
+	var hw := _WorkerBudget.pool_workers(_WorkerBudget.cores())
 	var raw := OS.get_environment("CRYSTALSTORM_BAKE_WORKERS").strip_edges()
 	return clampi(int(raw), 1, hw) if raw.is_valid_int() else hw
 
@@ -1255,7 +1259,7 @@ func tick_background_fill(mesh_queue_depth: int = 0) -> int:
 	var t_tick := Time.get_ticks_usec()
 	last_tick_ops = _collect_jobs()
 	worker_util_samples += 1
-	worker_util_sum += float(_job_inflight.size()) / float(maxi(MAX_INFLIGHT, 1))
+	worker_util_sum += float(_job_inflight.size()) / float(maxi(bake_job_cap(), 1))
 	if not bake_in_progress:
 		last_tick_us = Time.get_ticks_usec() - t_tick
 		return last_tick_ops

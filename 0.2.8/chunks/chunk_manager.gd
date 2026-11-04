@@ -2,6 +2,7 @@ class_name ChunkManager
 extends Node3D
 
 const _WorldSettings = preload("res://config/world_settings.gd")
+const _WorkerBudget = preload("res://config/worker_budget.gd")
 const _ChunkMeshBufferBuilder = preload("res://chunks/chunk_mesh_buffer_builder.gd")
 const _ChunkPipeline = preload("res://chunks/chunk_pipeline.gd")
 const _ChunkRebuildTelemetry = preload("res://systems/chunk_rebuild_telemetry.gd")
@@ -1158,6 +1159,8 @@ func apply_performance_config(cfg) -> void:
 	RENDER_DISTANCE = int(cfg.render_distance)
 	MAX_CHUNKS_PER_FRAME = int(cfg.max_chunks_per_frame)
 	MAX_INFLIGHT_CHUNKS = int(cfg.max_inflight_chunks)
+	if not ("preset" in cfg and int(cfg.preset) == PerformanceQualityConfig.Preset.SAFE):
+		MAX_INFLIGHT_CHUNKS = _WorkerBudget.stream_inflight(MAX_INFLIGHT_CHUNKS, _WorkerBudget.cores())
 	MESH_CAVES = bool(cfg.mesh_caves)
 	if "prebuild_chunk_buffers" in cfg:
 		prebuild_chunk_buffers = bool(cfg.prebuild_chunk_buffers)
