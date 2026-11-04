@@ -26,6 +26,15 @@ signal chunk_unloaded(coord: Vector2i)
 var chunks: Dictionary[Vector2i, ChunkView] = {}
 var pending := {}
 var _chunk_tasks := {}
+## Token each live entry in _chunk_tasks was started with (gen tokens can move on
+## without a new task, so the task's own token is kept here).
+var _chunk_task_tokens := {}
+## Tasks whose chunk unloaded while they were queued or running. Keyed by
+## Vector3i(coord.x, coord.y, task_token): {"tid", "data", "reaped"}. The id is
+## waited only once is_task_completed is true, so unload never blocks.
+var _orphan_tasks := {}
+var orphan_tasks_added: int = 0
+var orphan_tasks_reaped: int = 0
 var _chunk_gen_tokens := {}
 var _mesh_completion_queue: Array = []
 var _stat_mutex := Mutex.new()
@@ -169,7 +178,7 @@ func _tick_deferred_bake_fill() -> void:
 		return
 	var meshq: int = _mesh_completion_queue.size()
 	if "stream_busy" in bake:
-		bake.stream_busy = _chunk_tasks.size()
+		bake.stream_busy = _chunk_tasks.size() + _orphan_tasks.size()
 	if meshq > 8 and profiler and profiler.has_method("inc_frame"):
 		profiler.inc_frame("world_bake_fill_skip_meshq")
 	var fbs = _fbs_node
@@ -330,11 +339,23 @@ func shutdown_workers() -> void:
 		_chunk_gen_tokens[coord] = int(_chunk_gen_tokens.get(coord, 0)) + 1
 	var tasks: Array = _chunk_tasks.values()
 	_chunk_tasks.clear()
+	_chunk_task_tokens.clear()
 	for tid in tasks:
 		if tid is int:
 			# Required: every WorkerThreadPool task id must be waited exactly once
 			# or engine shutdown corrupts heap (SIGSEGV mutex=0x1c0 / free invalid).
 			WorkerThreadPool.wait_for_task_completion(tid)
+	for okey in _orphan_tasks.keys():
+		var entry: Dictionary = _orphan_tasks[okey]
+		if not bool(entry.get("reaped", false)):
+			WorkerThreadPool.wait_for_task_completion(int(entry["tid"]))
+			orphan_tasks_reaped += 1
+		var odata: ChunkData = entry.get("data")
+		if odata != null:
+			odata.set_meta("_pooled", true)
+			odata.set_meta("_pooled_released", true)
+			odata.world = null
+	_orphan_tasks.clear()
 
 
 ## Godot requires wait_for_task_completion for each add_task id; erasing without
@@ -344,6 +365,7 @@ func _reap_chunk_task(coord: Vector2i) -> void:
 		return
 	var tid = _chunk_tasks[coord]
 	_chunk_tasks.erase(coord)
+	_chunk_task_tokens.erase(coord)
 	if tid is int:
 		var profiler = get_node_or_null("/root/PerfProfiler")
 		if profiler and profiler.has_method("begin"):
@@ -355,6 +377,78 @@ func _reap_chunk_task(coord: Vector2i) -> void:
 			profiler.end_func("ChunkManager::_reap_chunk_task")
 		if profiler and profiler.has_method("end"):
 			profiler.end("chunk_worker_wait")
+
+
+## Hand the chunk's task to the orphan list instead of waiting on it. Returns the
+## orphan key, or null when there was no task. data_to_pool (the view's data, which
+## a regen task may still be reading) is pooled only after the task finishes.
+func _orphan_chunk_task(coord: Vector2i, data_to_pool: ChunkData):
+	if not _chunk_tasks.has(coord):
+		return null
+	var tid = _chunk_tasks[coord]
+	var task_token: int = int(_chunk_task_tokens.get(coord, -1))
+	_chunk_tasks.erase(coord)
+	_chunk_task_tokens.erase(coord)
+	pending.erase(coord)
+	if not (tid is int):
+		return null
+	var okey := Vector3i(coord.x, coord.y, task_token)
+	_orphan_tasks[okey] = {"tid": tid, "data": data_to_pool, "reaped": false}
+	orphan_tasks_added += 1
+	return okey
+
+
+## Wait on orphaned task ids that already finished; never blocks.
+func _reap_orphan_tasks() -> void:
+	if _orphan_tasks.is_empty():
+		return
+	for okey in _orphan_tasks.keys():
+		var entry: Dictionary = _orphan_tasks[okey]
+		if bool(entry.get("reaped", false)):
+			continue
+		var tid: int = int(entry["tid"])
+		if WorkerThreadPool.is_task_completed(tid):
+			WorkerThreadPool.wait_for_task_completion(tid)
+			entry["reaped"] = true
+			orphan_tasks_reaped += 1
+
+
+## Result of an orphaned task arrived: drop it, free what it held, finish cleanup.
+## Returns false when (coord, token) is not an orphan.
+func _finish_orphan_task(coord: Vector2i, data: ChunkData, token: int) -> bool:
+	var okey := Vector3i(coord.x, coord.y, token)
+	if not _orphan_tasks.has(okey):
+		return false
+	var entry: Dictionary = _orphan_tasks[okey]
+	if not bool(entry.get("reaped", false)):
+		# The task body has returned (this callback was deferred from it).
+		WorkerThreadPool.wait_for_task_completion(int(entry["tid"]))
+		orphan_tasks_reaped += 1
+	_orphan_tasks.erase(okey)
+	var view_data: ChunkData = entry.get("data")
+	if data != null and data != view_data and _telemetry_trigger in ["stream", "movement"]:
+		_release_unowned_chunk_data(coord, data)
+	if view_data != null:
+		_pool_chunk_data_after_view_free(view_data)
+	if not _is_chunk_resident(coord) and not _orphan_coord_busy(coord):
+		_maybe_release_bake_package(coord)
+	for dz in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dz == 0:
+				continue
+			var n := Vector2i(coord.x + dx, coord.y + dz)
+			if _is_chunk_resident(n) or _stream_load_pending.has(n) or _orphan_coord_busy(n):
+				continue
+			if _lifecycle_by_coord.get(n, "") == _ChunkStreamLifecycle.UNLOADED:
+				_maybe_release_bake_package(n)
+	return true
+
+
+func _orphan_coord_busy(coord: Vector2i) -> bool:
+	for okey: Vector3i in _orphan_tasks.keys():
+		if okey.x == coord.x and okey.y == coord.y:
+			return true
+	return false
 
 
 ## Safe to remove_child + free views here. Must NOT be used from _exit_tree (double free).
@@ -469,14 +563,20 @@ func _unload_chunk_view(key: Vector2i) -> void:
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.record_unload(key, "start", {"active_chunks": chunks.size()})
 	_set_lifecycle_state(key, _ChunkStreamLifecycle.UNLOADING)
+	var view: ChunkView = chunks[key]
+	var orphan_key = null
 	if _chunk_tasks.has(key):
 		_chunk_gen_tokens[key] = int(_chunk_gen_tokens.get(key, 0)) + 1
-		_reap_chunk_task(key)
-	var view: ChunkView = chunks[key]
+		var task_data: ChunkData = view.chunk_data if is_instance_valid(view) else null
+		orphan_key = _orphan_chunk_task(key, task_data)
 	chunks.erase(key)
+	_rebuild_pending.erase(key)
 	if is_instance_valid(view):
 		ChunkView.cancel_pending_uploads_for_view(view)
 		var data_to_pool: ChunkData = view.chunk_data
+		if orphan_key != null:
+			# The orphaned task may still read this data; pool it when it ends.
+			data_to_pool = null
 		view.chunk_data = null
 		view.mesh_data = {}
 		if data_to_pool != null and not data_to_pool.has_meta("_pooled"):
@@ -491,7 +591,8 @@ func _unload_chunk_view(key: Vector2i) -> void:
 			_pool_chunk_data_after_view_free(data_to_pool)
 		if not _try_pool_chunk_view(view):
 			call_deferred("_profiled_free_chunk_view", view)
-	_maybe_release_bake_package(key)
+	if orphan_key == null and not _orphan_coord_busy(key):
+		_maybe_release_bake_package(key)
 	_set_lifecycle_state(key, _ChunkStreamLifecycle.UNLOADED)
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.record_unload(key, "complete", {"active_chunks": chunks.size()})
@@ -512,6 +613,8 @@ func _maybe_release_bake_package(key: Vector2i) -> void:
 				continue
 			var n := Vector2i(key.x + dx, key.y + dz)
 			if chunks.has(n) or pending.has(n) or _chunk_tasks.has(n) or _stream_load_pending.has(n):
+				return
+			if not _orphan_tasks.is_empty() and _orphan_coord_busy(n):
 				return
 	bake.release_chunk(key)
 
@@ -759,6 +862,7 @@ func _enqueue_chunk_generation(coord: Vector2i, high_priority: bool = false) -> 
 		high_priority
 	)
 	_chunk_tasks[coord] = task_id
+	_chunk_task_tokens[coord] = token
 	if _drain_measure:
 		var wq_us := Time.get_ticks_usec() - t_wq
 		_drain_add("worker_queue_add_task", wq_us)
@@ -881,6 +985,7 @@ func _enqueue_chunk_mesh_work(
 		high_priority
 	)
 	_chunk_tasks[coord] = task_id
+	_chunk_task_tokens[coord] = token
 	if _ChunkStreamingTelemetry.is_enabled():
 		_ChunkStreamingTelemetry.transition(coord, token, _ChunkStreamingTelemetry.STATE_WORKER_QUEUED, {
 			"worker_tasks": _chunk_tasks.size(),
@@ -2831,6 +2936,7 @@ func _process(_delta):
 		profiler.begin_func("ChunkManager::_process")
 	if _rebuild_flush_needed:
 		_flush_rebuild_pending()
+	_reap_orphan_tasks()
 	var frame_us := 0
 	var worker_us := 0
 	var upload_us := 0
@@ -3212,6 +3318,15 @@ func update_stream(cx: int, cz: int) -> void:
 				queued_count += 1
 
 	var unload_queued := 0
+	# Player turned back: chunks needed again must not stay queued for unload.
+	if not _stream_unload_pending.is_empty():
+		var kept: Array = []
+		for key in _stream_unload_pending:
+			if not needed.has(key):
+				kept.append(key)
+		if kept.size() != _stream_unload_pending.size():
+			_stream_unload_pending = kept
+			unload_mutated = true
 	for key in chunks.keys():
 		if not needed.has(key):
 			if key not in _stream_unload_pending:
@@ -3850,8 +3965,16 @@ func _on_chunk_task_complete(
 		profiler.begin("chunk_task_complete")
 	if profiler and profiler.has_method("begin_func"):
 		profiler.begin_func("ChunkManager::_on_chunk_task_complete")
+	if not _orphan_tasks.is_empty() and _finish_orphan_task(coord, data, token):
+		if profiler and profiler.has_method("end_func"):
+			profiler.end_func("ChunkManager::_on_chunk_task_complete")
+		if profiler and profiler.has_method("end"):
+			profiler.end("chunk_task_complete")
+		return
 	# Reap pool task id first (wait_for_task_completion). Must not only erase.
-	_reap_chunk_task(coord)
+	# Only the task this callback came from; never block on a newer one.
+	if token < 0 or int(_chunk_task_tokens.get(coord, token)) == token:
+		_reap_chunk_task(coord)
 	if _shutting_down or is_mesh_job_stale(coord, data, token):
 		var token_stale := token >= 0 and int(_chunk_gen_tokens.get(coord, -1)) != token
 		var stamp_stale := (
