@@ -164,6 +164,14 @@ func _run() -> void:
 						var p: Array = bake.get_mesh_plan(Vector2i(dx, dz))
 						qn += p.size()
 				print("BENCH START81 read_plus_plan_ms=%.1f quads=%d plans_built=%s" % [(Time.get_ticks_usec() - t3) / 1000.0, qn, str(bake.get("stats_plan_built_at_load"))])
+				if OS.get_environment("BENCH_CENSUS") == "1":
+					var MC = load("res://scripts/mem_census.gd")
+					var mc = MC.new()
+					var acc := {}
+					mc.fields_into(bake, "bake.", acc)
+					print("BENCH " + MC.monitors_line("load_after_start81"))
+					for ln in MC.table_lines("load", acc, 25):
+						print("BENCH " + ln)
 		"hash":
 			if not bake.load_bake_for_seed(seed, true):
 				print("BENCH HASH FAIL load %s" % bake.last_error)
