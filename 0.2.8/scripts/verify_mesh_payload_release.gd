@@ -160,7 +160,50 @@ func _run() -> void:
 	var keep_r := 1
 	cm.mesh_payload_keep_radius = keep_r
 	var mb0 := _payload_mb(cm)
-	var released: int = cm.release_far_mesh_payloads(center)
+	# Per-frame cap: at most N releases per frame, farthest (closest to unload) first.
+	var released := 0
+	if not ("mesh_payload_release_per_frame" in cm):
+		_fail("ChunkManager has no mesh_payload_release_per_frame cap")
+	else:
+		var far_n := 0
+		var max_cheb := 0
+		for k in cm.chunks.keys():
+			var ch: int = maxi(absi(k.x - center.x), absi(k.y - center.y))
+			if ch > keep_r and not bool(cm.chunks[k].mesh_data.get("cpu_payload_released", false)):
+				far_n += 1
+				max_cheb = maxi(max_cheb, ch)
+		cm.mesh_payload_release_per_frame = 2
+		var got: Array = []
+		var n1: int = cm.release_far_mesh_payloads(center)
+		for k in cm.chunks.keys():
+			if bool(cm.chunks[k].mesh_data.get("cpu_payload_released", false)):
+				got.append(k)
+		var n2: int = cm.release_far_mesh_payloads(center)
+		print("MEMTEST cap=2 far=%d first_call=%d same_frame_second=%d" % [far_n, n1, n2])
+		var far_first := true
+		for k in got:
+			if maxi(absi(k.x - center.x), absi(k.y - center.y)) != max_cheb:
+				far_first = false
+		if n1 != mini(2, far_n) or n2 != 0:
+			_fail("cap not honored: first=%d second=%d far=%d" % [n1, n2, far_n])
+		elif not far_first:
+			_fail("cap released a nearer chunk before the farthest ring %s" % str(got))
+		else:
+			_ok("cap 2/frame honored, farthest first (%d of %d)" % [n1, far_n])
+		await process_frame
+		var drained := n1
+		var cap_frames := 0
+		while cap_frames < 60:
+			var k2: int = cm.release_far_mesh_payloads(center)
+			if k2 > 2:
+				_fail("frame released %d > cap" % k2)
+			drained += k2
+			if k2 == 0:
+				break
+			cap_frames += 1
+			await process_frame
+		released = drained
+		_ok("drained %d releases over %d frames" % [drained, cap_frames + 1])
 	var mb1 := _payload_mb(cm)
 	print("MEMTEST payload_mb before=%.2f after=%.2f saved=%.2f views=%d released=%d keep_radius=%d" % [mb0, mb1, mb0 - mb1, cm.chunks.size(), released, keep_r])
 
