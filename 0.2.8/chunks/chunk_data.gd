@@ -88,6 +88,8 @@ var _worker_halo_height_delta: Array = []
 var _has_worker_snapshot: bool = false
 var overlay_mesh_stamp: Dictionary = {}
 var _mesh_job_micro_skip: Dictionary = {}
+# Per mesh job memo of side wall micro tops (set only during _build_macro_mesh_region).
+var _mesh_job_top_memo = null
 var preserve_column_maps: bool = false
 var skip_mesh_plan_cache: bool = false
 var _preserve_surface_snapshot: Array = []

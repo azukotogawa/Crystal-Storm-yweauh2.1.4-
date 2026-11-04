@@ -943,6 +943,7 @@ func _build_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = false)
 	_greedy_mesh_plane_region(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads, x0, z0, x1, z1)
+	data._mesh_job_top_memo = null
 	_emit_water_lids_region(data, out_quads, x0, z0, x1, z1)
 	if MESH_CAVES and full_chunk:
 		_emit_cave_faces(data, out_quads)
@@ -966,6 +967,7 @@ func _build_macro_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = 
 	var x1 := rect.position.x + rect.size.x
 	var z1 := rect.position.y + rect.size.y
 	data._mesh_job_micro_skip = {}
+	data._mesh_job_top_memo = {} if SIDE_TOP_MEMO else null
 	if not full_chunk:
 		_clear_ramp_map_in_rect(data, rect)
 	var concave_cells := {}
@@ -980,6 +982,7 @@ func _build_macro_mesh_region(data: ChunkData, rect: Rect2i, full_chunk: bool = 
 	_greedy_mesh_plane_region(data, Vector3i(1, 0, 0), FACE_POS_X, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, -1), FACE_NEG_Z, out_quads, x0, z0, x1, z1)
 	_greedy_mesh_plane_region(data, Vector3i(0, 0, 1), FACE_POS_Z, out_quads, x0, z0, x1, z1)
+	data._mesh_job_top_memo = null
 	_emit_water_lids_region(data, out_quads, x0, z0, x1, z1)
 	if MESH_CAVES and full_chunk:
 		_emit_cave_faces(data, out_quads)
@@ -2234,7 +2237,25 @@ func _emit_wave_lip(
 	_emit_side_strips(data, out_quads, x, z, nx, nz, face_code, _tile_type_at(data, x, z))
 
 
+# The micro top depends on mx/mz only through wave_rep_micro, and column data does
+# not change during one mesh job, so side walls reuse it. CS_SIDE_MEMO=0 disables.
+static var SIDE_TOP_MEMO: bool = OS.get_environment("CS_SIDE_MEMO") != "0"
+
+
 func _column_micro_top(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int) -> float:
+	var memo = data._mesh_job_top_memo
+	if memo == null:
+		return _column_micro_top_uncached(data, col_x, col_z, mx, mz)
+	var key := Vector4i(col_x, col_z, TerrainLook.wave_rep_micro(mx), TerrainLook.wave_rep_micro(mz))
+	var hit = memo.get(key)
+	if hit != null:
+		return hit
+	var v := _column_micro_top_uncached(data, col_x, col_z, mx, mz)
+	memo[key] = v
+	return v
+
+
+func _column_micro_top_uncached(data: ChunkData, col_x: int, col_z: int, mx: int, mz: int) -> float:
 	var base: float = _sample_height(data, col_x, col_z)
 	var layer: float = _WorldSettings.get_active().layer_height()
 	if base < -9000.0:
