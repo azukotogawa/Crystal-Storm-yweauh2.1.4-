@@ -24,6 +24,9 @@ static var _native_surface: RefCounted = _make_native_surface()
 static var _native_surface_mutex := Mutex.new()
 static var _native_surface_calls := 0
 static var _native_surface_fallbacks := 0
+# CS_NATIVE_PREP=0 keeps the GDScript atlas lookup and AO grid read in front of
+# the native writer (CsNativeMesher.quad_atlas / ao_grid).
+static var _native_prep: bool = OS.get_environment("CS_NATIVE_PREP") != "0"
 
 
 static func _make_native_surface() -> RefCounted:
@@ -52,22 +55,24 @@ static func build_surface_arrays_native(data: ChunkData, terrain_quads: Array) -
 		return {}
 	var n := terrain_quads.size()
 	var atlas_in := PackedInt32Array()
-	atlas_in.resize(n * 2)
-	for i in n:
-		var q: Dictionary = terrain_quads[i]
-		var fc := int(q.get("face_code", -1))
-		if not (fc < FACE_RAMP or fc == FACE_RAMP or fc == FACE_RAMP_CORNER):
-			continue
-		var a: Vector2i = _quad_atlas(data, int(q.get("type", _VoxelTypes.AIR)), FACE_TOP if q.has("wave_riser") else fc, float(q["x"]), float(q["z"]))
-		atlas_in[i * 2] = a.x
-		atlas_in[i * 2 + 1] = a.y
+	var prep: bool = _native_prep and nm.has_method("quad_atlas")
+	if prep:
+		atlas_in = nm.quad_atlas(terrain_quads, data.position.x * ChunkData.SIZE, data.position.y * ChunkData.SIZE)
+	if atlas_in.size() != n * 2:
+		atlas_in = _fill_atlas_gd(data, terrain_quads)
 	var ao_on: bool = _TerrainAO.bake_enabled
 	var grid := PackedFloat64Array()
 	grid.resize(400)
 	if ao_on:
-		for gx in 20:
-			for gz in 20:
-				grid[gx * 20 + gz] = _TerrainAO.sample_surface(data, gx - 2, gz - 2)
+		if prep and nm.has_method("ao_grid"):
+			var g: Dictionary = nm.ao_grid(data._halo_surface, data._has_halo_surface, ChunkData.SIZE)
+			grid = g["grid"]
+			for idx in PackedInt32Array(g["need"]):
+				grid[idx] = _TerrainAO.sample_surface(data, idx / 20 - 2, idx % 20 - 2)
+		else:
+			for gx in 20:
+				for gz in 20:
+					grid[gx * 20 + gz] = _TerrainAO.sample_surface(data, gx - 2, gz - 2)
 	var ws = _WorldSettings.get_active()
 	var voxel_s: float = ws.voxel_scale
 	var chunk_ox: float = ws.column_to_world(float(data.position.x * ChunkData.SIZE))
@@ -141,6 +146,21 @@ static func build_surface_arrays_native(data: ChunkData, terrain_quads: Array) -
 		"triangle_count": int(r["triangle_count"]),
 		"face_keys": r["face_keys"],
 	}
+
+
+static func _fill_atlas_gd(data: ChunkData, terrain_quads: Array) -> PackedInt32Array:
+	var n := terrain_quads.size()
+	var atlas_in := PackedInt32Array()
+	atlas_in.resize(n * 2)
+	for i in n:
+		var q: Dictionary = terrain_quads[i]
+		var fc := int(q.get("face_code", -1))
+		if not (fc < FACE_RAMP or fc == FACE_RAMP or fc == FACE_RAMP_CORNER):
+			continue
+		var a: Vector2i = _quad_atlas(data, int(q.get("type", _VoxelTypes.AIR)), FACE_TOP if q.has("wave_riser") else fc, float(q["x"]), float(q["z"]))
+		atlas_in[i * 2] = a.x
+		atlas_in[i * 2 + 1] = a.y
+	return atlas_in
 
 
 static func _note_native_surface(ok: bool) -> void:

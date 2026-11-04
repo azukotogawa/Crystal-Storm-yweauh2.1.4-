@@ -12,6 +12,8 @@ void CsNativeMesher::_bind_methods() {
 			&CsNativeMesher::waved_tops);
 	ClassDB::bind_method(D_METHOD("surface_arrays", "quads", "atlas", "grid", "chunk_ox", "chunk_oz", "voxel_s", "layer", "ao_on", "curve_strips"),
 			&CsNativeMesher::surface_arrays);
+	ClassDB::bind_method(D_METHOD("quad_atlas", "quads", "base_x", "base_z"), &CsNativeMesher::quad_atlas);
+	ClassDB::bind_method(D_METHOD("ao_grid", "halo", "has_halo", "size"), &CsNativeMesher::ao_grid);
 	ClassDB::bind_method(D_METHOD("version"), &CsNativeMesher::version);
 }
 

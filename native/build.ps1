@@ -21,7 +21,7 @@ $defs = @('-DGDEXTENSION', '-DWINDOWS_ENABLED', '-DTHREADS_ENABLED', '-DHOT_RELO
 if ($Target -eq 'template_release') { $defs += '-DNDEBUG' } else { $defs += '-DDEBUG_ENABLED' }
 $args_ = @('-std=c++17', '-O2', '-shared', '-fvisibility=hidden') + $defs + @(
   "-I$GodotCpp\include", "-I$GodotCpp\gdextension", "-I$($gen.FullName)\include",
-  "$PSScriptRoot\src\native_mesher.cpp", "$PSScriptRoot\src\surface_arrays.cpp", "$PSScriptRoot\src\register_types.cpp",
+  "$PSScriptRoot\src\native_mesher.cpp", "$PSScriptRoot\src\surface_arrays.cpp", "$PSScriptRoot\src\native_prep.cpp", "$PSScriptRoot\src\register_types.cpp",
   $lib.FullName, '-static', '-Wl,--no-undefined', '-o', "$out\libcsnative.windows.$Target.x86_64.dll")
 & $Cxx @args_
 if ($LASTEXITCODE -ne 0) { throw "compile failed ($LASTEXITCODE)" }
