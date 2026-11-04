@@ -226,7 +226,7 @@ func _run() -> void:
 				bad_far += 1
 			elif int(md.get("count", 0)) > 0:
 				far_list.append(k)
-		if _view_mesh_hash(v) != before_hash[k]:
+		if before_hash.has(k) and _view_mesh_hash(v) != before_hash[k]:
 			_fail("release changed uploaded mesh for %s" % str(k))
 	if bad_near > 0:
 		_fail("near views lost payload: %d" % bad_near)

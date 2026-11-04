@@ -66,6 +66,10 @@ var terrain_surface_mesh: bool = true
 ## Chunks farther than this (Chebyshev, in chunks) from the player drop their
 ## CPU mesh payload after upload. -1 keeps every payload. Env CS_MESH_PAYLOAD_KEEP.
 var mesh_payload_keep_radius: int = _mesh_payload_keep_from_env()
+## Max CPU payload releases per frame (farthest first). <= 0 means no cap.
+var mesh_payload_release_per_frame: int = 2
+var _payload_release_frame := -1
+var _payload_released_this_frame := 0
 var chunk_upload_budget_us: int = 3500
 var streaming_budget_us: int = 2500
 var max_stream_starts_per_frame: int = 1
@@ -4561,29 +4565,57 @@ func _payload_is_far(coord: Vector2i, center: Vector2i) -> bool:
 	return maxi(absi(coord.x - center.x), absi(coord.y - center.y)) > mesh_payload_keep_radius
 
 
+func _payload_release_budget() -> int:
+	var f := Engine.get_process_frames()
+	if f != _payload_release_frame:
+		_payload_release_frame = f
+		_payload_released_this_frame = 0
+	if mesh_payload_release_per_frame <= 0:
+		return 1 << 30
+	return mesh_payload_release_per_frame - _payload_released_this_frame
+
+
 func _release_payload_if_far(coord: Vector2i) -> void:
 	if mesh_payload_keep_radius < 0 or not chunks.has(coord):
 		return
+	if _payload_release_budget() <= 0:
+		return  # the per-frame sweep in update_stream picks it up later
 	if _payload_is_far(coord, get_player_chunk_coord()):
 		var view: ChunkView = chunks[coord] as ChunkView
-		if view and is_instance_valid(view):
-			view.release_cpu_mesh_payload()
+		if view and is_instance_valid(view) and view.release_cpu_mesh_payload():
+			_payload_released_this_frame += 1
 
 
-## Drop CPU mesh payloads of resident chunks outside mesh_payload_keep_radius.
+## Drop CPU mesh payloads of resident chunks outside mesh_payload_keep_radius,
+## at most mesh_payload_release_per_frame per frame, farthest from center first.
 ## Returns how many views were released by this call.
 func release_far_mesh_payloads(center: Vector2i) -> int:
 	if mesh_payload_keep_radius < 0:
 		return 0
-	var n := 0
+	var budget := _payload_release_budget()
+	if budget <= 0:
+		return 0
+	var cands: Array = []
 	for coord in chunks.keys():
 		if not _payload_is_far(coord, center):
 			continue
 		if pending.has(coord) or _chunk_tasks.has(coord):
 			continue
 		var view: ChunkView = chunks[coord] as ChunkView
-		if view and is_instance_valid(view) and view.release_cpu_mesh_payload():
+		if view == null or not is_instance_valid(view) or view.cpu_payload_released:
+			continue
+		cands.append([maxi(absi(coord.x - center.x), absi(coord.y - center.y)), view])
+	if cands.is_empty():
+		return 0
+	if cands.size() > budget:
+		cands.sort_custom(func(a, b): return a[0] > b[0])
+	var n := 0
+	for c in cands:
+		if n >= budget:
+			break
+		if (c[1] as ChunkView).release_cpu_mesh_payload():
 			n += 1
+	_payload_released_this_frame += n
 	return n
 
 
