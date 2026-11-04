@@ -938,7 +938,14 @@ func _compute_column_maps(use_uncached: bool = true):
 		for z in SIZE:
 			var wx := float(position.x * SIZE + x)
 			var wz := float(position.y * SIZE + z)
-			if use_uncached and _has_worker_snapshot:
+			if use_uncached and _has_worker_snapshot and w.TILE_REUSE:
+				var hv: Array = w.get_column_worker(
+					wx, wz, float(_worker_height_delta[x][z]),
+					int(_worker_build_tile[x][z]), mesh_feature_tile(x, z)
+				)
+				surface_map[x][z] = hv[0]
+				tile_map[x][z] = hv[1]
+			elif use_uncached and _has_worker_snapshot:
 				surface_map[x][z] = w.get_surface_height_worker(
 					wx, wz, float(_worker_height_delta[x][z])
 				)

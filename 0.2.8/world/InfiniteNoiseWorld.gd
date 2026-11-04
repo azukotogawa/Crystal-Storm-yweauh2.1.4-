@@ -698,16 +698,7 @@ func _note_frame_dup_biome(key: String) -> void:
 
 ## Worker-thread safe: pass terrain edits captured on the main thread (no shared dict access).
 func get_surface_height_worker(wx: float, wz: float, height_delta: float = 0.0) -> float:
-	# Isolation counter: in a complete baked world this must stay 0 for package cells.
-	var bake = null
-	var wb = load("res://world/world_bake_service.gd")
-	if wb != null and wb.has_method("get_active"):
-		bake = wb.get_active()
-	if OS.get_thread_caller_id() == OS.get_main_thread_id() \
-			and bake != null and bake.has_method("should_count_runtime_noise_height") \
-			and bool(bake.should_count_runtime_noise_height(wx, wz)):
-		if bake.has_method("note_runtime_noise_height_call"):
-			bake.note_runtime_noise_height_call()
+	_note_runtime_noise_height(wx, wz)
 	var h: float = _compute_surface_height(wx, wz)
 	h += height_delta
 	return _quantize_to_voxel_layer(h)
@@ -825,13 +816,49 @@ func get_tile_type_uncached(wx: float, wz: float) -> int:
 		return override
 	return _compute_surface_tile(wx, wz, false)
 
-func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false) -> int:
+# Isolation counter: in a complete baked world this must stay 0 for package cells.
+func _note_runtime_noise_height(wx: float, wz: float) -> void:
+	var bake = null
+	var wb = load("res://world/world_bake_service.gd")
+	if wb != null and wb.has_method("get_active"):
+		bake = wb.get_active()
+	if OS.get_thread_caller_id() == OS.get_main_thread_id() \
+			and bake != null and bake.has_method("should_count_runtime_noise_height") \
+			and bool(bake.should_count_runtime_noise_height(wx, wz)):
+		if bake.has_method("note_runtime_noise_height_call"):
+			bake.note_runtime_noise_height_call()
+
+
+## Worker column pass: surface height and tile from one height evaluation.
+## Same results as get_surface_height_worker + get_tile_type_worker. CS_TILE_REUSE=0 disables.
+static var TILE_REUSE: bool = OS.get_environment("CS_TILE_REUSE") != "0"
+
+
+func get_column_worker(wx: float, wz: float, height_delta: float, build_tile: int, feature_override: int) -> Array:
+	_note_runtime_noise_height(wx, wz)
+	var q: float = _compute_surface_height(wx, wz)
+	var h: float = _quantize_to_voxel_layer(q + height_delta)
+	var tile: int
+	if build_tile >= 0:
+		tile = build_tile
+	elif feature_override >= 0:
+		tile = feature_override
+	else:
+		tile = _compute_surface_tile(wx, wz, false, q)
+	return [h, tile]
+
+
+func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false, natural_q: float = NAN) -> int:
 	var rim_tile: int = WorldBorder.rim_surface_tile(world_seed, wx, wz)
 	if rim_tile >= 0:
 		return rim_tile
 	var surf: float
 	var biome: Dictionary
-	if use_session_cache:
+	if not is_nan(natural_q):
+		# Mirrors get_surface_height_uncached / get_biome_uncached without recomputing height.
+		surf = _quantize_to_voxel_layer(natural_q) + _TerrainEdits.get_height_delta(floori(wx), floori(wz))
+		biome = _get_biome_compute(wx, 0.0, wz, surf)
+	elif use_session_cache:
 		surf = get_surface_height(wx, wz)
 		biome = get_biome(wx, 0.0, wz)
 	else:
