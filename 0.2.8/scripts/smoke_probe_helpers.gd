@@ -60,6 +60,13 @@ static func count_vegetation(visuals: Node) -> Dictionary:
 	if veg_root:
 		for child in veg_root.get_children():
 			total += 1
+			if String(child.name).begins_with("VegChunk_"):
+				for mmi in child.find_children("*", "MultiMeshInstance3D", true, false):
+					var mm: MultiMesh = (mmi as MultiMeshInstance3D).multimesh
+					if mm and mm.mesh and mm.instance_count > 0:
+						textured += 1
+						break
+				continue
 			var prop: Node3D = child.get_node_or_null("VoxelProp") as Node3D
 			if prop and prop.get_child_count() > 0:
 				textured += 1
