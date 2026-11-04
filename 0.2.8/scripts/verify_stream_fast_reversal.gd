@@ -93,13 +93,25 @@ func _run() -> void:
 	if await _U.settle(self, cm) < 0:
 		_fail("world did not settle after boot")
 	var ref0 := _U.snapshot_sigs(cm)
+	# Step toward the world interior: a target past the world edge has fewer needed
+	# chunks and the player gets held back at the edge.
 	var c1 := c0 + Vector2i(STEP, 0)
+	var best := -1
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: int = _U.needed_set(cm, c0 + d * STEP).size()
+		if n > best:
+			best = n
+			c1 = c0 + d * STEP
+	if best < _U.needed_set(cm, c0).size():
+		_fail("no interior direction from %s (best needed %d)" % [str(c0), best])
 	print("REVERSAL c0=%s c1=%s chunks=%d" % [str(c0), str(c1), cm.chunks.size()])
 
 	# Learn the reference state at c1, then return to c0.
 	await _hold(cm, c1, 1)
 	await _U.settle(self, cm)
 	var ref1 := _U.snapshot_sigs(cm)
+	if cm.get_player_chunk_coord() != c1:
+		_fail("player did not stay at %s (at %s)" % [str(c1), str(cm.get_player_chunk_coord())])
 	await _hold(cm, c0, 1)
 	await _U.settle(self, cm)
 	_check_state(cm, c0, ref0, "warmup")
@@ -113,7 +125,7 @@ func _run() -> void:
 		_U.wait_all(sleepers)
 	# Zig-zag one chunk at a time with no settling.
 	for i in 6:
-		await _hold(cm, c0 + Vector2i(i % 2, 0), 1)
+		await _hold(cm, c0 + (c1 - c0) / STEP * (i % 2), 1)
 	await _hold(cm, c0, 1)
 	print("REVERSAL_MS %d" % (Time.get_ticks_msec() - t0))
 	if await _U.settle(self, cm) < 0:
@@ -129,6 +141,9 @@ func _run() -> void:
 	await _hold(cm, c1, 1)
 	if await _U.settle(self, cm) < 0:
 		_fail("did not settle at c1")
+	if cm.get_player_chunk_coord() != c1:
+		_fail("player did not stay at %s (at %s)" % [str(c1), str(cm.get_player_chunk_coord())])
+	print("REVERSAL_DIAG player=%s last=%s resident=%d needed=%d" % [str(cm.get_player_chunk_coord()), str(cm._last_chunk_key), cm.chunks.size(), _U.needed_set(cm, c1).size()])
 	_check_state(cm, c1, ref1, "after_reversal_c1")
 
 	await _U.shutdown(self, cm)

@@ -155,14 +155,26 @@ static func shutdown(tree: SceneTree, cm: Node) -> void:
 
 
 static func set_player_chunk(cm: Node, c: Vector2i) -> void:
+	# The player's voxel_position (column units) is the source of truth; the
+	# chunk manager streams from it, and the node transform follows it.
 	var p: Node3D = cm.player
 	var s := float(ChunkData.SIZE)
+	var colx := (float(c.x) + 0.5) * s
+	var colz := (float(c.y) + 0.5) * s
+	if "voxel_position" in p:
+		var v: Vector3 = p.voxel_position
+		v.x = colx
+		v.z = colz
+		p.voxel_position = v
+	var ws = load("res://config/world_settings.gd").get_active()
 	var pos := p.global_position
-	pos.x = (float(c.x) + 0.5) * s
-	pos.z = (float(c.y) + 0.5) * s
+	pos.x = ws.column_to_world(colx) if ws != null else colx
+	pos.z = ws.column_to_world(colz) if ws != null else colz
 	p.global_position = pos
 	if p is CharacterBody3D:
 		(p as CharacterBody3D).velocity = Vector3.ZERO
+	if "velocity" in p and p.velocity is Vector3:
+		p.velocity = Vector3.ZERO
 
 
 static func sig_diff(a: String, b: String) -> String:
