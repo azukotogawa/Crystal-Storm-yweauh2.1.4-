@@ -159,7 +159,8 @@ func _warp(vp: Viewport, at: Vector2, size: Vector2) -> void:
 	_Aim.note_event_mouse(at, size)
 	vp.warp_mouse(at)
 	var motion := InputEventMouseMotion.new()
-	_point(motion, at)
+	motion.position = at
+	motion.global_position = at
 	motion.relative = at - vp.get_mouse_position()
 	vp.push_input(motion, true)
 
