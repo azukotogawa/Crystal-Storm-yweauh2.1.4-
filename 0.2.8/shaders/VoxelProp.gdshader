@@ -22,7 +22,7 @@ void vertex() {
 	vec3 n = normalize(MODEL_NORMAL_MATRIX * NORMAL);
 	vec3 sun = terrain_sun_dir;
 	if (dot(sun, sun) < 0.001) {
-		sun = vec3(0.62, 0.57, 0.54);
+		sun = vec3(0.55, 0.82, 0.38);
 	}
 	float ndl = clamp(dot(n, normalize(sun)), 0.0, 1.0);
 	float hemi = clamp(n.y * 0.5 + 0.5, 0.0, 1.0);

@@ -18,7 +18,7 @@ func _fail(msg: String) -> void:
 
 
 func _run() -> void:
-	if not _Sun.SUN.is_equal_approx(Vector3(0.62, 0.57, 0.54)):
+	if not _Sun.SUN.is_equal_approx(Vector3(0.55, 0.82, 0.38)):
 		_fail("sun vector %s" % _Sun.SUN)
 	_check_preset(_Quality.Preset.LOW, false, 1, 1024)
 	_check_preset(_Quality.Preset.SAFE, false, 1, 1024)
@@ -115,9 +115,9 @@ func _check_scene_file() -> void:
 		return
 	var text := file.get_as_text()
 	file.close()
-	if "light_color = Color(1, 0.88, 0.72, 1)" not in text:
+	if "light_color = Color(0.72, 0.78, 0.9, 1)" not in text:
 		_fail("scene sun color changed")
-	if "Transform3D(0.656781, 0, -0.754082, -0.429633, 0.821822, -0.374197, 0.619721, 0.569744, 0.539757, 0, 0, 0)" not in text:
+	if "Transform3D(0.568432, 0, -0.82273, -0.637673, 0.631876, -0.440574, 0.519864, 0.775069, 0.359179, 0, 0, 0)" not in text:
 		_fail("scene sun does not point along the terrain sun")
 	if "shadow_enabled = true" not in text:
 		_fail("scene shadows off")

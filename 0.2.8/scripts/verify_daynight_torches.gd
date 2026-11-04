@@ -45,7 +45,7 @@ func _luma(c: Color) -> float:
 func _check_curve() -> void:
 	if not is_equal_approx(_Day.DAY_LENGTH_SEC, 480.0):
 		_fail("day length changed from 480")
-	if not _Sun.SUN.is_equal_approx(Vector3(0.62, 0.57, 0.54)):
+	if not _Sun.SUN.is_equal_approx(Vector3(0.55, 0.82, 0.38)):
 		_fail("locked sun moved")
 	var day_f := _Day.ambient_factor(_Day.NOON_PHASE)
 	var night_f := _Day.ambient_factor(_Day.MIDNIGHT_PHASE)
