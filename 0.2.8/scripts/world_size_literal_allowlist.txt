@@ -1,0 +1,48 @@
+# Lines allowed to contain 2048, 1024, 16384, 128 or 1088 outside scripts/, addons/ and archive/.
+# Checked by scripts/verify_world_size_literals.gd. Format: res-relative path | stripped line.
+# World size must come from helpers/world_border.gd (PLAYABLE_HALF_X/Z) or
+# WorldBakeService.full_world_chunk_bounds(). Only add a line here when the number is not a world size
+# (colours, shadow atlas sizes, entity caps, byte math, spawn radii) or is the single source itself.
+assets/tiles/author_land_variants.gd | Vector2i(1, 0): [Color8(48, 128, 150), Color8(40, 116, 138), Color8(58, 140, 162), Color8(64, 150, 160), 293],
+assets/tiles/author_land_variants.gd | Vector2i(1, 1): [Color8(204, 188, 148), Color8(192, 176, 136), Color8(216, 200, 160), Color8(180, 164, 128), 113],
+assets/tiles/author_land_variants.gd | Vector2i(1, 8): [Color8(140, 148, 142), Color8(128, 136, 130), Color8(152, 160, 154), Color8(118, 126, 120), 181],
+assets/tiles/author_land_variants.gd | Vector2i(2, 7): [Color8(214, 186, 128), Color8(202, 174, 118), Color8(224, 198, 140), Color8(186, 164, 108), 107],
+assets/tiles/author_land_variants.gd | Vector2i(2, 9): [Color8(150, 134, 106), Color8(138, 122, 96), Color8(162, 146, 118), Color8(128, 116, 92), 199],
+assets/tiles/author_land_variants.gd | Vector2i(4, 8): [Color8(128, 90, 52), Color8(116, 80, 46), Color8(140, 102, 60), Color8(104, 76, 44), 251],
+assets/tiles/author_land_variants.gd | Vector2i(5, 3): [Color8(140, 94, 54), Color8(128, 84, 48), Color8(152, 106, 62), Color8(112, 78, 46), 157],
+assets/tiles/author_material_contrast.gd | Vector2i(2, 2): [Color8(44, 150, 46), Color8(32, 128, 36), Color8(58, 170, 58), Color8(74, 146, 46), 37, "grass"],
+assets/tiles/author_material_contrast.gd | Vector2i(5, 7): [Color8(108, 120, 148), Color8(88, 100, 128), Color8(128, 142, 170), Color8(100, 116, 144), 131, "stone"],
+config/hud_layout.gd | @export var leave_size := Vector2(128, 28)
+config/performance_quality_config.gd | @export_range(0, 128, 4)
+config/performance_quality_config.gd | @export_range(1, 128, 1)
+config/performance_quality_config.gd | @export_range(16, 128, 4)
+config/performance_quality_config.gd | @export_range(32, 2048, 32)
+config/performance_quality_config.gd | c.map_pixels_per_frame = 128
+config/performance_quality_config.gd | c.max_absorption_cells_per_tick = 128
+config/performance_quality_config.gd | c.minimap_pixel_size = 128
+config/performance_quality_config.gd | c.shadow_atlas_size = 1024
+config/performance_quality_config.gd | c.shadow_atlas_size = 2048
+config/performance_quality_config.gd | var max_entities: int = 128
+config/performance_quality_config.gd | var minimap_pixel_size: int = 128
+config/performance_quality_config.gd | var shadow_atlas_size: int = 2048
+config/topographical_map_config.gd | @export var minimap_radius_cells: int = 128
+crystal/crystal_fluid_sim.gd | var index_full_scan_max: int = 2048
+crystal/crystal_manager.gd | for radius in 128:
+entities/entity_manager.gd | @export var max_entities: int = 128
+helpers/crystal_voxel_loader.gd | into["rgba"] = f.get_buffer(mini(content_len, 1024))
+helpers/world_border.gd | const PLAYABLE_HALF_X := 1024
+helpers/world_border.gd | const PLAYABLE_HALF_Z := 1024
+systems/difficulty_telemetry.gd | const EVENT_CAP := 2048
+systems/perf_profiler.gd | _mem_current_mb = static_bytes / (1024.0 * 1024.0)
+systems/perf_profiler.gd | _mem_peak_mb = maxf(_mem_peak_mb, static_max / (1024.0 * 1024.0))
+systems/save_schema.gd | const LEGACY_PLAYABLE_HALF: int = 1024
+systems/spatial_query_layer.gd | const CAT_AI := 128
+tools/gen_texture_batch.gd | const CRYS_LO := Color8(78, 28, 128)
+tools/gen_texture_batch.gd | const PUMP_LO := Color8(128, 52, 20)
+tools/gen_texture_batch.gd | const TUNIC_HI := Color8(96, 128, 184)
+ui/game_overlay.gd | _run_end_layer.layer = 128
+ui/game_overlay.gd | _xp_panel.offset_bottom = -128.0
+world/wildlife_density.gd | const NEAR_HALF := 128
+world/world_bake_service.gd | const LEGACY_FULL_BAKE_HALF: int = 1024
+world/world_viewer.gd | if internal_res <= 128 or units_per_pixel > 8.0:
+world/world_viewer.gd | var sstep = 2 if r <= 128 else 1
