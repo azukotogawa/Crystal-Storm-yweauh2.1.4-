@@ -1,7 +1,7 @@
 extends RefCounted
-## Region-file prototype (flag: CRYSTALSTORM_BAKE_REGION=1). Packs the v122
+## Region-file prototype (flag: CRYSTALSTORM_BAKE_REGION=1). Packs the chunk
 ## per-chunk .chk files 8x8 to a region: 16,384 chunk files become 256
-## region files. Each chunk blob is stored byte-for-byte, so the v122 chunk
+## region files. Each chunk blob is stored byte-for-byte, so the chunk
 ## format and BAKE_VERSION are unchanged and loose .chk files stay readable.
 ##
 ## Layout: "CSRG" | u32 version | u32 slots (64) | slots x (u64 offset, u32 len)
@@ -115,7 +115,7 @@ static func has_chunk(regions_dir: String, coord: Vector2i) -> bool:
 	return idx.size() > s * 2 + 1 and idx[s * 2 + 1] > 0
 
 
-## Raw v122 .chk bytes for coord, or empty when absent.
+## Raw .chk bytes for coord, or empty when absent.
 static func read_chunk_bytes(regions_dir: String, coord: Vector2i) -> PackedByteArray:
 	var path := region_path(regions_dir, region_of(coord))
 	var idx := _index(path)
@@ -134,7 +134,7 @@ static func read_chunk_bytes(regions_dir: String, coord: Vector2i) -> PackedByte
 static func clear_cache() -> void:
 	_index_cache.clear()
 
-## FileAccess-shaped reader over one chunk blob, so the v122 parser runs
+## FileAccess-shaped reader over one chunk blob, so the chunk parser runs
 ## unchanged on region data.
 class ChunkReader:
 	extends RefCounted

@@ -45,6 +45,8 @@ const REASON_HEIGHT := "height_delta_dirty"
 const REASON_CRYSTAL := "crystal_terrain_dirty"
 const REASON_NOT_FULL := "streaming_edge_case"
 const REASON_OTHER := "other"
+## v123+ bakes store raw columns only; the mesh is built from the live chunk.
+const REASON_BUILT_AT_LOAD := "built_at_load"
 
 
 static func get_active():
@@ -508,6 +510,12 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 		_finish_decision(dec, apply_stats, false, 0)
 		return dec
 
+	if streamed_from_bake and _bake_builds_plans_at_load(bake):
+		dec["rebuild_reason"] = REASON_BUILT_AT_LOAD
+		dec["detail"] = "raw_columns_bake"
+		_finish_decision(dec, apply_stats, false, 0)
+		return dec
+
 	var t0 := Time.get_ticks_usec()
 	var plan: Array = []
 	if streamed_from_bake:
@@ -550,6 +558,18 @@ func evaluate_plan_decision(data, apply_stats: bool = false) -> Dictionary:
 	return dec
 
 
+## True when the bake stores no mesh plans (raw columns), so a lookup would
+## only rebuild the mesh off to the side of the pipeline's own build.
+static func _bake_builds_plans_at_load(bake) -> bool:
+	if bake == null:
+		return false
+	var script = bake.get_script()
+	if script == null:
+		return false
+	var consts: Dictionary = script.get_script_constant_map()
+	return int(consts.get("BAKE_VERSION", 0)) >= int(consts.get("RAW_COLUMNS_VERSION", 1 << 30))
+
+
 func _plan_matches_current_ramp_schema(plan: Array) -> bool:
 	for q_variant in plan:
 		if not (q_variant is Dictionary):
@@ -568,6 +588,8 @@ func _plan_matches_current_ramp_schema(plan: Array) -> bool:
 
 func _fill_plan_presence(dec: Dictionary, bake, coord: Vector2i) -> void:
 	if bake == null or not bake.valid:
+		return
+	if _bake_builds_plans_at_load(bake):
 		return
 	if not bake.has_method("get_mesh_plan"):
 		return

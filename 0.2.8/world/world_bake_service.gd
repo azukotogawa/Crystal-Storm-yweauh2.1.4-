@@ -7,7 +7,8 @@ extends RefCounted
 ## Disk layout (v4):
 ##   user://world_bakes/v{ver}_s{seed}_{h{half}_full|rN}/
 ##     world.index          — lightweight bounds + flags (only thing loaded at startup)
-##     chunks/cx_cz.chk     — terrain columns + mesh plan + baked vegetation
+##     chunks/cx_cz.chk     — raw terrain columns + baked vegetation (v123+: one ZSTD
+##                            block; the mesh plan is built at load, not stored)
 ##     static_meta.json     — optional non-authoritative placement hints
 ##
 ## Runtime memory holds only the index + packages for currently streamed chunks.
@@ -21,7 +22,10 @@ const _WorldBorder = preload("res://helpers/world_border.gd")
 ## Full bakes made before the folder name carried the half extent were all this size.
 const LEGACY_FULL_BAKE_HALF: int = 1024
 
-const BAKE_VERSION: int = 122
+const BAKE_VERSION: int = 123
+## First version that stores raw columns and builds mesh plans at load.
+const RAW_COLUMNS_VERSION: int = 123
+const CHUNK_FLAG_RAW_COLUMNS: int = 1
 const _RegionPack = preload("res://world/region_pack.gd")
 const CompactPlan = preload("res://world/compact_plan.gd")
 const MAGIC: String = "CSWB"
@@ -81,6 +85,11 @@ var _fill_inflight: Dictionary = {}
 var _packages_known: Dictionary = {}
 var _fill_host = null
 var _fill_world = null
+## World and mesh host used to build mesh plans from stored columns at load.
+var _plan_world = null
+var _plan_host = null
+var stats_plan_built_at_load: int = 0
+var stats_plan_build_us: int = 0
 var _fill_started_ms: int = 0
 var _fill_done: int = 0
 var _fill_total: int = 0
@@ -504,6 +513,29 @@ static func bounds_mismatch_reason(got: Dictionary, want: Dictionary) -> String:
 	]
 
 
+## Bake folders for this seed written by an older BAKE_VERSION. They are never
+## loaded, renamed or deleted; their presence means a rebake is needed.
+static func older_bakes_for_seed(seed: int) -> Array:
+	var out: Array = []
+	var root := ProjectSettings.globalize_path("user://world_bakes")
+	if not DirAccess.dir_exists_absolute(root):
+		return out
+	var re := RegEx.new()
+	re.compile("^v(\\d+)_s%d_" % seed)
+	for n in DirAccess.get_directories_at(root):
+		var m := re.search(n)
+		if m != null and int(m.get_string(1)) < BAKE_VERSION:
+			out.append(n)
+	out.sort()
+	return out
+
+
+static func rebake_needed_message(older: Array) -> String:
+	return "bake version is older than v%d, rebake needed (old folders kept: %s)" % [
+		BAKE_VERSION, ", ".join(PackedStringArray(older))
+	]
+
+
 ## Catalog metadata only. Does not mutate the active bake session or open packages.
 static func inspect_disk_status(seed: int) -> Dictionary:
 	var expected: int = int(full_world_chunk_bounds().chunks)
@@ -523,10 +555,13 @@ static func inspect_disk_status(seed: int) -> Dictionary:
 					packages += 1
 				n = da.get_next()
 			da.list_dir_end()
+	var older: Array = [] if has_index else older_bakes_for_seed(seed)
 	return {
 		"seed": seed,
 		"valid": has_index,
 		"has_index": has_index,
+		"rebake_needed": not older.is_empty(),
+		"older_bakes": older,
 		"packages": packages,
 		"expected": expected,
 		"incomplete": not has_index,
@@ -624,7 +659,7 @@ func regions_dir() -> String:
 	return package_dir.path_join("regions")
 
 
-## Region-file prototype: raw v122 chunk bytes from the region file when
+## Region-file prototype: raw chunk bytes from the region file when
 ## CRYSTALSTORM_BAKE_REGION=1, else empty (the loose .chk path is used).
 func _region_chunk_bytes(coord: Vector2i) -> PackedByteArray:
 	if package_dir.is_empty() or not _RegionPack.enabled():
@@ -752,6 +787,7 @@ func startup_prime_coords(host) -> Array:
 
 
 func _bake_one_chunk(coord: Vector2i, world, mesh_host, veg: Array = []) -> Dictionary:
+	set_plan_source(mesh_host, world)
 	if world == null or mesh_host == null or not mesh_host.has_method("_build_mesh"):
 		return {"ok": false, "bytes": 0, "plan_qn": 0}
 	if _fill_inflight.has(coord) or _job_inflight.has(coord):
@@ -1008,6 +1044,7 @@ func prime_region(coords: Array, world, host) -> Dictionary:
 func start_background_fill(world, host) -> void:
 	_fill_world = world
 	_fill_host = host
+	set_plan_source(host, world)
 	_fill_queue.clear()
 	_fill_queue_i = 0
 	_fill_done = _packages_known.size()
@@ -1487,6 +1524,9 @@ func validate_loaded_bake(expected_seed: int, require_full: bool = true) -> Dict
 			integrity_ok = false
 			reasons.append("corrupt_package %s (%s)" % [str(c), last_error])
 			continue
+		if BAKE_VERSION >= RAW_COLUMNS_VERSION:
+			with_plan += 1
+			continue
 		var plan: Array = pack.get("plan", [])
 		if plan.is_empty():
 			plan_ok = false
@@ -1916,6 +1956,7 @@ func _reasons_only_mesh_plan(reasons: PackedStringArray) -> bool:
 
 
 func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
+	set_plan_source(host, world)
 	if streamed and valid:
 		var need_fill: bool = force_fill
 		var need_plans := false
@@ -2027,6 +2068,8 @@ func _resolve_mesh_host(host, world):
 
 
 func sample_package_plan_stats(max_samples: int = 8) -> Dictionary:
+	if BAKE_VERSION >= RAW_COLUMNS_VERSION:
+		return {"sampled": 0, "with_plan": 0, "empty_plan": 0, "avg_plan_qn": 0.0, "total_qn": 0, "plans_built_at_load": true}
 	if not valid:
 		return {"sampled": 0, "with_plan": 0, "empty_plan": 0, "avg_plan_qn": 0.0, "total_qn": 0}
 	var coords: Array = covered_coords()
@@ -2056,6 +2099,8 @@ func sample_package_plan_stats(max_samples: int = 8) -> Dictionary:
 
 
 func packages_need_mesh_plan_fill() -> bool:
+	if BAKE_VERSION >= RAW_COLUMNS_VERSION:
+		return false
 	if not valid or package_dir.is_empty():
 		return false
 	var stats: Dictionary = sample_package_plan_stats(mini(8, expected_chunk_count()))
@@ -2089,6 +2134,8 @@ func _current_seed_stamp_count() -> int:
 
 
 func seed_stamps_require_plan_refresh() -> bool:
+	if BAKE_VERSION >= RAW_COLUMNS_VERSION:
+		return false
 	if package_dir.is_empty():
 		return false
 	if packages_need_mesh_plan_fill():
@@ -2125,6 +2172,9 @@ func _write_plan_seed_meta() -> void:
 func fill_mesh_plans_in_packages(host, world) -> Dictionary:
 	if not valid:
 		return {"ok": false, "error": "bake not valid"}
+	if BAKE_VERSION >= RAW_COLUMNS_VERSION:
+		set_plan_source(host, world)
+		return {"ok": true, "packages": 0, "avg_plan_qn": 0.0, "fill_ms": 0, "note": "plans built at load"}
 	var mesh_host = _resolve_mesh_host(host, world)
 	if mesh_host == null or not mesh_host.has_method("_build_mesh"):
 		return {"ok": false, "error": "no mesh host"}
@@ -2195,6 +2245,7 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	world_seed = int(world.world_seed) if "world_seed" in world else 0
 	valid = false
 	vegetation_baked = false
+	set_plan_source(host, world)
 	_resident.clear()
 	_surface_resident.clear()
 	_chunks.clear()
@@ -2271,7 +2322,7 @@ func bake_world(world, rad: int = -1, host = null) -> Dictionary:
 	valid = count > 0 and plan_count == count
 	vegetation_baked = valid
 	var avg_qn: float = float(plan_qn_total) / float(maxi(plan_count, 1))
-	if plan_qn_total <= 0:
+	if plan_qn_total <= 0 and BAKE_VERSION < RAW_COLUMNS_VERSION:
 		last_error = "bake_world: all mesh plans empty"
 		valid = false
 		return {"ok": false, "error": last_error, "packages": count}
@@ -2427,7 +2478,7 @@ func bake_world_async(world, rad: int = -1, host = null) -> Dictionary:
 	valid = count > 0 and plan_count == count
 	vegetation_baked = valid
 	var avg_qn: float = float(plan_qn_total) / float(maxi(plan_count, 1))
-	if plan_qn_total <= 0:
+	if plan_qn_total <= 0 and BAKE_VERSION < RAW_COLUMNS_VERSION:
 		last_error = "bake_world: all mesh plans empty"
 		valid = false
 		return {"ok": false, "error": last_error, "packages": count}
@@ -2542,11 +2593,59 @@ func _capture_static_meta(world) -> Dictionary:
 	return meta
 
 
+## Columns block: u32 raw_len | u32 comp_len | ZSTD(surface f32 x CELLS2,
+## tiles i32 x CELLS2, var_to_bytes(vegetation)).
+static func encode_columns(surface: PackedFloat32Array, tiles: PackedInt32Array, vegetation: Array) -> PackedByteArray:
+	var raw := PackedByteArray()
+	raw.append_array(surface.to_byte_array())
+	raw.append_array(tiles.to_byte_array())
+	raw.append_array(var_to_bytes(vegetation))
+	var comp := raw.compress(FileAccess.COMPRESSION_ZSTD)
+	var out := PackedByteArray()
+	out.resize(8)
+	out.encode_u32(0, raw.size())
+	out.encode_u32(4, comp.size())
+	out.append_array(comp)
+	return out
+
+
+## Returns {} when the block is short, fails to decompress or has the wrong shape.
+static func decode_columns(buf: PackedByteArray) -> Dictionary:
+	if buf.size() < 8:
+		return {}
+	var raw_n: int = buf.decode_u32(0)
+	var comp_n: int = buf.decode_u32(4)
+	var fixed: int = CELLS2 * 8
+	if raw_n < fixed or buf.size() < 8 + comp_n:
+		return {}
+	var raw := buf.slice(8, 8 + comp_n).decompress(raw_n, FileAccess.COMPRESSION_ZSTD)
+	if raw.size() != raw_n:
+		return {}
+	var veg = bytes_to_var(raw.slice(fixed))
+	if typeof(veg) != TYPE_ARRAY:
+		return {}
+	return {
+		"surface": raw.slice(0, CELLS2 * 4).to_float32_array(),
+		"tiles": raw.slice(CELLS2 * 4, fixed).to_int32_array(),
+		"vegetation": veg,
+	}
+
+
+static func columns_checksum(ver: int, cx: int, cz: int, surface: PackedFloat32Array, tiles: PackedInt32Array, veg_n: int) -> int:
+	var checksum: int = ver ^ cx ^ cz
+	for i in CELLS2:
+		checksum = checksum ^ int(float(surface[i]) * 1000.0)
+		checksum = checksum ^ int(tiles[i])
+	return _u32(checksum ^ veg_n)
+
+
+## v123 chunk package: "CSCH" | u32 ver | i64 cx | i64 cz | u32 flags | u32 veg_n
+## | columns block | u32 checksum. The plan argument is ignored (plans are built at load).
 func _write_chunk_package(
 	coord: Vector2i,
 	surface: PackedFloat32Array,
 	tiles: PackedInt32Array,
-	plan: Array,
+	_plan: Array = [],
 	vegetation: Array = []
 ) -> int:
 	var path := chunk_package_path(coord)
@@ -2559,22 +2658,10 @@ func _write_chunk_package(
 	f.store_32(BAKE_VERSION)
 	f.store_64(coord.x)
 	f.store_64(coord.y)
-	var checksum: int = BAKE_VERSION ^ coord.x ^ coord.y
-	for i in CELLS2:
-		var h: float = float(surface[i])
-		f.store_float(h)
-		checksum = checksum ^ int(h * 1000.0)
-		var tv: int = int(tiles[i])
-		f.store_32(tv)
-		checksum = checksum ^ tv
-	f.store_32(plan.size())
-	checksum = checksum ^ plan.size()
-	f.store_buffer(CompactPlan.encode(plan))
+	f.store_32(CHUNK_FLAG_RAW_COLUMNS)
 	f.store_32(vegetation.size())
-	checksum = checksum ^ vegetation.size()
-	f.store_var(vegetation, false)
-	# Terrain+veg counts checksum (store_var payloads validated by size + load success).
-	f.store_32(_u32(checksum))
+	f.store_buffer(encode_columns(surface, tiles, vegetation))
+	f.store_32(columns_checksum(BAKE_VERSION, coord.x, coord.y, surface, tiles, vegetation.size()))
 	f.close()
 	var abs_tmp := ProjectSettings.globalize_path(tmp_path)
 	var abs_final := ProjectSettings.globalize_path(path)
@@ -2593,31 +2680,20 @@ func _write_chunk_package(
 	return 0
 
 
-func _read_chunk_package(coord: Vector2i) -> Dictionary:
+## Opens and checks one chunk package. Returns {} and sets last_error on any
+## problem. A package from an older BAKE_VERSION reports "rebake needed".
+func _parse_chunk_package(coord: Vector2i) -> Dictionary:
 	var path := chunk_package_path(coord)
-	var t0 := Time.get_ticks_usec()
-	var leaf: Dictionary = {} if _res_measure else {}
-	var SPP = load("res://systems/stream_phase_profiler.gd")
-	var spp_on: bool = SPP != null and SPP.is_enabled()
-	var t_leaf := Time.get_ticks_usec() if _res_measure else 0
 	var region_bytes: PackedByteArray = _region_chunk_bytes(coord)
 	if region_bytes.is_empty() and not FileAccess.file_exists(path):
 		last_error = "missing chunk package %s" % path
 		stats_missing_package_errors += 1
 		return {}
-	if _res_measure:
-		_res_add("file_exists", Time.get_ticks_usec() - t_leaf)
-		t_leaf = Time.get_ticks_usec()
 	var f = _RegionPack.ChunkReader.new(region_bytes) if not region_bytes.is_empty() else FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		last_error = "open failed %s" % path
 		stats_missing_package_errors += 1
 		return {}
-	if _res_measure:
-		_res_add("file_open", Time.get_ticks_usec() - t_leaf)
-		t_leaf = Time.get_ticks_usec()
-	if spp_on:
-		SPP.record("decompression", 0, coord)
 	var magic: String = f.get_buffer(4).get_string_from_utf8()
 	if magic != CHUNK_MAGIC:
 		last_error = "bad chunk magic %s" % path
@@ -2625,8 +2701,11 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		stats_missing_package_errors += 1
 		return {}
 	var ver: int = int(f.get_32())
-	if ver != BAKE_VERSION and ver != 3:
-		last_error = "chunk version mismatch %d" % ver
+	if ver != BAKE_VERSION:
+		if ver < BAKE_VERSION:
+			last_error = "chunk version %d < %d, rebake needed %s" % [ver, BAKE_VERSION, path]
+		else:
+			last_error = "chunk version mismatch %d" % ver
 		f.close()
 		return {}
 	var cx: int = int(f.get_64())
@@ -2635,132 +2714,62 @@ func _read_chunk_package(coord: Vector2i) -> Dictionary:
 		last_error = "chunk coord mismatch file=(%d,%d) want=%s" % [cx, cz, str(coord)]
 		f.close()
 		return {}
-	if _res_measure:
-		_res_add("header_parse", Time.get_ticks_usec() - t_leaf)
-		t_leaf = Time.get_ticks_usec()
-	var checksum: int = ver ^ cx ^ cz
-	var surface := PackedFloat32Array()
-	var tiles := PackedInt32Array()
-	surface.resize(CELLS2)
-	tiles.resize(CELLS2)
-	for i in CELLS2:
-		var h: float = f.get_float()
-		surface[i] = h
-		checksum = checksum ^ int(h * 1000.0)
-		var tv: int = int(f.get_32())
-		tiles[i] = tv
-		checksum = checksum ^ tv
-	var qn: int = int(f.get_32())
-	checksum = checksum ^ qn
-	var col_us: int = Time.get_ticks_usec() - t_leaf if _res_measure else 0
-	if _res_measure:
-		_res_add("column_surface_tiles_loop", col_us)
-		leaf["column_loop_us"] = col_us
-		t_leaf = Time.get_ticks_usec()
-	var file_read_us: int = Time.get_ticks_usec() - t0
-	var t_deser0 := Time.get_ticks_usec()
-	var plan_hdr: PackedByteArray = f.get_buffer(8)
-	var plan = CompactPlan.decode(plan_hdr + f.get_buffer(plan_hdr.decode_u32(4)) if plan_hdr.size() == 8 else plan_hdr)
-	if typeof(plan) != TYPE_ARRAY:
-		last_error = "plan not array"
+	var flags: int = int(f.get_32())
+	var vn: int = int(f.get_32())
+	var hdr: PackedByteArray = f.get_buffer(8)
+	if hdr.size() != 8 or (flags & CHUNK_FLAG_RAW_COLUMNS) == 0:
+		last_error = "chunk header damaged %s" % path
 		f.close()
-		return {}
-	if (plan as Array).size() != qn:
-		last_error = "plan count mismatch"
-		f.close()
-		return {}
-	if _res_measure:
-		_res_add("get_var_plan", Time.get_ticks_usec() - t_leaf)
-		leaf["plan_us"] = Time.get_ticks_usec() - t_leaf
-		leaf["plan_quads"] = qn
-		t_leaf = Time.get_ticks_usec()
-	var vegetation: Array = []
-	if ver >= 4:
-		var vn: int = int(f.get_32())
-		checksum = checksum ^ vn
-		var veg_raw = f.get_var(false)
-		if typeof(veg_raw) != TYPE_ARRAY:
-			last_error = "vegetation not array"
-			f.close()
-			return {}
-		if (veg_raw as Array).size() != vn:
-			last_error = "vegetation count mismatch"
-			f.close()
-			return {}
-		vegetation = veg_raw as Array
-		if _res_measure:
-			_res_add("get_var_vegetation", Time.get_ticks_usec() - t_leaf)
-			leaf["veg_us"] = Time.get_ticks_usec() - t_leaf
-			leaf["veg_n"] = vn
-			t_leaf = Time.get_ticks_usec()
-	var file_cs: int = int(f.get_32())
-	f.close()
-	if _res_measure:
-		_res_add("file_close_trailer", Time.get_ticks_usec() - t_leaf)
-	var deser_us: int = Time.get_ticks_usec() - t_deser0
-	if spp_on:
-		SPP.record("package_file_read", file_read_us, coord)
-		SPP.record("deserialization", deser_us, coord)
-	stats_disk_reads += 1
-	stats_disk_read_us += Time.get_ticks_usec() - t0
-	if file_cs != _u32(checksum):
-		last_error = "chunk checksum mismatch %s want=%d got=%d" % [path, _u32(checksum), file_cs]
 		stats_missing_package_errors += 1
 		return {}
+	var comp_n: int = hdr.decode_u32(4)
+	var body: PackedByteArray = f.get_buffer(comp_n)
+	var file_cs: int = int(f.get_32())
+	f.close()
+	var cols: Dictionary = decode_columns(hdr + body) if body.size() == comp_n else {}
+	if cols.is_empty():
+		last_error = "chunk columns damaged %s" % path
+		stats_missing_package_errors += 1
+		return {}
+	if (cols.vegetation as Array).size() != vn:
+		last_error = "vegetation count mismatch %s" % path
+		stats_missing_package_errors += 1
+		return {}
+	var want: int = columns_checksum(ver, cx, cz, cols.surface, cols.tiles, vn)
+	if file_cs != want:
+		last_error = "chunk checksum mismatch %s want=%d got=%d" % [path, want, file_cs]
+		stats_missing_package_errors += 1
+		return {}
+	return cols
+
+
+func _read_chunk_package(coord: Vector2i) -> Dictionary:
+	var t0 := Time.get_ticks_usec()
+	var SPP = load("res://systems/stream_phase_profiler.gd")
+	var cols: Dictionary = _parse_chunk_package(coord)
+	if cols.is_empty():
+		return {}
+	var us: int = Time.get_ticks_usec() - t0
+	stats_disk_reads += 1
+	stats_disk_read_us += us
+	if SPP and SPP.is_enabled():
+		SPP.record("package_file_read", us, coord)
+		SPP.record("deserialization", 0, coord)
 	if _res_measure:
-		leaf["total_read_us"] = Time.get_ticks_usec() - t0
-		leaf["deser_us"] = deser_us
-		leaf["file_read_us"] = file_read_us
-		leaf["coord"] = [coord.x, coord.y]
-		if int(leaf.get("total_read_us", 0)) >= int(_res_worst.get("read_total_us", 0)):
-			_res_worst["read_total_us"] = leaf["total_read_us"]
-			_res_worst["read_detail"] = leaf.duplicate()
-	return {"surface": surface, "tiles": tiles, "plan": plan, "vegetation": vegetation}
+		_res_add("read_chunk_package", us)
+	return {"surface": cols.surface, "tiles": cols.tiles, "plan": [], "vegetation": cols.vegetation}
 
 
 func _read_chunk_package_columns_only(coord: Vector2i) -> Dictionary:
-	var path := chunk_package_path(coord)
 	var t0 := Time.get_ticks_usec()
-	var region_bytes: PackedByteArray = _region_chunk_bytes(coord)
-	if region_bytes.is_empty() and not FileAccess.file_exists(path):
-		last_error = "missing chunk package %s" % path
-		stats_missing_package_errors += 1
+	var cols: Dictionary = _parse_chunk_package(coord)
+	if cols.is_empty():
 		return {}
-	var f = _RegionPack.ChunkReader.new(region_bytes) if not region_bytes.is_empty() else FileAccess.open(path, FileAccess.READ)
-	if f == null:
-		last_error = "open failed %s" % path
-		stats_missing_package_errors += 1
-		return {}
-	var magic: String = f.get_buffer(4).get_string_from_utf8()
-	if magic != CHUNK_MAGIC:
-		last_error = "bad chunk magic %s" % path
-		f.close()
-		stats_missing_package_errors += 1
-		return {}
-	var ver: int = int(f.get_32())
-	if ver != BAKE_VERSION and ver != 3:
-		last_error = "chunk version mismatch %d" % ver
-		f.close()
-		return {}
-	var cx: int = int(f.get_64())
-	var cz: int = int(f.get_64())
-	if cx != coord.x or cz != coord.y:
-		last_error = "chunk coord mismatch file=(%d,%d) want=%s" % [cx, cz, str(coord)]
-		f.close()
-		return {}
-	var surface := PackedFloat32Array()
-	var tiles := PackedInt32Array()
-	surface.resize(CELLS2)
-	tiles.resize(CELLS2)
-	for i in CELLS2:
-		surface[i] = f.get_float()
-		tiles[i] = int(f.get_32())
-	f.close()
 	stats_surface_disk_reads += 1
 	stats_surface_disk_read_us += Time.get_ticks_usec() - t0
 	if _res_measure:
 		_res_add("surface_columns_only_read", Time.get_ticks_usec() - t0)
-	return {"surface": surface, "tiles": tiles}
+	return {"surface": cols.surface, "tiles": cols.tiles}
 
 
 func ensure_surface_data_resident(coord: Vector2i) -> bool:
@@ -2995,9 +3004,35 @@ func release_chunk(coord: Vector2i) -> void:
 func get_mesh_plan(coord: Vector2i) -> Array:
 	if not ensure_chunk_resident(coord):
 		return []
-	if _resident.has(coord):
-		return _resident[coord].get("plan", [])
-	return []
+	if not _resident.has(coord):
+		return []
+	var pack: Dictionary = _resident[coord]
+	var plan: Array = pack.get("plan", [])
+	if plan.is_empty() and _plan_world != null:
+		if _plan_host == null or not _plan_host.has_method("_build_mesh"):
+			_plan_host = _resolve_mesh_host(_plan_host, _plan_world)
+	if plan.is_empty() and _plan_world != null and _plan_host != null:
+		var surface: PackedFloat32Array = pack.get("surface", PackedFloat32Array())
+		var tiles: PackedInt32Array = pack.get("tiles", PackedInt32Array())
+		if surface.size() == CELLS2 and tiles.size() == CELLS2:
+			var t0 := Time.get_ticks_usec()
+			plan = _WorldBakeWorkerJob.build_plan(
+				coord, _plan_world, _plan_host, surface, tiles, pack.get("vegetation", []), self
+			)
+			stats_plan_built_at_load += 1
+			stats_plan_build_us += Time.get_ticks_usec() - t0
+			pack["plan"] = plan
+	return plan
+
+
+## Remember the world and mesh host so mesh plans can be built from stored
+## columns when a chunk is loaded.
+func set_plan_source(host, world) -> void:
+	if world == null:
+		return
+	_plan_world = world
+	if host != null:
+		_plan_host = host
 
 
 func save_bake(path: String = "") -> Dictionary:
@@ -3091,7 +3126,13 @@ func load_bake_for_seed(seed: int, prefer_full: bool = true) -> bool:
 	var r := smoke_radius_from_env()
 	if load_index(bake_dir_for(seed, r, false), seed):
 		return true
-	return _try_load_legacy_monolith(seed, r)
+	if _try_load_legacy_monolith(seed, r):
+		return true
+	var older: Array = older_bakes_for_seed(seed)
+	if not older.is_empty():
+		last_error = rebake_needed_message(older)
+		print("[WorldBake] %s" % last_error)
+	return false
 
 
 func load_bake(seed: int, rad: int = -1, path: String = "") -> bool:
@@ -3127,6 +3168,8 @@ func load_index(dir: String, expected_seed: int = -1) -> bool:
 	var ver: int = int(f.get_32())
 	if ver != BAKE_VERSION and ver != 3 and ver != 2:
 		last_error = "load_bake: version mismatch got=%d" % ver
+		if ver < BAKE_VERSION:
+			last_error = "load_bake: bake version %d < %d, rebake needed" % [ver, BAKE_VERSION]
 		valid = false
 		f.close()
 		return false

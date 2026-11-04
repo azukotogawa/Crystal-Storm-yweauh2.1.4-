@@ -23,7 +23,6 @@ static func execute(coord: Vector2i, world, mesh_host, veg: Array, writer) -> Di
 		return out
 	if not writer.has_method("_apply_pack_to_data") or not writer.has_method("_write_chunk_package"):
 		return out
-	var _ChunkData = load("res://chunks/chunk_data.gd")
 	var surface := PackedFloat32Array()
 	var tiles := PackedInt32Array()
 	surface.resize(CELLS2)
@@ -38,6 +37,24 @@ static func execute(coord: Vector2i, world, mesh_host, veg: Array, writer) -> Di
 			tiles[i] = int(world.get_tile_type_worker(wx, wz, -1, -1))
 			i += 1
 	out["sample_us"] = Time.get_ticks_usec() - t_sample
+	# v123+: no mesh plan at bake time; it is built at load by build_plan().
+	var plan: Array = []
+	var t_write := Time.get_ticks_usec()
+	var wbytes: int = int(writer._write_chunk_package(coord, surface, tiles, plan, veg))
+	out["write_us"] = Time.get_ticks_usec() - t_write
+	out["ok"] = wbytes > 0
+	out["bytes"] = wbytes
+	out["plan_qn"] = plan.size()
+	out["total_us"] = Time.get_ticks_usec() - t_all
+	out["main_thread"] = OS.get_thread_caller_id() == OS.get_main_thread_id()
+	return out
+
+
+## Mesh plan for one chunk from its stored columns. Same inputs the bake used
+## when plans were stored (v122): base-only world snapshot, baked vegetation
+## feature tiles, surface and tiles applied through the writer.
+static func build_plan(coord: Vector2i, world, mesh_host, surface: PackedFloat32Array, tiles: PackedInt32Array, veg: Array, writer) -> Array:
+	var _ChunkData = load("res://chunks/chunk_data.gd")
 	var data = _ChunkData.new(coord, world)
 	if data.has_method("capture_base_only_snapshot"):
 		data.capture_base_only_snapshot()
@@ -55,20 +72,10 @@ static func execute(coord: Vector2i, world, mesh_host, veg: Array, writer) -> Di
 	writer._apply_pack_to_data(data, surface, tiles)
 	if data.has_method("_bind_macro_surface_if_needed"):
 		data._bind_macro_surface_if_needed()
-	var t_mesh := Time.get_ticks_usec()
 	var built: Dictionary = mesh_host._build_mesh(data)
 	var quads: Array = built.get("quads", [])
 	var plan: Array = []
 	plan.resize(quads.size())
 	for qi in quads.size():
 		plan[qi] = (quads[qi] as Dictionary).duplicate(true)
-	out["mesh_us"] = Time.get_ticks_usec() - t_mesh
-	var t_write := Time.get_ticks_usec()
-	var wbytes: int = int(writer._write_chunk_package(coord, surface, tiles, plan, veg))
-	out["write_us"] = Time.get_ticks_usec() - t_write
-	out["ok"] = wbytes > 0
-	out["bytes"] = wbytes
-	out["plan_qn"] = plan.size()
-	out["total_us"] = Time.get_ticks_usec() - t_all
-	out["main_thread"] = OS.get_thread_caller_id() == OS.get_main_thread_id()
-	return out
+	return plan
