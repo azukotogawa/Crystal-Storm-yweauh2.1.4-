@@ -17,6 +17,8 @@ func _init() -> void:
 	OS.set_environment("CRYSTALSTORM_MESH_PLAN_BAKE_ON_NEW", "0")
 	OS.set_environment("CRYSTALSTORM_BAKE_RADIUS", "2")
 	OS.set_environment("CRYSTALSTORM_FULL_WORLD_BAKE", "0")
+	# Stream with every payload kept, then release by hand to measure before/after.
+	OS.set_environment("CS_MESH_PAYLOAD_KEEP", "-1")
 	if OS.get_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT").is_empty():
 		OS.set_environment("CRYSTALSTORM_PROBE_ABRUPT_EXIT", "1")
 	call_deferred("_run")
@@ -83,10 +85,16 @@ func _dig_in(editor, world, coord: Vector2i) -> Vector2i:
 
 ## Dig in coord, let the edit rebuild finish, then compare with a forced full rebuild.
 func _dig_matches_full(cm, editor, world, coord: Vector2i, label: String) -> void:
+	var h_pre := _view_mesh_hash(cm.chunks[coord])
 	var cell := _dig_in(editor, world, coord)
 	if cell.x == -999999:
 		_fail("%s: dig refused in %s (%s)" % [label, str(coord), str(editor.last_fail_reason)])
 		return
+	for _f in 600:
+		await process_frame
+		var cv = cm.chunks.get(coord, null)
+		if cv != null and _view_mesh_hash(cv) != h_pre and not cm.mesh_pipeline_busy():
+			break
 	await _settle(cm, 900)
 	var v = cm.chunks.get(coord, null)
 	if v == null:
@@ -99,8 +107,16 @@ func _dig_matches_full(cm, editor, world, coord: Vector2i, label: String) -> voi
 	await _settle(cm, 900)
 	cm.mesh_payload_keep_radius = keep
 	var h_full := _view_mesh_hash(cm.chunks[coord])
-	if h_edit != h_full:
-		_fail("%s: dig at %s mesh differs from full rebuild" % [label, str(cell)])
+	if h_edit == h_pre:
+		_fail("%s: dig at %s did not change the mesh" % [label, str(cell)])
+	elif h_edit != h_full:
+		var a := h_edit.split("|")
+		var b := h_full.split("|")
+		var diff: PackedStringArray = []
+		for p in a:
+			if not b.has(p):
+				diff.append(p.get_slice(":", 0))
+		_fail("%s: dig at %s mesh differs from full rebuild (parts %s)" % [label, str(cell), ",".join(diff)])
 	else:
 		_ok("%s: dig at %s mesh == full rebuild" % [label, str(cell)])
 
