@@ -2108,6 +2108,17 @@ func _emit_surface_side_walls_region(
 	var dz = normal_dir.z
 	if dx == 0 and dz == 0:
 		return
+	if NATIVE_SIDES and _native_mesher != null and data._side_ops == null:
+		data._side_ops = PackedFloat64Array()
+		data._side_heights = PackedFloat64Array()
+		_emit_surface_side_walls_region(data, normal_dir, face_code, out_quads, x0, z0, x1, z1)
+		var ops: PackedFloat64Array = data._side_ops
+		var hs: PackedFloat64Array = data._side_heights
+		data._side_ops = null
+		data._side_heights = null
+		if not ops.is_empty():
+			out_quads.append_array(_native_mesher.side_ops(ops, hs, TerrainLook.STEPS_PER_BLOCK, _WorldSettings.get_active().layer_height()))
+		return
 	if abs(dx) == 1:
 		for x in range(x0, x1):
 			for z in range(z0, z1):
@@ -2126,18 +2137,7 @@ func _emit_one_side(
 	var ramp_here := _is_ramp_landing(data, x, z) or (inside and _is_ramp_landing(data, nx, nz))
 	if ramp_here:
 		if not spec.is_empty():
-			out_quads.append({
-				"x": x,
-				"y": float(spec.y),
-				"z": z,
-				"dim_x": 1.0,
-				"dim_y": float(spec.dim_y),
-				"dim_z": 1.0,
-				"uv_w": 1.0,
-				"uv_h": float(spec.dim_y),
-				"type": int(spec.t),
-				"face_code": face_code,
-			})
+			_append_side_plain(data, out_quads, x, z, spec, face_code)
 		return
 	var neighbor_known := inside or data.get_halo_surface_y(nx, nz) > -9000.0
 	if spec.is_empty():
@@ -2145,25 +2145,67 @@ func _emit_one_side(
 			_emit_wave_lip(data, out_quads, x, z, nx, nz, face_code)
 		return
 	if not neighbor_known:
-		out_quads.append({
-			"x": x,
-			"y": float(spec.y),
-			"z": z,
-			"dim_x": 1.0,
-			"dim_y": float(spec.dim_y),
-			"dim_z": 1.0,
-			"uv_w": 1.0,
-			"uv_h": float(spec.dim_y),
-			"type": int(spec.t),
-			"face_code": face_code,
-		})
+		_append_side_plain(data, out_quads, x, z, spec, face_code)
 		return
 	_emit_side_strips(data, out_quads, x, z, nx, nz, face_code, int(spec.t))
+
+
+# Native side walls: the script still decides every side cell; the quads are built
+# by CsNativeMesher.side_ops in the same order. CS_NATIVE_SIDES=0 disables.
+static var NATIVE_SIDES: bool = OS.get_environment("CS_NATIVE_SIDES") != "0"
+
+
+func _append_side_plain(data: ChunkData, out_quads: Array, x: int, z: int, spec: Dictionary, face_code: int) -> void:
+	if data._side_ops != null:
+		data._side_ops.append_array([0.0, float(x), float(z), 0.0, float(face_code), float(int(spec.t)), float(spec.y), float(spec.dim_y)])
+		return
+	out_quads.append({
+		"x": x,
+		"y": float(spec.y),
+		"z": z,
+		"dim_x": 1.0,
+		"dim_y": float(spec.dim_y),
+		"dim_z": 1.0,
+		"uv_w": 1.0,
+		"uv_h": float(spec.dim_y),
+		"type": int(spec.t),
+		"face_code": face_code,
+	})
+
+
+func _record_side_strip_op(data: ChunkData, x: int, z: int, nx: int, nz: int, face_code: int, tile: int) -> void:
+	var n: int = TerrainLook.STEPS_PER_BLOCK
+	var along_x := nz != z
+	var hi := PackedFloat64Array()
+	var lo := PackedFloat64Array()
+	hi.resize(n)
+	lo.resize(n)
+	var memo_rep := PackedInt32Array()
+	for m in n:
+		var rep := TerrainLook.wave_rep_micro(m)
+		var hit := memo_rep.find(rep)
+		memo_rep.append(rep)
+		if hit >= 0:
+			hi[m] = hi[hit]
+			lo[m] = lo[hit]
+			continue
+		if along_x:
+			hi[m] = _column_micro_top(data, x, z, m, (n - 1) if nz > z else 0)
+			lo[m] = _column_micro_top(data, nx, nz, m, 0 if nz > z else (n - 1))
+		else:
+			hi[m] = _column_micro_top(data, x, z, (n - 1) if nx > x else 0, m)
+			lo[m] = _column_micro_top(data, nx, nz, 0 if nx > x else (n - 1), m)
+	data._side_ops.append_array([1.0, float(x), float(z), 1.0 if along_x else 0.0, float(face_code), float(tile), 0.0, 0.0])
+	data._side_heights.append_array(hi)
+	data._side_heights.append_array(lo)
 
 
 func _emit_side_strips(
 	data: ChunkData, out_quads: Array, x: int, z: int, nx: int, nz: int, face_code: int, tile: int
 ) -> void:
+	if data._side_ops != null:
+		_record_side_strip_op(data, x, z, nx, nz, face_code, tile)
+		return
 	var layer: float = _WorldSettings.get_active().layer_height()
 	var n: int = TerrainLook.STEPS_PER_BLOCK
 	var along_x := nz != z
@@ -2317,6 +2359,9 @@ func _emit_waved_tops_native(data: ChunkData, out_quads: Array, x0: int, z0: int
 	col_steps.resize(cw * ch * nn)
 	var reps := PackedInt32Array()
 	reps.resize(n)
+	var top_layer: float = _WorldSettings.get_active().layer_height()
+	# Side walls reuse these column tops (same formula as _column_micro_top).
+	var prefill = data._mesh_job_top_memo if NATIVE_SIDES else null
 	var ureps := PackedInt32Array()
 	for m in n:
 		reps[m] = TerrainLook.wave_rep_micro(m)
@@ -2348,6 +2393,8 @@ func _emit_waved_tops_native(data: ChunkData, out_quads: Array, x0: int, z0: int
 					var pz := float(plane_wz) + (float(rz) + 0.5) / float(n)
 					col_steps[ti * nn + rz * n + rx] = TerrainLook.offset_steps(px, pz) \
 							+ data.rim_plane_steps(plane_wx, plane_wz, rx, rz, sy)
+					if prefill != null and sy >= -9000.0 and col_x >= 0 and col_x < ChunkData.SIZE and col_z >= 0 and col_z < ChunkData.SIZE:
+						prefill[Vector4i(col_x, col_z, rx, rz)] = sy + top_layer + float(col_steps[ti * nn + rz * n + rx]) * (top_layer / float(n))
 	_native_calls_mutex.lock()
 	_native_calls += 1
 	_native_calls_mutex.unlock()

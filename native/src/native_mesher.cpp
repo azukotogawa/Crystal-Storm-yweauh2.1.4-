@@ -14,10 +14,11 @@ void CsNativeMesher::_bind_methods() {
 			&CsNativeMesher::surface_arrays);
 	ClassDB::bind_method(D_METHOD("quad_atlas", "quads", "base_x", "base_z"), &CsNativeMesher::quad_atlas);
 	ClassDB::bind_method(D_METHOD("ao_grid", "halo", "has_halo", "size"), &CsNativeMesher::ao_grid);
+	ClassDB::bind_method(D_METHOD("side_ops", "ops", "heights", "n", "layer"), &CsNativeMesher::side_ops);
 	ClassDB::bind_method(D_METHOD("version"), &CsNativeMesher::version);
 }
 
-int64_t CsNativeMesher::version() const { return 2; }
+int64_t CsNativeMesher::version() const { return 3; }
 
 // Mirrors chunk_manager.gd _emit_waved_tops (greedy merge part) and
 // _emit_wave_risers/_append_wave_riser. Inputs per column (index lz*cw+lx):
