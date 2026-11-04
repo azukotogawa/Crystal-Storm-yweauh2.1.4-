@@ -76,6 +76,12 @@ func _process(_dt: float) -> void:
 	if view == null or view.chunk_data == null:
 		_queue.append(k)
 		return
+	# A worker mesh job on this chunk writes its data (top memo, ramp map, column
+	# maps) while it runs. Jobs start only on this thread, so building only when
+	# no job is listed for k keeps the reads below race free.
+	if manager._chunk_tasks.has(k):
+		_queue.append(k)
+		return
 	_built[k] = _build(view.chunk_data)
 
 
