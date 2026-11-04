@@ -17,8 +17,8 @@ if (-not $lib) { throw "godot-cpp static library not found under $build" }
 $gen = Get-ChildItem -Recurse -Directory "$build" -Filter gen | Where-Object { Test-Path "$($_.FullName)\include" } | Select-Object -First 1
 $out = "$root\0.2.8\native\bin"
 New-Item -ItemType Directory -Force $out | Out-Null
-$defs = @('-DGDEXTENSION', '-DWINDOWS_ENABLED', '-DTHREADS_ENABLED', '-DHOT_RELOAD_ENABLED')
-if ($Target -eq 'template_release') { $defs += '-DNDEBUG' } else { $defs += '-DDEBUG_ENABLED' }
+$defs = @('-DGDEXTENSION', '-DWINDOWS_ENABLED', '-DTHREADS_ENABLED')
+if ($Target -eq 'template_release') { $defs += '-DNDEBUG' } else { $defs += '-DDEBUG_ENABLED', '-DHOT_RELOAD_ENABLED' }
 $args_ = @('-std=c++17', '-O2', '-shared', '-fvisibility=hidden') + $defs + @(
   "-I$GodotCpp\include", "-I$GodotCpp\gdextension", "-I$($gen.FullName)\include",
   "$PSScriptRoot\src\native_mesher.cpp", "$PSScriptRoot\src\surface_arrays.cpp", "$PSScriptRoot\src\native_prep.cpp", "$PSScriptRoot\src\side_walls.cpp", "$PSScriptRoot\src\register_types.cpp",
