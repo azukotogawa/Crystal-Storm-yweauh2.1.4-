@@ -10,6 +10,8 @@ const PER_ITER := 4
 const HAMMER := 400
 
 var _failed := 0
+var _flight_only := OS.get_environment("CS_RACE_FLIGHT_ONLY") == "1"
+var _no_props := OS.get_environment("CS_RACE_NO_PROPS") == "1"
 
 
 func _init() -> void:
@@ -30,6 +32,17 @@ func _fail(msg: String) -> void:
 
 func _ok(msg: String) -> void:
 	print("OK %s" % msg)
+
+
+# Progress marks go to a flushed file, so a crash can be placed even if
+# buffered stdout is lost.
+func _mark(step: String) -> void:
+	var f := FileAccess.open("user://race_progress.txt", FileAccess.READ_WRITE if FileAccess.file_exists("user://race_progress.txt") else FileAccess.WRITE)
+	if f == null:
+		return
+	f.seek_end()
+	f.store_line("%d %s" % [Time.get_ticks_msec(), step])
+	f.flush()
 
 
 func _sleep(ms: int) -> void:
@@ -91,6 +104,9 @@ func _run() -> void:
 	if cm._near_props == null:
 		cm._update_near_props(c0)
 	var np = cm._near_props
+	if _no_props:
+		np.set_process(false)
+	_mark("booted")
 	for _i in 30:
 		await process_frame
 	var ref_chunks := _U.snapshot_sigs(cm)
@@ -106,62 +122,64 @@ func _run() -> void:
 		_ProbeExit.finish_tree(self, 1, "near props race FAILED")
 		return
 
-	# 1. Contract: a chunk with a mesh job running is not built, then is built
-	#    once the job ends, with the same placement.
-	var k0: Vector2i = near[0]
-	var sleepers := _U.saturate_pool(Callable(self, "_sleep").bind(200))
-	cm.rebuild_chunk(k0)
-	if not cm._chunk_tasks.has(k0):
-		_fail("rebuild of %s did not start a mesh task" % str(k0))
-	np.drop_chunk(k0)
-	np._queue.erase(k0)
-	np._queue.push_front(k0)
-	np._process(0.0)
-	if np._built.has(k0):
-		_fail("near props built %s while its mesh job was running" % str(k0))
-	else:
-		_ok("near props deferred %s while its mesh job was running" % str(k0))
-	_U.wait_all(sleepers)
-	if await _U.settle(self, cm) < 0:
-		_fail("did not settle after contract rebuild")
-	for _i in 60:
+	if not _flight_only:
+		# 1. Contract: a chunk with a mesh job running is not built, then is built
+		#    once the job ends, with the same placement.
+		var k0: Vector2i = near[0]
+		var sleepers := _U.saturate_pool(Callable(self, "_sleep").bind(200))
+		cm.rebuild_chunk(k0)
+		if not cm._chunk_tasks.has(k0):
+			_fail("rebuild of %s did not start a mesh task" % str(k0))
+		np.drop_chunk(k0)
+		np._queue.erase(k0)
+		np._queue.push_front(k0)
+		np._process(0.0)
 		if np._built.has(k0):
-			break
-		await process_frame
-	if not np._built.has(k0):
-		_fail("near props never built %s after its job ended" % str(k0))
-	else:
-		_ok("near props built %s after its job ended" % str(k0))
-
-	# 2. Stress: rebuild near chunks and hammer near prop builds while jobs run.
-	var during := 0
-	var t0 := Time.get_ticks_msec()
-	for it in ITER:
-		var batch: Array = []
-		for j in PER_ITER:
-			batch.append(near[(it * PER_ITER + j) % near.size()])
-		for k in batch:
-			cm.rebuild_chunk(k)
-		for _h in HAMMER:
-			var running := false
-			for k in batch:
-				if cm._chunk_tasks.has(k):
-					running = true
-					np.drop_chunk(k)
-					np._queue.erase(k)
-					np._queue.push_front(k)
-					np._process(0.0)
-					if np._built.has(k):
-						during += 1
-			if not running:
+			_fail("near props built %s while its mesh job was running" % str(k0))
+		else:
+			_ok("near props deferred %s while its mesh job was running" % str(k0))
+		_U.wait_all(sleepers)
+		if await _U.settle(self, cm) < 0:
+			_fail("did not settle after contract rebuild")
+		for _i in 60:
+			if np._built.has(k0):
 				break
-		await process_frame
-	print("RACE iters=%d builds_during_job=%d ms=%d" % [ITER, during, Time.get_ticks_msec() - t0])
-	if during > 0:
-		_fail("near props built %d times while a mesh job was running" % during)
-	else:
-		_ok("no near prop builds while a mesh job was running")
+			await process_frame
+		if not np._built.has(k0):
+			_fail("near props never built %s after its job ended" % str(k0))
+		else:
+			_ok("near props built %s after its job ended" % str(k0))
 
+		# 2. Stress: rebuild near chunks and hammer near prop builds while jobs run.
+		var during := 0
+		var t0 := Time.get_ticks_msec()
+		for it in ITER:
+			var batch: Array = []
+			for j in PER_ITER:
+				batch.append(near[(it * PER_ITER + j) % near.size()])
+			for k in batch:
+				cm.rebuild_chunk(k)
+			for _h in HAMMER:
+				var running := false
+				for k in batch:
+					if cm._chunk_tasks.has(k):
+						running = true
+						np.drop_chunk(k)
+						np._queue.erase(k)
+						np._queue.push_front(k)
+						np._process(0.0)
+						if np._built.has(k):
+							during += 1
+				if not running:
+					break
+			await process_frame
+		print("RACE iters=%d builds_during_job=%d ms=%d" % [ITER, during, Time.get_ticks_msec() - t0])
+		if during > 0:
+			_fail("near props built %d times while a mesh job was running" % during)
+		else:
+			_ok("no near prop builds while a mesh job was running")
+
+	_mark("stress done")
 	# 3. Fast reversal flight with near props active.
 	var c1 := c0
 	var best := -1
@@ -171,6 +189,7 @@ func _run() -> void:
 			best = n
 			c1 = c0 + d * 2
 	for i in 8:
+		_mark("flight %d" % i)
 		var s2 := _U.saturate_pool(Callable(self, "_sleep").bind(40))
 		for _f in 2:
 			_U.set_player_chunk(cm, c1 if i % 2 == 0 else c0)
@@ -184,6 +203,7 @@ func _run() -> void:
 	for _i in 60:
 		await process_frame
 
+	_mark("flight settled")
 	# 4. Same chunk meshes and same prop placement as before.
 	var diff := 0
 	for k in ref_chunks.keys():
@@ -206,6 +226,7 @@ func _run() -> void:
 	var bad := _U.view_problems(cm)
 	for b in bad:
 		_fail(b)
+	_mark("checks done failed=%d" % _failed)
 	if _failed == 0:
 		_ProbeExit.finish_tree(self, 0, "All near props race tests OK")
 	else:
