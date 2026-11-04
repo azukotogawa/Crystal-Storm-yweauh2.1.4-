@@ -178,6 +178,39 @@ static func mesh_variant(path: String, variant: int) -> ArrayMesh:
 	return built.get("mesh", null) as ArrayMesh
 
 
+static func has_variant(path: String, variant: int) -> bool:
+	return _memory.has(path if variant <= 0 else "%s#m%d" % [path, variant])
+
+
+# Builds a variant without touching _memory, so it can run on a worker thread.
+static func build_variant_detached(path: String, variant: int) -> Dictionary:
+	var model := load_model(path)
+	if model == null:
+		return {}
+	if variant <= 0:
+		var cached := _load_cache(path, model)
+		if not cached.is_empty():
+			return cached
+		var built := build_rig(model)
+		built["_unsaved"] = true
+		return built
+	return build_rig(_mirror_model(model, 0 if variant == 1 else 2))
+
+
+# Main thread only.
+static func store_variant(path: String, variant: int, built: Dictionary) -> void:
+	if built.is_empty():
+		return
+	var key := path if variant <= 0 else "%s#m%d" % [path, variant]
+	if _memory.has(key):
+		return
+	var unsaved := bool(built.get("_unsaved", false))
+	built.erase("_unsaved")
+	_memory[key] = built
+	if unsaved:
+		_save_cache(path, built)
+
+
 static func part_meshes(path: String) -> Dictionary:
 	var rig := rig_for(path)
 	var parts: Dictionary = rig.get("parts", {})

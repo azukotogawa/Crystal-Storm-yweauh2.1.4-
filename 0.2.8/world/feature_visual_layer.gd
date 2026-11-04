@@ -44,6 +44,8 @@ var _veg_cells: Dictionary = {}
 var _veg_root_by_chunk: Dictionary = {}
 var _veg_batch := false
 var _lod_check := 0.0
+var _variant_waiting: Dictionary = {}
+var _variant_tasks: Dictionary = {}
 var _lod_anchor := Vector2i(999999, 999999)
 
 
@@ -996,6 +998,9 @@ func _flush_veg_chunk(coord: Vector2i) -> void:
 		var split_at := group_key.rfind("#")
 		var path := group_key.substr(0, split_at)
 		var variant := int(group_key.substr(split_at + 1))
+		if not _VoxelLoader.has_variant(path, variant):
+			_request_variant(path, variant, coord)
+			continue
 		var mesh := _VoxelLoader.mesh_variant(path, variant)
 		if mesh == null:
 			continue
@@ -1013,6 +1018,47 @@ func _flush_veg_chunk(coord: Vector2i) -> void:
 		inst.multimesh = multi
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(inst)
+
+
+# First use of a vegetation model builds its mesh in GDScript (0.4-0.9 s for big
+# trees). Build it on a worker and re-flush the waiting chunks when it lands.
+func _request_variant(path: String, variant: int, coord: Vector2i) -> void:
+	var key := "%s#%d" % [path, variant]
+	if _variant_waiting.has(key):
+		var waiting: Dictionary = _variant_waiting[key]
+		waiting[coord] = true
+		return
+	_variant_waiting[key] = {coord: true}
+	var wr := weakref(self)
+	var task := func() -> void:
+		var built := _VoxelLoader.build_variant_detached(path, variant)
+		var layer = wr.get_ref()
+		if layer != null:
+			layer.call_deferred("_variant_built", path, variant, built)
+	_variant_tasks[key] = WorkerThreadPool.add_task(task, false, "veg_variant")
+
+
+func _variant_built(path: String, variant: int, built: Dictionary) -> void:
+	var key := "%s#%d" % [path, variant]
+	if _variant_tasks.has(key):
+		WorkerThreadPool.wait_for_task_completion(int(_variant_tasks[key]))
+		_variant_tasks.erase(key)
+	_VoxelLoader.store_variant(path, variant, built)
+	var waiting: Dictionary = _variant_waiting.get(key, {})
+	_variant_waiting.erase(key)
+	if built.is_empty():
+		return
+	for coord_v in waiting.keys():
+		var coord: Vector2i = coord_v
+		var root = _veg_root_by_chunk.get(coord)
+		if root != null and is_instance_valid(root):
+			_flush_veg_chunk(coord)
+
+
+func _exit_tree() -> void:
+	for id in _variant_tasks.values():
+		WorkerThreadPool.wait_for_task_completion(int(id))
+	_variant_tasks.clear()
 
 
 func _veg_resolve_footprints(records: Array) -> Array:
