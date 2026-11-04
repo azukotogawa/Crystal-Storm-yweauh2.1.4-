@@ -783,9 +783,13 @@ func apply_knockback(dir: Vector3, distance: float) -> void:
 func _tick_hit_stun(delta: float) -> void:
 	if _knock_left > 0.0:
 		var step := minf(_knock_left, KNOCK_SPEED * delta)
-		var shoved := _EntityNavigation.knockback_step(
-			global_position, _knock_dir, step, _world, _chunk_manager, _crystal
-		)
+		var shoved := global_position
+		for frac in [1.0, 0.5, 0.25]:
+			shoved = _EntityNavigation.knockback_step(
+				global_position, _knock_dir, step * frac, _world, _chunk_manager, _crystal
+			)
+			if shoved.distance_squared_to(global_position) >= 0.0004:
+				break
 		if shoved.distance_squared_to(global_position) < 0.0004:
 			_knock_left = 0.0
 		else:
