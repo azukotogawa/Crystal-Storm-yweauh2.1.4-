@@ -74,6 +74,11 @@ var _last_player_chunk_for_velocity: Vector2i = Vector2i(-99999, -99999)
 var _player_chunk_velocity: Vector2i = Vector2i.ZERO
 var _stream_budget_used_us: int = 0
 var _rebuild_pending: Dictionary = {}
+## Wave-LOD ring changes queue full rebuilds in _rebuild_pending; at most this many
+## start per frame, nearest first.
+var max_wave_lod_rebuilds_per_frame: int = 2
+var _rebuild_budget_frame: int = -1
+var _rebuild_budget_used: int = 0
 var _patch_pending: Dictionary = {}
 var _last_patch_scope: Dictionary = {}
 var _telemetry_trigger: String = "stream"
@@ -2937,6 +2942,7 @@ func _process(_delta):
 	if _rebuild_flush_needed:
 		_flush_rebuild_pending()
 	_reap_orphan_tasks()
+	_drain_rebuild_pending_budgeted()
 	var frame_us := 0
 	var worker_us := 0
 	var upload_us := 0
@@ -4301,10 +4307,7 @@ func _flush_rebuild_pending() -> void:
 	if has_meta("_rebuild_flush_scheduled"):
 		remove_meta("_rebuild_flush_scheduled")
 	if not _rebuild_pending.is_empty():
-		var legacy_keys: Array = _rebuild_pending.keys()
-		_rebuild_pending.clear()
-		for key_variant in legacy_keys:
-			rebuild_chunk(key_variant)
+		_drain_rebuild_pending_budgeted()
 	if not _patch_pending.is_empty():
 		var pending_copy: Dictionary = _patch_pending.duplicate(true)
 		_patch_pending.clear()
@@ -4323,8 +4326,44 @@ func _flush_rebuild_pending() -> void:
 					pv.chunk_data.preserve_column_maps = true
 					pv.chunk_data.skip_mesh_plan_cache = true
 			_enqueue_chunk_mesh_work(coord, full, local_cells, _rebuild_high_priority(coord), false)
-	if not _patch_pending.is_empty() or not _rebuild_pending.is_empty():
+	if not _patch_pending.is_empty():
 		_schedule_rebuild_flush()
+
+
+## Start queued full rebuilds within the per-frame cap. Chunks no longer resident
+## are dropped; chunks waiting to unload stay queued but are not rebuilt.
+func _drain_rebuild_pending_budgeted() -> void:
+	if _rebuild_pending.is_empty() or _shutting_down:
+		return
+	var frame_id: int = Engine.get_process_frames()
+	if frame_id != _rebuild_budget_frame:
+		_rebuild_budget_frame = frame_id
+		_rebuild_budget_used = 0
+	var cap: int = maxi(max_wave_lod_rebuilds_per_frame, 1)
+	if _rebuild_budget_used >= cap:
+		return
+	var center := get_player_chunk_coord() if player != null else ChunkSurfaceMeshBuilder.wave_lod_center
+	var unloading := {}
+	for k in _stream_unload_pending:
+		unloading[k] = true
+	var ready: Array = []
+	for key_variant in _rebuild_pending.keys():
+		var key: Vector2i = key_variant
+		if not chunks.has(key):
+			_rebuild_pending.erase(key)
+		elif not unloading.has(key):
+			ready.append(key)
+	if ready.is_empty():
+		return
+	ready.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return maxi(absi(a.x - center.x), absi(a.y - center.y)) < maxi(absi(b.x - center.x), absi(b.y - center.y))
+	)
+	for key: Vector2i in ready:
+		if _rebuild_budget_used >= cap:
+			break
+		_rebuild_pending.erase(key)
+		_rebuild_budget_used += 1
+		rebuild_chunk(key)
 
 
 func await_rebuild_idle(max_frames: int = 2400) -> void:
@@ -4704,7 +4743,8 @@ func _wave_lod_recheck(c: Vector2i) -> void:
 		var was_near: bool = maxi(absi(key.x - old.x), absi(key.y - old.y)) <= r
 		var now_near: bool = maxi(absi(key.x - c.x), absi(key.y - c.y)) <= r
 		if was_near != now_near:
-			rebuild_chunk(key)
+			_rebuild_pending[key] = true
+	_drain_rebuild_pending_budgeted()
 
 
 func _update_near_props(c: Vector2i) -> void:
