@@ -341,6 +341,9 @@ func _run() -> void:
 		jump_pos.x -= 80.0 * signf(jump_pos.x)
 	if absf(jump_pos.z) > 900.0:
 		jump_pos.z -= 80.0 * signf(jump_pos.z)
+	var dry := _SmokeProbeHelpers.dry_run_start(world, jump_pos)
+	jump_pos.x = dry.x
+	jump_pos.z = dry.y
 	player.set("voxel_position", jump_pos)
 	if player.has_method("_sync_global_from_voxel"):
 		player.call("_sync_global_from_voxel")

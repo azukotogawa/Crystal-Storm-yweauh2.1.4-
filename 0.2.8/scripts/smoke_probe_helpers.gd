@@ -1,6 +1,7 @@
 class_name SmokeProbeHelpers
 extends RefCounted
 
+const _WaterLoc = preload("res://helpers/water_locomotion.gd")
 const _ActionTargeting = preload("res://player/action_targeting.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _ItemTypes = preload("res://helpers/item_types.gd")
@@ -432,3 +433,24 @@ static func session_seconds() -> float:
 	if raw.is_empty():
 		return 30.0
 	return maxf(float(raw), 5.0)
+
+# Nearest column (by ring) where the start and the next 8 cells in +x have no water,
+# so a run-and-jump test is not turned into a swim stroke.
+static func dry_run_start(world: Node, near: Vector3) -> Vector2:
+	var base_x := floori(near.x)
+	var base_z := floori(near.z)
+	if world == null:
+		return Vector2(near.x, near.z)
+	for r in range(0, 49, 4):
+		for dz in range(-r, r + 1, 4):
+			for dx in range(-r, r + 1, 4):
+				if maxi(absi(dx), absi(dz)) != r:
+					continue
+				var ok := true
+				for k in 9:
+					if _WaterLoc.column_has_water(world, base_x + dx + k, base_z + dz):
+						ok = false
+						break
+				if ok:
+					return Vector2(float(base_x + dx) + 0.5, float(base_z + dz) + 0.5)
+	return Vector2(near.x, near.z)
