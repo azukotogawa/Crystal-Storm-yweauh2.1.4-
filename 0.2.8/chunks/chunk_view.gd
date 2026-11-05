@@ -19,6 +19,7 @@ const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 var chunk_data: ChunkData
 var mesh_data: Dictionary
+var cpu_payload_released: bool = false
 var _emit_used_names: Dictionary = {}
 
 const FACE_RAMP := 7
@@ -112,7 +113,30 @@ func setup(data: ChunkData, mesh_data: Dictionary):
 
 	chunk_data = data
 	self.mesh_data = mesh_data
+	cpu_payload_released = false
 	emit_quads()
+
+
+const CPU_PAYLOAD_KEYS := [
+	"quads", "surface_cache", "surface_vertices", "surface_normals",
+	"surface_uvs", "surface_colors", "surface_indices",
+]
+
+
+## Drop the CPU-side mesh payload once it has been handed to the renderer.
+## Keeps counts, buffers and surface_mesh_resource. Rendering is unaffected:
+## emit_quads() only runs in setup(). A later patch rebuild of this view must
+## be a full rebuild (ChunkManager checks cpu_payload_released).
+func release_cpu_mesh_payload() -> bool:
+	if cpu_payload_released or mesh_data.is_empty():
+		return false
+	var slim := mesh_data.duplicate(false)
+	for k in CPU_PAYLOAD_KEYS:
+		slim.erase(k)
+	slim["cpu_payload_released"] = true
+	mesh_data = slim
+	cpu_payload_released = true
+	return true
 
 
 func _exit_tree() -> void:

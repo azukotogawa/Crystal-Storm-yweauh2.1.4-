@@ -340,6 +340,8 @@ static func column_surface_geometry(cm, wx: int, wz: int) -> Dictionary:
 	return out
 
 
+## Dev inspector only. Chunks outside ChunkManager.mesh_payload_keep_radius drop
+## their quads after upload, so far chunks read as uncovered here.
 static func _column_mesh_cover(cm, chunk: Vector2i, wx: int, wz: int) -> Dictionary:
 	var out := {"covered": false, "faces": []}
 	if cm == null or not ("chunks" in cm) or not cm.chunks.has(chunk):

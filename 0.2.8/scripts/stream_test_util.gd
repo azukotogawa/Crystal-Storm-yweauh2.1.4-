@@ -92,11 +92,35 @@ static func chunk_sig(cm: Node, key: Vector2i) -> String:
 	for k in mkeys:
 		if str(k).ends_with("_us") or str(k).ends_with("_ms"):
 			continue
+		# CPU payload is dropped for far chunks (mesh_payload_keep_radius); compare
+		# the uploaded meshes instead so the sig does not depend on player distance.
+		if k == "cpu_payload_released" or ChunkView.CPU_PAYLOAD_KEYS.has(k):
+			continue
 		parts.append("%s=%d" % [str(k), _value_hash(md[k])])
+	parts.append("gpu=%s" % uploaded_mesh_hash(view))
 	var d = view.chunk_data
 	parts.append("ramp=%d" % hash(var_to_bytes(d.ramp_map)))
 	parts.append("surf=%d" % hash(var_to_bytes(d.surface_map)))
 	return ";".join(parts)
+
+
+static func uploaded_mesh_hash(view: Node) -> int:
+	var lc: Node = view.get_node_or_null("LayerContainer")
+	if lc == null:
+		return 0
+	var parts: PackedStringArray = []
+	for c in lc.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh is ArrayMesh:
+			var am := (c as MeshInstance3D).mesh as ArrayMesh
+			for si in am.get_surface_count():
+				var arr: Array = am.surface_get_arrays(si)
+				parts.append("%s:%d:%d:%d" % [c.name, si, hash(var_to_bytes(arr[Mesh.ARRAY_VERTEX])), hash(var_to_bytes(arr[Mesh.ARRAY_INDEX]))])
+		elif c is MultiMeshInstance3D and (c as MultiMeshInstance3D).multimesh != null:
+			var mm := (c as MultiMeshInstance3D).multimesh
+			if mm.instance_count > 0:
+				parts.append("%s:%d:%d" % [c.name, mm.instance_count, hash(var_to_bytes(mm.buffer))])
+	parts.sort()
+	return hash("|".join(parts))
 
 
 static func snapshot_sigs(cm: Node) -> Dictionary:

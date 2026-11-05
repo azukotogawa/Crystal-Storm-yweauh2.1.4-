@@ -63,6 +63,13 @@ var ramp_max_surface_height: float = 88.0
 var ramp_mountain_cutoff_height: float = 72.0
 var prebuild_chunk_buffers: bool = true
 var terrain_surface_mesh: bool = true
+## Chunks farther than this (Chebyshev, in chunks) from the player drop their
+## CPU mesh payload after upload. -1 keeps every payload. Env CS_MESH_PAYLOAD_KEEP.
+var mesh_payload_keep_radius: int = _mesh_payload_keep_from_env()
+## Max CPU payload releases per frame (farthest first). <= 0 means no cap.
+var mesh_payload_release_per_frame: int = 2
+var _payload_release_frame := -1
+var _payload_released_this_frame := 0
 var chunk_upload_budget_us: int = 3500
 var streaming_budget_us: int = 2500
 var max_stream_starts_per_frame: int = 1
@@ -933,6 +940,9 @@ func _enqueue_chunk_mesh_work(
 		if data == null:
 			return
 		data.world = world
+		if not full_rebuild and view.cpu_payload_released:
+			# Payload was dropped; no quads to keep, so rebuild the whole chunk.
+			full_rebuild = true
 		if full_rebuild:
 			data.capture_worker_snapshot()
 		else:
@@ -3285,6 +3295,7 @@ func update_stream(cx: int, cz: int) -> void:
 	_update_player_velocity_hint(player_chunk)
 	_wave_lod_recheck(player_chunk)
 	_update_near_props(player_chunk)
+	release_far_mesh_payloads(player_chunk)
 	var camera_hint := _camera_forward_chunk_hint()
 	var needed := {}
 	var queued_count := 0
@@ -3641,6 +3652,7 @@ func _on_chunk_ready(
 				profiler.begin_func("ChunkView::setup")
 			existing.setup(data, packed_quad_data)
 			_clear_preserve_snapshot_after_apply(data, packed_quad_data)
+			_release_payload_if_far(data.position)
 			if profiler and profiler.has_method("end_func"):
 				profiler.end_func("ChunkView::setup")
 			if profiler and profiler.has_method("record_us"):
@@ -3705,6 +3717,7 @@ func _on_chunk_ready(
 		SPP.record("main_thread_apply", Time.get_ticks_usec() - apply_started, data.position)
 		SPP.end_chunk(data.position)
 	chunks[data.position] = view
+	_release_payload_if_far(data.position)
 	_record_apply_telemetry(data.position, token, apply_started, mesh_nodes_recreated)
 	if _ChunkStreamingTelemetry.is_enabled() and token >= 0:
 		_ChunkStreamingTelemetry.transition(
@@ -4539,6 +4552,73 @@ func _mesh_apply_queued(coord: Vector2i) -> bool:
 	return false
 
 
+static func _mesh_payload_keep_from_env() -> int:
+	var raw := OS.get_environment("CS_MESH_PAYLOAD_KEEP").strip_edges()
+	if raw.is_empty() or not raw.is_valid_int():
+		return 1
+	return int(raw)
+
+
+func _payload_is_far(coord: Vector2i, center: Vector2i) -> bool:
+	if mesh_payload_keep_radius < 0:
+		return false
+	return maxi(absi(coord.x - center.x), absi(coord.y - center.y)) > mesh_payload_keep_radius
+
+
+func _payload_release_budget() -> int:
+	var f := Engine.get_process_frames()
+	if f != _payload_release_frame:
+		_payload_release_frame = f
+		_payload_released_this_frame = 0
+	if mesh_payload_release_per_frame <= 0:
+		return 1 << 30
+	return mesh_payload_release_per_frame - _payload_released_this_frame
+
+
+func _release_payload_if_far(coord: Vector2i) -> void:
+	if mesh_payload_keep_radius < 0 or not chunks.has(coord):
+		return
+	if _payload_release_budget() <= 0:
+		return  # the per-frame sweep in update_stream picks it up later
+	if _payload_is_far(coord, get_player_chunk_coord()):
+		var view: ChunkView = chunks[coord] as ChunkView
+		if view and is_instance_valid(view) and view.release_cpu_mesh_payload():
+			_payload_released_this_frame += 1
+
+
+## Drop CPU mesh payloads of resident chunks outside mesh_payload_keep_radius,
+## at most mesh_payload_release_per_frame per frame, farthest from center first.
+## Returns how many views were released by this call.
+func release_far_mesh_payloads(center: Vector2i) -> int:
+	if mesh_payload_keep_radius < 0:
+		return 0
+	var budget := _payload_release_budget()
+	if budget <= 0:
+		return 0
+	var cands: Array = []
+	for coord in chunks.keys():
+		if not _payload_is_far(coord, center):
+			continue
+		if pending.has(coord) or _chunk_tasks.has(coord):
+			continue
+		var view: ChunkView = chunks[coord] as ChunkView
+		if view == null or not is_instance_valid(view) or view.cpu_payload_released:
+			continue
+		cands.append([maxi(absi(coord.x - center.x), absi(coord.y - center.y)), view])
+	if cands.is_empty():
+		return 0
+	if cands.size() > budget:
+		cands.sort_custom(func(a, b): return a[0] > b[0])
+	var n := 0
+	for c in cands:
+		if n >= budget:
+			break
+		if (c[1] as ChunkView).release_cpu_mesh_payload():
+			n += 1
+	_payload_released_this_frame += n
+	return n
+
+
 func _resident_mesh_quad_count(coord: Vector2i) -> int:
 	var view = chunks.get(coord, null)
 	if view == null or not ("mesh_data" in view):
@@ -4546,6 +4626,8 @@ func _resident_mesh_quad_count(coord: Vector2i) -> int:
 	var md = view.mesh_data
 	if typeof(md) != TYPE_DICTIONARY:
 		return 0
+	if bool((md as Dictionary).get("cpu_payload_released", false)):
+		return int((md as Dictionary).get("count", 0))
 	var quads = (md as Dictionary).get("quads", [])
 	if quads is Array:
 		return (quads as Array).size()
