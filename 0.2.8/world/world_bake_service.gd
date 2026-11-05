@@ -6,9 +6,9 @@ extends RefCounted
 ##
 ## Disk layout (v4):
 ##   user://world_bakes/v4_s{seed}_{full|rN}/
-##     world.index          — lightweight bounds + flags (only thing loaded at startup)
-##     chunks/cx_cz.chk     — terrain columns + mesh plan + baked vegetation
-##     static_meta.json     — optional non-authoritative placement hints
+##     world.index          â€” lightweight bounds + flags (only thing loaded at startup)
+##     chunks/cx_cz.chk     â€” terrain columns + mesh plan + baked vegetation
+##     static_meta.json     â€” optional non-authoritative placement hints
 ##
 ## Runtime memory holds only the index + packages for currently streamed chunks.
 ## Baked vegetation is installed into WorldState when a chunk becomes resident.
@@ -661,6 +661,17 @@ func _inventory_existing_packages() -> void:
 	_packages_known.clear()
 	if package_dir.is_empty():
 		return
+	# Region-pack ship mode: inventory from .reg files (256 vs 16k dirents) when
+	# CRYSTALSTORM_BAKE_REGION=1. Loose .chk are still scanned when present so
+	# mixed trees keep working; region entries win for package_ready/has_chunk.
+	if _RegionPack.enabled():
+		var from_reg: Array = _RegionPack.inventory_coords(regions_dir())
+		for c_v in from_reg:
+			_packages_known[c_v as Vector2i] = true
+		# Ship-mode: region files alone are enough. Skip the 16k .chk dirent
+		# walk that dominated cold-start inventory when both trees exist.
+		if not _packages_known.is_empty():
+			return
 	var chunks_rel := package_dir.path_join("chunks")
 	var abs_dir := ProjectSettings.globalize_path(chunks_rel)
 	if not DirAccess.dir_exists_absolute(abs_dir):
@@ -1545,7 +1556,7 @@ func log_valid_bake(validation: Dictionary) -> void:
 
 
 func log_invalid_bake(reasons: PackedStringArray) -> void:
-	print("[WorldBake] Bake invalid — rebuilding...")
+	print("[WorldBake] Bake invalid â€” rebuilding...")
 	if reasons.is_empty():
 		print("reason=missing_or_unreadable")
 	else:
@@ -1614,7 +1625,7 @@ func bootstrap_for_world(world, force_bake: bool = false, host = null) -> Dictio
 			var reasons: PackedStringArray = validation.get("reasons", PackedStringArray())
 			var only_plans := _reasons_only_mesh_plan(reasons)
 			if only_plans and host != null:
-				print("[WorldBake] Mesh plans incomplete — repairing once and writing to disk...")
+				print("[WorldBake] Mesh plans incomplete â€” repairing once and writing to disk...")
 				_emit_status("generating", 0.15, "Repairing mesh plans...")
 				var plan_info2: Dictionary = ensure_mesh_plans(host, world, true)
 				validation = validate_loaded_bake(seed, want_full)
@@ -1746,7 +1757,7 @@ func bootstrap_for_world_async(world, force_bake: bool = false, host = null) -> 
 			var reasons: PackedStringArray = validation.get("reasons", PackedStringArray())
 			var only_plans := _reasons_only_mesh_plan(reasons)
 			if only_plans and host != null:
-				print("[WorldBake] Mesh plans incomplete — repairing once and writing to disk...")
+				print("[WorldBake] Mesh plans incomplete â€” repairing once and writing to disk...")
 				_emit_status("generating", 0.15, "Repairing mesh plans...")
 				var plan_info2: Dictionary = ensure_mesh_plans(host, world, true)
 				validation = validate_loaded_bake(seed, want_full)
@@ -1890,7 +1901,7 @@ func ensure_mesh_plans(host, world, force_fill: bool = false) -> Dictionary:
 		var mode := "streamed"
 		if need_fill:
 			print(
-				"[WorldBake] Mesh plans incomplete — repairing once and writing to disk (plans=%s stamps=%s)..."
+				"[WorldBake] Mesh plans incomplete â€” repairing once and writing to disk (plans=%s stamps=%s)..."
 				% [str(need_plans or force_fill), str(need_stamps)]
 			)
 			var fill: Dictionary = fill_mesh_plans_in_packages(host, world)

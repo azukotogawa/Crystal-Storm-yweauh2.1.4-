@@ -109,6 +109,35 @@ static func _index(path: String) -> PackedInt64Array:
 	return idx
 
 
+
+## All chunk coords present across region files (len>0 slots).
+static func inventory_coords(regions_dir: String) -> Array:
+	var out: Array = []
+	var abs_dir := ProjectSettings.globalize_path(regions_dir)
+	if not DirAccess.dir_exists_absolute(abs_dir):
+		return out
+	var da := DirAccess.open(regions_dir)
+	if da == null:
+		return out
+	da.list_dir_begin()
+	var n := da.get_next()
+	while n != "":
+		if not da.current_is_dir() and n.begins_with("r_") and n.ends_with(".reg"):
+			var stem := n.substr(0, n.length() - 4) # r_X_Y
+			var parts: PackedStringArray = stem.split("_")
+			if parts.size() == 3 and parts[1].is_valid_int() and parts[2].is_valid_int():
+				var r := Vector2i(int(parts[1]), int(parts[2]))
+				var path := region_path(regions_dir, r)
+				var idx := _index(path)
+				for s in range(SLOTS):
+					if idx.size() > s * 2 + 1 and idx[s * 2 + 1] > 0:
+						var lx := s % SIDE
+						var lz := int(s / SIDE)
+						out.append(Vector2i(r.x * SIDE + lx, r.y * SIDE + lz))
+		n = da.get_next()
+	da.list_dir_end()
+	return out
+
 static func has_chunk(regions_dir: String, coord: Vector2i) -> bool:
 	var idx := _index(region_path(regions_dir, region_of(coord)))
 	var s := slot_of(coord)
