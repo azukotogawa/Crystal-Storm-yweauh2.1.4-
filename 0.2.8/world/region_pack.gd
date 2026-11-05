@@ -1,5 +1,5 @@
 extends RefCounted
-## Region-file prototype (flag: CRYSTALSTORM_BAKE_REGION=1). Packs the chunk
+## Region-file pack (default ON as of Cole t550s2516 / Nov 5). Packs the v122
 ## per-chunk .chk files 8x8 to a region: 16,384 chunk files become 256
 ## region files. Each chunk blob is stored byte-for-byte, so the chunk
 ## format and BAKE_VERSION are unchanged and loose .chk files stay readable.
@@ -18,7 +18,11 @@ static var _index_cache: Dictionary = {}
 
 
 static func enabled() -> bool:
-	return OS.get_environment("CRYSTALSTORM_BAKE_REGION").strip_edges() == "1"
+	# Default ON. Opt out with CRYSTALSTORM_BAKE_REGION=0 (empty/unset = on).
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_REGION").strip_edges().to_lower()
+	if raw == "0" or raw == "false" or raw == "off" or raw == "no":
+		return false
+	return true
 
 
 static func region_of(coord: Vector2i) -> Vector2i:
@@ -108,6 +112,35 @@ static func _index(path: String) -> PackedInt64Array:
 	_index_cache[path] = idx
 	return idx
 
+
+
+## All chunk coords present across region files (len>0 slots).
+static func inventory_coords(regions_dir: String) -> Array:
+	var out: Array = []
+	var abs_dir := ProjectSettings.globalize_path(regions_dir)
+	if not DirAccess.dir_exists_absolute(abs_dir):
+		return out
+	var da := DirAccess.open(regions_dir)
+	if da == null:
+		return out
+	da.list_dir_begin()
+	var n := da.get_next()
+	while n != "":
+		if not da.current_is_dir() and n.begins_with("r_") and n.ends_with(".reg"):
+			var stem := n.substr(0, n.length() - 4) # r_X_Y
+			var parts: PackedStringArray = stem.split("_")
+			if parts.size() == 3 and parts[1].is_valid_int() and parts[2].is_valid_int():
+				var r := Vector2i(int(parts[1]), int(parts[2]))
+				var path := region_path(regions_dir, r)
+				var idx := _index(path)
+				for s in range(SLOTS):
+					if idx.size() > s * 2 + 1 and idx[s * 2 + 1] > 0:
+						var lx := s % SIDE
+						var lz := int(s / SIDE)
+						out.append(Vector2i(r.x * SIDE + lx, r.y * SIDE + lz))
+		n = da.get_next()
+	da.list_dir_end()
+	return out
 
 static func has_chunk(regions_dir: String, coord: Vector2i) -> bool:
 	var idx := _index(region_path(regions_dir, region_of(coord)))
