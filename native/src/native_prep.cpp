@@ -55,7 +55,10 @@ const V3 CAVE_V = { { 3, 6 }, { 4, 6 }, { 6, 6 } };
 const V3 SAND_V = { { 0, 7 }, { 1, 7 }, { 2, 7 } };
 const V3 BEACH_V = { { 0, 1 }, { 1, 1 }, { 2, 1 } };
 const V3 LEAF_V = { { 0, 3 }, { 2, 3 }, { 4, 3 } };
-const V3 WOOD_V = { { 1, 3 }, { 3, 3 }, { 5, 3 } };
+const V3 GRASS_SIDE = { { 3, 4 }, { 5, 4 }, { 6, 4 } };
+const V3 LOG_END = { { 3, 3 }, { 3, 7 }, { 5, 9 } };
+const V3 LOG_BARK = { { 1, 3 }, { 5, 3 }, { 4, 4 } };
+const V3 WOOD_V = { { 1, 3 }, { 5, 3 }, { 4, 4 } };
 const V3 SNOW_V = { { 0, 5 }, { 1, 5 }, { 2, 5 } };
 const V3 TUNDRA_V = { { 0, 8 }, { 1, 8 }, { 2, 8 } };
 const V3 BASIN_V = { { 0, 9 }, { 1, 9 }, { 2, 9 } };
@@ -67,7 +70,7 @@ const V3 OCEAN_V = { { 0, 0 }, { 2, 0 }, { 4, 0 } };
 const V3 RIVER_V = { { 1, 0 }, { 3, 0 }, { 5, 0 } };
 
 const C2 SOIL_BOTTOM = { 6, 7 }, ROCK_BOTTOM = { 5, 7 }, SAND_BOTTOM = { 4, 7 }, CRYSTAL_BOTTOM = { 3, 8 },
-		CRYSTAL_SIDE = { 4, 9 };
+		CRYSTAL_SIDE = { 4, 9 }, SHARD_SIDE = { 3, 5 }, SCAR_SIDE = { 4, 9 };
 
 C2 atlas_coord(int t) {
 	if (t >= 0 && t < 53) {
@@ -144,12 +147,31 @@ C2 bottom_for(int t) {
 	return SOIL_BOTTOM;
 }
 
+C2 crystal_side(int t) {
+	if (t == CRYSTAL_SHARD_GROUND) {
+		return SHARD_SIDE;
+	}
+	if (t == CRYSTAL_SCAR) {
+		return SCAR_SIDE;
+	}
+	return CRYSTAL_SIDE;
+}
+
 C2 coord_for_face(int t, int fc) {
+	if (t == TREE_TRUNK) {
+		if (fc >= 3 && fc < 7) {
+			return LOG_BARK[0];
+		}
+		return LOG_END[0];
+	}
 	if (fc <= 0 || fc >= 7) {
 		return atlas_coord(t);
 	}
 	if (fc == 2) {
 		return bottom_for(t);
+	}
+	if (green_grass_top(t) && fc >= 3) {
+		return GRASS_SIDE[0];
 	}
 	if (grass_surface(t)) {
 		return fc >= 3 ? atlas_coord(DIRT) : atlas_coord(t);
@@ -167,7 +189,7 @@ C2 coord_for_face(int t, int fc) {
 		return fc >= 3 ? C2{ 4, 5 } : atlas_coord(t);
 	}
 	if (t == CRYSTAL || t == CRYSTAL_SHARD_GROUND || t == CRYSTAL_SCAR) {
-		return fc >= 3 ? CRYSTAL_SIDE : atlas_coord(t);
+		return fc >= 3 ? crystal_side(t) : atlas_coord(t);
 	}
 	if (column_rock(t)) {
 		if (fc >= 3) {
@@ -187,6 +209,9 @@ C2 coord_for_face(int t, int fc) {
 C2 face_atlas(int t, int face_code, int64_t wx, int64_t wz) {
 	int face = face_code >= 7 ? 0 : face_code;
 	if (face == 2) {
+		if (t == TREE_TRUNK) {
+			return pick(LOG_END, wx, wz, 109);
+		}
 		return bottom_for(t);
 	}
 	if (green_grass_top(t) && face == 0) {
@@ -197,6 +222,9 @@ C2 face_atlas(int t, int face_code, int64_t wx, int64_t wz) {
 	}
 	if ((t == DIRT || t == DIRT2) && face >= 3) {
 		return pick_other(DIRT_V, wx, wz, 31, pick(DIRT_V, wx, wz, 29));
+	}
+	if (green_grass_top(t) && face >= 3) {
+		return pick(GRASS_SIDE, wx, wz, 17);
 	}
 	if (grass_surface(t) && face >= 3) {
 		return pick(DIRT_V, wx, wz, 29);
@@ -210,7 +238,7 @@ C2 face_atlas(int t, int face_code, int64_t wx, int64_t wz) {
 		return face >= 3 ? pick_other(ORE_V, wx, wz, 71, top) : top;
 	}
 	if (t == CRYSTAL || t == CRYSTAL_SHARD_GROUND || t == CRYSTAL_SCAR) {
-		return face >= 3 ? CRYSTAL_SIDE : atlas_coord(t);
+		return face >= 3 ? crystal_side(t) : atlas_coord(t);
 	}
 	if (column_rock(t)) {
 		C2 top = pick(STONE_V, wx, wz, 41);
@@ -230,7 +258,10 @@ C2 face_atlas(int t, int face_code, int64_t wx, int64_t wz) {
 		return pick(WOOD_V, wx, wz, 109);
 	}
 	if (t == TREE_TRUNK) {
-		return pick(WOOD_V, wx, wz, 109);
+		if (face >= 3) {
+			return pick(LOG_BARK, wx, wz, 113);
+		}
+		return pick(LOG_END, wx, wz, 109);
 	}
 	if (t == BUSH && face == 0) {
 		return pick(LEAF_V, wx, wz, 107);

@@ -75,18 +75,25 @@ const ROCK_BOTTOM := Vector2i(5, 7)
 const SAND_BOTTOM := Vector2i(4, 7)
 const CRYSTAL_BOTTOM := Vector2i(3, 8)
 const CRYSTAL_SIDE := Vector2i(4, 9)
+const SHARD_SIDE := Vector2i(3, 5)
+const SCAR_SIDE := Vector2i(4, 9)
 
 
 static func get_atlas_coord(tile_type: int) -> Vector2i:
 	return ATLAS_COORDS.get(tile_type, Vector2i(6, 0))
 
 
-## Minecraft-style face picking: grass tops on FACE_TOP, dirt/earth on vertical sides, a darker underside.
 static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i:
+	if tile_type == TREE_TRUNK:
+		if face_code >= 3 and face_code < 7:
+			return LOG_BARK_VARIANTS[0]
+		return LOG_END_VARIANTS[0]
 	if face_code <= 0 or face_code >= 7:
 		return get_atlas_coord(tile_type)
 	if face_code == 2:
 		return _bottom_for(tile_type)
+	if _green_grass_top(tile_type) and face_code >= 3:
+		return GRASS_SIDE_VARIANTS[0]
 	if _is_grass_surface(tile_type):
 		return get_atlas_coord(DIRT) if face_code >= 3 else get_atlas_coord(tile_type)
 	if _is_forest_surface(tile_type):
@@ -98,7 +105,9 @@ static func get_atlas_coord_for_face(tile_type: int, face_code: int) -> Vector2i
 	if tile_type == CRYSTAL_VEIN:
 		return Vector2i(4, 5) if face_code >= 3 else get_atlas_coord(tile_type)
 	if tile_type == CRYSTAL or tile_type == CRYSTAL_SHARD_GROUND or tile_type == CRYSTAL_SCAR:
-		return CRYSTAL_SIDE if face_code >= 3 else get_atlas_coord(tile_type)
+		if face_code >= 3:
+			return _crystal_side(tile_type)
+		return get_atlas_coord(tile_type)
 	if _column_rock(tile_type):
 		if face_code >= 3:
 			var rock_top := get_atlas_coord(tile_type)
@@ -138,8 +147,17 @@ const BEACH_VARIANTS: Array[Vector2i] = [
 const LEAF_VARIANTS: Array[Vector2i] = [
 	Vector2i(0, 3), Vector2i(2, 3), Vector2i(4, 3),
 ]
+const GRASS_SIDE_VARIANTS: Array[Vector2i] = [
+	Vector2i(3, 4), Vector2i(5, 4), Vector2i(6, 4),
+]
+const LOG_END_VARIANTS: Array[Vector2i] = [
+	Vector2i(3, 3), Vector2i(3, 7), Vector2i(5, 9),
+]
+const LOG_BARK_VARIANTS: Array[Vector2i] = [
+	Vector2i(1, 3), Vector2i(5, 3), Vector2i(4, 4),
+]
 const WOOD_VARIANTS: Array[Vector2i] = [
-	Vector2i(1, 3), Vector2i(3, 3), Vector2i(5, 3),
+	Vector2i(1, 3), Vector2i(5, 3), Vector2i(4, 4),
 ]
 const SNOW_VARIANTS: Array[Vector2i] = [
 	Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5),
@@ -209,6 +227,8 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 	if face >= 7:
 		face = 0
 	if face == 2:
+		if tile_type == TREE_TRUNK:
+			return _column_pick(LOG_END_VARIANTS, world_x, world_z, 109)
 		return _bottom_for(tile_type)
 	if _green_grass_top(tile_type) and face == 0:
 		return _column_pick(GRASS_TOP_VARIANTS, world_x, world_z, 11)
@@ -217,6 +237,8 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 	if (tile_type == DIRT or tile_type == DIRT2) and face >= 3:
 		var dirt_top := _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
 		return _pick_other(DIRT_VARIANTS, world_x, world_z, 31, dirt_top)
+	if _green_grass_top(tile_type) and face >= 3:
+		return _column_pick(GRASS_SIDE_VARIANTS, world_x, world_z, 17)
 	if (_is_grass_surface(tile_type)) and face >= 3:
 		return _column_pick(DIRT_VARIANTS, world_x, world_z, 29)
 	if tile_type == CAVE_STONE:
@@ -231,7 +253,7 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 		return vein_top
 	if tile_type == CRYSTAL or tile_type == CRYSTAL_SHARD_GROUND or tile_type == CRYSTAL_SCAR:
 		if face >= 3:
-			return CRYSTAL_SIDE
+			return _crystal_side(tile_type)
 		return get_atlas_coord(tile_type)
 	if _column_rock(tile_type):
 		var rock_top := _column_pick(STONE_VARIANTS, world_x, world_z, 41)
@@ -250,7 +272,9 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 	if _is_forest_surface(tile_type) and face >= 3:
 		return _column_pick(WOOD_VARIANTS, world_x, world_z, 109)
 	if tile_type == TREE_TRUNK:
-		return _column_pick(WOOD_VARIANTS, world_x, world_z, 109)
+		if face >= 3:
+			return _column_pick(LOG_BARK_VARIANTS, world_x, world_z, 113)
+		return _column_pick(LOG_END_VARIANTS, world_x, world_z, 109)
 	if tile_type == BUSH and face == 0:
 		return _column_pick(LEAF_VARIANTS, world_x, world_z, 107)
 	if _is_tundra(tile_type) and face == 0:
@@ -276,6 +300,14 @@ static func face_atlas(tile_type: int, face_code: int, world_x: int, world_z: in
 	if tile_type == RIVER or tile_type == WATER:
 		return _column_pick(RIVER_VARIANTS, world_x, world_z, 163)
 	return get_atlas_coord_for_face(tile_type, face_code)
+
+
+static func _crystal_side(tile_type: int) -> Vector2i:
+	if tile_type == CRYSTAL_SHARD_GROUND:
+		return SHARD_SIDE
+	if tile_type == CRYSTAL_SCAR:
+		return SCAR_SIDE
+	return CRYSTAL_SIDE
 
 
 static func _column_rock(tile_type: int) -> bool:

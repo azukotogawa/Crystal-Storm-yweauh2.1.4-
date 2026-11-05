@@ -2,6 +2,7 @@ class_name TextureSet
 extends RefCounted
 
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 
 const ORIGINAL := "original"
 const BATCH1 := "batch1"
@@ -9,6 +10,10 @@ const ART_PREFIX := "res://assets/art/"
 const BATCH_PREFIX := "res://assets/art_batch1/"
 
 static var _cache: Dictionary = {}
+
+
+static func face_tile(tile_type: int, face_code: int, world_x: int, world_z: int) -> Vector2i:
+	return _VoxelTypes.face_atlas(tile_type, face_code, world_x, world_z)
 
 
 static func current() -> String:
