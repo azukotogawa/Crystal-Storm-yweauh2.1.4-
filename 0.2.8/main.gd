@@ -38,6 +38,10 @@ func _ready() -> void:
 	_ensure_day_night()
 
 
+func _pixel_look_install() -> void:
+	load("res://systems/pixel_look_controller.gd").maybe_install(self)
+	_ensure_day_night()
+
 func _ensure_day_night() -> void:
 	var world_parent: Node = self
 	var pixel = get_node_or_null("PixelLookController")
