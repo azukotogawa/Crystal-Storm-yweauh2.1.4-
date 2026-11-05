@@ -103,13 +103,9 @@ func _refresh_soa_hot() -> void:
 	_soa_hot = depth_soa_enabled()
 
 
-## Hot-path depth read: seq-indexed PackedFloat64Array when SoA is on.
+## Random-access depth read: always Dictionary (SoA ON must not regress neighbors).
+## Sequential walks use _depth_at_seq(sq) when the caller already has a seq index.
 func _depth_of(pos: Vector2i) -> float:
-	if _soa_hot:
-		if _seq.has(pos):
-			var sq: int = int(_seq[pos])
-			if sq >= 0 and sq < depth_soa.size():
-				return float(depth_soa[sq])
 	return float(depth.get(pos, 0.0))
 
 
@@ -506,18 +502,43 @@ func _flow_job_begin(delta: float) -> Array:
 
 	var t_scan := Time.get_ticks_usec() if _prof_enabled else 0
 	var cells: Array = []
+	var seqs := PackedInt64Array()
 	var active_count: int = 0
 	var cap: int = _effective_flow_cap()
-	if cap <= 0 or depth.size() <= index_full_scan_max:
+	if _soa_hot and (cap <= 0 or depth.size() <= index_full_scan_max):
+		# Seq-indexed full scan: walk SoA, no depth.keys() / pos->seq Dictionary.
+		_ensure_index()
 		var active_cells: Array = []
+		var active_seqs := PackedInt64Array()
+		var nsoa: int = mini(depth_soa.size(), pos_soa_x.size())
+		nsoa = mini(nsoa, pos_soa_z.size())
+		for sq in nsoa:
+			var pos_s: Vector2i = Vector2i(int(pos_soa_x[sq]), int(pos_soa_z[sq]))
+			if _cell_active(pos_s):
+				active_cells.append(pos_s)
+				active_seqs.append(sq)
+		if _prof_enabled:
+			_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
+		# Cap subset keeps Vector2i cells; rebuild matching seqs after select.
+		cells = _select_flow_cells(active_cells)
+		active_count = active_cells.size()
+		if cells.size() == active_cells.size():
+			seqs = active_seqs
+		else:
+			seqs.resize(cells.size())
+			for ci2 in cells.size():
+				var cp2: Vector2i = cells[ci2]
+				seqs[ci2] = int(_seq.get(cp2, -1))
+	elif cap <= 0 or depth.size() <= index_full_scan_max:
+		var active_cells2: Array = []
 		for pos_variant in depth.keys():
 			var pos: Vector2i = pos_variant
 			if _cell_active(pos):
-				active_cells.append(pos)
+				active_cells2.append(pos)
 		if _prof_enabled:
 			_prof_add_phase("scan_active_cells", Time.get_ticks_usec() - t_scan)
-		cells = _select_flow_cells(active_cells)
-		active_count = active_cells.size()
+		cells = _select_flow_cells(active_cells2)
+		active_count = active_cells2.size()
 	else:
 		cells = _select_indexed_flow_cells(cap)
 		active_count = depth.size()
@@ -532,8 +553,7 @@ func _flow_job_begin(delta: float) -> Array:
 		_prof_ticks += 1
 		_prof_add_phase("flow_job_begin", Time.get_ticks_usec() - t_begin)
 
-	var seqs := PackedInt64Array()
-	if _soa_hot:
+	if _soa_hot and seqs.is_empty() and not cells.is_empty():
 		seqs.resize(cells.size())
 		for ci in cells.size():
 			var cp: Vector2i = cells[ci]
