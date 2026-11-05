@@ -31,10 +31,22 @@ func _paint(tile: int, world) -> ChunkData:
 	return data
 
 
-func _arrays(data: ChunkData, native: bool) -> Dictionary:
+func _block_quads(data: ChunkData) -> Array:
 	var cm := _ChunkManager.new()
 	var mesh: Dictionary = cm._build_mesh(data)
-	var quads: Array = mesh.get("quads", [])
+	var out: Array = []
+	for qv in mesh.get("quads", []):
+		var q: Dictionary = qv
+		if q.has("wave_riser"):
+			continue
+		var fc := int(q.get("face_code", -1))
+		if fc == 0 or (fc >= 3 and fc <= 6):
+			out.append(q)
+	return out
+
+
+func _arrays(data: ChunkData, native: bool) -> Dictionary:
+	var quads: Array = _block_quads(data)
 	if native:
 		return _Builder.build_surface_arrays_native(data, quads)
 	return _Builder.build_surface_arrays_from_terrain_quads(data, quads)
