@@ -1,34 +1,12 @@
 extends Node
 ## Optional full-screen low-res nearest upscale. Install only when enabled.
-## 3D world renders into a SubViewport; HUD CanvasLayers stay on the root at full res.
+## Renders the existing World3D through a low-res SubViewport camera (no world reparent).
+## HUD CanvasLayers stay on the root at full res.
 
 const _PixelLook = preload("res://helpers/pixel_look.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 
 const BLIT_SHADER_PATH := "res://shaders/pixel_look_blit.gdshader"
-
-## Node names under Game that stay on the root (UI / services), not moved into the SubViewport.
-const KEEP_ON_ROOT := {
-	"CompositionRoot": true,
-	"SpatialQueryService": true,
-	"ProgressionService": true,
-	"SkillService": true,
-	"ConfigService": true,
-	"PerformanceService": true,
-	"GameVisualRegistry": true,
-	"GameManager": true,
-	"SaveGameService": true,
-	"CanvasLayer": true,
-	"LoadingLayer": true,
-	"LiveWorldInspector": true,
-	"DevToolsCoordinator": true,
-	"PauseMenu": true,
-	"SkillTree": true,
-	"F3Overlay": true,
-	"PixelLookController": true,
-	"PixelLookLayer": true,
-	"DeveloperAssistant": true,
-}
 
 var enabled: bool = false
 var internal_height: int = _PixelLook.DEFAULT_HEIGHT
@@ -41,10 +19,11 @@ var _blit: ColorRect = null
 var _blit_mat: ShaderMaterial = null
 var _layer: CanvasLayer = null
 var _container: SubViewportContainer = null
+var _proxy_cam: Camera3D = null
+var _source_cam: Camera3D = null
 var _subpixel: Vector2 = Vector2.ZERO
 var _installed: bool = false
-var _camera: Camera3D = null
-var _reparent_done: bool = false
+var _root_disable_3d_prev: bool = false
 
 
 static func maybe_install(game: Node) -> Node:
@@ -65,10 +44,8 @@ static func maybe_install(game: Node) -> Node:
 	ctrl.internal_height = int(settings.get("height", _PixelLook.DEFAULT_HEIGHT))
 	ctrl.banding = bool(settings.get("banding", false))
 	ctrl.outline = bool(settings.get("outline", false))
-	# Higher process_priority runs first; negative runs after typical camera controllers.
 	ctrl.process_priority = -50
 	game.add_child(ctrl)
-	# Defer heavy reparent so boot_async / SceneTree scripts can finish their current frame.
 	ctrl.call_deferred("install", game)
 	return ctrl
 
@@ -80,21 +57,29 @@ func install(game: Node) -> void:
 	_installed = true
 	print("PIXEL_LOOK install begin height=%d" % internal_height)
 	_build_viewport()
-	print("PIXEL_LOOK viewport ready size=%s" % str(_viewport.size if _viewport else Vector2i.ZERO))
+	_build_proxy_camera()
 	_build_blit()
 	_resize_to_window()
-	# Reparent next frame so SubViewport has a size/texture before absorbing the world.
-	call_deferred("_reparent_world")
+	_disable_root_3d()
 	var root_vp := get_viewport()
 	if root_vp != null and not root_vp.size_changed.is_connected(_on_root_size_changed):
 		root_vp.size_changed.connect(_on_root_size_changed)
 	set_process(true)
+	print(
+		"PIXEL_LOOK on height=%d size=%sx%s banding=%s outline=%s"
+		% [
+			internal_height,
+			_viewport.size.x if _viewport else 0,
+			_viewport.size.y if _viewport else 0,
+			str(banding),
+			str(outline),
+		]
+	)
 
 
 func get_content_parent() -> Node:
-	if _viewport != null:
-		return _viewport
-	return _game
+	## World stays on the game root; late-created 3D nodes should too.
+	return _game if _game != null else self
 
 
 func _build_viewport() -> void:
@@ -107,66 +92,46 @@ func _build_viewport() -> void:
 	_container.name = "PixelViewportContainer"
 	_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_container.stretch = false
-	_container.mouse_filter = Control.MOUSE_FILTER_STOP
-	# Hide the container's own blit; ColorRect+shader does nearest + subpixel.
+	_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_container.modulate = Color(1, 1, 1, 0)
 	_layer.add_child(_container)
 
 	_viewport = SubViewport.new()
 	_viewport.name = "PixelWorld"
 	_viewport.transparent_bg = false
-	_viewport.handle_input_locally = true
-	_viewport.gui_disable_input = false
+	_viewport.handle_input_locally = false
+	_viewport.gui_disable_input = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.audio_listener_enable_3d = true
-	# Share the root World3D so physics/navigation RIDs created during boot stay valid.
 	_viewport.own_world_3d = false
-	_viewport.world_3d = _game.get_viewport().world_3d
+	var root_vp := _game.get_viewport()
+	if root_vp != null:
+		_viewport.world_3d = root_vp.world_3d
 	_viewport.msaa_3d = Viewport.MSAA_DISABLED
 	_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	_viewport.scaling_3d_scale = 1.0
 	_container.add_child(_viewport)
+	print("PIXEL_LOOK viewport ready size=%s" % str(_viewport.size))
 
 
-func _reparent_world() -> void:
-	if _reparent_done or _viewport == null or _game == null:
+func _build_proxy_camera() -> void:
+	_proxy_cam = Camera3D.new()
+	_proxy_cam.name = "PixelProxyCamera"
+	_proxy_cam.current = true
+	_viewport.add_child(_proxy_cam)
+	_source_cam = _find_source_camera()
+	if _source_cam != null:
+		_copy_camera_settings(_source_cam, _proxy_cam)
+		# Root camera must not remain current or it fights the proxy.
+		_source_cam.current = false
+
+
+func _disable_root_3d() -> void:
+	var root_vp := _game.get_viewport()
+	if root_vp == null:
 		return
-	_reparent_done = true
-	var to_move: Array[Node] = []
-	for child in _game.get_children():
-		if child == self or child == _layer:
-			continue
-		if child is CanvasLayer:
-			continue
-		if KEEP_ON_ROOT.has(child.name):
-			continue
-		to_move.append(child)
-	print("PIXEL_LOOK reparent count=%d" % to_move.size())
-	for child in to_move:
-		var was_current := false
-		if child is Camera3D:
-			was_current = (child as Camera3D).current
-		_game.remove_child(child)
-		_viewport.add_child(child)
-		if child is Camera3D and was_current:
-			(child as Camera3D).current = true
-	# Player camera often nested — force current on whatever camera we find.
-	var cam := _find_camera()
-	if cam != null:
-		cam.current = true
-		_camera = cam
-	_resize_to_window()
-	_apply_blit_uniforms()
-	print(
-		"PIXEL_LOOK on height=%d size=%sx%s banding=%s outline=%s"
-		% [
-			internal_height,
-			_viewport.size.x if _viewport else 0,
-			_viewport.size.y if _viewport else 0,
-			str(banding),
-			str(outline),
-		]
-	)
+	_root_disable_3d_prev = root_vp.disable_3d
+	root_vp.disable_3d = true
 
 
 func _build_blit() -> void:
@@ -211,43 +176,57 @@ func _resize_to_window() -> void:
 
 
 func _process(_delta: float) -> void:
-	if not _installed or _viewport == null or not _reparent_done:
+	if not _installed or _viewport == null or _proxy_cam == null:
 		return
-	_snap_camera()
+	if _source_cam == null or not is_instance_valid(_source_cam):
+		_source_cam = _find_source_camera()
+	if _source_cam == null:
+		_subpixel = Vector2.ZERO
+		return
+	_copy_camera_settings(_source_cam, _proxy_cam)
+	_source_cam.current = false
+	_proxy_cam.current = true
+	_snap_proxy_camera()
 	if _blit_mat != null:
 		_blit_mat.set_shader_parameter("subpixel", _subpixel)
 		_blit_mat.set_shader_parameter("world_tex", _viewport.get_texture())
 
 
-func _snap_camera() -> void:
-	if _camera == null or not is_instance_valid(_camera):
-		_camera = _find_camera()
-	if _camera == null:
-		_subpixel = Vector2.ZERO
-		return
+func _copy_camera_settings(src: Camera3D, dst: Camera3D) -> void:
+	dst.projection = src.projection
+	dst.fov = src.fov
+	dst.size = src.size
+	dst.near = src.near
+	dst.far = src.far
+	dst.keep_aspect = src.keep_aspect
+	dst.cull_mask = src.cull_mask
+	dst.environment = src.environment
+	dst.attributes = src.attributes
+	dst.global_transform = src.global_transform
+
+
+func _snap_proxy_camera() -> void:
 	var ortho_size: float = 16.0
-	if _camera.projection == Camera3D.PROJECTION_ORTHOGONAL:
-		ortho_size = maxf(_camera.size, 0.01)
+	if _proxy_cam.projection == Camera3D.PROJECTION_ORTHOGONAL:
+		ortho_size = maxf(_proxy_cam.size, 0.01)
 	else:
 		var dist: float = 50.0
-		ortho_size = maxf(2.0 * dist * tan(deg_to_rad(_camera.fov) * 0.5), 0.01)
+		ortho_size = maxf(2.0 * dist * tan(deg_to_rad(_proxy_cam.fov) * 0.5), 0.01)
 	var result: Dictionary = _PixelLook.snap_camera_position(
-		_camera.global_position,
-		_camera.global_transform.basis,
+		_proxy_cam.global_position,
+		_proxy_cam.global_transform.basis,
 		ortho_size,
-		internal_height if _viewport == null else _viewport.size.y
+		_viewport.size.y
 	)
-	_camera.global_position = result["snapped"]
+	_proxy_cam.global_position = result["snapped"]
 	_subpixel = result["subpixel"]
 
 
-func _find_camera() -> Camera3D:
-	if _viewport == null:
-		return null
-	var cam := _viewport.get_camera_3d()
+func _find_source_camera() -> Camera3D:
+	var cam := get_tree().get_first_node_in_group("camera") as Camera3D
 	if cam != null:
 		return cam
-	var player := _viewport.get_node_or_null("Player")
+	var player := get_tree().get_first_node_in_group("player")
 	if player != null:
 		var c = player.get_node_or_null("Camera3D")
 		if c is Camera3D:
