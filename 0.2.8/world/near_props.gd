@@ -3,8 +3,8 @@ extends Node3D
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _TerrainLook = preload("res://helpers/terrain_look.gd")
-const RADIUS := 1
-const MAX_CUBES_PER_CHUNK := 480
+var radius: int = 1
+var max_cubes_per_chunk: int = 480
 const PROP_CHANCE := 18
 const GRASS_D := Color(0.30, 0.50, 0.24)
 const GRASS_L := Color(0.40, 0.58, 0.28)
@@ -21,6 +21,29 @@ var _mesh: BoxMesh
 var _mat: StandardMaterial3D
 
 
+func apply_render_tier(radius_chunks: int, max_cubes: int) -> void:
+	radius = maxi(radius_chunks, 0)
+	max_cubes_per_chunk = maxi(max_cubes, 0)
+	if radius <= 0 or max_cubes_per_chunk <= 0:
+		for k in _built.keys():
+			var doomed: Node = _built[k]
+			if is_instance_valid(doomed):
+				doomed.queue_free()
+		_built.clear()
+		_queue.clear()
+		return
+	# Drop anything outside the new radius.
+	var drop: Array = []
+	for k2 in _built.keys():
+		if _far(k2):
+			drop.append(k2)
+	for k3 in drop:
+		var node: Node = _built[k3]
+		if is_instance_valid(node):
+			node.queue_free()
+		_built.erase(k3)
+
+
 func _ready() -> void:
 	top_level = true
 	global_transform = Transform3D.IDENTITY
@@ -35,6 +58,15 @@ func _ready() -> void:
 
 
 func set_center(c: Vector2i) -> void:
+	if radius <= 0 or max_cubes_per_chunk <= 0:
+		_center = c
+		for k0 in _built.keys():
+			var n0: Node = _built[k0]
+			if is_instance_valid(n0):
+				n0.queue_free()
+		_built.clear()
+		_queue.clear()
+		return
 	if c == _center:
 		return
 	_center = c
@@ -45,8 +77,8 @@ func set_center(c: Vector2i) -> void:
 				n.queue_free()
 			_built.erase(k)
 	_queue.clear()
-	for dz in range(-RADIUS, RADIUS + 1):
-		for dx in range(-RADIUS, RADIUS + 1):
+	for dz in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
 			var k := c + Vector2i(dx, dz)
 			if not _built.has(k):
 				_queue.append(k)
@@ -63,7 +95,7 @@ func drop_chunk(k: Vector2i) -> void:
 
 
 func _far(k: Vector2i) -> bool:
-	return maxi(absi(k.x - _center.x), absi(k.y - _center.y)) > RADIUS
+	return maxi(absi(k.x - _center.x), absi(k.y - _center.y)) > radius
 
 
 func _process(_dt: float) -> void:
@@ -94,7 +126,7 @@ func _build(data: ChunkData) -> Node3D:
 	var cols: Array = []
 	for lz in ChunkData.SIZE:
 		for lx in ChunkData.SIZE:
-			if xf.size() >= MAX_CUBES_PER_CHUNK:
+			if xf.size() >= max_cubes_per_chunk:
 				break
 			var t: int = data.get_tile_type(lx, lz)
 			if t < _VoxelTypes.GRASSLAND or t > _VoxelTypes.GRASSLAND5:
