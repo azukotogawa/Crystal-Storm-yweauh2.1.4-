@@ -1049,7 +1049,7 @@ func _apply_grade(color: Color, palette: _Palette) -> Color:
 	c = Color.from_hsv(
 		c.h,
 		clampf(c.s * palette.saturation, 0.0, 1.0),
-		clampf(gray + (c.v - gray) * palette.contrast, 0.0, 1.0),
+		clampf(gray + (c.v - gray) * palette.contrast, 0.06, 0.94),
 		c.a
 	)
 	return c

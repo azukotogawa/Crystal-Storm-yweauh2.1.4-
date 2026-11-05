@@ -9,9 +9,10 @@ const _ChunkData = preload("res://chunks/chunk_data.gd")
 const _Builder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
-const LUM_MIN := 0.10
-const HUE_MIN := 0.08
+const LUM_MIN := 0.15
+const HUE_MIN := 0.10
 const LOW_SAT := 0.15
+const SPAN_MIN := 0.08
 
 const MATERIALS := {
 	"grass": _VoxelTypes.GRASSLAND3,
@@ -42,15 +43,20 @@ func _sample(img: Image, cell: Vector2i) -> Dictionary:
 	var g := 0.0
 	var b := 0.0
 	var luma := 0.0
+	var lo := 1.0
+	var hi := 0.0
 	var colors := {}
 	var n := float(tw * tw)
 	for y in tw:
 		for x in tw:
 			var px := img.get_pixel(cell.x * tw + x, cell.y * tw + y)
+			var lum := px.get_luminance()
 			r += px.r
 			g += px.g
 			b += px.b
-			luma += px.get_luminance()
+			luma += lum
+			lo = minf(lo, lum)
+			hi = maxf(hi, lum)
 			colors[px.to_html(false)] = true
 	var mean := Color(r / n, g / n, b / n)
 	return {
@@ -58,6 +64,7 @@ func _sample(img: Image, cell: Vector2i) -> Dictionary:
 		"hue": mean.h,
 		"sat": mean.s,
 		"colors": colors.size(),
+		"span": hi - lo,
 		"mean": mean,
 	}
 
@@ -158,11 +165,14 @@ func _run() -> void:
 			var sample: Dictionary = _sample(img, cell)
 			samples["%s_%s" % [name, face_name]] = sample
 			print(
-				"TILE %s %s cell=%s L=%.3f H=%.3f S=%.3f colors=%d"
-				% [name, face_name, cell, sample["luma"], sample["hue"], sample["sat"], sample["colors"]]
+				"TILE %s %s cell=%s L=%.3f H=%.3f S=%.3f colors=%d span=%.3f"
+				% [name, face_name, cell, sample["luma"], sample["hue"], sample["sat"], sample["colors"], sample["span"]]
 			)
-			if int(sample["colors"]) < 4:
+			if int(sample["colors"]) < 6:
 				_fail("%s %s is flat (%d colors)" % [name, face_name, sample["colors"]])
+				failed = true
+			if float(sample["span"]) < SPAN_MIN:
+				_fail("%s %s value span %.3f < %.2f" % [name, face_name, sample["span"], SPAN_MIN])
 				failed = true
 		for x in 16:
 			for z in 16:
@@ -182,7 +192,7 @@ func _run() -> void:
 		for z in 8:
 			if not _in_set(_VoxelTypes.face_atlas(_VoxelTypes.GRASSLAND3, 0, x, z), _VoxelTypes.GRASS_TOP_VARIANTS):
 				grass_top_ok = false
-			if not _in_set(_VoxelTypes.face_atlas(_VoxelTypes.GRASSLAND3, 3, x, z), _VoxelTypes.DIRT_VARIANTS):
+			if not _in_set(_VoxelTypes.face_atlas(_VoxelTypes.GRASSLAND3, 3, x, z), _VoxelTypes.GRASS_SIDE_VARIANTS):
 				dirt_side_ok = false
 			if _VoxelTypes.face_atlas(_VoxelTypes.GRASSLAND3, 2, x, z) != _VoxelTypes.SOIL_BOTTOM:
 				_fail("grass bottom left the soil underside")
@@ -227,10 +237,10 @@ func _run() -> void:
 				_fail("scar top moved")
 				failed = true
 	if not grass_top_ok or not dirt_side_ok:
-		_fail("grass block is not grass-topped and dirt-sided")
+		_fail("grass block is not grass-topped and grass-sided")
 		failed = true
 	else:
-		print("MAP grass top in grass set, side in dirt set, bottom %s" % _VoxelTypes.SOIL_BOTTOM)
+		print("MAP grass top in grass set, side in grass-side set, bottom %s" % _VoxelTypes.SOIL_BOTTOM)
 
 	var names: Array = MATERIALS.keys()
 	var worst_l := 1.0
@@ -269,8 +279,8 @@ func _run() -> void:
 			_fail("meshed grass top %s is outside the grass set" % cell)
 			failed = true
 	for cell in drawn["sides"].keys():
-		if not _in_set(cell, _VoxelTypes.DIRT_VARIANTS):
-			_fail("meshed grass side %s is outside the dirt set" % cell)
+		if not _in_set(cell, _VoxelTypes.GRASS_SIDE_VARIANTS):
+			_fail("meshed grass side %s is outside the grass-side set" % cell)
 			failed = true
 
 	if failed:

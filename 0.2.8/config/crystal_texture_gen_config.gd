@@ -103,4 +103,5 @@ static func _make_palette(
 	p.glow_color = accent
 	p.glow_strength = glow
 	p.iridescence_strength = iridescence
+	p.contrast = 1.4
 	return p
