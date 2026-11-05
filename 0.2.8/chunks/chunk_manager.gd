@@ -13,6 +13,7 @@ const _ChunkStreamScheduler = preload("res://helpers/chunk_stream_scheduler.gd")
 const _TerrainDirtyScope = preload("res://helpers/terrain_dirty_scope.gd")
 const _TerrainSurfaceCache = preload("res://helpers/terrain_surface_cache.gd")
 const _MicroTerrainMeshCompositor = preload("res://helpers/micro_terrain_mesh_compositor.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 
 signal chunk_ready(coord: Vector2i, data: ChunkData)
 signal chunk_unloaded(coord: Vector2i)
@@ -2805,7 +2806,7 @@ func _append_wave_riser(
 
 
 func _column_face_atlas(data: ChunkData, lx: int, lz: int, tile: int, face_code: int) -> Vector2i:
-	return VoxelTypes.face_atlas(
+	return _TextureSet.face_tile(
 		tile,
 		face_code,
 		data.position.x * ChunkData.SIZE + lx,

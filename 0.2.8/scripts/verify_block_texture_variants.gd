@@ -8,7 +8,8 @@ const _Builder = preload("res://helpers/chunk_surface_mesh_builder.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 
 const _MIN_VARIANTS := 3
-const _MIN_MARKS := 280
+const _MIN_MARKS := 300
+const _MIN_DIFF := 80
 
 
 func _init() -> void:
@@ -254,7 +255,7 @@ func _run() -> void:
 		for j in range(i + 1, cells.size()):
 			var other: Vector2i = cells[j]
 			var diff := _cells_differ(img, cell, other)
-			if diff < 40:
+			if diff < _MIN_DIFF:
 				_fail("cells %s and %s are not distinct (%d px)" % [cell, other, diff])
 				failed = true
 

@@ -3,6 +3,7 @@ extends RefCounted
 
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 const _TerrainAO = preload("res://helpers/terrain_vertex_ao.gd")
 
 const FACE_TOP := 0
@@ -576,7 +577,7 @@ static func _quad_atlas(data: ChunkData, tile_type: int, face_code: int, local_x
 	var sample := face_code
 	if face_code >= FACE_RAMP:
 		sample = FACE_TOP
-	return _VoxelTypes.face_atlas(tile_type, sample, wx, wz)
+	return _TextureSet.face_tile(tile_type, sample, wx, wz)
 
 
 static func _write_face_quad(

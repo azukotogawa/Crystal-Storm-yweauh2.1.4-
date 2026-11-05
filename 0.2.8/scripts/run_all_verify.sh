@@ -76,6 +76,7 @@ SUITES=(
 	"res://scripts/verify_dug_strata_no_cap.gd"
 	"res://scripts/verify_chunk_surface_zero.gd"
 	"res://scripts/verify_chunk_atlas.gd"
+	"res://scripts/verify_block_face_uv.gd"
 	"res://scripts/verify_ramp_concave.gd"
 	"res://scripts/verify_ramp_corner.gd"
 	"res://scripts/verify_ramp_step_corner_walk.gd"

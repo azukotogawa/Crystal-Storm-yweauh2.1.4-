@@ -21,7 +21,7 @@ extends Resource
 
 @export_group("Variation")
 @export var noise_tint_strength: float = 0.22
-@export var contrast: float = 1.0
+@export var contrast: float = 1.4
 @export var saturation: float = 1.0
 
 

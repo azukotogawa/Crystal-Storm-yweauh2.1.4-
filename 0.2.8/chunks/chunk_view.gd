@@ -4,6 +4,7 @@ class_name ChunkView
 const _TerrainRamps = preload("res://helpers/terrain_ramps.gd")
 const _WorldSettings = preload("res://config/world_settings.gd")
 const _VoxelTypes = preload("res://helpers/voxel_types.gd")
+const _TextureSet = preload("res://helpers/texture_set.gd")
 const _CHUNK_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkView.tres")
 const _SURFACE_MATERIAL_RES: ShaderMaterial = preload("res://shaders/ChunkSurfaceMesh.tres")
 const _RAMP_SHADER: Shader = preload("res://shaders/ChunkRamp.gdshader")
@@ -794,7 +795,7 @@ static func _write_atlas_custom(
 		var sample := face_code
 		if sample >= 7:
 			sample = 0
-		atlas = _VoxelTypes.face_atlas(tile_type, sample, world_x, world_z)
+		atlas = _TextureSet.face_tile(tile_type, sample, world_x, world_z)
 	var encoded: float = float(face_code) + (float(quad.get("uv_h", 1.0)) / 100.0)
 	buffer[base + 12] = float(atlas.x) / 255.0
 	buffer[base + 13] = float(atlas.y) / 255.0
