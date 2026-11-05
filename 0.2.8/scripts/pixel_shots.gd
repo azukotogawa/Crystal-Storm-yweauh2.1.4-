@@ -38,12 +38,21 @@ func _stage_name(compose, st: int) -> String:
 
 
 func _loading_visible(game: Node) -> bool:
-	var ls := game.get_node_or_null("LoadingScreen")
+	var ls := game.get_node_or_null("LoadingLayer/LoadingScreen")
 	if ls == null:
 		ls = game.find_child("LoadingScreen", true, false)
 	if ls == null:
 		return false
 	return bool(ls.visible)
+
+
+func _wait_frames(n: int, label: String) -> void:
+	var i := 0
+	while i < n:
+		await process_frame
+		i += 1
+		if i % 60 == 0:
+			_note("%s frames=%d/%d" % [label, i, n])
 
 
 func _run() -> void:
@@ -52,14 +61,12 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(_out)
 	_PlayerSettings.settings_path = _out.path_join("player_settings.json")
 	DisplayServer.window_set_size(Vector2i(1280, 720))
-	for _i in 5:
-		await process_frame
+	await _wait_frames(5, "INIT")
 
 	var game: Node = (load("res://scenes/main.tscn") as PackedScene).instantiate()
 	root.add_child(game)
 	var compose = game.get_node_or_null("CompositionRoot")
 	var frames := 0
-	# Prefer RUNNING; accept INITIAL_STREAM_READY+; never treat FAILED as ready.
 	var ready_min := 5
 	var failed := 9
 	var running := 7
@@ -73,7 +80,6 @@ func _run() -> void:
 		if compose != null and st >= running:
 			break
 		if compose != null and st >= ready_min and not _loading_visible(game):
-			# Stream ready and loading UI gone — good enough.
 			break
 		if frames % 180 == 0:
 			_note(
@@ -82,8 +88,26 @@ func _run() -> void:
 			)
 		await process_frame
 		frames += 1
+
+	# Give main._ready time to return from boot_async and run maybe_install.
+	var want_pixel := _PixelLook.parse_enabled()
+	var wait_install := 0
+	while wait_install < 180:
+		await process_frame
+		wait_install += 1
+		if (not want_pixel) or game.get_node_or_null("PixelLookController") != null:
+			break
+		if wait_install % 30 == 0:
+			_note("WAIT_INSTALL n=%d ctrl=%s" % [wait_install, str(game.get_node_or_null("PixelLookController") != null)])
+
+	# If still missing and env wants it, install from harness (main may have skipped).
+	if want_pixel and game.get_node_or_null("PixelLookController") == null:
+		_note("HARNESS_INSTALL")
+		load("res://systems/pixel_look_controller.gd").maybe_install(game)
+		await _wait_frames(10, "POST_INSTALL")
+
 	_note(
-		"BOOT frames=%d stage=%d(%s) loading=%s pixel_env=%s height_env=%s ctrl=%s"
+		"BOOT frames=%d stage=%d(%s) loading=%s pixel_env=%s height_env=%s ctrl=%s want=%s"
 		% [
 			frames,
 			int(compose.stage) if compose else -1,
@@ -92,6 +116,7 @@ func _run() -> void:
 			OS.get_environment(_PixelLook.ENV_ENABLE),
 			OS.get_environment(_PixelLook.ENV_HEIGHT),
 			str(game.get_node_or_null("PixelLookController") != null),
+			str(want_pixel),
 		]
 	)
 	if compose != null and int(compose.stage) == failed:
@@ -100,16 +125,13 @@ func _run() -> void:
 		quit(2)
 		return
 
-	# Extra settle after stream ready / running.
-	for _w in 300:
-		await process_frame
+	await _wait_frames(90, "SETTLE")
 	if InputMap.has_action("pause"):
 		for _i in 2:
 			Input.action_press("pause")
 			await process_frame
 			Input.action_release("pause")
-			for _w in 20:
-				await process_frame
+			await _wait_frames(10, "PAUSE")
 
 	var player := get_first_node_in_group("player")
 	if player == null:
@@ -123,16 +145,18 @@ func _run() -> void:
 		player.call("_sync_global_from_voxel")
 	var cm = get_first_node_in_group("chunk_manager")
 	var waited := 0
-	while waited < 1800:
+	while waited < 600:
 		await process_frame
 		waited += 1
 		if cm != null and cm.get("chunks") != null and int(cm.chunks.size()) > 8:
 			break
+		if waited % 60 == 0:
+			_note("CHUNKS_WAIT n=%d count=%s" % [waited, str(cm.chunks.size() if cm else -1)])
 	_note("CHUNKS wait=%d count=%s" % [waited, str(cm.chunks.size() if cm else -1)])
-	for _w in 120:
-		await process_frame
+	await _wait_frames(60, "POST_CHUNK")
+
 	var cam := get_first_node_in_group("camera") as Camera3D
-	if cam == null:
+	if cam == null and player != null:
 		cam = player.get_node_or_null("Camera3D") as Camera3D
 
 	var ctrl = game.get_node_or_null("PixelLookController")
@@ -174,15 +198,13 @@ func _orbit(cam: Camera3D) -> void:
 			cam.set("yaw_target_degrees", float(yaw))
 			if cam.has_method("_update_camera_transform"):
 				cam.call("_update_camera_transform")
-		for _w in 24:
-			await process_frame
+		await _wait_frames(20, "ORBIT")
 		await _grab("orbit_%02d_yaw%d" % [i, int(yaw)])
 		i += 1
 
 
 func _fps_sample() -> void:
-	for _w in 60:
-		await process_frame
+	await _wait_frames(30, "FPS_WARM")
 	var samples: PackedFloat64Array = PackedFloat64Array()
 	var start_us := Time.get_ticks_usec()
 	var prev := start_us
