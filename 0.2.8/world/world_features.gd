@@ -10,6 +10,7 @@ const _PoiScatter = preload("res://world/poi_scatter.gd")
 const _SurfaceLoot = preload("res://world/surface_loot.gd")
 const _Landmarks = preload("res://world/distant_landmarks.gd")
 const _Variety = preload("res://world/poi_variety.gd")
+const _DungeonGraph = preload("res://world/dungeon_graph.gd")
 const _StartupProfiler = preload("res://systems/startup_profiler.gd")
 const _StartupTotal = preload("res://systems/startup_total_profiler.gd")
 
@@ -207,6 +208,15 @@ func _seed_content(perf_svc) -> void:
 		_crash_crumb("WorldFeatures._seed_content → PoiVariety.place EXIT")
 	else:
 		_StartupProfiler.mark("fs/poi_variety", 0)
+
+	if _DungeonGraph.ENABLED and world != null and not safe_mode:
+		_crash_crumb("WorldFeatures._seed_content -> DungeonGraph.place ENTER")
+		_StartupProfiler.begin("fs/dungeon_graph")
+		_DungeonGraph.place(world)
+		_StartupProfiler.end("fs/dungeon_graph")
+		_crash_crumb("WorldFeatures._seed_content -> DungeonGraph.place EXIT")
+	else:
+		_StartupProfiler.mark("fs/dungeon_graph", 0)
 
 	var entity_mgr = get_node_or_null("EntityManager")
 	if entity_mgr and not safe_mode:
