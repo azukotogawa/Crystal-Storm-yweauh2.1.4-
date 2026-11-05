@@ -657,19 +657,26 @@ func _configure_session_bounds(world, rad: int) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(chunks_dir))
 
 
-func _inventory_existing_packages() -> void:
+func _inventory_existing_packages(full: bool = false) -> void:
 	_packages_known.clear()
 	if package_dir.is_empty():
 		return
-	# Region-pack ship mode: inventory from .reg files (256 vs 16k dirents) when
-	# CRYSTALSTORM_BAKE_REGION=1. Loose .chk are still scanned when present so
-	# mixed trees keep working; region entries win for package_ready/has_chunk.
+	# Region mode (CRYSTALSTORM_BAKE_REGION=1): nearest-first by default so cold
+	# start only probes the spawn neighborhood. Full inventory runs when the
+	# background fill starts (and when committing the index) so far chunks are
+	# not rebaked. package_ready still hits has_chunk lazily for any coord.
 	if _RegionPack.enabled():
-		var from_reg: Array = _RegionPack.inventory_coords(regions_dir())
-		for c_v in from_reg:
-			_packages_known[c_v as Vector2i] = true
-		# Ship-mode: region files alone are enough. Skip the 16k .chk dirent
-		# walk that dominated cold-start inventory when both trees exist.
+		if full:
+			var from_reg: Array = _RegionPack.inventory_coords(regions_dir())
+			for c_v in from_reg:
+				_packages_known[c_v as Vector2i] = true
+		else:
+			var near := 12
+			for dz in range(-near, near + 1):
+				for dx in range(-near, near + 1):
+					var c := Vector2i(dx, dz)
+					if _RegionPack.has_chunk(regions_dir(), c):
+						_packages_known[c] = true
 		if not _packages_known.is_empty():
 			return
 	var chunks_rel := package_dir.path_join("chunks")
@@ -982,6 +989,9 @@ func prime_region(coords: Array, world, host) -> Dictionary:
 func start_background_fill(world, host) -> void:
 	_fill_world = world
 	_fill_host = host
+	# Full package inventory before queueing so already-baked far chunks are
+	# not scheduled again (nearest-first cold inventory only covered spawn).
+	_inventory_existing_packages(true)
 	_fill_queue.clear()
 	_fill_queue_i = 0
 	_fill_done = _packages_known.size()
