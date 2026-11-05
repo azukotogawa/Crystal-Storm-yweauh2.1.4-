@@ -5,6 +5,9 @@ extends SceneTree
 const _PixelLook = preload("res://helpers/pixel_look.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
 const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
+const _Loader = preload("res://helpers/crystal_voxel_loader.gd")
+
+const TREE_OAK := "res://assets/voxel/vegetation/lod/tree_oak_v0_s2_lod0.json"
 
 var _out := ""
 var _mode := "compare"
@@ -88,20 +91,50 @@ func _hide_chrome() -> void:
 func _aim_trees_character(cam: Camera3D, player: Node) -> void:
 	if cam == null or player == null:
 		return
-	# Clear overlooking yaw toward trees while keeping the player in frame.
+	# Look across the planted grove with the player in frame.
 	if cam.has_method("snap_yaw_degrees"):
-		cam.call("snap_yaw_degrees", 120.0)
+		cam.call("snap_yaw_degrees", 45.0)
 	elif "yaw_degrees" in cam:
-		cam.set("yaw_degrees", 120.0)
-		cam.set("yaw_target_degrees", 120.0)
+		cam.set("yaw_degrees", 45.0)
+		cam.set("yaw_target_degrees", 45.0)
 		if cam.has_method("_update_camera_transform"):
 			cam.call("_update_camera_transform")
 	if "pitch_degrees" in cam:
-		cam.set("pitch_degrees", -18.0)
+		cam.set("pitch_degrees", -22.0)
 		if "pitch_target_degrees" in cam:
-			cam.set("pitch_target_degrees", -18.0)
+			cam.set("pitch_target_degrees", -22.0)
 		if cam.has_method("_update_camera_transform"):
 			cam.call("_update_camera_transform")
+
+
+func _plant_oak_grove(game: Node, player: Node) -> void:
+	if player == null:
+		return
+	var mesh: ArrayMesh = _Loader.mesh_for(TREE_OAK)
+	if mesh == null:
+		_note("FAIL oak mesh null")
+		return
+	var origin: Vector3 = player.global_position if player is Node3D else Vector3.ZERO
+	# Ring of oaks around the player so they read clearly under pixel look.
+	var offsets := [
+		Vector3(6, 0, 4), Vector3(10, 0, 2), Vector3(8, 0, -5),
+		Vector3(3, 0, 9), Vector3(-4, 0, 8), Vector3(-8, 0, 3),
+		Vector3(-6, 0, -6), Vector3(2, 0, -9), Vector3(12, 0, 8),
+		Vector3(14, 0, -2), Vector3(-10, 0, -3), Vector3(0, 0, 12),
+	]
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = offsets.size()
+	for i in offsets.size():
+		var p: Vector3 = origin + offsets[i]
+		p.y = origin.y
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, p))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "PixelShotOakGrove"
+	mmi.multimesh = mm
+	game.add_child(mmi)
+	_note("PLANTED_OAKS n=%d quads_per=%d at %s" % [offsets.size(), _Loader.quad_count(mesh), str(origin)])
 
 
 func _run() -> void:
@@ -207,6 +240,9 @@ func _run() -> void:
 	_note("CHUNKS wait=%d count=%s" % [waited, str(cm.chunks.size() if cm else -1)])
 	await _wait_frames(60, "POST_CHUNK")
 	_hide_chrome()
+
+	_plant_oak_grove(game, player)
+	await _wait_frames(30, "GROVE")
 
 	var cam := get_first_node_in_group("camera") as Camera3D
 	if cam == null and player != null:
