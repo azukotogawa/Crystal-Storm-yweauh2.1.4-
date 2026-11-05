@@ -35,8 +35,12 @@ func _run() -> void:
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	DisplayServer.window_set_size(Vector2i(1280, 720))
 	Engine.max_fps = 0
+	# Re-assert after first frames (some platforms re-enable compositor sync).
 	for _i in 5:
 		await process_frame
+		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+		Engine.max_fps = 0
+	print("TREE_VSYNC_CHECK mode=%d max_fps=%d" % [int(DisplayServer.window_get_vsync_mode()), Engine.max_fps])
 
 	_Loader.drop_memory()
 	var mesh: ArrayMesh
