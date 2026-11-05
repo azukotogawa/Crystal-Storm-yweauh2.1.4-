@@ -4,6 +4,7 @@ extends SceneTree
 
 const _PixelLook = preload("res://helpers/pixel_look.gd")
 const _PlayerSettings = preload("res://systems/player_settings.gd")
+const _TutorialOverlay = preload("res://ui/tutorial_overlay.gd")
 
 var _out := ""
 var _mode := "compare"
@@ -55,11 +56,60 @@ func _wait_frames(n: int, label: String) -> void:
 			_note("%s frames=%d/%d" % [label, i, n])
 
 
+func _hide_chrome() -> void:
+	# In-memory only. Do not write player_settings.json.
+	_PlayerSettings.tutorial_completed = true
+	if ClassDB.class_exists("TutorialOverlay"):
+		TutorialOverlay.dismiss()
+	_TutorialOverlay.dismiss()
+	for node in get_nodes_in_group("loading_screen"):
+		if node is CanvasItem:
+			(node as CanvasItem).visible = false
+	for node in get_nodes_in_group("debug_panel"):
+		if node is CanvasItem:
+			(node as CanvasItem).visible = false
+	for node in get_nodes_in_group("pause_menu"):
+		if node is CanvasItem:
+			(node as CanvasItem).visible = false
+		if node.has_method("close"):
+			node.call("close")
+	var stack: Array = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is TutorialOverlay:
+			(node as CanvasLayer).visible = false
+		var n := str(node.name).to_lower()
+		if n.contains("tutorial") and node is CanvasItem:
+			(node as CanvasItem).visible = false
+
+
+func _aim_trees_character(cam: Camera3D, player: Node) -> void:
+	if cam == null or player == null:
+		return
+	# Clear overlooking yaw toward trees while keeping the player in frame.
+	if cam.has_method("snap_yaw_degrees"):
+		cam.call("snap_yaw_degrees", 120.0)
+	elif "yaw_degrees" in cam:
+		cam.set("yaw_degrees", 120.0)
+		cam.set("yaw_target_degrees", 120.0)
+		if cam.has_method("_update_camera_transform"):
+			cam.call("_update_camera_transform")
+	if "pitch_degrees" in cam:
+		cam.set("pitch_degrees", -18.0)
+		if "pitch_target_degrees" in cam:
+			cam.set("pitch_target_degrees", -18.0)
+		if cam.has_method("_update_camera_transform"):
+			cam.call("_update_camera_transform")
+
+
 func _run() -> void:
 	if _out.is_empty():
 		_out = OS.get_user_data_dir().path_join("pixel_shots")
 	DirAccess.make_dir_recursive_absolute(_out)
 	_PlayerSettings.settings_path = _out.path_join("player_settings.json")
+	_PlayerSettings.tutorial_completed = true
 	DisplayServer.window_set_size(Vector2i(1280, 720))
 	await _wait_frames(5, "INIT")
 
@@ -126,12 +176,14 @@ func _run() -> void:
 		return
 
 	await _wait_frames(90, "SETTLE")
+	_hide_chrome()
 	if InputMap.has_action("pause"):
 		for _i in 2:
 			Input.action_press("pause")
 			await process_frame
 			Input.action_release("pause")
 			await _wait_frames(10, "PAUSE")
+	_hide_chrome()
 
 	var player := get_first_node_in_group("player")
 	if player == null:
@@ -154,6 +206,7 @@ func _run() -> void:
 			_note("CHUNKS_WAIT n=%d count=%s" % [waited, str(cm.chunks.size() if cm else -1)])
 	_note("CHUNKS wait=%d count=%s" % [waited, str(cm.chunks.size() if cm else -1)])
 	await _wait_frames(60, "POST_CHUNK")
+	_hide_chrome()
 
 	var cam := get_first_node_in_group("camera") as Camera3D
 	if cam == null and player != null:
@@ -162,6 +215,14 @@ func _run() -> void:
 	var ctrl = game.get_node_or_null("PixelLookController")
 	if ctrl != null and ctrl.has_method("get_internal_size"):
 		_note("INTERNAL_SIZE %s" % str(ctrl.call("get_internal_size")))
+
+	_PlayerSettings.tutorial_completed = true
+	_hide_chrome()
+	await _wait_frames(20, "HIDE_CHROME")
+	_hide_chrome()
+	_aim_trees_character(cam, player)
+	await _wait_frames(30, "AIM")
+	_hide_chrome()
 
 	match _mode:
 		"orbit":
@@ -176,6 +237,7 @@ func _run() -> void:
 
 
 func _grab(name: String) -> void:
+	_hide_chrome()
 	await process_frame
 	await process_frame
 	var path := "%s/%s.png" % [_out, name]
@@ -191,6 +253,7 @@ func _orbit(cam: Camera3D) -> void:
 	var yaws := [45.0, 75.0, 105.0, 135.0, 165.0, 195.0, 225.0, 255.0]
 	var i := 0
 	for yaw in yaws:
+		_hide_chrome()
 		if cam.has_method("snap_yaw_degrees"):
 			cam.call("snap_yaw_degrees", float(yaw))
 		elif "yaw_degrees" in cam:
