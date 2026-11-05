@@ -275,7 +275,8 @@ static func knockback_step(
 		dest.y = _Water.settle_y(current.y, water, 0.05)
 		return dest
 	var max_up: float = _WorldSettings.get_active().max_step_up_walk()
-	if absf(ground - current.y) > max_up + 0.05:
+	var here := _knock_ground_y(world, chunk_manager, crystal, current, current.y)
+	if absf(ground - here) > max_up + 0.05:
 		return current
 	dest.y = ground
 	return dest
