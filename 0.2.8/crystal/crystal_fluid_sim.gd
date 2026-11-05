@@ -596,7 +596,10 @@ func _flow_job_continue() -> Array:
 		if _prof_enabled:
 			_prof_cells_processed += 1
 
-		var my_surface: float = _surface_level(pos)
+		# Reuse amount — avoid second depth read via _surface_level(pos).
+		if _prof_enabled:
+			_prof_terrain_height += 1
+		var my_surface: float = terrain.get_terrain_height(pos) + amount
 		if _prof_enabled:
 			_prof_terrain_tile += 1
 		var my_tile := terrain.get_tile(pos)
