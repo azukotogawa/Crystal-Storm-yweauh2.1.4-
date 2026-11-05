@@ -167,14 +167,19 @@ static func mesh_variant(path: String, variant: int) -> ArrayMesh:
 		return mesh_for(path)
 	var key := "%s#m%d" % [path, variant]
 	if _memory.has(key):
-		var cached: Dictionary = _memory[key]
-		return cached.get("mesh", null) as ArrayMesh
+		var cached_mem: Dictionary = _memory[key]
+		return cached_mem.get("mesh", null) as ArrayMesh
 	var model := load_model(path)
 	if model == null:
 		return null
 	var mirrored := _mirror_model(model, 0 if variant == 1 else 2)
+	var from_disk := _load_cache(path, mirrored, variant)
+	if not from_disk.is_empty():
+		_memory[key] = from_disk
+		return from_disk.get("mesh", null) as ArrayMesh
 	var built := build_rig(mirrored)
 	_memory[key] = built
+	_save_cache(path, built, variant)
 	return built.get("mesh", null) as ArrayMesh
 
 
@@ -183,18 +188,20 @@ static func has_variant(path: String, variant: int) -> bool:
 
 
 # Builds a variant without touching _memory, so it can run on a worker thread.
+# Mirrored variants (1/2) share the same disk-cache path scheme as the base.
 static func build_variant_detached(path: String, variant: int) -> Dictionary:
 	var model := load_model(path)
 	if model == null:
 		return {}
-	if variant <= 0:
-		var cached := _load_cache(path, model)
-		if not cached.is_empty():
-			return cached
-		var built := build_rig(model)
-		built["_unsaved"] = true
-		return built
-	return build_rig(_mirror_model(model, 0 if variant == 1 else 2))
+	var source: CrystalVoxelModel = model
+	if variant > 0:
+		source = _mirror_model(model, 0 if variant == 1 else 2)
+	var cached := _load_cache(path, source, variant)
+	if not cached.is_empty():
+		return cached
+	var built := build_rig(source)
+	built["_unsaved"] = true
+	return built
 
 
 # Main thread only.
@@ -208,7 +215,7 @@ static func store_variant(path: String, variant: int, built: Dictionary) -> void
 	built.erase("_unsaved")
 	_memory[key] = built
 	if unsaved:
-		_save_cache(path, built)
+		_save_cache(path, built, variant)
 
 
 static func part_meshes(path: String) -> Dictionary:
@@ -290,9 +297,10 @@ static func quad_count(mesh: ArrayMesh) -> int:
 	return _Builder.face_count(mesh)
 
 
-static func cache_file(path: String, part_name: String = "") -> String:
+static func cache_file(path: String, part_name: String = "", variant: int = 0) -> String:
 	var tag := "full" if part_name == "" else part_name
-	return "%s/%s_%s_%s_r3.res" % [CACHE_ROOT, FileAccess.get_md5(path), _scale_token(), tag]
+	var vtag := "" if variant <= 0 else ("_m%d" % variant)
+	return "%s/%s_%s_%s%s_r3.res" % [CACHE_ROOT, FileAccess.get_md5(path), _scale_token(), tag, vtag]
 
 
 static func drop_memory() -> void:
@@ -639,20 +647,20 @@ static func _seal_tjunctions(mesh: ArrayMesh) -> ArrayMesh:
 	return sealed_mesh
 
 
-static func _save_cache(path: String, rig: Dictionary) -> void:
+static func _save_cache(path: String, rig: Dictionary, variant: int = 0) -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(CACHE_ROOT))
 	var mesh: ArrayMesh = rig.get("mesh", null)
 	if mesh != null:
-		ResourceSaver.save(mesh, cache_file(path, ""))
+		ResourceSaver.save(mesh, cache_file(path, "", variant))
 	var parts: Dictionary = rig.get("parts", {})
 	for key in parts.keys():
 		var part_mesh: ArrayMesh = (parts[key] as Dictionary).get("mesh", null)
 		if part_mesh != null:
-			ResourceSaver.save(part_mesh, cache_file(path, str(key)))
+			ResourceSaver.save(part_mesh, cache_file(path, str(key), variant))
 
 
-static func _load_cache(path: String, model: CrystalVoxelModel) -> Dictionary:
-	var full_path := cache_file(path, "")
+static func _load_cache(path: String, model: CrystalVoxelModel, variant: int = 0) -> Dictionary:
+	var full_path := cache_file(path, "", variant)
 	if not FileAccess.file_exists(full_path):
 		return {}
 	var mesh := ResourceLoader.load(full_path, "", ResourceLoader.CACHE_MODE_IGNORE) as ArrayMesh
@@ -661,7 +669,7 @@ static func _load_cache(path: String, model: CrystalVoxelModel) -> Dictionary:
 	var parts := {}
 	for part_name_i in model.part_order:
 		var part_name := str(part_name_i)
-		var part_path := cache_file(path, part_name)
+		var part_path := cache_file(path, part_name, variant)
 		if not FileAccess.file_exists(part_path):
 			return {}
 		var part_mesh := ResourceLoader.load(part_path, "", ResourceLoader.CACHE_MODE_IGNORE) as ArrayMesh
