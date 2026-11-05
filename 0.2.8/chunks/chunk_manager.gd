@@ -1303,6 +1303,12 @@ func apply_performance_config(cfg) -> void:
 		max_stream_starts_per_frame = maxi(int(cfg.max_stream_starts_per_frame), 1)
 	if "max_stream_unloads_per_frame" in cfg:
 		max_stream_unloads_per_frame = maxi(int(cfg.max_stream_unloads_per_frame), 1)
+	_last_perf_cfg = cfg
+	if "max_wave_lod_rebuilds_per_frame" in cfg:
+		max_wave_lod_rebuilds_per_frame = maxi(int(cfg.max_wave_lod_rebuilds_per_frame), 1)
+	if "wave_lod_radius" in cfg:
+		ChunkSurfaceMeshBuilder.WAVE_LOD_R = maxi(int(cfg.wave_lod_radius), 0)
+	_apply_near_props_tier(cfg)
 
 
 func _world_border_should_force_ramp(world_x: int, world_z: int) -> bool:
@@ -4858,6 +4864,7 @@ func end_start_region_boost() -> void:
 
 const _NearProps = preload("res://world/near_props.gd")
 var _near_props: Node3D = null
+var _last_perf_cfg = null
 
 
 func _wave_lod_recheck(c: Vector2i) -> void:
@@ -4875,6 +4882,18 @@ func _wave_lod_recheck(c: Vector2i) -> void:
 			_rebuild_pending[key] = true
 	_drain_rebuild_pending_budgeted()
 
+func _apply_near_props_tier(cfg) -> void:
+	if cfg == null or _near_props == null:
+		return
+	var rad: int = 1
+	var mx: int = 480
+	if "near_prop_radius" in cfg:
+		rad = int(cfg.near_prop_radius)
+	if "near_prop_max_cubes" in cfg:
+		mx = int(cfg.near_prop_max_cubes)
+	if _near_props.has_method("apply_render_tier"):
+		_near_props.apply_render_tier(rad, mx)
+
 
 func _update_near_props(c: Vector2i) -> void:
 	if _near_props == null:
@@ -4882,4 +4901,5 @@ func _update_near_props(c: Vector2i) -> void:
 		_near_props.manager = self
 		add_child(_near_props)
 		chunk_unloaded.connect(_near_props.drop_chunk)
+		_apply_near_props_tier(_last_perf_cfg)
 	_near_props.set_center(c)

@@ -15,7 +15,7 @@ const FACE_POS_Z := 6
 const FACE_RAMP := 7
 const FACE_RAMP_CORNER := 8
 const FACE_RAMP_SIDE := 9
-const WAVE_LOD_R := 2
+static var WAVE_LOD_R: int = 2
 static var wave_lod_on := false
 static var wave_lod_center := Vector2i.ZERO
 

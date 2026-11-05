@@ -103,6 +103,19 @@ var vegetation_scatter_multiplier: float = 1.0
 @export_range(0, 48, 1)
 var props_per_chunk: int = 12
 
+@export_group("Render Tiers (shadows / props / wave)")
+## Chunk chebyshev radius for near-prop MultiMesh cubes (0 disables).
+@export_range(0, 3, 1)
+var near_prop_radius: int = 1
+@export_range(0, 2000, 40)
+var near_prop_max_cubes: int = 480
+## Wave detail ring radius in chunks (matches ChunkSurfaceMeshBuilder.WAVE_LOD_R).
+@export_range(0, 4, 1)
+var wave_lod_radius: int = 2
+## Cap full chunk rebuilds started per frame when the wave LOD ring moves.
+@export_range(1, 8, 1)
+var max_wave_lod_rebuilds_per_frame: int = 2
+
 @export_group("Vegetation Growth")
 @export var vegetation_growth_enabled: bool = true
 @export_range(0.5, 20.0, 0.5)
@@ -234,6 +247,10 @@ static func apply_safe_mode() -> PerformanceQualityConfig:
 	c.use_lightweight_entity_nav = true
 	c.vegetation_scatter_multiplier = 0.0
 	c.props_per_chunk = 0
+	c.near_prop_radius = 0
+	c.near_prop_max_cubes = 0
+	c.wave_lod_radius = 1
+	c.max_wave_lod_rebuilds_per_frame = 1
 	c.vegetation_growth_enabled = false
 	c.vegetation_growth_hz = 1.0
 	c.vegetation_plants_per_tick = 4
@@ -305,6 +322,10 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.use_lightweight_entity_nav = true
 			c.vegetation_scatter_multiplier = 0.35
 			c.props_per_chunk = 4
+			c.near_prop_radius = 0
+			c.near_prop_max_cubes = 0
+			c.wave_lod_radius = 1
+			c.max_wave_lod_rebuilds_per_frame = 1
 			c.vegetation_growth_hz = 2.0
 			c.vegetation_plants_per_tick = 8
 			c.vegetation_env_check_interval = 8
@@ -369,6 +390,10 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.use_lightweight_entity_nav = true
 			c.vegetation_scatter_multiplier = 1.05
 			c.props_per_chunk = 12
+			c.near_prop_radius = 1
+			c.near_prop_max_cubes = 320
+			c.wave_lod_radius = 2
+			c.max_wave_lod_rebuilds_per_frame = 2
 			c.vegetation_growth_hz = 3.0
 			c.vegetation_plants_per_tick = 16
 			c.vegetation_env_check_interval = 4
@@ -433,6 +458,10 @@ static func apply_preset(which: Preset) -> PerformanceQualityConfig:
 			c.use_lightweight_entity_nav = false
 			c.vegetation_scatter_multiplier = 1.0
 			c.props_per_chunk = 24
+			c.near_prop_radius = 1
+			c.near_prop_max_cubes = 480
+			c.wave_lod_radius = 2
+			c.max_wave_lod_rebuilds_per_frame = 3
 			c.vegetation_growth_hz = 8.0
 			c.vegetation_plants_per_tick = 48
 			c.vegetation_env_check_interval = 2
@@ -467,10 +496,10 @@ static func paint_scene_light(c: PerformanceQualityConfig) -> void:
 	c.shadow_bias = 0.04
 	c.shadow_normal_bias = 1.0
 	c.shadow_blur = 0.9
-	c.shadow_max_distance = 220.0
-	c.shadow_split_1 = 0.86
-	c.shadow_split_2 = 0.94
-	c.shadow_split_3 = 0.98
+	c.shadow_max_distance = 200.0
+	c.shadow_split_1 = 0.90
+	c.shadow_split_2 = 0.96
+	c.shadow_split_3 = 0.99
 	c.shadow_pancake = 36.0
 	var cheap := c.preset == Preset.LOW or c.preset == Preset.SAFE
 	if cheap:
