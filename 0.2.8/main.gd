@@ -32,20 +32,31 @@ func _ready() -> void:
 			_StartupTotal.end("boot_async")
 			_StartupTotal.event("main.boot_async_returned", {}, "first_playable_frame")
 	else:
-		push_warning("[Main] CompositionRoot missing — legacy child _ready boot only")
+		push_warning("[Main] CompositionRoot missing Ã¢â‚¬â€ legacy child _ready boot only")
+	# After services register against direct Game children, move 3D into the low-res SubViewport.
+	call_deferred("_pixel_look_install")
+	_ensure_day_night()
 
+
+func _pixel_look_install() -> void:
+	load("res://systems/pixel_look_controller.gd").maybe_install(self)
+	_ensure_day_night()
 
 func _ensure_day_night() -> void:
-	if get_node_or_null("DayNightClock") == null:
+	var world_parent: Node = self
+	var pixel = get_node_or_null("PixelLookController")
+	if pixel != null and pixel.has_method("get_content_parent"):
+		world_parent = pixel.get_content_parent()
+	if get_node_or_null("DayNightClock") == null and (world_parent == self or world_parent.get_node_or_null("DayNightClock") == null):
 		var clock := Node.new()
 		clock.name = "DayNightClock"
 		clock.set_script(load("res://world/day_night_clock.gd"))
-		add_child(clock)
-	if get_node_or_null("TorchField") == null:
+		world_parent.add_child(clock)
+	if get_node_or_null("TorchField") == null and (world_parent == self or world_parent.get_node_or_null("TorchField") == null):
 		var field := Node3D.new()
 		field.name = "TorchField"
 		field.set_script(load("res://world/torch_field.gd"))
-		add_child(field)
+		world_parent.add_child(field)
 
 
 func _ensure_live_inspector() -> void:
@@ -87,12 +98,18 @@ func _ensure_f3_overlay() -> void:
 
 
 func _ensure_debug_view_layer() -> void:
+	var world_parent: Node = self
+	var pixel = get_node_or_null("PixelLookController")
+	if pixel != null and pixel.has_method("get_content_parent"):
+		world_parent = pixel.get_content_parent()
 	if get_node_or_null("DebugViewLayer") != null:
+		return
+	if world_parent != self and world_parent.get_node_or_null("DebugViewLayer") != null:
 		return
 	var views := Node3D.new()
 	views.name = "DebugViewLayer"
 	views.set_script(load("res://helpers/debug_view_layer.gd"))
-	add_child(views)
+	world_parent.add_child(views)
 
 
 func _ensure_dev_input_actions() -> void:

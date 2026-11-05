@@ -81,6 +81,10 @@ static func defaults() -> Dictionary:
 		"texture_blueprint": false,
 		"texture_set": "original",
 		"flat_block_faces": false,
+		"pixel_render_enabled": false,
+		"pixel_height": 270,
+		"pixel_banding": false,
+		"pixel_outline": false,
 		"keybinds": {},
 		"control_profile": "standard",
 		"settings_version": SETTINGS_VERSION,
@@ -147,6 +151,14 @@ static func load_settings() -> Dictionary:
 		out["texture_blueprint"] = bool(data.texture_blueprint)
 	if data.has("flat_block_faces"):
 		out["flat_block_faces"] = bool(data.flat_block_faces)
+	if data.has("pixel_render_enabled"):
+		out["pixel_render_enabled"] = bool(data.pixel_render_enabled)
+	if data.has("pixel_height"):
+		out["pixel_height"] = clampi(int(data.pixel_height), 72, 720)
+	if data.has("pixel_banding"):
+		out["pixel_banding"] = bool(data.pixel_banding)
+	if data.has("pixel_outline"):
+		out["pixel_outline"] = bool(data.pixel_outline)
 	out["texture_set"] = _normalize_texture_set(str(data.get("texture_set", "original")))
 	if data.has("keybinds") and data.keybinds is Dictionary:
 		out["keybinds"] = data.keybinds
