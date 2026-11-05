@@ -32,9 +32,9 @@ func _ready() -> void:
 			_StartupTotal.end("boot_async")
 			_StartupTotal.event("main.boot_async_returned", {}, "first_playable_frame")
 	else:
-		push_warning("[Main] CompositionRoot missing â€” legacy child _ready boot only")
+		push_warning("[Main] CompositionRoot missing Ã¢â‚¬â€ legacy child _ready boot only")
 	# After services register against direct Game children, move 3D into the low-res SubViewport.
-	load("res://systems/pixel_look_controller.gd").maybe_install(self)
+	call_deferred("_pixel_look_install")
 	_ensure_day_night()
 
 

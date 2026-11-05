@@ -27,6 +27,7 @@ const KEEP_ON_ROOT := {
 	"F3Overlay": true,
 	"PixelLookController": true,
 	"PixelLookLayer": true,
+	"DeveloperAssistant": true,
 }
 
 var enabled: bool = false
@@ -43,6 +44,7 @@ var _container: SubViewportContainer = null
 var _subpixel: Vector2 = Vector2.ZERO
 var _installed: bool = false
 var _camera: Camera3D = null
+var _reparent_done: bool = false
 
 
 static func maybe_install(game: Node) -> Node:
@@ -63,11 +65,11 @@ static func maybe_install(game: Node) -> Node:
 	ctrl.internal_height = int(settings.get("height", _PixelLook.DEFAULT_HEIGHT))
 	ctrl.banding = bool(settings.get("banding", false))
 	ctrl.outline = bool(settings.get("outline", false))
-	# After camera (priority 0): lower number runs later in Godot process order... 
-	# Actually higher process_priority runs first. Use -50 so we run after camera.
+	# Higher process_priority runs first; negative runs after typical camera controllers.
 	ctrl.process_priority = -50
 	game.add_child(ctrl)
-	ctrl.call("install", game)
+	# Defer heavy reparent so boot_async / SceneTree scripts can finish their current frame.
+	ctrl.call_deferred("install", game)
 	return ctrl
 
 
@@ -76,28 +78,20 @@ func install(game: Node) -> void:
 		return
 	_game = game
 	_installed = true
+	print("PIXEL_LOOK install begin height=%d" % internal_height)
 	_build_viewport()
-	_reparent_world()
+	print("PIXEL_LOOK viewport ready size=%s" % str(_viewport.size if _viewport else Vector2i.ZERO))
 	_build_blit()
 	_resize_to_window()
+	# Reparent next frame so SubViewport has a size/texture before absorbing the world.
+	call_deferred("_reparent_world")
 	var root_vp := get_viewport()
 	if root_vp != null and not root_vp.size_changed.is_connected(_on_root_size_changed):
 		root_vp.size_changed.connect(_on_root_size_changed)
 	set_process(true)
-	print(
-		"PIXEL_LOOK on height=%d size=%sx%s banding=%s outline=%s"
-		% [
-			internal_height,
-			_viewport.size.x if _viewport else 0,
-			_viewport.size.y if _viewport else 0,
-			str(banding),
-			str(outline),
-		]
-	)
 
 
 func get_content_parent() -> Node:
-	## Prefer parenting late-created world nodes (TorchField, etc.) into the SubViewport.
 	if _viewport != null:
 		return _viewport
 	return _game
@@ -114,7 +108,7 @@ func _build_viewport() -> void:
 	_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_container.stretch = false
 	_container.mouse_filter = Control.MOUSE_FILTER_STOP
-	# Hide the container's own stretch blit; we draw via ColorRect+shader for nearest + subpixel.
+	# Hide the container's own blit; ColorRect+shader does nearest + subpixel.
 	_container.modulate = Color(1, 1, 1, 0)
 	_layer.add_child(_container)
 
@@ -125,7 +119,9 @@ func _build_viewport() -> void:
 	_viewport.gui_disable_input = false
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.audio_listener_enable_3d = true
-	_viewport.own_world_3d = true
+	# Share the root World3D so physics/navigation RIDs created during boot stay valid.
+	_viewport.own_world_3d = false
+	_viewport.world_3d = _game.get_viewport().world_3d
 	_viewport.msaa_3d = Viewport.MSAA_DISABLED
 	_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
 	_viewport.scaling_3d_scale = 1.0
@@ -133,6 +129,9 @@ func _build_viewport() -> void:
 
 
 func _reparent_world() -> void:
+	if _reparent_done or _viewport == null or _game == null:
+		return
+	_reparent_done = true
 	var to_move: Array[Node] = []
 	for child in _game.get_children():
 		if child == self or child == _layer:
@@ -142,9 +141,32 @@ func _reparent_world() -> void:
 		if KEEP_ON_ROOT.has(child.name):
 			continue
 		to_move.append(child)
+	print("PIXEL_LOOK reparent count=%d" % to_move.size())
 	for child in to_move:
+		var was_current := false
+		if child is Camera3D:
+			was_current = (child as Camera3D).current
 		_game.remove_child(child)
 		_viewport.add_child(child)
+		if child is Camera3D and was_current:
+			(child as Camera3D).current = true
+	# Player camera often nested — force current on whatever camera we find.
+	var cam := _find_camera()
+	if cam != null:
+		cam.current = true
+		_camera = cam
+	_resize_to_window()
+	_apply_blit_uniforms()
+	print(
+		"PIXEL_LOOK on height=%d size=%sx%s banding=%s outline=%s"
+		% [
+			internal_height,
+			_viewport.size.x if _viewport else 0,
+			_viewport.size.y if _viewport else 0,
+			str(banding),
+			str(outline),
+		]
+	)
 
 
 func _build_blit() -> void:
@@ -189,7 +211,7 @@ func _resize_to_window() -> void:
 
 
 func _process(_delta: float) -> void:
-	if not _installed or _viewport == null:
+	if not _installed or _viewport == null or not _reparent_done:
 		return
 	_snap_camera()
 	if _blit_mat != null:
