@@ -20,6 +20,8 @@ var depth: Dictionary = {}
 ## `depth` remains the public sparse map; hot reads prefer depth_soa when the
 ## cell has a seq. Opt in with CRYSTALSTORM_CRYSTAL_DEPTH_SOA=1 (default ON).
 var depth_soa: PackedFloat64Array = PackedFloat64Array()
+var pos_soa_x: PackedInt32Array = PackedInt32Array()
+var pos_soa_z: PackedInt32Array = PackedInt32Array()
 var _soa_hot: bool = true
 var spawn_id_by_cell: Dictionary = {}
 var max_cells_per_tick: int = 0
@@ -111,9 +113,31 @@ func _depth_of(pos: Vector2i) -> float:
 	return float(depth.get(pos, 0.0))
 
 
+func _depth_at_seq(sq: int) -> float:
+	if sq >= 0 and sq < depth_soa.size():
+		return float(depth_soa[sq])
+	return 0.0
+
+
+func _pos_at_seq(sq: int) -> Vector2i:
+	if sq >= 0 and sq < pos_soa_x.size() and sq < pos_soa_z.size():
+		return Vector2i(int(pos_soa_x[sq]), int(pos_soa_z[sq]))
+	return Vector2i.ZERO
+
+
+func _soa_resize_to(sq: int) -> void:
+	if sq >= depth_soa.size():
+		depth_soa.resize(sq + 1)
+	if sq >= pos_soa_x.size():
+		pos_soa_x.resize(sq + 1)
+		pos_soa_z.resize(sq + 1)
+
+
 func clear() -> void:
 	depth.clear()
 	depth_soa = PackedFloat64Array()
+	pos_soa_x = PackedInt32Array()
+	pos_soa_z = PackedInt32Array()
 	_refresh_soa_hot()
 	spawn_id_by_cell.clear()
 	_seq.clear()
@@ -508,9 +532,16 @@ func _flow_job_begin(delta: float) -> Array:
 		_prof_ticks += 1
 		_prof_add_phase("flow_job_begin", Time.get_ticks_usec() - t_begin)
 
+	var seqs := PackedInt64Array()
+	if _soa_hot:
+		seqs.resize(cells.size())
+		for ci in cells.size():
+			var cp: Vector2i = cells[ci]
+			seqs[ci] = int(_seq.get(cp, -1))
 	_flow_job = {
 		"delta": delta,
 		"cells": cells,
+		"seqs": seqs,
 		"idx": 0,
 		"deltas": {},
 		"frontier": {},
@@ -550,10 +581,16 @@ func _flow_job_continue() -> Array:
 				_prof_add_phase("process_selected_cells", Time.get_ticks_usec() - t0)
 			return []
 		var pos: Vector2i = cells[idx]
+		var sq_cell: int = -1
+		if _soa_hot:
+			var seqs_hot: PackedInt64Array = _flow_job["seqs"]
+			if idx < seqs_hot.size():
+				sq_cell = int(seqs_hot[idx])
 		idx += 1
 		if not _cell_active(pos):
 			continue
-		var amount: float = _depth_of(pos)
+		# Seq-indexed SoA read: no pos-to-seq Dictionary on this cell.
+		var amount: float = _depth_at_seq(sq_cell) if sq_cell >= 0 else _depth_of(pos)
 		if amount < config.min_depth:
 			continue
 		if _prof_enabled:
@@ -931,14 +968,26 @@ func _ensure_index() -> void:
 	_interior.clear()
 	_interior_seq = PackedInt64Array()
 	_next_seq = 0
+	if _soa_hot:
+		depth_soa = PackedFloat64Array()
+		pos_soa_x = PackedInt32Array()
+		pos_soa_z = PackedInt32Array()
+		depth_soa.resize(depth.size())
+		pos_soa_x.resize(depth.size())
+		pos_soa_z.resize(depth.size())
 	for pos_variant in depth.keys():
-		_seq[pos_variant] = _next_seq
-		if _has_empty_neighbor_raw(pos_variant):
-			_frontier[pos_variant] = true
-			_frontier_list.append(pos_variant)
+		var p: Vector2i = pos_variant
+		_seq[p] = _next_seq
+		if _soa_hot:
+			depth_soa[_next_seq] = float(depth[p])
+			pos_soa_x[_next_seq] = p.x
+			pos_soa_z[_next_seq] = p.y
+		if _has_empty_neighbor_raw(p):
+			_frontier[p] = true
+			_frontier_list.append(p)
 			_frontier_seq.append(_next_seq)
 		else:
-			_interior.append(pos_variant)
+			_interior.append(p)
 			_interior_seq.append(_next_seq)
 		_next_seq += 1
 	_index_valid = true
@@ -950,9 +999,10 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 		depth[pos] = value
 		if _soa_hot and _seq.has(pos):
 			var sq_u: int = int(_seq[pos])
-			if sq_u >= depth_soa.size():
-				depth_soa.resize(sq_u + 1)
+			_soa_resize_to(sq_u)
 			depth_soa[sq_u] = value
+			pos_soa_x[sq_u] = pos.x
+			pos_soa_z[sq_u] = pos.y
 		return
 	depth[pos] = value
 	_volume += value
@@ -963,9 +1013,10 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 		return
 	_seq[pos] = _next_seq
 	if _soa_hot:
-		if _next_seq >= depth_soa.size():
-			depth_soa.resize(_next_seq + 1)
+		_soa_resize_to(_next_seq)
 		depth_soa[_next_seq] = value
+		pos_soa_x[_next_seq] = pos.x
+		pos_soa_z[_next_seq] = pos.y
 	_next_seq += 1
 	if _has_empty_neighbor_raw(pos):
 		_frontier_add(pos)
