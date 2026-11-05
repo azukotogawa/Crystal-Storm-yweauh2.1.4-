@@ -587,8 +587,8 @@ func regions_dir() -> String:
 	return package_dir.path_join("regions")
 
 
-## Region-file prototype: raw v122 chunk bytes from the region file when
-## CRYSTALSTORM_BAKE_REGION=1, else empty (the loose .chk path is used).
+## Region-file pack (default ON): raw v122 chunk bytes from the region file
+## when enabled(); empty when opted out with CRYSTALSTORM_BAKE_REGION=0.
 func _region_chunk_bytes(coord: Vector2i) -> PackedByteArray:
 	if package_dir.is_empty() or not _RegionPack.enabled():
 		return PackedByteArray()
@@ -661,7 +661,7 @@ func _inventory_existing_packages(full: bool = false) -> void:
 	_packages_known.clear()
 	if package_dir.is_empty():
 		return
-	# Region mode (CRYSTALSTORM_BAKE_REGION=1): nearest-first by default so cold
+	# Region mode (default ON; CRYSTALSTORM_BAKE_REGION=0 opts out): nearest-first so cold
 	# start only probes the spawn neighborhood. Full inventory runs when the
 	# background fill starts (and when committing the index) so far chunks are
 	# not rebaked. package_ready still hits has_chunk lazily for any coord.

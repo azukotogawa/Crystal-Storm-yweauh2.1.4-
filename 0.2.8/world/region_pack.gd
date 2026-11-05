@@ -1,5 +1,5 @@
 extends RefCounted
-## Region-file prototype (flag: CRYSTALSTORM_BAKE_REGION=1). Packs the v122
+## Region-file pack (default ON as of Cole t550s2516 / Nov 5). Packs the v122
 ## per-chunk .chk files 8x8 to a region: 16,384 chunk files become 256
 ## region files. Each chunk blob is stored byte-for-byte, so the v122 chunk
 ## format and BAKE_VERSION are unchanged and loose .chk files stay readable.
@@ -18,7 +18,11 @@ static var _index_cache: Dictionary = {}
 
 
 static func enabled() -> bool:
-	return OS.get_environment("CRYSTALSTORM_BAKE_REGION").strip_edges() == "1"
+	# Default ON. Opt out with CRYSTALSTORM_BAKE_REGION=0 (empty/unset = on).
+	var raw := OS.get_environment("CRYSTALSTORM_BAKE_REGION").strip_edges().to_lower()
+	if raw == "0" or raw == "false" or raw == "off" or raw == "no":
+		return false
+	return true
 
 
 static func region_of(coord: Vector2i) -> Vector2i:
