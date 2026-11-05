@@ -1,4 +1,4 @@
-extends SceneTree
+﻿extends SceneTree
 ## Capture pixel-look evidence into CRYSTALSTORM_SCRATCH.
 ## Avoids WorldManager.wipe_worlds / start_fresh_run entirely.
 
@@ -100,9 +100,9 @@ func _aim_trees_character(cam: Camera3D, player: Node) -> void:
 		if cam.has_method("_update_camera_transform"):
 			cam.call("_update_camera_transform")
 	if "pitch_degrees" in cam:
-		cam.set("pitch_degrees", -22.0)
+		cam.set("pitch_degrees", -28.0)
 		if "pitch_target_degrees" in cam:
-			cam.set("pitch_target_degrees", -22.0)
+			cam.set("pitch_target_degrees", -28.0)
 		if cam.has_method("_update_camera_transform"):
 			cam.call("_update_camera_transform")
 
@@ -116,11 +116,12 @@ func _plant_oak_grove(game: Node, player: Node) -> void:
 		return
 	var origin: Vector3 = player.global_position if player is Node3D else Vector3.ZERO
 	# Ring of oaks around the player so they read clearly under pixel look.
+	# Half-ring ahead of the camera (yaw ~45) so player stays visible in a clearing.
 	var offsets := [
-		Vector3(6, 0, 4), Vector3(10, 0, 2), Vector3(8, 0, -5),
-		Vector3(3, 0, 9), Vector3(-4, 0, 8), Vector3(-8, 0, 3),
-		Vector3(-6, 0, -6), Vector3(2, 0, -9), Vector3(12, 0, 8),
-		Vector3(14, 0, -2), Vector3(-10, 0, -3), Vector3(0, 0, 12),
+		Vector3(10, 0, 10), Vector3(14, 0, 8), Vector3(8, 0, 14),
+		Vector3(16, 0, 12), Vector3(12, 0, 16), Vector3(18, 0, 6),
+		Vector3(6, 0, 18), Vector3(20, 0, 14), Vector3(14, 0, 20),
+		Vector3(-8, 0, 14), Vector3(14, 0, -8), Vector3(22, 0, 10),
 	]
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
