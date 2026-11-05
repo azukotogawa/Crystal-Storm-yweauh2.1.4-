@@ -43,6 +43,22 @@ static func relief_world(seed_value: int, wx: float, wz: float, layer: float) ->
 	return _hill(seed_value, wx, wz, cfg) * _fade(dist, cfg) * _spawn_gate(seed_value, wx, wz, cfg) * cfg.hill_layers * layer
 
 
+## True when every point of the square [min_x, min_x + size] x [min_z, min_z + size]
+## is farther from all route segments than relief and path tiles reach, so
+## relief_world returns 0.0 and tile_for returns natural there.
+static func box_clear(seed_value: int, min_x: float, min_z: float, size: float) -> bool:
+	var cfg = config()
+	if not cfg.enabled:
+		return true
+	_ensure(seed_value)
+	if _segments.is_empty():
+		return true
+	var half := size * 0.5
+	var reach: float = maxf(float(cfg.band_radius), maxf(float(cfg.path_radius), float(cfg.shoulder_radius)))
+	var d := _nearest(min_x + half, min_z + half)
+	return d - half * 1.4142136 - 0.5 > reach
+
+
 static func tile_for(seed_value: int, wx: float, wz: float, natural: int) -> int:
 	var cfg = config()
 	if not cfg.enabled:

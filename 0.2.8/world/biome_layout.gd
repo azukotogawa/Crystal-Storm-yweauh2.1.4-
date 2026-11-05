@@ -85,6 +85,39 @@ static func biome_name_at(wx: float, wz: float, seed: int, warp_strength: float,
 	return str(regions[best_idx].biome)
 
 
+## Biome name when every column in [min_x, max_x] x [min_z, max_z] maps to the
+## same region for any wobble, else "". Same answer biome_name_at would give.
+static func box_name(min_x: float, min_z: float, max_x: float, max_z: float, seed: int, warp_strength: float, half_extent: float) -> String:
+	ensure_generated(seed, half_extent, warp_strength)
+	if regions.is_empty():
+		return "plains"
+	var wob := absf(warp_strength * half_extent * 0.08) + 0.01
+	var lo_x := min_x - wob
+	var hi_x := max_x + wob
+	var lo_z := min_z - wob
+	var hi_z := max_z + wob
+	var best := -1
+	var best_far := INF
+	var dmins: Array[float] = []
+	for i in regions.size():
+		var c: Vector2 = regions[i].center
+		var nx := maxf(maxf(lo_x - c.x, 0.0), c.x - hi_x)
+		var nz := maxf(maxf(lo_z - c.y, 0.0), c.y - hi_z)
+		dmins.append(nx * nx + nz * nz)
+		var fx := maxf(absf(c.x - lo_x), absf(c.x - hi_x))
+		var fz := maxf(absf(c.y - lo_z), absf(c.y - hi_z))
+		var far := fx * fx + fz * fz
+		if far < best_far:
+			best_far = far
+			best = i
+	for j in regions.size():
+		if j == best:
+			continue
+		if dmins[j] <= best_far * 1.0001 + 1.0:
+			return ""
+	return str(regions[best].biome)
+
+
 static func get_region_summary() -> Array:
 	var out: Array = []
 	for r in regions:

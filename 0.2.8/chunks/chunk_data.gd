@@ -943,6 +943,9 @@ func _compute_column_maps(use_uncached: bool = true):
 		if _has_halo_surface:
 			_refresh_halo_interior_from_maps()
 		return
+	var col_hint: Array = []
+	if use_uncached and _has_worker_snapshot and w.TILE_REUSE:
+		col_hint = w.column_chunk_hint(position.x, position.y)
 	for x in SIZE:
 		for z in SIZE:
 			var wx := float(position.x * SIZE + x)
@@ -950,7 +953,7 @@ func _compute_column_maps(use_uncached: bool = true):
 			if use_uncached and _has_worker_snapshot and w.TILE_REUSE:
 				var hv: Array = w.get_column_worker(
 					wx, wz, float(_worker_height_delta[x][z]),
-					int(_worker_build_tile[x][z]), mesh_feature_tile(x, z)
+					int(_worker_build_tile[x][z]), mesh_feature_tile(x, z), col_hint
 				)
 				surface_map[x][z] = hv[0]
 				tile_map[x][z] = hv[1]

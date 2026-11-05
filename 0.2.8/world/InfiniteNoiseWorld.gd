@@ -356,8 +356,11 @@ func _warped_coords_river(wx: float, wz: float, strength: float = 26.0) -> Vecto
 
 func _compute_raw_elevation(wx: float, wz: float) -> float:
 	var w: Vector2 = _warped_coords(wx, wz, 11.0)
-	var x: float = w.x
-	var z: float = w.y
+	return _raw_elevation_at(wx, wz, w.x, w.y, _surface_variation.get_noise_2d(wx, wz))
+
+
+## x, z: warped coords (strength 11). sv: _surface_variation noise at (wx, wz).
+func _raw_elevation_at(wx: float, wz: float, x: float, z: float, sv: float) -> float:
 
 	var base: float = (_base_height.get_noise_2d(x, z) + 1.0) * 0.5
 	var base_h: float = base * 68.0 - 6.0
@@ -371,7 +374,7 @@ func _compute_raw_elevation(wx: float, wz: float) -> float:
 		mountain += foothill * 19.0 * max(0.0, ridge * 0.6) * ridge_scale
 
 	var detail: float = _detail.get_noise_2d(x * 1.7, z * 1.7) * 4.2
-	var micro: float = _surface_variation.get_noise_2d(wx, wz) * 0.8
+	var micro: float = sv * 0.8
 
 	var raw: float = (base_h + mountain + detail + micro) * _height_gen_scale()
 	return clamp(raw, -12.0 * _height_gen_scale(), _max_height())
@@ -425,6 +428,11 @@ func get_river_mask(wx: float, wz: float) -> Dictionary:
 	return raw
 
 func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
+	return _river_carve_from_core(_river_core(wx, wz), base_elev)
+
+
+## River core strength at a column. Does not depend on elevation.
+func _river_core(wx: float, wz: float) -> float:
 	var w: Vector2 = _warped_coords_river(wx, wz, 17.0)
 	var rx: float = w.x
 	var rz: float = w.y
@@ -435,9 +443,17 @@ func _compute_river_carve(wx: float, wz: float, base_elev: float) -> Dictionary:
 
 	var meander: float = _river_valley.get_noise_2d(rx * 2.6, rz * 2.6) * 0.28
 	river_core = clamp(river_core + meander * 0.55, 0.0, 1.35)
+	return river_core
 
+
+func _river_carve_depth(river_core: float, base_elev: float) -> float:
 	var lowland_factor: float = clamp(1.0 - (base_elev - 18.0) / 95.0, 0.35, 1.35)
-	var carve_depth: float = river_core * RIVER_MAX_CARVE * lowland_factor * RIVER_VALLEY_WIDTH_FACTOR
+	return river_core * RIVER_MAX_CARVE * lowland_factor * RIVER_VALLEY_WIDTH_FACTOR
+
+
+func _river_carve_from_core(river_core: float, base_elev: float) -> Dictionary:
+	var lowland_factor: float = clamp(1.0 - (base_elev - 18.0) / 95.0, 0.35, 1.35)
+	var carve_depth: float = _river_carve_depth(river_core, base_elev)
 
 	var is_river: bool = river_core > RIVER_IS_RIVER_THRESHOLD
 	var water_depth: float = 0.0
@@ -573,8 +589,12 @@ func _get_biome_compute(wx: float, wy: float, wz: float, surface_h: float = NAN)
 	}
 
 func _compute_local_ruggedness(wx: float, wz: float) -> float:
+	return _local_ruggedness_from(wx, wz, _compute_raw_elevation(wx, wz))
+
+
+## e0: _compute_raw_elevation(wx, wz), passed in when the caller already has it.
+func _local_ruggedness_from(wx: float, wz: float, e0: float) -> float:
 	var step: float = 4.8
-	var e0: float = _compute_raw_elevation(wx, wz)
 	var samples: Array = [
 		_compute_raw_elevation(wx + step, wz),
 		_compute_raw_elevation(wx - step, wz),
@@ -818,6 +838,9 @@ func get_tile_type_uncached(wx: float, wz: float) -> int:
 
 # Isolation counter: in a complete baked world this must stay 0 for package cells.
 func _note_runtime_noise_height(wx: float, wz: float) -> void:
+	# Only main-thread calls are counted; skip the bake lookup on workers.
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		return
 	var bake = null
 	var wb = load("res://world/world_bake_service.gd")
 	if wb != null and wb.has_method("get_active"):
@@ -834,7 +857,162 @@ func _note_runtime_noise_height(wx: float, wz: float) -> void:
 static var TILE_REUSE: bool = OS.get_environment("CS_TILE_REUSE") != "0"
 
 
-func get_column_worker(wx: float, wz: float, height_delta: float, build_tile: int, feature_override: int) -> Array:
+## Fused column pass: one evaluation of warp, elevation and river core shared by
+## height, biome and tile; ruggedness only when the tile rules read it.
+## Same results as get_column_worker_ref. CS_COLUMN_FUSE=0 disables.
+static var COLUMN_FUSE: bool = OS.get_environment("CS_COLUMN_FUSE") != "0"
+
+
+## Per-chunk hint for get_column_worker: [route_clear: bool, biome_name: String].
+## Exact: route_clear means relief/path dressing cannot reach the chunk; a
+## non-empty name means every column of the chunk gets that region.
+func column_chunk_hint(cx: int, cz: int) -> Array:
+	if not COLUMN_FUSE:
+		return []
+	var x0 := float(cx * 16)
+	var z0 := float(cz * 16)
+	var wg := _wg()
+	return [
+		_RouteDressing.box_clear(world_seed, x0, z0, 16.0),
+		_BiomeLayout.box_name(x0, z0, x0 + 15.0, z0 + 15.0, world_seed, wg.biome_region_warp, float(WorldBorder.PLAYABLE_HALF_X)),
+	]
+
+
+func get_column_worker(wx: float, wz: float, height_delta: float, build_tile: int, feature_override: int, hint: Array = []) -> Array:
+	if not COLUMN_FUSE or not WorldBorder.is_playable(wx, wz):
+		return get_column_worker_ref(wx, wz, height_delta, build_tile, feature_override)
+	_note_runtime_noise_height(wx, wz)
+	var wa: float = _warp_x.get_noise_2d(wx * 0.6, wz * 0.6)
+	var wb: float = _warp_z.get_noise_2d(wx * 0.6, wz * 0.6)
+	var w11 := Vector2(wx + wa * 11.0, wz + wb * 11.0)
+	var sv: float = _surface_variation.get_noise_2d(wx, wz)
+	var base: float = _raw_elevation_at(wx, wz, w11.x, w11.y, sv)
+	var core: float = _river_core(wx, wz)
+	# Playable branch of _compute_surface_height_raw.
+	var h: float = base - _river_carve_depth(core, base)
+	var cave_near_surface: float = _sample_cave(wx, h - 3.5, wz)
+	var breach_var: float = (sv + 1.0) * 0.5
+	if cave_near_surface > CAVE_SURFACE_BREACH_MIN and breach_var < CAVE_SURFACE_BREACH_CHANCE:
+		var depress: float = (cave_near_surface - 0.45) * 13.0
+		h -= clamp(depress, 0.0, 11.0)
+	var route_clear: bool = hint.size() > 0 and bool(hint[0])
+	if route_clear:
+		h += 0.0
+	else:
+		h += _RouteDressing.relief_world(world_seed, wx, wz, float(_WorldSettings.get_active().layer_height()))
+	h = clamp(h, -4.0 * _height_gen_scale(), _max_height())
+	# Deep inside the playable area the rim band (at most RIM_BAND_MAX) cannot reach.
+	var interior: bool = WorldBorder.playable_inset(wx, wz) >= WorldBorder.RIM_BAND_MAX + 1.0
+	var q: float
+	if interior:
+		q = _quantize_to_voxel_layer(h)
+	else:
+		q = _quantize_to_voxel_layer(WorldBorder.finish_rim_height(world_seed, wx, wz, h))
+	var out_h: float = _quantize_to_voxel_layer(q + height_delta)
+	if build_tile >= 0:
+		return [out_h, build_tile]
+	if feature_override >= 0:
+		return [out_h, feature_override]
+	var hint_name: String = str(hint[1]) if hint.size() > 1 else ""
+	return [out_h, _surface_tile_fused(wx, wz, q, base, core, wa, wb, interior, route_clear, hint_name)]
+
+
+func _fused_temp(wx: float, wz: float, wa: float, wb: float, surf: float) -> float:
+	var w9 := Vector2(wx + wa * 9.0, wz + wb * 9.0)
+	var t: float = (_temp.get_noise_2d(w9.x, w9.y) + 1.0) * 0.5
+	var lapse: float = clamp((surf - 42.0) / 115.0, 0.0, 0.92)
+	t = clamp(t - lapse * 0.82, 0.0, 1.0)
+	return _apply_map_temperature_bias(t)
+
+
+func _fused_moist(wx: float, wz: float, wa: float, wb: float, core: float, name: String) -> float:
+	var w9 := Vector2(wx + wa * 9.0, wz + wb * 9.0)
+	var x: float = w9.x
+	var z: float = w9.y
+	var raw_m: float = (_moist.get_noise_2d(x * 0.9, z * 0.9) + 1.0) * 0.5
+	var lf_m: float = (_moist.get_noise_2d(x * 0.13, z * 0.13) + 1.0) * 0.5
+	var m: float = raw_m * 0.5 + lf_m * 0.6
+	m = clamp(m, 0.0, 1.0)
+	var dry_push: float = _moist.get_noise_2d(x * 0.48, z * 0.48) * 0.38
+	m = clamp(m - dry_push, 0.0, 1.0)
+	var wet_push: float = max(0.0, _moist.get_noise_2d(x * 0.37, z * 0.37) * 0.22)
+	m = clamp(m + wet_push, 0.0, 1.0)
+	if core > RIVER_IS_RIVER_THRESHOLD:
+		m = clamp(m + clamp(core, 0.0, 1.0) * 0.3, 0.0, 1.0)
+	if name == "marsh":
+		m = maxf(m, 0.62)
+	elif name == "steppe":
+		m = minf(m, 0.42)
+	return m
+
+
+func _fused_rug(wx: float, wz: float, e0: float, name: String) -> float:
+	var rug: float = _local_ruggedness_from(wx, wz, e0)
+	if name == "highland":
+		rug = maxf(rug, 0.45)
+	return rug
+
+
+## Mirrors _compute_surface_tile(wx, wz, false, q) for playable columns.
+## Callers pass playable columns only, so border_biome_name is always "" here, and
+## rim_biome_name is "" whenever rim_surface_tile is -1.
+func _surface_tile_fused(wx: float, wz: float, q: float, e0: float, core: float, wa: float, wb: float,
+		interior: bool = false, route_clear: bool = false, hint_name: String = "") -> int:
+	if not interior:
+		var rim_tile: int = WorldBorder.rim_surface_tile(world_seed, wx, wz)
+		if rim_tile >= 0:
+			return rim_tile
+	var surf: float = _quantize_to_voxel_layer(q) + _TerrainEdits.get_height_delta(floori(wx), floori(wz))
+	var bname: String = hint_name
+	if bname == "":
+		var wg := _wg()
+		bname = _BiomeLayout.biome_name_at(
+			wx, wz, world_seed, wg.biome_region_warp, float(WorldBorder.PLAYABLE_HALF_X)
+		)
+
+	if bname == "ocean":
+		if surf < SEA_LEVEL - 6.0:
+			return VoxelTypes.OCEAN
+		if surf < SEA_LEVEL:
+			return VoxelTypes.OCEAN2
+		return VoxelTypes.BEACH
+
+	if bname == "border_mountain":
+		if surf > 118.0:
+			return VoxelTypes.SNOW2 if _fused_temp(wx, wz, wa, wb, surf) < 0.35 else VoxelTypes.MOUNTAIN3
+		if surf > 96.0:
+			return VoxelTypes.MOUNTAIN2
+		return VoxelTypes.STONE
+
+	var river_mask_dict: Dictionary = get_river_mask(wx, wz)
+	var in_spawn_clearance := _inside_spawn_river_clearance(wx, wz)
+	if river_mask_dict.get("active", false) or (not in_spawn_clearance and _river_carve_depth(core, surf) > 6.0):
+		return VoxelTypes.RIVER
+
+	var cave_val: float = _sample_cave(wx, surf - 2.2, wz)
+	var rug_ready := false
+	var rugged: float = 0.0
+	var mouth: bool = cave_val > CAVE_MOUTH_THRESHOLD
+	if not mouth and surf > 52.0:
+		rugged = _fused_rug(wx, wz, e0, bname)
+		rug_ready = true
+		mouth = rugged > 0.68
+	if mouth:
+		if cave_val > 0.58:
+			return VoxelTypes.STONE
+		if not rug_ready:
+			rugged = _fused_rug(wx, wz, e0, bname)
+		return VoxelTypes.STONE if rugged > 0.75 else VoxelTypes.STONE2
+	if not rug_ready and (bname == "steppe" or bname == "marsh" or bname == "highland"):
+		rugged = _fused_rug(wx, wz, e0, bname)
+
+	var temp2: float = _fused_temp(wx, wz, wa, wb, surf)
+	var moist: float = _fused_moist(wx, wz, wa, wb, core, bname)
+	return _surface_tile_pick(wx, wz, bname, surf, temp2, moist, rugged, route_clear)
+
+
+## Reference column pass (separate height, biome and tile evaluation).
+func get_column_worker_ref(wx: float, wz: float, height_delta: float, build_tile: int, feature_override: int) -> Array:
 	_note_runtime_noise_height(wx, wz)
 	var q: float = _compute_surface_height(wx, wz)
 	var h: float = _quantize_to_voxel_layer(q + height_delta)
@@ -892,10 +1070,10 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 	if cave_val > CAVE_MOUTH_THRESHOLD or (rugged > 0.68 and surf > 52.0):
 		return VoxelTypes.STONE if (cave_val > 0.58 or rugged > 0.75) else VoxelTypes.STONE2
 
-	var temp2: float = biome.get("temp", 0.5)
-	var moist: float = biome.get("moist", 0.5)
-	var hl: int = biome.get("h_level", 9)
+	return _surface_tile_pick(wx, wz, bname, surf, biome.get("temp", 0.5), biome.get("moist", 0.5), rugged)
 
+
+func _surface_tile_pick(wx: float, wz: float, bname: String, surf: float, temp2: float, moist: float, rugged: float, route_clear: bool = false) -> int:
 	var tile_var: float = (_surface_variation.get_noise_2d(wx * 2.3, wz * 2.3) + 1.0) * 0.5
 	var patch_var: float = (_surface_variation.get_noise_2d(wx * 0.71 + 17.0, wz * 0.71 - 9.0) + 1.0) * 0.5
 	var micro_var: float = (_detail.get_noise_2d(wx * 5.1, wz * 5.1) + 1.0) * 0.5
@@ -966,6 +1144,8 @@ func _compute_surface_tile(wx: float, wz: float, use_session_cache: bool = false
 			name = "plains"
 
 	var id: int = VoxelTypes.biome_to_voxel_id.get(name, VoxelTypes.GRASSLAND3)
+	if route_clear:
+		return id
 	return _RouteDressing.tile_for(world_seed, wx, wz, id)
 
 func get_voxel(wx: float, wy: float, wz: float) -> int:
