@@ -116,12 +116,11 @@ func _plant_oak_grove(game: Node, player: Node) -> void:
 		return
 	var origin: Vector3 = player.global_position if player is Node3D else Vector3.ZERO
 	# Ring of oaks around the player so they read clearly under pixel look.
-	# Half-ring ahead of the camera (yaw ~45) so player stays visible in a clearing.
+	# Far arc ahead/side so tall oak canopies do not cover the player.
 	var offsets := [
-		Vector3(10, 0, 10), Vector3(14, 0, 8), Vector3(8, 0, 14),
-		Vector3(16, 0, 12), Vector3(12, 0, 16), Vector3(18, 0, 6),
-		Vector3(6, 0, 18), Vector3(20, 0, 14), Vector3(14, 0, 20),
-		Vector3(-8, 0, 14), Vector3(14, 0, -8), Vector3(22, 0, 10),
+		Vector3(22, 0, 18), Vector3(28, 0, 14), Vector3(18, 0, 26),
+		Vector3(32, 0, 22), Vector3(24, 0, 30), Vector3(36, 0, 16),
+		Vector3(-18, 0, 24), Vector3(24, 0, -16),
 	]
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
