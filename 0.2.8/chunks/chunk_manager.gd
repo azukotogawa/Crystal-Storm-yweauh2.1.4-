@@ -4419,8 +4419,26 @@ func start_gate_coords() -> Array:
 	return out
 
 
+func start_gate_core_coords() -> Array:
+	## Strict 3x3 (or NxN from CRYSTALSTORM_START_RADIUS) around the player —
+	## excludes crystal-threat extras so playable is not blocked on them.
+	var r := start_gate_radius_from_env()
+	if r < 0:
+		return start_stream_coords()
+	var pc := get_player_chunk_coord()
+	var out: Array = []
+	for z in range(pc.y - r, pc.y + r + 1):
+		for x in range(pc.x - r, pc.x + r + 1):
+			var key := Vector2i(x, z)
+			if _WorldBakeService_is_outside(key):
+				continue
+			out.append(key)
+	return out
+
+
 func start_region_status() -> Dictionary:
 	var needed: Array = start_gate_coords()
+	var core: Array = start_gate_core_coords()
 	var bake = load("res://world/world_bake_service.gd").get_active()
 	var stream_first: bool = bake != null and bake.has_method("stream_first_from_env") and bool(bake.stream_first_from_env())
 	var packages := 0
@@ -4435,12 +4453,30 @@ func start_region_status() -> Dictionary:
 			packages += 1
 		if chunks.has(c):
 			resident += 1
+	var core_packages := 0
+	var core_resident := 0
+	for c_v in core:
+		var c2: Vector2i = c_v
+		if stream_first:
+			core_packages += 1
+		elif bake != null and bake.has_method("package_ready") and bool(bake.package_ready(c2)):
+			core_packages += 1
+		elif bake == null or not bool(bake.get("bake_in_progress")):
+			core_packages += 1
+		if chunks.has(c2):
+			core_resident += 1
 	var need_n: int = needed.size()
+	var core_n: int = core.size()
 	return {
 		"needed": need_n,
 		"packages": packages,
 		"resident": resident,
-		"ready": need_n > 0 and resident >= need_n and packages >= need_n,
+		"core_needed": core_n,
+		"core_packages": core_packages,
+		"core_resident": core_resident,
+		# Playable waits on the core 3x3 only; threat extras stay prioritized
+		# via prioritize_start_region_packages but do not hold the gate.
+		"ready": core_n > 0 and core_resident >= core_n and core_packages >= core_n,
 	}
 
 
