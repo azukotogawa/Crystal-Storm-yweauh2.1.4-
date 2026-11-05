@@ -1,11 +1,11 @@
 extends SceneTree
-## t543u: full tree voxel (LOD0) vs simplified (LOD1) under pixel look.
-## Env: CS_TREE_MESH_MODE=full|simple  CS_PIXEL_HEIGHT=216|270|360  CS_PIXEL_RENDER=1
-##       CS_TREE_INSTANCES=64 (optional)  CRYSTALSTORM_SCRATCH=outdir
+## t543u: full tree voxel (LOD0) vs simplified (LOD1) vs coarse silhouette under pixel look.
+## Env: CS_TREE_MESH_MODE=full|simple|silhouette
+##      CS_PIXEL_HEIGHT=216|270|360  CS_PIXEL_RENDER=1
+##      CS_TREE_INSTANCES=256  CRYSTALSTORM_SCRATCH=outdir
 
 const _Loader = preload("res://helpers/crystal_voxel_loader.gd")
 const _PixelLook = preload("res://helpers/pixel_look.gd")
-const _PixelCtrl = preload("res://systems/pixel_look_controller.gd")
 const _ProbeExit = preload("res://scripts/probe_exit.gd")
 
 const TREE_FULL := "res://assets/voxel/vegetation/lod/tree_oak_v0_s2_lod0.json"
@@ -30,20 +30,33 @@ func _run() -> void:
 		height = _PixelLook.DEFAULT_HEIGHT
 	var instances := int(OS.get_environment("CS_TREE_INSTANCES"))
 	if instances <= 0:
-		instances = 64
-	var path := TREE_FULL if mode == "full" else TREE_SIMPLE
+		instances = 256
 
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	DisplayServer.window_set_size(Vector2i(1280, 720))
+	Engine.max_fps = 0
 	for _i in 5:
 		await process_frame
 
 	_Loader.drop_memory()
-	var mesh: ArrayMesh = _Loader.mesh_for(path)
-	var quads_per := _Loader.quad_count(mesh)
+	var mesh: ArrayMesh
+	var path := ""
+	if mode == "silhouette":
+		mesh = _make_silhouette_mesh()
+		path = "procedural_silhouette"
+	elif mode == "simple":
+		path = TREE_SIMPLE
+		mesh = _Loader.mesh_for(path)
+	else:
+		mode = "full"
+		path = TREE_FULL
+		mesh = _Loader.mesh_for(path)
+
+	var quads_per := _Loader.quad_count(mesh) if mode != "silhouette" else _count_quads(mesh)
 	var mesh_bytes := _mesh_bytes(mesh)
 	print(
-		"TREE_MESH mode=%s path=%s quads_per=%d mesh_bytes=%d instances=%d"
-		% [mode, path.get_file(), quads_per, mesh_bytes, instances]
+		"TREE_MESH mode=%s path=%s quads_per=%d mesh_bytes=%d instances=%d vsync=%d"
+		% [mode, path.get_file() if path.begins_with("res://") else path, quads_per, mesh_bytes, instances, int(DisplayServer.window_get_vsync_mode())]
 	)
 
 	var holder := Node3D.new()
@@ -59,8 +72,7 @@ func _run() -> void:
 	for i in instances:
 		var x := float(i % cols) * spacing
 		var z := float(int(i / cols)) * spacing
-		var xf := Transform3D(Basis.IDENTITY, Vector3(x, 0.0, z))
-		mm.set_instance_transform(i, xf)
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(x, 0.0, z)))
 
 	var mmi := MultiMeshInstance3D.new()
 	mmi.name = "TreeForest"
@@ -80,7 +92,6 @@ func _run() -> void:
 	cam.current = true
 	holder.add_child(cam)
 
-	# Force pixel on for this harness regardless of player settings path.
 	OS.set_environment("CS_PIXEL_RENDER", "1")
 	OS.set_environment("CS_PIXEL_HEIGHT", str(height))
 	var ctrl := Node.new()
@@ -93,7 +104,7 @@ func _run() -> void:
 	ctrl.process_priority = -50
 	holder.add_child(ctrl)
 	ctrl.call("install", holder)
-	for _w in 30:
+	for _w in 45:
 		await process_frame
 
 	var internal := Vector2i.ZERO
@@ -101,10 +112,9 @@ func _run() -> void:
 		internal = ctrl.call("get_internal_size")
 	print("TREE_PIXEL height=%d internal=%sx%s" % [height, internal.x, internal.y])
 
-	# Warmup then sample.
-	for _w in 90:
+	for _w in 120:
 		await process_frame
-	var n := 120
+	var n := 180
 	var sum_ms := 0.0
 	var samples: PackedFloat32Array = PackedFloat32Array()
 	samples.resize(n)
@@ -126,7 +136,6 @@ func _run() -> void:
 	var draw := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var prim := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
 	var total_quads := quads_per * instances
-	# Each quad = 2 tris.
 	var total_tris := total_quads * 2
 	if prim <= 0:
 		prim = total_tris
@@ -142,7 +151,6 @@ func _run() -> void:
 		"quads_total": total_quads,
 		"tris_total": total_tris,
 		"mesh_bytes": mesh_bytes,
-		"mesh_bytes_x_instances_est": mesh_bytes,  # shared mesh; GPU instance xforms extra
 		"instance_xform_bytes_est": instances * 48,
 		"frame_mean_ms": mean_ms,
 		"frame_p50_ms": p50,
@@ -152,13 +160,14 @@ func _run() -> void:
 		"mem_static_max_mb": mem_static_max / (1024.0 * 1024.0),
 		"draw_calls": draw,
 		"primitives": prim,
+		"vsync": int(DisplayServer.window_get_vsync_mode()),
 	}
 	var line := (
-		"TREE_LOD_SAMPLE mode=%s height=%d internal=%dx%d instances=%d quads_per=%d quads=%d tris=%d mesh_bytes=%d mean_ms=%.3f p50=%.3f p95=%.3f fps=%.2f mem_mb=%.2f mem_max_mb=%.2f draw=%d prim=%d"
+		"TREE_LOD_SAMPLE mode=%s height=%d internal=%dx%d instances=%d quads_per=%d quads=%d tris=%d mesh_bytes=%d mean_ms=%.3f p50=%.3f p95=%.3f fps=%.2f mem_mb=%.2f mem_max_mb=%.2f draw=%d prim=%d vsync=%d"
 		% [
 			mode, height, internal.x, internal.y, instances, quads_per, total_quads, total_tris, mesh_bytes,
 			mean_ms, p50, p95, fps,
-			report["mem_static_mb"], report["mem_static_max_mb"], draw, prim,
+			report["mem_static_mb"], report["mem_static_max_mb"], draw, prim, report["vsync"],
 		]
 	)
 	print(line)
@@ -174,6 +183,78 @@ func _run() -> void:
 	_ProbeExit.finish_tree(self, 0, "TREE_LOD_MEASURE_OK")
 
 
+func _make_silhouette_mesh() -> ArrayMesh:
+	## Coarse same-palette stand-in: trunk + canopy boxes (silhouette/colour only).
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var trunk := Color(0.45, 0.28, 0.14)
+	var leaf := Color(0.22, 0.48, 0.18)
+	_box(st, Vector3(0, 1.5, 0), Vector3(0.7, 3.0, 0.7), trunk)
+	_box(st, Vector3(0, 5.0, 0), Vector3(4.5, 3.5, 4.5), leaf)
+	_box(st, Vector3(0, 7.2, 0), Vector3(3.0, 2.2, 3.0), leaf)
+	st.generate_normals()
+	return st.commit()
+
+
+func _box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
+	var hx := size.x * 0.5
+	var hy := size.y * 0.5
+	var hz := size.z * 0.5
+	var c := center
+	var v := [
+		c + Vector3(-hx, -hy, -hz),
+		c + Vector3(hx, -hy, -hz),
+		c + Vector3(hx, hy, -hz),
+		c + Vector3(-hx, hy, -hz),
+		c + Vector3(-hx, -hy, hz),
+		c + Vector3(hx, -hy, hz),
+		c + Vector3(hx, hy, hz),
+		c + Vector3(-hx, hy, hz),
+	]
+	var faces := [
+		[0, 1, 2, 3],
+		[5, 4, 7, 6],
+		[4, 0, 3, 7],
+		[1, 5, 6, 2],
+		[3, 2, 6, 7],
+		[4, 5, 1, 0],
+	]
+	for f in faces:
+		_quad(st, v[f[0]], v[f[1]], v[f[2]], v[f[3]], color)
+
+
+func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, color: Color) -> void:
+	st.set_color(color)
+	st.add_vertex(a)
+	st.set_color(color)
+	st.add_vertex(b)
+	st.set_color(color)
+	st.add_vertex(c)
+	st.set_color(color)
+	st.add_vertex(a)
+	st.set_color(color)
+	st.add_vertex(c)
+	st.set_color(color)
+	st.add_vertex(d)
+
+
+func _count_quads(mesh: ArrayMesh) -> int:
+	if mesh == null:
+		return 0
+	var tris := 0
+	for s in mesh.get_surface_count():
+		var arrays: Array = mesh.surface_get_arrays(s)
+		if arrays.is_empty():
+			continue
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		if idx is PackedInt32Array and (idx as PackedInt32Array).size() > 0:
+			tris += (idx as PackedInt32Array).size() / 3
+		else:
+			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+			tris += verts.size() / 3
+	return tris / 2
+
+
 func _mesh_bytes(mesh: ArrayMesh) -> int:
 	if mesh == null:
 		return 0
@@ -185,12 +266,15 @@ func _mesh_bytes(mesh: ArrayMesh) -> int:
 		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var norms = arrays[Mesh.ARRAY_NORMAL]
 		var uvs = arrays[Mesh.ARRAY_TEX_UV]
+		var cols = arrays[Mesh.ARRAY_COLOR]
 		var idx = arrays[Mesh.ARRAY_INDEX]
 		total += verts.size() * 12
 		if norms is PackedVector3Array:
 			total += (norms as PackedVector3Array).size() * 12
 		if uvs is PackedVector2Array:
 			total += (uvs as PackedVector2Array).size() * 8
+		if cols is PackedColorArray:
+			total += (cols as PackedColorArray).size() * 16
 		if idx is PackedInt32Array:
 			total += (idx as PackedInt32Array).size() * 4
 	return total
