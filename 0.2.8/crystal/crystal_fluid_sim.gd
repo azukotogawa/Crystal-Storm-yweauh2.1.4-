@@ -19,7 +19,8 @@ var depth: Dictionary = {}
 ## Parallel SoA depth store (item6 milestone): seq-indexed floats. Dictionary
 ## `depth` remains the public sparse map; hot reads prefer depth_soa when the
 ## cell has a seq. Opt in with CRYSTALSTORM_CRYSTAL_DEPTH_SOA=1 (default ON).
-var depth_soa: PackedFloat32Array = PackedFloat32Array()
+var depth_soa: PackedFloat64Array = PackedFloat64Array()
+var _soa_hot: bool = true
 var spawn_id_by_cell: Dictionary = {}
 var max_cells_per_tick: int = 0
 var max_new_cells_per_tick: int = 0
@@ -86,6 +87,7 @@ const _INTERIOR_WALK_MAX: int = 4096
 func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void:
 	config = p_config if p_config else _CrystalSimConfig.create_default()
 	terrain = p_terrain
+	_refresh_soa_hot()
 
 
 func depth_soa_enabled() -> bool:
@@ -95,9 +97,24 @@ func depth_soa_enabled() -> bool:
 	return true
 
 
+func _refresh_soa_hot() -> void:
+	_soa_hot = depth_soa_enabled()
+
+
+## Hot-path depth read: seq-indexed PackedFloat64Array when SoA is on.
+func _depth_of(pos: Vector2i) -> float:
+	if _soa_hot:
+		if _seq.has(pos):
+			var sq: int = int(_seq[pos])
+			if sq >= 0 and sq < depth_soa.size():
+				return float(depth_soa[sq])
+	return float(depth.get(pos, 0.0))
+
+
 func clear() -> void:
 	depth.clear()
-	depth_soa = PackedFloat32Array()
+	depth_soa = PackedFloat64Array()
+	_refresh_soa_hot()
 	spawn_id_by_cell.clear()
 	_seq.clear()
 	_next_seq = 0
@@ -202,12 +219,7 @@ func _prof_is_chunk_cross(a: Vector2i, b: Vector2i) -> bool:
 
 
 func get_depth_at(wx: int, wz: int) -> float:
-	var pos := Vector2i(wx, wz)
-	if depth_soa_enabled() and _seq.has(pos):
-		var sq: int = int(_seq[pos])
-		if sq >= 0 and sq < depth_soa.size():
-			return float(depth_soa[sq])
-	return float(depth.get(pos, 0.0))
+	return _depth_of(Vector2i(wx, wz))
 
 
 func has_crystal_at(wx: int, wz: int) -> bool:
@@ -228,7 +240,7 @@ func get_last_flow_scan_stats() -> Dictionary:
 func _surface_level(pos: Vector2i) -> float:
 	if _prof_enabled:
 		_prof_terrain_height += 1
-	return terrain.get_terrain_height(pos) + float(depth.get(pos, 0.0))
+	return terrain.get_terrain_height(pos) + _depth_of(pos)
 
 
 func _spread_pressure_mult() -> float:
@@ -256,7 +268,7 @@ func _has_empty_neighbor(pos: Vector2i) -> bool:
 		_prof_empty_neighbor_tests += 1
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
 		var neighbor: Vector2i = pos + dir
-		if float(depth.get(neighbor, 0.0)) < config.min_depth:
+		if _depth_of(neighbor) < config.min_depth:
 			return true
 	return false
 
@@ -311,7 +323,7 @@ func _new_cell_touch_count(pos: Vector2i) -> int:
 	var touches := 0
 	for dir in _CrystalTypes.NEIGHBOR_DIRS:
 		var neighbor: Vector2i = pos + dir
-		if float(depth.get(neighbor, 0.0)) >= config.min_depth:
+		if _depth_of(neighbor) >= config.min_depth:
 			touches += 1
 	return touches
 
@@ -322,7 +334,7 @@ func _new_cell_priority(pos: Vector2i, magnitude: float) -> float:
 	for axis in [Vector2i(1, 0), Vector2i(0, 1)]:
 		var a: Vector2i = pos + axis
 		var b: Vector2i = pos - axis
-		if float(depth.get(a, 0.0)) >= config.min_depth and float(depth.get(b, 0.0)) >= config.min_depth:
+		if _depth_of(a) >= config.min_depth and _depth_of(b) >= config.min_depth:
 			hole_bonus += 4
 	return float(touches) * 12.0 + float(hole_bonus) + magnitude
 
@@ -337,7 +349,7 @@ func _frontier_jitter(pos: Vector2i) -> float:
 func _frontier_diagonal_touches(pos: Vector2i) -> int:
 	var n := 0
 	for dir in [Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]:
-		if float(depth.get(pos + dir, 0.0)) >= config.min_depth:
+		if _depth_of(pos + dir) >= config.min_depth:
 			n += 1
 	return n
 
@@ -373,7 +385,7 @@ func set_depth(pos: Vector2i, new_depth: float, spawn_id: int = -1, emit: bool =
 				depth_changed.emit(pos)
 		return
 
-	var changed: bool = not depth.has(pos) or absf(float(depth[pos]) - new_depth) > 0.02
+	var changed: bool = not depth.has(pos) or absf(_depth_of(pos) - new_depth) > 0.02
 	_write_cell(pos, new_depth)
 	if spawn_id >= 0:
 		spawn_id_by_cell[pos] = spawn_id
@@ -401,7 +413,7 @@ func tick_emitters(spawn_points: Array, delta: float, emit_weaken_mult: float = 
 		var pos: Vector2i = spawn.world_pos
 		if not _cell_active(pos):
 			continue
-		var current: float = float(depth.get(pos, 0.0))
+		var current: float = _depth_of(pos)
 		var added: float = spawn.emit_rate * GameFeelConfig.pace() * mult * delta
 		var room := depth_cap(pos) - current
 		if room <= 0.0:
@@ -457,6 +469,7 @@ func _flow_job_begin(delta: float) -> Array:
 	last_flow_selected_cells = 0
 	last_flow_complete = true
 	_flow_job.clear()
+	# Keep _soa_hot sticky for the instance lifetime (set in _init/clear).
 	if depth.is_empty():
 		return []
 
@@ -540,7 +553,7 @@ func _flow_job_continue() -> Array:
 		idx += 1
 		if not _cell_active(pos):
 			continue
-		var amount: float = float(depth.get(pos, 0.0))
+		var amount: float = _depth_of(pos)
 		if amount < config.min_depth:
 			continue
 		if _prof_enabled:
@@ -571,7 +584,7 @@ func _flow_job_continue() -> Array:
 			if _prof_enabled:
 				_prof_terrain_tile += 1
 			var n_tile := terrain.get_tile(neighbor)
-			var n_amount: float = float(depth.get(neighbor, 0.0))
+			var n_amount: float = _depth_of(neighbor)
 			if _prof_enabled:
 				_prof_terrain_height += 1
 			var n_surface: float = terrain.get_terrain_height(neighbor) + n_amount
@@ -623,7 +636,7 @@ func _flow_job_continue() -> Array:
 				if _prof_enabled:
 					_prof_terrain_tile += 1
 				var n_tile := terrain.get_tile(neighbor)
-				var n_amount: float = float(depth.get(neighbor, 0.0))
+				var n_amount: float = _depth_of(neighbor)
 				var raw_conduct: float = _flow_conductivity(my_tile, n_tile, pos, neighbor)
 				var conduct: float = raw_conduct * config.lateral_spread_bias * lateral_mult
 				var spread: float = min(amount * conduct * delta, config.max_flow_per_cell * delta * 0.35)
@@ -712,7 +725,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 
 	for pos_variant in deltas.keys():
 		var pos: Vector2i = pos_variant
-		var old_depth: float = float(depth.get(pos, 0.0))
+		var old_depth: float = _depth_of(pos)
 		var new_depth: float = old_depth + float(deltas[pos])
 		var was_empty: bool = old_depth < config.min_depth
 		var spawn_id: int = int(spawn_id_by_cell.get(pos, -1))
@@ -796,7 +809,7 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 		for i in allow:
 			var entry: Dictionary = ranked[i]
 			var pos: Vector2i = entry.pos
-			if float(depth.get(pos, 0.0)) >= config.min_depth:
+			if _depth_of(pos) >= config.min_depth:
 				continue
 			if _new_cell_touch_count(pos) < 1:
 				continue
@@ -820,13 +833,14 @@ func _apply_flow_deltas(deltas: Dictionary, frontier: Dictionary = {}) -> Array:
 				if not depth.has(donor):
 					continue
 				var paid: float = float(pay_entry.pay) * pay_scale
-				var donor_depth: float = maxf(float(depth[donor]) - paid, config.min_depth)
-				if absf(donor_depth - float(depth[donor])) > depth_write_epsilon:
+				var donor_old: float = _depth_of(donor)
+				var donor_depth: float = maxf(donor_old - paid, config.min_depth)
+				if absf(donor_depth - donor_old) > depth_write_epsilon:
 					_write_cell(donor, donor_depth)
 					changed.append(donor)
 					if paid >= mesh_depth_epsilon:
 						mesh_dirty.append(donor)
-			var born: float = minf(float(depth.get(pos, 0.0)) + applied, depth_cap(pos))
+			var born: float = minf(_depth_of(pos) + applied, depth_cap(pos))
 			if born < config.min_depth:
 				continue
 			_write_cell(pos, born)
@@ -862,8 +876,8 @@ func _flow_conductivity(from_tile: int, to_tile: int, from_pos: Vector2i, to_pos
 	if terrain.is_water_tile(to_tile) or to_tile == _VoxelTypes.RIVER:
 		combined *= config.water_build_over_rate
 	if terrain.is_water_tile(from_tile) and terrain.is_water_tile(to_tile):
-		var to_depth: float = float(depth.get(to_pos, 0.0))
-		var from_depth: float = float(depth.get(from_pos, 0.0))
+		var to_depth: float = _depth_of(to_pos)
+		var from_depth: float = _depth_of(from_pos)
 		if to_depth >= config.min_depth and from_depth >= config.min_depth:
 			combined *= config.river_flow_factor
 		elif from_depth >= config.min_depth:
@@ -880,7 +894,7 @@ func _cliff_blocked(from: Vector2i, to: Vector2i) -> bool:
 	var to_terrain: float = terrain.get_terrain_height(to)
 	if to_terrain <= from_terrain + config.cliff_height:
 		return false
-	var my_top: float = from_terrain + float(depth.get(from, 0.0))
+	var my_top: float = from_terrain + _depth_of(from)
 	return my_top <= to_terrain + config.min_flow_diff
 
 
@@ -934,7 +948,7 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 	if depth.has(pos):
 		_volume += value - float(depth[pos])
 		depth[pos] = value
-		if depth_soa_enabled() and _seq.has(pos):
+		if _soa_hot and _seq.has(pos):
 			var sq_u: int = int(_seq[pos])
 			if sq_u >= depth_soa.size():
 				depth_soa.resize(sq_u + 1)
@@ -948,7 +962,7 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 	if not _index_valid:
 		return
 	_seq[pos] = _next_seq
-	if depth_soa_enabled():
+	if _soa_hot:
 		if _next_seq >= depth_soa.size():
 			depth_soa.resize(_next_seq + 1)
 		depth_soa[_next_seq] = value
