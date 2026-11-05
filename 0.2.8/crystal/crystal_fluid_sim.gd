@@ -16,6 +16,10 @@ var terrain: _CrystalTerrainQuery
 var global_flow_mult: float = 1.0
 
 var depth: Dictionary = {}
+## Parallel SoA depth store (item6 milestone): seq-indexed floats. Dictionary
+## `depth` remains the public sparse map; hot reads prefer depth_soa when the
+## cell has a seq. Opt in with CRYSTALSTORM_CRYSTAL_DEPTH_SOA=1 (default ON).
+var depth_soa: PackedFloat32Array = PackedFloat32Array()
 var spawn_id_by_cell: Dictionary = {}
 var max_cells_per_tick: int = 0
 var max_new_cells_per_tick: int = 0
@@ -84,8 +88,16 @@ func _init(p_config: _CrystalSimConfig, p_terrain: _CrystalTerrainQuery) -> void
 	terrain = p_terrain
 
 
+func depth_soa_enabled() -> bool:
+	var raw := OS.get_environment("CRYSTALSTORM_CRYSTAL_DEPTH_SOA").strip_edges().to_lower()
+	if raw == "0" or raw == "false" or raw == "off" or raw == "no":
+		return false
+	return true
+
+
 func clear() -> void:
 	depth.clear()
+	depth_soa = PackedFloat32Array()
 	spawn_id_by_cell.clear()
 	_seq.clear()
 	_next_seq = 0
@@ -190,7 +202,12 @@ func _prof_is_chunk_cross(a: Vector2i, b: Vector2i) -> bool:
 
 
 func get_depth_at(wx: int, wz: int) -> float:
-	return float(depth.get(Vector2i(wx, wz), 0.0))
+	var pos := Vector2i(wx, wz)
+	if depth_soa_enabled() and _seq.has(pos):
+		var sq: int = int(_seq[pos])
+		if sq >= 0 and sq < depth_soa.size():
+			return float(depth_soa[sq])
+	return float(depth.get(pos, 0.0))
 
 
 func has_crystal_at(wx: int, wz: int) -> bool:
@@ -917,6 +934,11 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 	if depth.has(pos):
 		_volume += value - float(depth[pos])
 		depth[pos] = value
+		if depth_soa_enabled() and _seq.has(pos):
+			var sq_u: int = int(_seq[pos])
+			if sq_u >= depth_soa.size():
+				depth_soa.resize(sq_u + 1)
+			depth_soa[sq_u] = value
 		return
 	depth[pos] = value
 	_volume += value
@@ -926,6 +948,10 @@ func _write_cell(pos: Vector2i, value: float) -> void:
 	if not _index_valid:
 		return
 	_seq[pos] = _next_seq
+	if depth_soa_enabled():
+		if _next_seq >= depth_soa.size():
+			depth_soa.resize(_next_seq + 1)
+		depth_soa[_next_seq] = value
 	_next_seq += 1
 	if _has_empty_neighbor_raw(pos):
 		_frontier_add(pos)
